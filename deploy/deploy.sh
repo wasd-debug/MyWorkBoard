@@ -8,7 +8,7 @@ cd "$APP_DIR"
 
 echo "==> [1/4] 检查 Docker"
 if ! command -v docker >/dev/null 2>&1; then
-  echo "未安装 Docker，正在安装（腾讯云镜像源）..."
+  echo "未安装 Docker，正在安装..."
   if command -v apt-get >/dev/null 2>&1; then
     curl -fsSL https://mirrors.cloud.tencent.com/docker-ce/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://mirrors.cloud.tencent.com/docker-ce/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
@@ -36,13 +36,13 @@ if [ ! -f deploy/.env ]; then
   cp deploy/.env.example deploy/.env
   echo "  已生成 deploy/.env（默认密码，生产环境请修改）"
 fi
-sudo docker compose -f deploy/docker-compose.yml up -d --build
+sudo docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 
 echo "==> 验证"
 sleep 8
 curl -sf "http://127.0.0.1:80/api/health" >/dev/null \
   && echo "✓ 后端健康检查通过" \
-  || { echo "✗ 健康检查失败，日志："; sudo docker compose -f deploy/docker-compose.yml logs --tail 40; exit 1; }
+  || { echo "✗ 健康检查失败，日志："; sudo docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs --tail 40; exit 1; }
 
 IP=$(curl -sf --max-time 3 https://ifconfig.me 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "<服务器IP>")
 echo
@@ -50,7 +50,7 @@ echo "════════════════════════�
 echo "  部署完成！"
 echo "  访问地址   http://${IP}  (前端 80 端口)"
 echo "  数据       MySQL 容器 salary-mysql（数据卷 mysql-data 持久化）"
-echo "  常用命令   sudo docker compose -f deploy/docker-compose.yml ps|logs -f backend|restart"
+echo "  常用命令   sudo docker compose --env-file deploy/.env -f deploy/docker-compose.yml ps|logs -f backend|restart"
 echo "  开机自启   docker（systemd）+ 容器（restart: always）均已开启"
-echo "  别忘了在腾讯云控制台安全组放行 TCP 80 端口"
+echo "  请确认服务器防火墙或云安全组已放行 TCP 80 端口"
 echo "════════════════════════════════════════════════"

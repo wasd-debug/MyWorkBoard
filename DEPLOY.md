@@ -1,88 +1,97 @@
-# 真实时薪 · 加班追踪 — 部署说明
+# 部署说明
 
-应用已部署至 **http://212.64.29.21/**（腾讯云 Ubuntu 24.04 CVM，前端 80 端口）。
+本项目通过 Docker Compose 运行三个服务：MySQL、Spring Boot 后端和 Nginx 前端。前端对外提供 80 端口，并将 `/api` 请求转发到后端。
 
-## 架构
+## 部署前准备
 
-- **后端** Spring Boot 3 + Java 17 + MyBatis-Plus，容器 `salary-backend`
-- **前端** Vue 3 + Element Plus，nginx 容器 `salary-frontend`，宿主机 **80 端口**
-- **数据库** MySQL 8，容器 `salary-mysql`（首次启动自动建表 + 导入 SQLite 迁移数据）
+1. 准备一台安装 Docker Engine 与 Docker Compose 插件的 Linux 主机。
+2. 将项目复制到主机并进入项目根目录。
+3. 创建部署配置并修改数据库密码：
 
-## 服务器位置
+   ```bash
+   cp deploy/.env.example deploy/.env
+   ${EDITOR:-vi} deploy/.env
+   ```
 
-```
-~/salary-tracker/
-├── docker-compose.prod.yml   # 生产 compose（使用预构建镜像）
-├── mysql-init/                # MySQL 启动初始化（建表 + 数据导入）
-├── salary-config.tar.gz      # 上传的配置包
-└── salary-images-amd64.tar.gz # amd64 镜像包
-```
+   可配置项：
 
-## 常用运维命令
+   - `MYSQL_ROOT_PASSWORD`：MySQL root 密码。
+   - `MYSQL_PASSWORD`：应用连接 MySQL 使用的密码。
+   - `ACCESS_CODE`：可选的 API 访问口令；留空表示不启用。
+
+## 从源码构建并启动
 
 ```bash
-# 查看容器状态
-sudo docker ps -a
+sudo docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
+```
+
+也可以使用仓库内的一键脚本：
+
+```bash
+sudo bash deploy/deploy.sh
+```
+
+脚本会检查 Docker、启动 Docker 服务、检查 80 端口、构建镜像、启动容器，并验证 `http://127.0.0.1/api/health`。
+
+部署完成后，通过服务器的 80 端口访问应用。若服务器有防火墙或云安全组，请放行 TCP 80。
+
+## 使用已构建镜像
+
+`deploy/docker-compose.prod.yml` 用于运行本地已有的 `salary-backend:latest` 和 `salary-frontend:latest` 镜像：
+
+```bash
+sudo docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml up -d
+```
+
+镜像可以通过项目中的 Dockerfile 构建：
+
+```bash
+sudo docker build -f deploy/Dockerfile.backend -t salary-backend:latest .
+sudo docker build -f deploy/Dockerfile.frontend -t salary-frontend:latest .
+```
+
+## 本地联调
+
+先构建后端和前端产物：
+
+```bash
+(cd backend && mvn -DskipTests package)
+(cd frontend && npm install && npm run build)
+```
+
+再启动联调 Compose：
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.local.yml up -d
+```
+
+该模式把 `backend/target` 和 `frontend/dist` 挂载到容器中，适合验证构建产物与容器网络。
+
+## 运维命令
+
+以下命令均在项目根目录执行：
+
+```bash
+# 状态
+sudo docker compose --env-file deploy/.env -f deploy/docker-compose.yml ps
 
 # 查看日志
-sudo docker logs -f salary-backend
-sudo docker logs -f salary-frontend
+sudo docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs -f backend
+sudo docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs -f frontend
+sudo docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs -f mysql
 
-# 重启服务
-cd ~/salary-tracker && sudo docker compose -f docker-compose.prod.yml restart
-
-# 停止/启动整个栈
-cd ~/salary-tracker && sudo docker compose -f docker-compose.prod.yml [down|up -d]
-
-# 进入 MySQL 客户端
-sudo docker exec -it salary-mysql mysql -usalary -pSalaryApp@2026 salary
+# 重启或停止
+sudo docker compose --env-file deploy/.env -f deploy/docker-compose.yml restart
+sudo docker compose --env-file deploy/.env -f deploy/docker-compose.yml down
 ```
 
-## 重要文件
+`down` 不会删除 `mysql-data` 数据卷。只有在明确需要重新初始化数据库时，才删除该卷；删除后数据库中的数据将无法从卷中恢复。
 
-| 文件 | 用途 |
-|---|---|
-| `deploy/docker-compose.prod.yml` | 生产环境 compose |
-| `deploy/mysql-init/01-schema.sql` | MySQL 表结构 |
-| `deploy/mysql-init/02-data.sql` | 从旧 SQLite 迁移的数据 |
-| `deploy/migrate/sqlite_to_mysql.py` | 旧 SQLite → MySQL 转换工具 |
-| `deploy/build/Dockerfile.backend` | 后端镜像构建文件（jre + jar） |
-| `deploy/build/Dockerfile.frontend` | 前端镜像构建文件（nginx + dist） |
-| `deploy/nginx.conf` | 前端 nginx 配置（80 端口 + /api 反代） |
+## 健康检查与配置
 
-## 更新与回滚
+- 健康检查：`GET /api/health`，成功响应包含 `{"ok": true}`。
+- 后端端口由 `PORT` 控制，默认 `8080`；Compose 内部由 Nginx 代理，无需直接暴露。
+- 数据库连接由 `DB_URL`、`DB_USER`、`DB_PASSWORD` 控制。
+- `ACCESS_CODE` 启用后，前端和其他客户端调用受保护 API 时要发送 `X-Access-Code`。
 
-### 推送新代码
-
-```bash
-# 本地（Mac M 系列必须用 --platform linux/amd64）
-cd "/Users/jianshengnan/Documents/Projects/WorkBuddy/个人工作台/salary-sync"
-mvn -DskipTests package
-cd frontend && npm run build && cd ..
-docker build --platform linux/amd64 -f deploy/build/Dockerfile.backend -t salary-backend:latest .
-docker build --platform linux/amd64 -f deploy/build/Dockerfile.frontend -t salary-frontend:latest .
-docker save salary-backend:latest salary-frontend:latest | gzip > /tmp/salary-images-amd64.tar.gz
-scp /tmp/salary-images-amd64.tar.gz ubuntu@212.64.29.21:~/salary-tracker/
-
-# 服务器
-cd ~/salary-tracker
-sudo docker load -i salary-images-amd64.tar.gz
-sudo docker compose -f docker-compose.prod.yml up -d
-```
-
-### 回滚到旧版 Python
-
-```bash
-sudo docker stop salary-frontend salary-backend salary-mysql
-sudo docker rm salary-frontend salary-backend salary-mysql
-# 旧版启动（保留镜像 salary-tracker-frontend / salary-tracker-backend）
-cd /path/to/old/salary-tracker && sudo docker compose up -d
-# 旧版监听 8787 端口
-```
-
-## 安全建议（公网部署）
-
-- 已开启腾讯云安全组 80 端口
-- 数据库密码为默认值 `SalaryRoot@2026` / `SalaryApp@2026`，**生产环境务必修改** `~/salary-tracker/.env`
-- 可选：设置 `ACCESS_CODE` 启用 API 访问口令（前端会弹出输入框）
-- 旧版 8787 端口建议在腾讯云安全组关闭
+生产环境请使用高强度密码和访问口令，不要把 `deploy/.env` 提交到版本库。

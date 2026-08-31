@@ -1,115 +1,141 @@
 # 真实时薪 · 加班追踪
 
-记录每天真实上下班时间，自动计算加班时长与实际时薪（周报 / 月报）。
+记录每天的实际上下班时间，计算工作时长、加班时长、工资和实际时薪，并按周、月或自定义时间段查看统计结果。
 
-## 技术栈（v2 重构版）
+## 功能
 
-| 层 | 技术 | 说明 |
-|---|---|---|
-| 前端 | Vue 3 + Vite + Element Plus + Pinia + Vue Router | 打卡 / 记录 / 统计 / 设置 四页面 |
-| 后端 | Java 17 + Spring Boot 3 + MyBatis-Plus | REST API，与旧版 Flask 接口完全兼容 |
-| 数据库 | MySQL 8 | 数据卷持久化；旧版 SQLite 数据自动迁移 |
-| 部署 | Docker Compose | mysql + backend + frontend 三容器，前端暴露 80 端口 |
+- **打卡**：记录上班、下班和额外休息时间，实时查看当天工时、加班和实际时薪。
+- **记录**：按月浏览、编辑、删除打卡记录，并按月设置税前、税后工资。
+- **统计**：查看本周、本月、本年、上周、上月、去年或自定义时间段的工时、加班、工资和时薪趋势。
+- **设置**：配置标准工作时间、午休扣除、排班天数和统计口径。
+- **节假日**：读取法定节假日与调休信息，区分工作日和休息日加班。
+- **数据管理**：支持 JSON 导出、导入和清空；应用优先使用浏览器本地缓存，连接后端后会同步到 MySQL。
+- **主题与访问保护**：支持明暗主题；部署时可通过访问口令保护 API。
 
+## 技术栈
+
+| 层 | 技术 |
+|---|---|
+| 前端 | Vue 3、Vite、Element Plus、Pinia、Vue Router、ECharts |
+| 后端 | Java 17、Spring Boot 3.2、MyBatis-Plus |
+| 数据库 | MySQL 8 |
+| 部署 | Docker Compose、Nginx |
+
+运行时请求关系：
+
+```text
+浏览器 → Nginx:80（Vue 静态页面和 /api 反向代理）
+             └→ Spring Boot:8080 → MySQL:3306
 ```
-浏览器 → [nginx 容器 :80]（Vue 静态页面 + /api 反向代理）
-             │
-             └──→ [backend 容器 :8080]（Spring Boot）
-                          │
-                          └──→ [mysql 容器 :3306]（数据卷 mysql-data）
-```
 
-## 目录结构
+## 项目结构
 
-```
+```text
 salary-sync/
-├── backend/            # Spring Boot 后端（Java 17 + Maven）
-├── frontend/           # Vue 3 前端
-├── deploy/             # Docker 部署包
-│   ├── docker-compose.yml
-│   ├── Dockerfile.backend / Dockerfile.frontend
-│   ├── nginx.conf      # 前端容器配置（listen 80 + /api 反代）
-│   ├── mysql-init/     # MySQL 首次启动自动建表 + 迁移数据
-│   ├── migrate/        # SQLite → MySQL 迁移工具
-│   └── deploy.sh       # 服务器端一键部署脚本
-├── data/               # 旧版 SQLite 数据快照（salary-latest.db）
-└── legacy/             # 旧版 Python/单文件前端（存档）
+├── backend/                 # Spring Boot 后端和数据库初始化脚本
+├── frontend/                # Vue 前端
+└── deploy/                  # Docker、Compose、Nginx 和部署脚本
+    ├── docker-compose.yml   # 从源码构建并启动完整服务
+    ├── docker-compose.local.yml  # 使用本地构建产物联调
+    ├── docker-compose.prod.yml   # 使用已构建镜像运行
+    ├── Dockerfile.backend
+    ├── Dockerfile.frontend
+    ├── nginx.conf
+    ├── mysql-init/           # MySQL 初始化 SQL
+    └── deploy.sh             # Linux 服务器一键部署
 ```
 
 ## 本地开发
 
-```bash
-# 后端（需本地 MySQL，或直接 docker compose 起 mysql）
-cd backend && mvn spring-boot:run        # http://localhost:8080
+### 方式一：分别启动前后端
 
-# 前端（Vite 代理 /api → 8080）
-cd frontend && npm install && npm run dev  # http://localhost:5173
+准备 Java 17、Maven、Node.js 20+ 和 MySQL 8，并创建名为 `salary` 的数据库及可访问账号。后端会在启动时执行 `backend/src/main/resources/schema.sql`。
+
+启动后端：
+
+```bash
+cd backend
+mvn spring-boot:run
 ```
 
-## Docker 一键部署（腾讯云）
+后端默认监听 `http://localhost:8080`。如需使用其他数据库，可通过环境变量覆盖连接信息：
 
-在服务器上执行（项目目录为 /opt/salary-tracker）：
+```bash
+export DB_URL='jdbc:mysql://localhost:3306/salary?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true'
+export DB_USER='salary'
+export DB_PASSWORD='你的数据库密码'
+mvn spring-boot:run
+```
+
+启动前端（Vite 已配置 `/api` 代理到 `localhost:8080`）：
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+开发页面默认地址为 `http://localhost:5173`。只启动前端也可以使用本地模式，数据保存在当前浏览器中。
+
+### 方式二：Docker Compose
+
+在项目根目录执行：
+
+```bash
+cp deploy/.env.example deploy/.env
+# 编辑 deploy/.env，至少修改数据库密码
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
+```
+
+服务启动后访问 `http://localhost`。常用命令：
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml ps
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs -f backend
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml restart
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml down
+```
+
+MySQL 数据保存在 Compose 卷 `mysql-data` 中。数据库初始化脚本只会在卷首次创建时执行。
+
+## 服务器部署
+
+Linux 服务器安装 Docker Engine 和 Compose 插件后，在项目目录执行：
 
 ```bash
 sudo bash deploy/deploy.sh
 ```
 
-脚本自动：检查/安装 Docker → 开机自启 → 构建镜像 → 启动三容器 → 健康检查。
-部署完成后访问 `http://<服务器公网IP>`（80 端口）。
+脚本会检查 Docker、构建前后端镜像、启动 MySQL/后端/前端容器，并请求 `/api/health` 进行健康检查。部署前请编辑 `deploy/.env` 设置数据库密码；如需访问保护，设置 `ACCESS_CODE`。
 
-**别忘了在腾讯云控制台 → 安全组，放行 TCP 80 端口。**
+## API
 
-可选配置（`deploy/.env`）：
-
-- `MYSQL_ROOT_PASSWORD` / `MYSQL_PASSWORD` — 数据库密码（生产环境务必修改）
-- `ACCESS_CODE=口令` — 开启访问保护：所有设备打开应用需先输口令
-
-常用运维命令：
-
-```bash
-sudo docker compose -f deploy/docker-compose.yml ps                 # 容器状态
-sudo docker compose -f deploy/docker-compose.yml logs -f backend   # 后端日志
-sudo docker compose -f deploy/docker-compose.yml restart           # 重启全部
-sudo docker compose -f deploy/docker-compose.yml down              # 停止（数据保留在数据卷）
-```
-
-## 数据迁移（SQLite → MySQL）
-
-`deploy/migrate/sqlite_to_mysql.py` 将旧版 `data/salary-latest.db` 转为
-`deploy/mysql-init/02-data.sql`；MySQL 容器**首次创建**时通过
-`docker-entrypoint-initdb.d` 自动建表并导入全部历史数据（设置 + 打卡记录）。
-
-> 注意：`mysql-init/02-data.sql` 只在数据卷首次创建时执行。若数据卷已存在，
-> 需手动执行 `02-data.sql` 或删除旧数据卷后重新部署。
-
-## API 说明
-
-| 接口 | 方法 | 说明 |
+| 方法 | 路径 | 说明 |
 |---|---|---|
-| `/api/health` | GET | 健康检查 |
-| `/api/data` | GET | 读整体数据快照 `{settings, records}` |
-| `/api/data` | PUT | 写整体数据快照（整体替换） |
+| GET | `/api/health` | 返回服务健康状态 |
+| GET | `/api/data` | 获取 `{settings, records}` 数据快照 |
+| PUT | `/api/data` | 覆盖保存数据快照 |
+| GET | `/api/holidays?year=2026` | 获取指定年份的节假日与调休数据 |
 
-可选：设置 `ACCESS_CODE` 后，除健康检查外所有接口需带 `X-Access-Code` 请求头。
-
-## 页面功能
-
-| 页面 | 功能 |
-|------|------|
-| 打卡 | 填实际上下班时间 + 当日自定义休息 → 当日实际时薪、加班时长、日薪 |
-| 记录 | 按月查看/编辑/删除每日记录（含休息时长），月度汇总 |
-| 统计 | 本周/本月：总工时、加班、本来时薪 vs 实际时薪、柱状图、加班预测 |
-| 设置 | 标准上下班时间、午休扣除、每月排班天数、税前/税后月薪、数据导出导入 |
+设置 `ACCESS_CODE` 后，除 `/api/health` 外的请求都必须携带 `X-Access-Code` 请求头。前端会在首次收到 401 响应时提示输入口令，并将其保存在当前浏览器中。
 
 ## 计算口径
 
-```
-基准时薪 = 月薪 ÷ 每月排班天数 ÷ 每日标准工时
-当日实际时薪 = 日薪 ÷ 当日实际工时        # 加班越多，时薪越低
-当日实际工时 = 下班 - 上班 - 午休 - 自定义休息
-周期实际时薪 = (打卡天数 × 日薪) ÷ 周期总工时
+```text
+标准工时 = 标准下班时间 - 标准上班时间 - 午休扣除
+实际工时 = 下班时间 - 上班时间 - 午休扣除 - 自定义休息
+基准时薪 = 月薪 ÷ 当月排班天数 ÷ 标准工时
+日薪 = 月薪 ÷ 当月排班天数
+实际时薪 = 日薪 ÷ 实际工时
 ```
 
-- 顶栏一键切换 **税前 / 税后** 口径
-- 支持跨零点下班（夜班/加班到次日凌晨）；早退记为负加班
-- **自定义休息**：打卡页可填当日除午休外的休息分钟数，不区分类型，直接从实际工时扣除
+- 支持跨午夜下班；早退会产生负加班时长。
+- 自动排班模式按节假日和调休计算当月工作日，并计入休息日打卡。
+- 顶栏可以切换税前或税后口径；月薪可按月份单独调整。
+
+## 构建检查
+
+```bash
+cd backend && mvn test
+cd ../frontend && npm run build
+```

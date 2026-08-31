@@ -30,7 +30,7 @@
     </div>
 
     <div class="chart-card card">
-      <div class="chart-title"><div><h3>时长趋势</h3><p class="muted">每日总工时与加班时长</p></div><div class="legend"><span class="legend-total"></span>总工时 <span class="legend-ot"></span>加班</div></div>
+      <div class="chart-title"><div><h3>时长趋势</h3><p class="muted">{{ chartGranularity === 'month' ? '每月' : '每日' }}总工时与加班时长</p></div><div class="legend"><span class="legend-total"></span>总工时 <span class="legend-ot"></span>加班</div></div>
       <div ref="chartRef" class="echart"></div>
     </div>
 
@@ -105,15 +105,32 @@ function applyCustom() {
 }
 function formatDate(value) { return value ? value.replaceAll('-', '/') : '—' }
 const rangeDates = computed(() => CALC.rangeKeys(startDate.value, endDate.value))
+const chartGranularity = computed(() =>
+  activeQuick.value === 'year' || activeQuick.value === 'lastYear' ? 'month' : 'day')
 /* 跨月统计：各月按各自月薪封顶（工资按月浮动） */
 const stats = computed(() => CALC.periodStats(rangeDates.value, store.records, store.settings, store.settings.basis, 0, store.holidays,
   ym => CALC.monthSalary(store.settings.salaries, store.settings, store.settings.basis, ym)))
-const chartData = computed(() => rangeDates.value.map(k => {
-  const m = CALC.actualMin(store.records[k], store.settings)
-  const off = store.holidays && CALC.dayType(k, store.holidays) === 'off'
-  const ot = m > 0 ? (off ? m : Math.max(0, m - CALC.stdWorkMin(store.settings))) : 0
-  return { key: k, total: m / 60, ot: ot / 60 }
-}))
+const chartData = computed(() => {
+  if (chartGranularity.value === 'month') {
+    const months = {}
+    for (const k of rangeDates.value) {
+      const ym = k.slice(0, 7)
+      const m = CALC.actualMin(store.records[k], store.settings)
+      const off = store.holidays && CALC.dayType(k, store.holidays) === 'off'
+      const ot = m > 0 ? (off ? m : Math.max(0, m - CALC.stdWorkMin(store.settings))) : 0
+      if (!months[ym]) months[ym] = { key: ym, label: ym.replace('-', '/'), total: 0, ot: 0 }
+      months[ym].total += m / 60
+      months[ym].ot += ot / 60
+    }
+    return Object.values(months)
+  }
+  return rangeDates.value.map(k => {
+    const m = CALC.actualMin(store.records[k], store.settings)
+    const off = store.holidays && CALC.dayType(k, store.holidays) === 'off'
+    const ot = m > 0 ? (off ? m : Math.max(0, m - CALC.stdWorkMin(store.settings))) : 0
+    return { key: k, label: k.slice(5), total: m / 60, ot: ot / 60 }
+  })
+})
 const periodTip = computed(() => stats.value.days === 0
   ? `<span class="tag">统计提示</span><br>当前时间段暂无打卡记录。`
   : `<span class="tag">统计提示</span><br>共打卡 <b>${stats.value.days}</b> 天，累计工作 <b>${hours(stats.value.totalMin)}h</b>，累计加班 <b>${hours(Math.max(0, stats.value.otMin))}h</b>，应付工资 <b>${money(Math.round(stats.value.earned))}</b>。`)
@@ -127,7 +144,7 @@ function renderChart() {
     tooltip: { trigger: 'axis', formatter: params => `${params[0]?.axisValue}<br>${params.map(p => `${p.marker}${p.seriesName}：${Number(p.value).toFixed(1)}h`).join('<br>')}` },
     legend: { show: false },
     grid: { left: 42, right: 20, top: 18, bottom: 38 },
-    xAxis: { type: 'category', boundaryGap: false, data: data.map(x => x.key.slice(5)), axisLine: { lineStyle: { color: '#dfe4ef' } }, axisLabel: { color: '#8b93a7', interval: Math.max(0, Math.ceil(data.length / 10) - 1) } },
+    xAxis: { type: 'category', boundaryGap: false, data: data.map(x => x.label), axisLine: { lineStyle: { color: '#dfe4ef' } }, axisLabel: { color: '#8b93a7', interval: Math.max(0, Math.ceil(data.length / 10) - 1) } },
     yAxis: { type: 'value', name: '小时', nameTextStyle: { color: '#8b93a7' }, axisLabel: { color: '#8b93a7' }, splitLine: { lineStyle: { color: '#edf0f6' } } },
     series: [
       { name: '总工时', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6, data: data.map(x => Number(x.total.toFixed(2))), areaStyle: { opacity: .12 }, lineStyle: { width: 3 } },
@@ -135,7 +152,7 @@ function renderChart() {
     ]
   }, true)
 }
-watch([rangeDates, () => store.records], async () => { await nextTick(); renderChart() }, { deep: true })
+watch([rangeDates, chartGranularity, () => store.records], async () => { await nextTick(); renderChart() }, { deep: true })
 onMounted(() => { renderChart(); window.addEventListener('resize', renderChart) })
 onBeforeUnmount(() => { window.removeEventListener('resize', renderChart); chart?.dispose() })
 
