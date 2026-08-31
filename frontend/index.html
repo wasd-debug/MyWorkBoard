@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0e1013">
+<link rel="icon" href="data:,">
+<title>真实时薪 · 加班追踪</title>
+<script>
+/* 主题预置（渲染前执行，防闪白/闪黑）：手动选择 > 系统偏好 */
+(function(){
+  var t = localStorage.getItem("st_theme") ||
+    (window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+  document.documentElement.className = t;
+})();
+</script>
+</head>
+<body>
+<div id="app"></div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

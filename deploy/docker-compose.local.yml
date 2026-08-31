@@ -1,0 +1,70 @@
+# 本地联调专用（不进行容器内构建）：
+#  - backend 直接挂载本地 mvn package 产物
+#  - frontend 直接挂载本地 vite build 产物
+# 用法: docker compose -f deploy/docker-compose.local.yml up -d
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: salary-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: SalaryRoot@2026
+      MYSQL_DATABASE: salary
+      MYSQL_USER: salary
+      MYSQL_PASSWORD: SalaryApp@2026
+      TZ: Asia/Shanghai
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks:
+      - salary-net
+
+  backend:
+    image: eclipse-temurin:17-jre
+    container_name: salary-backend
+    restart: always
+    working_dir: /app
+    volumes:
+      # 挂载整个 target 目录而非单个 jar 文件：
+      # mvn package 会替换 jar（inode 变化），单文件挂载会失效
+      - ../backend/target:/app:ro
+    command: ["java", "-jar", "/app/salary-tracker-backend.jar"]
+    environment:
+      PORT: 8080
+      DB_URL: jdbc:mysql://mysql:3306/salary?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      DB_USER: salary
+      DB_PASSWORD: SalaryApp@2026
+      ACCESS_CODE: ""
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - salary-net
+
+  frontend:
+    image: nginx:alpine
+    container_name: salary-frontend
+    restart: always
+    volumes:
+      - ../frontend/dist:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - salary-net
+
+networks:
+  salary-net:
+    driver: bridge
+
+volumes:
+  mysql-data:

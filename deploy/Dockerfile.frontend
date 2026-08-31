@@ -1,0 +1,14 @@
+# ============ 前端镜像：Vue 3 构建 + nginx 托管（暴露 80） ============
+# 构建阶段：Node 打包（国内镜像源加速）
+FROM node:20-alpine AS build
+WORKDIR /build
+COPY frontend/package.json frontend/.npmrc ./
+RUN npm install --registry=https://registry.npmmirror.com
+COPY frontend/ ./
+RUN npm run build
+
+# 运行阶段：nginx
+FROM nginx:alpine
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /build/dist /usr/share/nginx/html
+EXPOSE 80

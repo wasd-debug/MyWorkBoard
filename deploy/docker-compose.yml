@@ -1,0 +1,66 @@
+services:
+  # ---------- MySQL 8 ----------
+  mysql:
+    image: mysql:8.0
+    container_name: salary-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-SalaryRoot@2026}
+      MYSQL_DATABASE: salary
+      MYSQL_USER: salary
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-SalaryApp@2026}
+      TZ: Asia/Shanghai
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 首次创建容器时自动建表 + 导入旧版 SQLite 迁移数据
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks:
+      - salary-net
+
+  # ---------- 后端：Spring Boot ----------
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    container_name: salary-backend
+    restart: always
+    environment:
+      PORT: 8080
+      DB_URL: jdbc:mysql://mysql:3306/salary?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      DB_USER: salary
+      DB_PASSWORD: ${MYSQL_PASSWORD:-SalaryApp@2026}
+      # 需要访问口令保护时设置：ACCESS_CODE=你的口令
+      ACCESS_CODE: ${ACCESS_CODE:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - salary-net
+
+  # ---------- 前端：nginx（暴露 80 端口） ----------
+  frontend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+    container_name: salary-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - salary-net
+
+networks:
+  salary-net:
+    driver: bridge
+
+volumes:
+  mysql-data:
