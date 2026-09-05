@@ -4,6 +4,8 @@ FROM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /build
 COPY deploy/maven-settings.xml /root/.m2/settings.xml
 COPY backend/pom.xml ./pom.xml
+COPY backend/app ./app
+COPY backend/modules ./modules
 RUN mvn -q -DskipTests dependency:go-offline
 COPY backend/src ./src
 RUN mvn -q -DskipTests package

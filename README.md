@@ -16,10 +16,13 @@
 
 | 层 | 技术 |
 |---|---|
-| 前端 | Vue 3、Vite、Element Plus、Pinia、Vue Router、ECharts |
+| 前端（当前实现） | Vue 3、Vite、Element Plus、Pinia、Vue Router、ECharts |
+| 前端（目标方案） | Vue 3、Vite、Tailwind CSS 4、shadcn-vue、Lucide、Pinia、Vue Router、ECharts |
 | 后端 | Java 17、Spring Boot 3.2、MyBatis-Plus |
 | 数据库 | MySQL 8 |
 | 部署 | Docker Compose、Nginx |
+
+> UI 迁移说明：当前仓库仍使用 Element Plus；后续按 `ARCHITECTURE.md` 的 Phase 0 计划迁移到 Tailwind CSS + shadcn-vue。新页面使用源码归属的 shadcn-vue 组件和语义化 Tailwind tokens，Element Plus 仅在迁移期间服务未改造页面。
 
 运行时请求关系：
 
@@ -106,18 +109,31 @@ Linux 服务器安装 Docker Engine 和 Compose 插件后，在项目目录执�
 sudo bash deploy/deploy.sh
 ```
 
-脚本会检查 Docker、构建前后端镜像、启动 MySQL/后端/前端容器，并请求 `/api/health` 进行健康检查。部署前请编辑 `deploy/.env` 设置数据库密码；如需访问保护，设置 `ACCESS_CODE`。
+脚本会检查 Docker、构建前后端镜像、启动 MySQL/后端/前端容器，并请求 `/api/health` 进行健康检查。部署前请编辑 `deploy/.env` 设置数据库密码和 `JWT_SECRET`。
 
 ## API
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/health` | 返回服务健康状态 |
+| POST | `/api/v1/auth/register` | 注册并签发双令牌 |
+| POST | `/api/v1/auth/login` | 登录并签发双令牌 |
+| POST | `/api/v1/auth/refresh` | 轮换 HttpOnly 刷新令牌 |
+| POST | `/api/v1/auth/logout` | 吊销刷新令牌 |
+| GET | `/api/v1/worktime/settings` | 获取当前用户工时设置 |
+| PUT | `/api/v1/worktime/settings` | 更新设置（支持 `If-Match`） |
+| GET | `/api/v1/worktime/records` | 分页获取当前用户记录 |
+| POST | `/api/v1/worktime/records` | 创建工时记录 |
+| PATCH | `/api/v1/worktime/records/{id}` | 更新工时记录（支持 `If-Match`） |
+| DELETE | `/api/v1/worktime/records/{id}` | 软删除工时记录 |
+| GET | `/api/v1/audit/logs` | 查询当前用户操作日志 |
 | GET | `/api/data` | 获取 `{settings, records}` 数据快照 |
 | PUT | `/api/data` | 覆盖保存数据快照 |
 | GET | `/api/holidays?year=2026` | 获取指定年份的节假日与调休数据 |
 
-设置 `ACCESS_CODE` 后，除 `/api/health` 外的请求都必须携带 `X-Access-Code` 请求头。前端会在首次收到 401 响应时提示输入口令，并将其保存在当前浏览器中。
+除健康检查、节假日和认证接口外，API 均需要 `Authorization: Bearer <access_token>`。Access token 只保存在前端内存，刷新令牌由后端通过 HttpOnly Cookie 管理。旧 `/api/data` 接口保留兼容期并返回 `Deprecation`/`Sunset` 响应头。
+
+从旧表回填的 `admin` 账户默认锁定（密码为 `!`）；迁移部署时通过 `LEGACY_ADMIN_PASSWORD` 注入一次性初始密码，再登录后立即修改或停用该账户。
 
 ## 计算口径
 

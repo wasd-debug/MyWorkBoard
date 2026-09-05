@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ElMessage } from 'element-plus'
-import { apiGetData, apiPutAll, apiGetHolidays, setAccessCode } from '../api'
+import { apiGetWorktimeSnapshot, apiPutWorktimeSnapshot, apiGetHolidays, apiLogout, apiRefresh, clearAccessToken } from '../api'
 import { CALC } from '../utils/calc'
 
 export const DEFAULTS = {
@@ -12,6 +12,14 @@ export const DEFAULTS = {
 const LS_SET = 'st_settings'
 const LS_REC = 'st_records'
 const LS_THEME = 'st_theme'
+const LS_ACCENT = 'st_accent'
+
+export const ACCENTS = {
+  green: { light: '#0f5132', dark: '#7bd3a6', soft: '#e6efe8', darkSoft: '#203a2b' },
+  blue: { light: '#3e667d', dark: '#83bdd7', soft: '#e4edf2', darkSoft: '#203541' },
+  plum: { light: '#80536c', dark: '#d2a0be', soft: '#f0e6ec', darkSoft: '#432d3e' },
+  rust: { light: '#a4573f', dark: '#e6a38d', soft: '#f4e7e1', darkSoft: '#452d27' }
+}
 
 export const useAppStore = defineStore('app', {
   state: () => ({
@@ -21,27 +29,47 @@ export const useAppStore = defineStore('app', {
     _holYears: {},                   // 已加载年份 -> 数据来源
     _holReq: {},                     // 进行中的年份请求（防重复）
     dbMode: false,                   // 本地服务（数据库）可用
-    theme: 'dark',
+    theme: 'light',
+    accent: 'green',
     punchDate: '',
     recMonth: '',
     ready: false,                    // 初始化完成
-    needCode: false,                 // 是否弹出访问口令对话框
-    _resolveCode: null,
+    authUser: null,
+    authRequired: false,
     _putChain: Promise.resolve()
   }),
 
   actions: {
     /* ---------- 主题 ---------- */
-    applyTheme(t) {
-      this.theme = t
-      document.documentElement.className = t
+    applyTheme() {
+      const theme = localStorage.getItem(LS_THEME) === 'dark' ? 'dark' : 'light'
+      const accent = ACCENTS[localStorage.getItem(LS_ACCENT)] ? localStorage.getItem(LS_ACCENT) : 'green'
+      this.theme = theme
+      this.accent = accent
+      const root = document.documentElement
+      root.classList.toggle('dark', theme === 'dark')
+      root.classList.toggle('light', theme !== 'dark')
+      const palette = ACCENTS[accent]
+      const darkMode = theme === 'dark'
+      root.style.setProperty('--accent', darkMode ? palette.dark : palette.light)
+      root.style.setProperty('--accent-soft', darkMode ? palette.darkSoft : palette.soft)
+      root.style.setProperty('--up', darkMode ? palette.dark : palette.light)
+      root.style.setProperty('--secondary', darkMode ? palette.darkSoft : palette.soft)
       const mc = document.querySelector('meta[name="theme-color"]')
-      if (mc) mc.content = t === 'light' ? '#f3f5f9' : '#0e1013'
+      if (mc) mc.content = darkMode ? '#14171c' : '#f7f5f1'
+      localStorage.setItem(LS_THEME, theme)
+      localStorage.setItem(LS_ACCENT, accent)
     },
     toggleTheme() {
-      const t = this.theme === 'light' ? 'dark' : 'light'
-      localStorage.setItem(LS_THEME, t)
-      this.applyTheme(t)
+      this.theme = this.theme === 'dark' ? 'light' : 'dark'
+      localStorage.setItem(LS_THEME, this.theme)
+      this.applyTheme()
+    },
+    setAccent(name) {
+      if (!ACCENTS[name]) return
+      this.accent = name
+      localStorage.setItem(LS_ACCENT, name)
+      this.applyTheme()
     },
 
     /* ---------- 本地缓存 ---------- */
@@ -63,52 +91,46 @@ export const useAppStore = defineStore('app', {
       if (!this.dbMode) return
       // 保存请求串行队列，避免并发快照乱序
       this._putChain = this._putChain
-        .then(() => apiPutAll({ settings: this.settings, records: this.records }))
-        .catch(() => { this.dbMode = false; ElMessage.warning('数据库不可用，已切换本地模式') })
+        .then(() => apiPutWorktimeSnapshot({ settings: this.settings, records: this.records }))
+        .catch(error => {
+          if (error.response?.status === 401) this.authRequired = true
+          this.dbMode = false
+          ElMessage.warning(error.response?.status === 401 ? '登录已过期，请重新登录' : '数据库不可用，已切换本地模式')
+        })
       return this._putChain
-    },
-
-    askAccessCode() {
-      return new Promise(resolve => {
-        this.needCode = true
-        this._resolveCode = resolve
-      })
-    },
-    submitAccessCode(code) {
-      this.needCode = false
-      if (this._resolveCode) { this._resolveCode(code); this._resolveCode = null }
-    },
-    cancelAccessCode() {
-      this.needCode = false
-      if (this._resolveCode) { this._resolveCode(null); this._resolveCode = null }
     },
 
     async connectDb() {
       try {
-        let data
-        try {
-          data = await apiGetData()
-        } catch (e) {
-          if (e.response && e.response.status === 401) {
-            const code = await this.askAccessCode()
-            if (!code) throw e
-            setAccessCode(code.trim())
-            data = await apiGetData()
-          } else throw e
-        }
-        const dbEmpty = !Object.keys(data.records || {}).length && !Object.keys(data.settings || {}).length
+        const data = await apiGetWorktimeSnapshot()
+        const dbEmpty = !Object.keys(data.records || {}).length && Number(data.settings?.revision || 0) === 0
         const localHas = Object.keys(this.records).length > 0 || !!localStorage.getItem(LS_SET)
         if (dbEmpty && localHas) {
-          await apiPutAll({ settings: this.settings, records: this.records })   // 首次使用：本地数据迁移到服务端
+          await apiPutWorktimeSnapshot({ settings: this.settings, records: this.records })
         } else if (!dbEmpty) {
           this.settings = { ...DEFAULTS, ...(data.settings || {}) }
           this.records = data.records || {}
           this.saveLocal()                                                       // 服务端为准，本地留缓存
         }
         this.dbMode = true
+        this.authRequired = false
       } catch (e) {
+        this.authRequired = e.response?.status === 401
         this.dbMode = false
       }
+    },
+
+    async completeLogin(user) {
+      this.authUser = user || null
+      this.authRequired = false
+      await this.connectDb()
+    },
+
+    async logout() {
+      try { await apiLogout() } catch (e) { clearAccessToken() }
+      this.authUser = null
+      this.authRequired = true
+      this.dbMode = false
     },
 
     /* ---------- 节假日数据 ---------- */
@@ -127,9 +149,13 @@ export const useAppStore = defineStore('app', {
     },
 
     async init() {
-      this.applyTheme(localStorage.getItem(LS_THEME) ||
-        (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'))
+      this.applyTheme()
       this.loadLocal()
+      try {
+        const session = await apiRefresh()
+        this.authUser = session.user || null
+      } catch (e) {
+      }
       await this.connectDb()
       // 节假日数据失败不阻塞主流程
       this.ensureHolidays(new Date().getFullYear())

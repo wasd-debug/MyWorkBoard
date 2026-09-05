@@ -1,47 +1,102 @@
 <template>
   <section>
-    <div class="stats-filter card">
-      <div class="filter-head">
-        <div><h3>自定义统计</h3><p class="muted">按任意时间段查看工时、加班、工资与时薪</p></div>
-        <el-select v-model="activeQuick" class="range-select" placeholder="选择统计范围" @change="onSelectRange">
-          <el-option v-for="item in rangeOptions" :key="item.key" :label="item.label" :value="item.key" />
-        </el-select>
-      </div>
-      <div class="date-filter-row">
-        <span class="filter-range num">{{ formatDate(startDate) }} – {{ formatDate(endDate) }}</span>
-        <el-button size="small" text type="primary" @click="openCustom">自定义范围</el-button>
+    <div class="page-heading">
+      <div>
+        <div class="label">WORKTIME / ANALYTICS</div>
+        <h1>统计</h1>
       </div>
     </div>
 
-    <el-dialog v-model="customDlg" title="自定义统计范围" width="320px" :close-on-click-modal="false">
+    <div class="card stats-filter">
+      <div class="stats-filter-head">
+        <div>
+          <h3 style="margin:0 0 3px;font-size:15px">自定义统计</h3>
+          <p class="muted">按任意时间段查看工时、加班、工资与时薪</p>
+        </div>
+        <div class="stats-filter-controls">
+          <select :value="activeQuick" class="ui-select range-select" aria-label="选择统计范围" @change="onSelectRange($event.target.value)">
+            <option v-for="item in rangeOptions" :key="item.key" :value="item.key">{{ item.label }}</option>
+          </select>
+          <select v-model="granularity" class="ui-select range-select" aria-label="选择分组粒度">
+            <option value="day">按日</option>
+            <option value="month">按月</option>
+          </select>
+        </div>
+      </div>
+      <div class="stats-filter-range">
+        <span class="filter-range num">{{ formatDate(startDate) }} – {{ formatDate(endDate) }}</span>
+        <Button size="sm" variant="ghost" @click="openCustom">自定义范围</Button>
+      </div>
+    </div>
+
+    <Dialog v-model:open="customDlg" title="自定义统计范围">
       <div class="custom-dates">
-        <label>开始日期<input v-model="customStart" type="date"></label>
-        <label>结束日期<input v-model="customEnd" type="date"></label>
+        <label>开始日期<Input v-model="customStart" type="date" /></label>
+        <label>结束日期<Input v-model="customEnd" type="date" /></label>
       </div>
       <template #footer>
-        <el-button @click="customDlg = false">取消</el-button>
-        <el-button type="primary" @click="applyCustom">确定</el-button>
+        <Button variant="ghost" @click="customDlg = false">取消</Button>
+        <Button @click="applyCustom">确定</Button>
       </template>
-    </el-dialog>
+    </Dialog>
 
-    <div class="pcard custom-period-card">
-      <div class="ph"><div class="t">统计结果</div><div class="range num">{{ formatDate(startDate) }} – {{ formatDate(endDate) }}</div></div>
-      <PeriodBody :st="stats" />
+    <div class="card period-card">
+      <div class="period-head">
+        <div class="t">统计结果</div>
+        <div class="range num">{{ formatDate(startDate) }} – {{ formatDate(endDate) }}</div>
+      </div>
+      <div class="rate-pair">
+        <div class="rate-box">
+          <div class="v num" style="color:var(--muted)">{{ stats.baseRate > 0 ? stats.baseRate.toFixed(2) : '—' }}</div>
+          <div class="l">基准时薪 BASE</div>
+        </div>
+        <div class="rate-box">
+          <div class="v num" style="color:var(--accent)">{{ stats.realRate > 0 ? stats.realRate.toFixed(2) : '—' }}</div>
+          <div class="l">实际时薪 REAL</div>
+        </div>
+      </div>
+      <div class="grid4">
+        <div class="stat"><div class="v num">{{ stats.days }}</div><div class="l">上班天数 DAYS</div></div>
+        <div class="stat"><div class="v num">{{ hours(stats.totalMin) }}h</div><div class="l">工作时长 HOURS</div></div>
+        <div class="stat"><div class="v num" :class="stats.otMin >= 0 ? 'warn' : 'up'">{{ signed(stats.otMin) }}</div><div class="l">{{ stats.otMin >= 0 ? '加班 OT' : '少于标准' }}</div></div>
+        <div class="stat"><div class="v num">{{ stats.earned > 0 ? money(Math.round(stats.earned)) : '—' }}</div><div class="l">工资 PAY</div></div>
+      </div>
     </div>
 
-    <div class="chart-card card">
-      <div class="chart-title"><div><h3>时长趋势</h3><p class="muted">{{ chartGranularity === 'month' ? '每月' : '每日' }}总工时与加班时长</p></div><div class="legend"><span class="legend-total"></span>总工时 <span class="legend-ot"></span>加班</div></div>
-      <div ref="chartRef" class="echart"></div>
+    <div class="card chart-card">
+      <div class="chart-title">
+        <div>
+          <h3>时长趋势</h3>
+          <p class="muted">{{ chartGranularity === 'month' ? '每月' : '每日' }}总工时与加班时长</p>
+        </div>
+        <div class="chart-legend">
+          <span><span class="dot total"></span>总工时</span>
+          <span><span class="dot ot"></span>加班</span>
+        </div>
+      </div>
+      <div ref="chartRef" class="echart" aria-label="工时趋势图"></div>
+      <div v-if="selected" class="selected-detail">
+        <div class="d-head">SELECTED // {{ selected.label }}</div>
+        <div class="d-grid">
+          <div class="d-item"><div class="k">总工时</div><div class="v num">{{ selected.total.toFixed(1) }}h</div></div>
+          <div class="d-item"><div class="k">加班</div><div class="v num" :class="selected.ot > 0 ? 'warn' : ''">{{ selected.ot.toFixed(1) }}h</div></div>
+          <div class="d-item"><div class="k">上班时间</div><div class="v num">{{ selected.start || '—' }}</div></div>
+          <div class="d-item"><div class="k">下班时间</div><div class="v num">{{ selected.end || '—' }}</div></div>
+        </div>
+      </div>
     </div>
 
-    <div class="tip" v-html="periodTip"></div>
+    <div class="hint" v-html="periodTip"></div>
   </section>
 </template>
 
 <script setup>
-import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
+import Button from '../components/ui/Button.vue'
+import Input from '../components/ui/Input.vue'
+import Dialog from '../components/ui/Dialog.vue'
 import { useAppStore } from '../stores/app'
 import { CALC } from '../utils/calc'
 
@@ -51,21 +106,30 @@ const todayKey = CALC.dateKey(now)
 const startDate = ref(CALC.dateKey(CALC.monday(now)))
 const endDate = ref(todayKey)
 const activeQuick = ref('week')
+const granularity = ref('day')
 const chartRef = ref(null)
 let chart
+const selected = ref(null)
+
 const hours = CALC.fmtHours
-const signed = CALC.fmtSigned
 const money = CALC.fmtMoney
+const signed = CALC.fmtSigned
 
 const rangeOptions = [
-  { key: 'week', label: '本周' }, { key: 'month', label: '本月' }, { key: 'year', label: '本年' },
-  { key: 'lastWeek', label: '上周' }, { key: 'lastMonth', label: '上月' }, { key: 'lastYear', label: '去年' },
+  { key: 'week', label: '本周' },
+  { key: 'month', label: '本月' },
+  { key: 'year', label: '本年' },
+  { key: 'lastWeek', label: '上周' },
+  { key: 'lastMonth', label: '上月' },
+  { key: 'lastYear', label: '去年' },
   { key: 'custom', label: '自定义范围…' }
 ]
+
 const customDlg = ref(false)
 const customStart = ref('')
 const customEnd = ref('')
 const toInputDate = date => CALC.dateKey(date)
+
 function applyPreset(key) {
   const current = new Date(now)
   let start, end
@@ -77,22 +141,28 @@ function applyPreset(key) {
     const first = CALC.monthFirst(current)
     start = key === 'month' ? first : new Date(current.getFullYear(), current.getMonth() - 1, 1)
     end = key === 'month' ? current : new Date(current.getFullYear(), current.getMonth(), 0)
-  } else if (key === 'year' || key === 'lastYear') {
+  } else {
     const year = current.getFullYear() - (key === 'lastYear' ? 1 : 0)
     start = new Date(year, 0, 1)
     end = key === 'year' ? current : new Date(year, 11, 31)
   }
-  startDate.value = toInputDate(start); endDate.value = toInputDate(end); activeQuick.value = key
+  startDate.value = toInputDate(start)
+  endDate.value = toInputDate(end)
+  activeQuick.value = key
+  selected.value = null
 }
+
 function onSelectRange(key) {
   if (key === 'custom') { openCustom(); return }
   applyPreset(key)
 }
+
 function openCustom() {
   customStart.value = startDate.value
   customEnd.value = endDate.value
   customDlg.value = true
 }
+
 function applyCustom() {
   if (!customStart.value || !customEnd.value || customStart.value > customEnd.value) {
     ElMessage.warning('请选择有效的日期范围')
@@ -102,67 +172,138 @@ function applyCustom() {
   endDate.value = customEnd.value
   activeQuick.value = 'custom'
   customDlg.value = false
+  selected.value = null
 }
+
 function formatDate(value) { return value ? value.replaceAll('-', '/') : '—' }
+
 const rangeDates = computed(() => CALC.rangeKeys(startDate.value, endDate.value))
-const chartGranularity = computed(() =>
-  activeQuick.value === 'year' || activeQuick.value === 'lastYear' ? 'month' : 'day')
-/* 跨月统计：各月按各自月薪封顶（工资按月浮动） */
-const stats = computed(() => CALC.periodStats(rangeDates.value, store.records, store.settings, store.settings.basis, 0, store.holidays,
-  ym => CALC.monthSalary(store.settings.salaries, store.settings, store.settings.basis, ym)))
+const chartGranularity = computed(() => granularity.value)
+const stats = computed(() => CALC.periodStats(
+  rangeDates.value,
+  store.records,
+  store.settings,
+  store.settings.basis,
+  0,
+  store.holidays,
+  ym => CALC.monthSalary(store.settings.salaries, store.settings, store.settings.basis, ym)
+))
+
 const chartData = computed(() => {
   if (chartGranularity.value === 'month') {
     const months = {}
-    for (const k of rangeDates.value) {
-      const ym = k.slice(0, 7)
-      const m = CALC.actualMin(store.records[k], store.settings)
-      const off = store.holidays && CALC.dayType(k, store.holidays) === 'off'
-      const ot = m > 0 ? (off ? m : Math.max(0, m - CALC.stdWorkMin(store.settings))) : 0
-      if (!months[ym]) months[ym] = { key: ym, label: ym.replace('-', '/'), total: 0, ot: 0 }
-      months[ym].total += m / 60
+    for (const key of rangeDates.value) {
+      const ym = key.slice(0, 7)
+      const minutes = CALC.actualMin(store.records[key], store.settings)
+      const off = store.holidays && CALC.dayType(key, store.holidays) === 'off'
+      const ot = minutes > 0 ? (off ? minutes : Math.max(0, minutes - CALC.stdWorkMin(store.settings))) : 0
+      if (!months[ym]) months[ym] = { key: ym, label: ym.replace('-', '/'), total: 0, ot: 0, start: '', end: '' }
+      months[ym].total += minutes / 60
       months[ym].ot += ot / 60
     }
     return Object.values(months)
   }
-  return rangeDates.value.map(k => {
-    const m = CALC.actualMin(store.records[k], store.settings)
-    const off = store.holidays && CALC.dayType(k, store.holidays) === 'off'
-    const ot = m > 0 ? (off ? m : Math.max(0, m - CALC.stdWorkMin(store.settings))) : 0
-    return { key: k, label: k.slice(5), total: m / 60, ot: ot / 60 }
+  return rangeDates.value.map(key => {
+    const minutes = CALC.actualMin(store.records[key], store.settings)
+    const off = store.holidays && CALC.dayType(key, store.holidays) === 'off'
+    const ot = minutes > 0 ? (off ? minutes : Math.max(0, minutes - CALC.stdWorkMin(store.settings))) : 0
+    const rec = store.records[key] || {}
+    return { key, label: key.slice(5), total: minutes / 60, ot: ot / 60, start: rec.start || '', end: rec.end || '' }
   })
 })
+
 const periodTip = computed(() => stats.value.days === 0
-  ? `<span class="tag">统计提示</span><br>当前时间段暂无打卡记录。`
-  : `<span class="tag">统计提示</span><br>共打卡 <b>${stats.value.days}</b> 天，累计工作 <b>${hours(stats.value.totalMin)}h</b>，累计加班 <b>${hours(Math.max(0, stats.value.otMin))}h</b>，应付工资 <b>${money(Math.round(stats.value.earned))}</b>。`)
+  ? '<span class="chip">统计提示</span><br>当前时间段暂无打卡记录。'
+  : `<span class="chip">统计提示</span><br>共打卡 <b>${stats.value.days}</b> 天，累计工作 <b>${hours(stats.value.totalMin)}h</b>，累计加班 <b>${hours(Math.max(0, stats.value.otMin))}h</b>，应付工资 <b>${money(Math.round(stats.value.earned))}</b>。`)
 
 function renderChart() {
   if (!chartRef.value) return
-  if (!chart) chart = echarts.init(chartRef.value)
+  if (!chart) {
+    chart = echarts.init(chartRef.value)
+    chart.on('click', params => {
+      const item = chartData.value[params.dataIndex]
+      if (item) selected.value = item
+    })
+  }
   const data = chartData.value
+  const isSelected = selected.value ? data.findIndex(d => d.key === selected.value.key) : -1
+  const accent = varColor('--accent')
+  const accentSoft = varColor('--accent-soft')
+  const warn = varColor('--warn')
+
   chart.setOption({
-    color: ['#6c8cff', '#ffbd63'],
-    tooltip: { trigger: 'axis', formatter: params => `${params[0]?.axisValue}<br>${params.map(p => `${p.marker}${p.seriesName}：${Number(p.value).toFixed(1)}h`).join('<br>')}` },
+    color: [accent, warn],
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: varColor('--ink'),
+      borderColor: varColor('--line2'),
+      textStyle: { color: varColor('--card'), fontFamily: 'inherit' },
+      formatter: params => `${params[0]?.axisValue}<br>${params.map(point => `${point.marker}${point.seriesName}：${Number(point.value).toFixed(1)}h`).join('<br>')}`
+    },
     legend: { show: false },
     grid: { left: 42, right: 20, top: 18, bottom: 38 },
-    xAxis: { type: 'category', boundaryGap: false, data: data.map(x => x.label), axisLine: { lineStyle: { color: '#dfe4ef' } }, axisLabel: { color: '#8b93a7', interval: Math.max(0, Math.ceil(data.length / 10) - 1) } },
-    yAxis: { type: 'value', name: '小时', nameTextStyle: { color: '#8b93a7' }, axisLabel: { color: '#8b93a7' }, splitLine: { lineStyle: { color: '#edf0f6' } } },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: data.map(item => item.label),
+      axisLine: { lineStyle: { color: varColor('--line2') } },
+      axisTick: { lineStyle: { color: varColor('--line2') } },
+      axisLabel: { color: varColor('--ink2'), interval: Math.max(0, Math.ceil(data.length / 10) - 1) }
+    },
+    yAxis: {
+      type: 'value',
+      name: '小时',
+      nameTextStyle: { color: varColor('--ink2') },
+      axisLabel: { color: varColor('--ink2') },
+      splitLine: { lineStyle: { color: varColor('--line') } }
+    },
     series: [
-      { name: '总工时', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6, data: data.map(x => Number(x.total.toFixed(2))), areaStyle: { opacity: .12 }, lineStyle: { width: 3 } },
-      { name: '加班', type: 'bar', barMaxWidth: 12, data: data.map(x => Number(x.ot.toFixed(2))), itemStyle: { borderRadius: [4, 4, 0, 0] } }
+      {
+        name: '总工时',
+        type: 'line',
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 8,
+        lineStyle: { width: 3, color: accent },
+        itemStyle: { color: accent, borderColor: varColor('--card'), borderWidth: 2 },
+        data: data.map((item, idx) => ({
+          value: Number(item.total.toFixed(2)),
+          itemStyle: {
+            color: idx === isSelected ? accent : accent,
+            shadowBlur: idx === isSelected ? 8 : 0,
+            shadowColor: accent
+          }
+        })),
+        animationDuration: 300
+      },
+      {
+        name: '加班',
+        type: 'line',
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        lineStyle: { width: 2, type: 'dashed', color: warn },
+        itemStyle: { color: warn, borderColor: varColor('--card'), borderWidth: 1 },
+        data: data.map((item, idx) => ({
+          value: Number(item.ot.toFixed(2)),
+          itemStyle: {
+            color: warn,
+            shadowBlur: idx === isSelected ? 6 : 0,
+            shadowColor: warn
+          }
+        })),
+        animationDuration: 300
+      }
     ]
   }, true)
 }
+
+function varColor(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#0f5132'
+}
+
 watch([rangeDates, chartGranularity, () => store.records], async () => { await nextTick(); renderChart() }, { deep: true })
+watch(selected, () => { renderChart() })
 onMounted(() => { renderChart(); window.addEventListener('resize', renderChart) })
 onBeforeUnmount(() => { window.removeEventListener('resize', renderChart); chart?.dispose() })
-
-const PeriodBody = {
-  props: { st: { type: Object, required: true } },
-  setup(props) {
-    return () => { const st = props.st; const otCls = st.otMin >= 0 ? 'ot' : 'up'; return h('div', {}, [
-      h('div', { class: 'rate-pair' }, [h('div', { class: 'rate-box' }, [h('div', { class: 'v num', style: 'color:var(--muted)' }, st.baseRate > 0 ? st.baseRate.toFixed(2) : '—'), h('div', { class: 'l' }, '基准时薪')]), h('div', { class: 'rate-box' }, [h('div', { class: 'v num', style: 'color:var(--gold)' }, st.realRate > 0 ? st.realRate.toFixed(2) : '—'), h('div', { class: 'l' }, '实际时薪')])]),
-      h('div', { class: 'grid4' }, [h('div', { class: 'stat' }, [h('div', { class: 'v num' }, st.days), h('div', { class: 'l' }, '上班天数')]), h('div', { class: 'stat' }, [h('div', { class: 'v num' }, hours(st.totalMin) + 'h'), h('div', { class: 'l' }, '工作时长')]), h('div', { class: 'stat' }, [h('div', { class: 'v num ' + otCls }, signed(st.otMin)), h('div', { class: 'l' }, st.otMin >= 0 ? '加班时长' : '少于标准')]), h('div', { class: 'stat' }, [h('div', { class: 'v num' }, st.earned > 0 ? money(Math.round(st.earned)) : '—'), h('div', { class: 'l' }, '工资')])])
-    ]) }
-  }
-}
 </script>

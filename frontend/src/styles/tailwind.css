@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --radius-lg: var(--radius);
+  --radius-md: var(--radius);
+  --radius-sm: var(--radius);
+}
+
+/* ============================================================
+   商务极简 · EDITORIAL FINANCE (主题 D)
+   ============================================================ */
+:root {
+  --paper: #f7f5f1;
+  --card: #fffefa;
+  --ink: #14171c;
+  --ink2: #49505c;
+  --muted: #8b909c;
+  --line: #e2ded4;
+  --line2: #cfccc0;
+  --accent: #0f5132;
+  --accent-soft: #e6efe8;
+  --up: #067647;
+  --down: #b42318;
+  --warn: #b54708;
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: #fffefa;
+  --card-foreground: var(--ink);
+  --primary: var(--accent);
+  --primary-foreground: #ffffff;
+  --secondary: var(--accent-soft);
+  --secondary-foreground: var(--accent);
+  --muted-foreground: var(--ink2);
+  --accent-foreground: var(--accent);
+  --border: var(--line);
+  --ring: var(--ink);
+  --destructive: var(--down);
+  --destructive-foreground: #ffffff;
+  --radius: 4px;
+
+  color-scheme: light;
+}
+
+html.dark {
+  --paper: #14171c;
+  --card: #1c2028;
+  --ink: #f7f5f1;
+  --ink2: #a0a6b0;
+  --muted: #6b7280;
+  --line: #2d323c;
+  --line2: #3a404c;
+  --accent: #2e8b57;
+  --accent-soft: #1f2d26;
+  --up: #10b981;
+  --down: #ef4444;
+  --warn: #f59e0b;
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: #1c2028;
+  --card-foreground: var(--ink);
+  --primary: var(--accent);
+  --primary-foreground: #ffffff;
+  --secondary: var(--accent-soft);
+  --secondary-foreground: var(--accent);
+  --muted-foreground: var(--ink2);
+  --accent-foreground: var(--accent);
+  --border: var(--line);
+  --ring: var(--ink);
+  --destructive: var(--down);
+
+  color-scheme: dark;
+}

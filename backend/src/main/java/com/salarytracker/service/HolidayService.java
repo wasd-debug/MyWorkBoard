@@ -7,6 +7,8 @@ import com.salarytracker.mapper.KvEntryMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
@@ -16,8 +18,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -41,14 +43,21 @@ public class HolidayService {
 
     private final ObjectMapper objectMapper;
     private final KvEntryMapper kvEntryMapper;
+    private final JdbcTemplate jdbcTemplate;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
     public HolidayService(ObjectMapper objectMapper, KvEntryMapper kvEntryMapper) {
+        this(objectMapper, kvEntryMapper, null);
+    }
+
+    @Autowired
+    public HolidayService(ObjectMapper objectMapper, KvEntryMapper kvEntryMapper, JdbcTemplate jdbcTemplate) {
         this.objectMapper = objectMapper;
         this.kvEntryMapper = kvEntryMapper;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     /**
@@ -60,6 +69,27 @@ public class HolidayService {
     public Map<String, Object> getHolidays(int year) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("year", year);
+
+        if (jdbcTemplate != null) {
+            try {
+                List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT DATE_FORMAT(date, '%Y-%m-%d') date, name, is_off FROM holiday WHERE year_key = ? ORDER BY date", year);
+                if (!rows.isEmpty()) {
+                    Map<String, Object> days = new LinkedHashMap<>();
+                    for (Map<String, Object> row : rows) {
+                        Map<String, Object> item = new LinkedHashMap<>();
+                        item.put("name", row.get("name"));
+                        item.put("off", row.get("is_off") instanceof Boolean flag ? flag : ((Number) row.get("is_off")).intValue() == 1);
+                        days.put(String.valueOf(row.get("date")), item);
+                    }
+                    result.put("days", days);
+                    result.put("source", "database");
+                    result.put("ok", true);
+                    return result;
+                }
+            } catch (Exception e) {
+                log.debug("读取节假日表失败 year={}: {}", year, e.getMessage());
+            }
+        }
 
         String cacheKey = "holidays:" + year;
         // 1. kv 缓存
@@ -82,6 +112,7 @@ public class HolidayService {
             try {
                 JsonNode days = objectMapper.readTree(remote);
                 String compact = objectMapper.writeValueAsString(days);
+                persistDatabase(year, normalize(days));
                 try {
                     KvEntry entry = new KvEntry();
                     entry.setKey(cacheKey);
@@ -105,6 +136,7 @@ public class HolidayService {
         // 3. jar 内置兜底
         JsonNode builtin = loadBuiltin(year);
         if (builtin != null) {
+            persistDatabase(year, normalize(builtin));
             result.put("days", normalize(builtin));
             result.put("source", "builtin");
             result.put("ok", true);
@@ -181,6 +213,23 @@ public class HolidayService {
             kvEntryMapper.deleteById("holidays:" + year);
         } catch (Exception e) {
             log.warn("清除节假日缓存失败 year={}: {}", year, e.getMessage());
+        }
+        if (jdbcTemplate != null) {
+            try { jdbcTemplate.update("DELETE FROM holiday WHERE year_key = ?", year); }
+            catch (Exception e) { log.debug("清除节假日表失败 year={}: {}", year, e.getMessage()); }
+        }
+    }
+
+    private void persistDatabase(int year, Map<String, Object> days) {
+        if (jdbcTemplate == null) return;
+        try {
+            for (Map.Entry<String, Object> entry : days.entrySet()) {
+                Map<?, ?> value = (Map<?, ?>) entry.getValue();
+                jdbcTemplate.update("INSERT INTO holiday (year_key, date, name, is_off) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE year_key = VALUES(year_key), name = VALUES(name), is_off = VALUES(is_off)",
+                        year, entry.getKey(), value.get("name"), value.get("off"));
+            }
+        } catch (Exception e) {
+            log.debug("写入节假日表失败 year={}: {}", year, e.getMessage());
         }
     }
 

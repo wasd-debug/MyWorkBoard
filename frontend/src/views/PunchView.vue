@@ -1,85 +1,85 @@
 <template>
   <section>
-    <!-- 日期导航 -->
-    <div class="date-nav">
-      <el-button circle size="large" @click="shiftPunch(-1)">‹</el-button>
-      <el-input type="date" v-model="punchDate" @change="onDateChange" />
-      <el-button circle size="large" @click="shiftPunch(1)">›</el-button>
-      <el-button size="small" @click="goToday">今天</el-button>
-    </div>
-
-    <!-- 休息日/节假日标识 -->
-    <div v-if="isOffDay" class="offday-bar" :class="{ worked: m > 0 }">
-      <span class="off-tag">{{ dayLabel }}</span>
-      <span v-if="m > 0" class="ot-tag">假期加班 · 计入本月工作日</span>
-      <span v-else class="off-hint">休息日打卡将按假期加班计入</span>
-    </div>
-
-    <!-- 上下班时间 -->
-    <div class="time-row">
-      <div class="time-box">
-        <div class="l"><span>实际上班</span><button class="now-btn" @click="nowStart">现在</button></div>
-        <el-input type="time" v-model="recStart" @change="saveRec" />
+    <div class="page-heading">
+      <div>
+        <div class="label">WORKTIME / DAILY ENTRY</div>
+        <h1>打卡</h1>
       </div>
-      <div class="time-box">
-        <div class="l"><span>实际下班</span><button class="now-btn" @click="nowEnd">现在</button></div>
-        <el-input type="time" v-model="recEnd" @change="saveRec" />
+      <div class="punch-date-nav">
+        <Button variant="icon" size="sm" @click="shiftPunch(-1)">‹</Button>
+        <Input v-model="punchDate" type="date" @change="onDateChange" />
+        <Button variant="icon" size="sm" @click="shiftPunch(1)">›</Button>
+        <Button size="sm" variant="ghost" @click="goToday">今天</Button>
       </div>
     </div>
 
-    <!-- 工作日默认工时预填提示 -->
-    <div v-if="isDefaultFilled" class="prefill-hint">
-      工作日已按默认工时预填（{{ store.settings.workStart }}–{{ store.settings.workEnd }}），修改后自动保存
+    <div v-if="isOffDay" class="punch-offday">
+      <span class="chip warn">{{ dayLabel }}</span>
+      <span v-if="m > 0">假期加班 · 计入本月工作日</span>
+      <span v-else>休息日打卡将按假期加班计入</span>
     </div>
 
-    <!-- 自定义休息 -->
-    <div class="rest-row">
-      <span class="rest-label">自定义休息</span>
-      <el-input-number v-model="recRest" :min="0" :max="600" :step="5" :controls="false" style="width:88px" @change="saveRec" />
-      <span class="rest-unit">分钟</span>
-      <span class="rest-hint">摸鱼 · 晚饭 · 健身</span>
-    </div>
-
-    <!-- 今日时薪 -->
-    <div class="hero">
-      <template v-if="m > 0 && hasSalary">
-        <div class="label">今日实际时薪（{{ basisName }}）</div>
-        <div class="big num">{{ rate.toFixed(2) }}<small> 元/小时</small></div>
-        <div class="sub">按 {{ otherName }}口径 {{ otherRate > 0 ? otherRate.toFixed(2) + ' 元/小时' : '未填写' }}</div>
-        <div v-if="base > 0" class="vs" :class="diff >= 0 ? 'up' : 'down'">
-          {{ diff >= 0 ? '▲' : '▼' }} {{ Math.abs(diff).toFixed(1) }}%（基准 {{ money(base) }}/h）
+    <div class="punch-grid">
+      <div class="punch-main">
+        <div class="label">今日实际时薪 · {{ basisName }}</div>
+        <div class="rate-line">
+          <template v-if="m > 0 && hasSalary">
+            <div class="big-rate num">{{ rate.toFixed(2) }}<span class="unit">¥/h</span></div>
+          </template>
+          <template v-else>
+            <div class="big-rate hint">{{ m > 0 ? '请设置本月工资' : '填写时间自动计算' }}</div>
+          </template>
         </div>
-      </template>
-      <template v-else-if="m > 0">
-        <div class="label">今日实际时薪</div>
-        <div class="big hint">请先到「记录」页设置本月工资</div>
-      </template>
-      <template v-else>
-        <div class="label">今日实际时薪</div>
-        <div class="big hint">填完上下班时间自动计算</div>
-      </template>
-    </div>
+        <div v-if="m > 0 && hasSalary" class="rate-sub">
+          人民币 / 小时 · {{ basisName === '税前' ? '税后口径' : '税前口径' }} <span class="num">{{ money(otherRate) }}/h</span>
+        </div>
+        <div v-if="m > 0 && hasSalary" class="rate-chip-row">
+          <span class="chip num" :class="diff >= 0 ? '' : 'warn'">{{ diff >= 0 ? '▲' : '▼' }} {{ Math.abs(diff).toFixed(1) }}%</span>
+          <span class="muted">{{ diff >= 0 ? '高于' : '低于' }}基准 {{ money(base) }}/h</span>
+        </div>
 
-    <!-- 本周摘要 -->
-    <div class="week-bar">
-      <template v-if="wk.days > 0">
-        <span>本周 <b class="num">{{ wk.days }}</b> 天 · <b class="num">{{ hours(wk.totalMin) }}h</b> · 加班 <b class="num" :class="wk.otMin >= 0 ? 'ot' : 'up'">{{ signed(wk.otMin) }}</b></span>
-        <span class="rate num">{{ wk.realRate > 0 ? money(wk.realRate) + '/h' : '' }}</span>
-      </template>
-      <template v-else>
-        <span>本周还没有打卡记录</span><span class="rate">—</span>
-      </template>
-    </div>
+        <div class="punch-times">
+          <div class="time-entry">
+            <div class="label">实际上班 · IN</div>
+            <Input v-model="recStart" type="time" @change="saveRec" />
+            <button class="now-btn" type="button" @click="nowStart">记录现在 →</button>
+          </div>
+          <div class="time-entry">
+            <div class="label">实际下班 · OUT</div>
+            <Input v-model="recEnd" type="time" @change="saveRec" />
+            <button class="now-btn" type="button" @click="nowEnd">记录现在 →</button>
+          </div>
+        </div>
 
-    <!-- 今日明细 -->
-    <div class="card">
-      <h3>今日明细</h3>
-      <div class="grid4">
-        <div class="stat"><div class="v num">{{ hours(std) }}h</div><div class="l">标准工时</div></div>
-        <div class="stat"><div class="v num">{{ hours(m) }}h</div><div class="l">实际工时</div></div>
-        <div class="stat"><div class="v num" :class="ot >= 0 ? 'ot' : 'up'">{{ signed(ot) }}</div><div class="l">{{ otLabel }}</div></div>
-        <div class="stat"><div class="v num">{{ money(dayPay) }}</div><div class="l">今日日薪</div></div>
-        <div v-if="rest > 0" class="stat"><div class="v num">{{ hours(rest) }}h</div><div class="l">自定义休息</div></div>
+        <div class="rest-input-row">
+          <span class="lbl">自定义休息 BREAK</span>
+          <Input v-model="recRest" type="number" min="0" max="600" step="5" @change="saveRec" />
+          <span class="hint">分钟 · 摸鱼 / 晚饭 / 健身</span>
+        </div>
+      </div>
+
+      <div class="punch-breakdown">
+        <div class="label">今日明细 BREAKDOWN</div>
+        <dl class="breakdown-dl">
+          <div class="hrow"><dt>标准工时</dt><dd class="num">{{ hours(std) }}h</dd></div>
+          <div class="hrow"><dt>实际工时</dt><dd class="num">{{ hours(m) }}h</dd></div>
+          <div class="hrow"><dt>{{ otLabel }}</dt><dd class="num" :class="ot >= 0 ? 'warn' : 'up'">{{ signed(ot) }}</dd></div>
+          <div class="hrow"><dt>今日日薪</dt><dd class="num">{{ money(dayPay) }}</dd></div>
+          <div v-if="rest > 0" class="hrow"><dt>自定义休息</dt><dd class="num">{{ hours(rest) }}h</dd></div>
+          <div class="hrow"><dt>时薪达成率</dt><dd class="num" :class="diff >= 0 ? 'up' : 'down'">{{ m > 0 && base > 0 ? (rate / base * 100).toFixed(1) + '%' : '—' }}</dd></div>
+        </dl>
+
+        <div class="label" style="margin-top: 22px">本周 WEEK</div>
+        <div class="mini-week">
+          <div v-for="day in miniWeek" :key="day.k" class="bar-wrap">
+            <div class="bar" :class="{ today: day.k === punchDate }" :style="{ height: day.pct + '%' }" :data-h="day.h + 'h'"></div>
+            <span class="day">{{ day.label }}</span>
+          </div>
+        </div>
+        <div class="punch-summary">
+          <span>{{ wk.days }} 天 · {{ hours(wk.totalMin) }}h · 加班 <b :class="wk.otMin >= 0 ? 'warn' : 'up'">{{ signed(wk.otMin) }}</b></span>
+          <span v-if="wk.realRate > 0">AVG <b class="num">{{ money(wk.realRate) }}/h</b></span>
+        </div>
       </div>
     </div>
   </section>
@@ -87,40 +87,29 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import Button from '../components/ui/Button.vue'
+import Input from '../components/ui/Input.vue'
 import { useAppStore } from '../stores/app'
 import { CALC } from '../utils/calc'
 
 const store = useAppStore()
-
 const punchDate = ref(store.punchDate)
 const recStart = ref('')
 const recEnd = ref('')
 const recRest = ref(0)
 
 const basisName = computed(() => store.settings.basis === 'pre' ? '税前' : '税后')
-const otherName = computed(() => store.settings.basis === 'pre' ? '税后' : '税前')
-
-/* 当月工资上下文（工资按月浮动） */
 const ctx = computed(() => CALC.monthCtx(store.settings.salaries, store.settings, punchDate.value.slice(0, 7)))
-
-/* 是否处于「默认工时预填但未落库」状态（工作日且无记录） */
-const isDefaultFilled = computed(() => {
-  const r = store.records[punchDate.value]
-  return !(r && (r.start || r.end)) && recStart.value && recEnd.value
-})
-
-/* 有效记录：已落库的优先，否则用预填的默认工时（保证页面展示自洽） */
 const rec = computed(() => {
-  const r = store.records[punchDate.value]
-  if (r && (r.start || r.end)) return r
+  const record = store.records[punchDate.value]
+  if (record && (record.start || record.end)) return record
   if (recStart.value && recEnd.value) return { start: recStart.value, end: recEnd.value, rest: recRest.value }
   return {}
 })
 const m = computed(() => CALC.actualMin(rec.value, ctx.value))
 const std = computed(() => CALC.stdWorkMin(ctx.value))
 const ot = computed(() => isOffDay.value ? m.value : m.value - std.value)
-const otLabel = computed(() => isOffDay.value ? '加班' : (ot.value >= 0 ? '加班' : '早退'))
-/* 当月有效排班天数（自动模式下含假期加班天数） */
+const otLabel = computed(() => isOffDay.value ? '加班 OT' : (ot.value >= 0 ? '加班 OT' : '早退 EARLY'))
 const effDays = computed(() => CALC.effDaysPerMonth(ctx.value, punchDate.value.slice(0, 7), store.holidays, store.records))
 const rate = computed(() => CALC.dayRate(rec.value, ctx.value, store.settings.basis, effDays.value))
 const otherRate = computed(() => CALC.dayRate(rec.value, ctx.value, store.settings.basis === 'pre' ? 'post' : 'pre', effDays.value))
@@ -129,79 +118,46 @@ const diff = computed(() => base.value > 0 ? (rate.value - base.value) / base.va
 const dayPay = computed(() => CALC.dayPay(ctx.value, store.settings.basis, effDays.value))
 const hasSalary = computed(() => CALC.salary(ctx.value, store.settings.basis) > 0)
 const rest = computed(() => Number(rec.value.rest) || 0)
-/* 本周摘要：跨月时按各月工资分别封顶 */
-const wk = computed(() => CALC.periodStats(CALC.weekKeysTo(new Date()), store.records, ctx.value, store.settings.basis, undefined, store.holidays,
-  ym => CALC.monthSalary(store.settings.salaries, store.settings, store.settings.basis, ym)))
-/* 休息日/节假日标识 */
+const wk = computed(() => CALC.periodStats(CALC.weekKeysTo(new Date()), store.records, ctx.value, store.settings.basis, undefined, store.holidays, ym => CALC.monthSalary(store.settings.salaries, store.settings, store.settings.basis, ym)))
 const isOffDay = computed(() => CALC.dayType(punchDate.value, store.holidays) === 'off')
-const dayLabel = computed(() => {
-  const name = CALC.holidayName(punchDate.value, store.holidays)
-  return name ? `${name} · 法定假日` : '周末休息日'
-})
+const dayLabel = computed(() => { const name = CALC.holidayName(punchDate.value, store.holidays); return name ? `${name} · 法定假日` : '周末休息日' })
 
 const hours = CALC.fmtHours
 const signed = CALC.fmtSigned
 const money = CALC.fmtMoney
 
-function nowStr() {
-  const d = new Date()
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
+const miniWeek = computed(() => {
+  const keys = CALC.weekKeysTo(new Date(punchDate.value + 'T00:00:00'))
+  const max = Math.max(1, ...keys.map(k => CALC.actualMin(store.records[k], ctx.value) / 60))
+  return keys.map(k => {
+    const date = new Date(k + 'T00:00:00')
+    const h = CALC.actualMin(store.records[k], ctx.value) / 60
+    return { k, label: CALC.WEEK_CN[date.getDay()].slice(-1), h: Number(h.toFixed(1)), pct: Math.max(4, (h / max) * 100) }
+  })
+})
+
+function nowStr() { const date = new Date(); return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` }
 function syncInputs() {
-  const r = store.records[punchDate.value]
-  if (r && (r.start || r.end)) {
-    recStart.value = r.start || ''
-    recEnd.value = r.end || ''
-    recRest.value = Number(r.rest) > 0 ? Number(r.rest) : 0
-    return
-  }
-  // 无记录：先等节假日数据到位再判断（避免把节假日误判为工作日而预填）
-  const k = punchDate.value
-  store.ensureHolidays(Number(k.slice(0, 4))).then(() => {
-    if (punchDate.value !== k) return            // 等待期间已切换日期，放弃
-    if (store.records[k]) return                 // 等待期间已有记录
-    if (CALC.dayType(k, store.holidays) !== 'work') {
-      recStart.value = ''
-      recEnd.value = ''
-      recRest.value = 0
-      return
-    }
-    // 工作日：预填默认上下班时间（设置页可改，默认 08:30 / 17:30）
-    recStart.value = store.settings.workStart || '08:30'
-    recEnd.value = store.settings.workEnd || '17:30'
-    recRest.value = 0
-    // 只有「今天」直接落库一条默认打卡，免除每天手动设置；其他日期仅预填展示，修改后才保存
-    if (k === CALC.dateKey(new Date())) saveRec()
+  const record = store.records[punchDate.value]
+  if (record && (record.start || record.end)) { recStart.value = record.start || ''; recEnd.value = record.end || ''; recRest.value = Number(record.rest) > 0 ? Number(record.rest) : 0; return }
+  const key = punchDate.value
+  store.ensureHolidays(Number(key.slice(0, 4))).then(() => {
+    if (punchDate.value !== key || store.records[key]) return
+    if (CALC.dayType(key, store.holidays) !== 'work') { recStart.value = ''; recEnd.value = ''; recRest.value = 0; return }
+    recStart.value = store.settings.workStart || '08:30'; recEnd.value = store.settings.workEnd || '17:30'; recRest.value = 0
+    if (key === CALC.dateKey(new Date())) saveRec()
   })
 }
-function onDateChange() {
-  if (!punchDate.value) punchDate.value = CALC.dateKey(new Date())
-  store.punchDate = punchDate.value
-  store.ensureHolidays(Number(punchDate.value.slice(0, 4)))
-  syncInputs()
-}
-function shiftPunch(n) {
-  const d = new Date(punchDate.value + 'T00:00:00')
-  punchDate.value = CALC.dateKey(CALC.addDays(d, n))
-  onDateChange()
-}
+function onDateChange() { if (!punchDate.value) punchDate.value = CALC.dateKey(new Date()); store.punchDate = punchDate.value; store.ensureHolidays(Number(punchDate.value.slice(0, 4))); syncInputs() }
+function shiftPunch(amount) { const date = new Date(punchDate.value + 'T00:00:00'); punchDate.value = CALC.dateKey(CALC.addDays(date, amount)); onDateChange() }
 function goToday() { punchDate.value = CALC.dateKey(new Date()); onDateChange() }
-
 function saveRec() {
-  const k = punchDate.value
-  const st = recStart.value, en = recEnd.value
-  const restVal = recRest.value || 0
-  if (!st && !en) {
-    delete store.records[k]
-  } else {
-    store.records[k] = { start: st, end: en }
-    if (restVal > 0) store.records[k].rest = restVal
-    else delete store.records[k].rest
-  }
+  const key = punchDate.value; const restValue = Number(recRest.value) || 0
+  if (!recStart.value && !recEnd.value) delete store.records[key]
+  else { store.records[key] = { start: recStart.value, end: recEnd.value }; if (restValue > 0) store.records[key].rest = restValue }
   store.saveAll()
 }
 function nowStart() { recStart.value = nowStr(); saveRec() }
 function nowEnd() { recEnd.value = nowStr(); saveRec() }
-
-watch(() => store.ready, v => { if (v) { punchDate.value = store.punchDate; syncInputs() } })
+watch(() => store.ready, value => { if (value) { punchDate.value = store.punchDate; syncInputs() } })
 </script>

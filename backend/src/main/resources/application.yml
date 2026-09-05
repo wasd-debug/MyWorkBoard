@@ -14,9 +14,14 @@ spring:
       minimum-idle: 1
   sql:
     init:
-      mode: always
-      schema-locations: classpath:schema.sql
-      continue-on-error: false
+      mode: never
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+    validate-on-migrate: true
 
 mybatis-plus:
   configuration:
@@ -24,6 +29,11 @@ mybatis-plus:
   global-config:
     banner: false
 
-# 访问口令：设置后所有 /api/*（除健康检查）需带 X-Access-Code 请求头
 app:
-  access-code: ${ACCESS_CODE:}
+  jwt:
+    secret: ${JWT_SECRET:salary-tracker-phase0-change-this-secret-at-least-32-bytes}
+    access-ttl: ${JWT_ACCESS_TTL:900}
+    refresh-ttl: ${JWT_REFRESH_TTL:2592000}
+  legacy-open: ${LEGACY_API_OPEN:false}
+  legacy-admin-password: ${LEGACY_ADMIN_PASSWORD:}
+  cookie-secure: ${COOKIE_SECURE:false}

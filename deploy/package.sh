@@ -5,13 +5,19 @@ cd "$(dirname "$0")/.."
 
 PKG="salary-tracker-deploy-$(date +%Y%m%d-%H%M).tar.gz"
 
+paths=(backend frontend deploy README.md ARCHITECTURE.md DEPLOY.md overview.md)
+existing=()
+for path in "${paths[@]}"; do
+    [ -e "$path" ] && existing+=("$path")
+done
+
 tar --exclude='./frontend/node_modules' \
     --exclude='./frontend/dist' \
     --exclude='./frontend/node_modules/.npm-cache' \
     --exclude='./backend/target' \
     --exclude='./.git' \
     --exclude='.DS_Store' \
-    -czf "$PKG" backend frontend deploy data legacy README.md 2>/dev/null
+    -czf "$PKG" "${existing[@]}"
 
 echo "打包完成: $(pwd)/$PKG"
 ls -lh "$PKG" | awk '{print $5, $9}'

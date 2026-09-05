@@ -34,8 +34,9 @@ services:
       DB_URL: jdbc:mysql://mysql:3306/salary?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
       DB_USER: salary
       DB_PASSWORD: ${MYSQL_PASSWORD:-SalaryApp@2026}
-      # 需要访问口令保护时设置：ACCESS_CODE=你的口令
-      ACCESS_CODE: ${ACCESS_CODE:-}
+      JWT_SECRET: ${JWT_SECRET:-please-change-this-jwt-secret-in-production}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      LEGACY_ADMIN_PASSWORD: ${LEGACY_ADMIN_PASSWORD:-}
       TZ: Asia/Shanghai
     depends_on:
       mysql:
