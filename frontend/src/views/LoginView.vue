@@ -5,13 +5,16 @@
     </button>
     <section class="auth-card">
       <div class="auth-brand">
-        <div class="title">真实时薪</div>
-        <div class="label">REAL HOURLY RATE</div>
+        <div class="title">个人工作台</div>
+        <div class="label">PERSONAL WORKSPACE</div>
       </div>
       <div class="auth-copy">
-        <span class="label">PRIVATE WORKTIME</span>
+        <span class="label">YOUR PRIVATE SPACE</span>
         <h1>{{ registering ? '创建你的工作台' : '欢迎回来' }}</h1>
-        <p>{{ registering ? '建立个人账户，安全同步你的工时记录。' : '登录后继续记录今天的真实时薪。' }}</p>
+        <p>{{ registering ? '建立个人账户，开始整理你的生活与工作。' : '登录后继续使用你的个人工作台。' }}</p>
+        <div class="auth-features" aria-label="工作台功能">
+          <span>账本</span><span>任务</span><span>知识库</span><span>工时</span>
+        </div>
       </div>
       <form class="auth-form" @submit.prevent="submit">
         <label>用户名<input v-model.trim="form.username" required minlength="3" autocomplete="username" placeholder="例如 alex" /></label>
@@ -19,7 +22,7 @@
         <label v-if="registering">邮箱<input v-model.trim="form.email" type="email" autocomplete="email" placeholder="用于找回账户（可选）" /></label>
         <label>密码<input v-model="form.password" type="password" required minlength="8" autocomplete="current-password" placeholder="至少 8 位" /></label>
         <p v-if="error" class="auth-error" role="alert">{{ error }}</p>
-        <Button class="auth-submit" variant="ink" type="submit" :disabled="loading">{{ loading ? '处理中…' : registering ? '注册并开始' : '登录' }}</Button>
+        <Button class="auth-submit" variant="ink" type="submit" :disabled="loading">{{ loading ? '处理中…' : registering ? '注册并进入工作台' : '进入工作台' }}</Button>
       </form>
       <button class="auth-switch" type="button" @click="registering = !registering; error = ''">{{ registering ? '已有账户？返回登录' : '首次使用？创建账户' }}</button>
     </section>

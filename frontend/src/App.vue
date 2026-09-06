@@ -4,8 +4,8 @@
     <template v-else>
       <aside class="app-sidebar" aria-label="主导航">
         <div class="sidebar-brand">
-          <div class="title serif">真实时薪</div>
-          <div class="label">REAL HOURLY RATE</div>
+          <div class="title serif">个人工作台</div>
+          <div class="label">PERSONAL WORKSPACE</div>
         </div>
         <nav class="sidebar-nav">
           <router-link v-for="(item, index) in navItems" :key="item.to" :to="item.to">

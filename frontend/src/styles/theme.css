@@ -1,5 +1,5 @@
 /* ============================================================
-   真实时薪 · EDITORIAL FINANCE THEME (主题 D)
+   个人工作台 · EDITORIAL FINANCE THEME (主题 D)
    ============================================================ */
 
 /* ---------- 0. Reset & Base ---------- */
@@ -275,7 +275,8 @@ section { margin: 0 }
 
 /* ---------- 8. 打卡页 (Punch) ---------- */
 .punch-date-nav {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  margin-left: auto; margin-right: auto;
 }
 .punch-date-nav span {
   min-width: 120px; text-align: center; font-size: 14px; color: var(--ink2);
@@ -294,7 +295,7 @@ section { margin: 0 }
 .punch-main, .punch-breakdown { padding: 24px; }
 @media (min-width: 1024px) {
   .punch-grid { grid-template-columns: minmax(360px, 3fr) minmax(280px, 2fr) }
-  .punch-breakdown { border-left: 1px solid var(--line); padding-left: 32px }
+  .punch-breakdown { border-left: 1px solid var(--line); padding: 24px }
 }
 .punch-main { }
 .punch-label { margin-bottom: 8px }
@@ -340,10 +341,10 @@ section { margin: 0 }
 .rest-input-row .hint { font-size: 12px; color: var(--muted) }
 
 .punch-breakdown {
-  border-left: 0;
+  border-left: 0; padding: 24px;
 }
 @media (min-width: 1024px) {
-  .punch-breakdown { border-left: 1px solid var(--line); padding-left: 32px }
+  .punch-breakdown { border-left: 1px solid var(--line); padding: 24px }
 }
 .breakdown-dl .hrow {
   display: flex; align-items: center; justify-content: space-between;
@@ -353,15 +354,18 @@ section { margin: 0 }
 .breakdown-dl .k { color: var(--ink2) }
 .breakdown-dl .v { font-weight: 600; color: var(--ink) }
 .mini-week {
-  display: flex; align-items: flex-end; gap: 6px; height: 64px;
-  margin-top: 12px;
+  display: flex; align-items: flex-end; gap: 7px; height: 126px;
+  margin-top: 12px; padding: 18px 10px 8px; border: 1px solid var(--line);
+  border-radius: 6px; background: linear-gradient(to top, color-mix(in srgb, var(--accent-soft) 45%, var(--card)), var(--card));
+  position: relative;
 }
+.mini-week::before { content: ''; position: absolute; left: 10px; right: 10px; bottom: 28px; border-top: 1px solid var(--line2); box-shadow: 0 -27px 0 var(--line), 0 -54px 0 var(--line) }
 .mini-week .bar-wrap {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px;
+  flex: 1; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 7px; position: relative; z-index: 1;
 }
 .mini-week .bar {
-  width: 100%; max-width: 32px; background: var(--line2); border-radius: 2px 2px 0 0;
-  transition: all .2s;
+  width: min(70%, 34px); min-height: 6px; background: color-mix(in srgb, var(--accent) 36%, var(--line2)); border-radius: 5px 5px 2px 2px;
+  transition: all .2s; box-shadow: 0 4px 10px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 .mini-week .bar.today { background: var(--accent) }
 .mini-week .bar::after {
@@ -378,19 +382,20 @@ section { margin: 0 }
 
 /* ---------- 9. 记录页 (Records) ---------- */
 .records-head {
-  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  display: flex; align-items: center; justify-content: space-between;
   gap: 14px; margin-bottom: 22px;
 }
+.records-head .month-nav { justify-content: flex-start; margin: 0; flex: 0 1 auto }
 .month-nav {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: 12px;
 }
-.month-nav .m { min-width: 150px; text-align: center; font-size: 16px; font-weight: 600; color: var(--ink) }
+.month-nav .m { min-width: 150px; padding: 0 6px; text-align: center; font-size: 16px; font-weight: 600; color: var(--ink) }
 .view-tabs {
-  display: inline-flex; border: 1px solid var(--line2); border-radius: 3px; overflow: hidden;
+  display: inline-flex; margin-left: auto; border: 1px solid var(--line2); border-radius: 3px; overflow: hidden;
 }
 .view-tabs button {
-  height: 32px; padding: 0 16px; border: 0; background: transparent;
-  color: var(--ink2); font-size: 13px; font-weight: 600;
+  width: 42px; height: 32px; padding: 0; border: 0; background: transparent;
+  color: var(--ink2); font-size: 13px; font-weight: 600; white-space: nowrap;
 }
 .view-tabs button.on { background: var(--ink); color: #fff }
 html.dark .top-ticker .basis-seg button.on, html.dark .view-tabs button.on { background: var(--accent); color: #132019 }
@@ -450,6 +455,14 @@ html.dark .top-ticker .basis-seg button.on, html.dark .view-tabs button.on { bac
   transition: all .12s; min-width: 0;
 }
 .cal-cell:hover { border-color: var(--line2); background: var(--card) }
+.cal-cell.month-cell { overflow: hidden; position: relative; }
+.cal-cell.month-cell.heat-1 { background: color-mix(in srgb, var(--accent-soft) 38%, var(--card)); }
+.cal-cell.month-cell.heat-2 { background: color-mix(in srgb, var(--accent-soft) 62%, var(--card)); }
+.cal-cell.month-cell.heat-3 { background: color-mix(in srgb, var(--accent) 16%, var(--card)); }
+.cal-cell.month-cell.heat-4 { background: color-mix(in srgb, var(--accent) 28%, var(--card)); }
+.cal-cell.month-cell.expanded { min-height: 92px; z-index: 2; box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 18%, transparent); }
+.cal-expanded { display: flex; flex-direction: column; gap: 1px; margin-top: 4px; color: var(--ink2); font-size: 9px; line-height: 1.35; overflow: hidden; }
+.cal-expanded span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cal-cell.wk { aspect-ratio: auto; min-height: 110px }
 .cal-cell.blank { background: transparent; border-color: transparent }
 .cal-cell.off { opacity: .5 }
@@ -519,12 +532,9 @@ html.dark .top-ticker .basis-seg button.on, html.dark .view-tabs button.on { bac
 .period-head .t { font-size: 11px; letter-spacing: .14em; color: var(--muted); text-transform: uppercase }
 .period-head .range { font-size: 14px; color: var(--ink); font-weight: 600 }
 .rate-pair {
-  display: grid; grid-template-columns: 1fr; gap: 1px;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px;
   background: var(--line); border: 1px solid var(--line); border-radius: 4px;
   overflow: hidden; margin-bottom: 18px;
-}
-@media (min-width: 640px) {
-  .rate-pair { grid-template-columns: repeat(2, minmax(0, 1fr)) }
 }
 .rate-box { background: var(--card); padding: 18px; text-align: center }
 .rate-box .v { font-size: 30px; font-weight: 700; margin-bottom: 4px; color: var(--ink) }
@@ -552,7 +562,8 @@ html.dark .top-ticker .basis-seg button.on, html.dark .view-tabs button.on { bac
 .chart-legend .dot { width: 8px; height: 8px; border-radius: 50% }
 .chart-legend .dot.total { background: var(--accent) }
 .chart-legend .dot.ot { background: var(--warn) }
-.echart { width: 100%; height: 260px }
+.chart-scroll { width: 100%; overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; }
+.echart { width: 100%; min-width: 520px; height: 280px }
 .selected-detail {
   margin-top: 16px; padding: 14px 16px;
   background: var(--card); border: 1px solid var(--line); border-left: 2px solid var(--accent);
@@ -585,7 +596,7 @@ html.dark .top-ticker .basis-seg button.on, html.dark .view-tabs button.on { bac
   color: var(--ink); font-size: 16px; font-weight: 700;
 }
 .io-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px }
-.hint { font-size: 12px; color: var(--muted); line-height: 1.7 }
+.hint { margin-top: 18px; font-size: 12px; color: var(--muted); line-height: 1.7 }
 .hint b { color: var(--ink) }
 .accent-options { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap }
 .accent-swatch { width: 30px; height: 30px; padding: 0; border: 2px solid transparent; border-radius: 50%; background: var(--swatch); box-shadow: 0 2px 5px rgba(20,23,28,.18), inset 0 1px 0 rgba(255,255,255,.55); transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease }
@@ -609,20 +620,23 @@ html.dark .top-ticker .basis-seg button.on, html.dark .view-tabs button.on { bac
 }
 .auth-theme-toggle:hover { transform: translateY(-2px); border-color: var(--accent); color: var(--accent) }
 .auth-card {
-  width: 100%; max-width: 420px;
+  width: 100%; max-width: 460px; text-align: center;
   background: var(--card); border: 1px solid var(--line); border-radius: 4px;
-  padding: 36px; box-shadow: 0 4px 10px rgba(20,23,28,.07), 0 24px 50px rgba(20,23,28,.08);
+  padding: 42px 44px; box-shadow: 0 8px 18px rgba(20,23,28,.08), 0 28px 64px color-mix(in srgb, var(--accent) 10%, rgba(20,23,28,.10));
 }
-.auth-brand { margin-bottom: 28px }
+.auth-brand { margin-bottom: 30px }
 .auth-brand .title { font-family: Georgia, "Times New Roman", "Songti SC", "SimSun", serif; font-size: 24px; font-weight: 700 }
+.auth-brand .label { margin-top: 5px }
 .auth-copy { margin-bottom: 26px }
 .auth-copy h1 { font-size: 26px; margin: 8px 0 6px; color: var(--ink); font-weight: 600 }
 .auth-copy p { font-size: 14px; color: var(--muted); margin: 0 }
+.auth-features { display: flex; justify-content: center; flex-wrap: wrap; gap: 7px; margin-top: 18px }
+.auth-features span { padding: 4px 10px; border: 1px solid var(--line2); border-radius: 99px; color: var(--accent); background: var(--accent-soft); font-size: 11px; }
 .auth-form { display: flex; flex-direction: column; gap: 14px }
-.auth-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink2) }
+.auth-form label { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; color: var(--ink2) }
 .auth-form input {
   height: 44px; padding: 0 14px; background: var(--card); border: 1px solid var(--line2);
-  border-radius: 3px; color: var(--ink); font-size: 14px; outline: none;
+  border-radius: 3px; color: var(--ink); font-size: 14px; outline: none; text-align: center;
 }
 .auth-form input:focus { border-color: var(--ink2); box-shadow: 0 0 0 2px rgba(20,23,28,.08) }
 .auth-error { margin: 0; padding: 10px 12px; background: #fef2f2;
@@ -681,21 +695,32 @@ html.dark .top-ticker .basis-seg button.on, html.dark .view-tabs button.on { bac
   .page-content { padding: 20px 16px 92px }
   .page-heading h1 { font-size: 26px }
   .big-rate { font-size: clamp(48px, 15vw, 70px) }
-  .punch-date-nav { flex-wrap: wrap; justify-content: flex-end }
+  .punch-date-nav { flex-wrap: wrap; justify-content: center; width: 100%; margin-left: 0; margin-right: 0 }
   .punch-date-nav span { min-width: auto }
   .punch-times { grid-template-columns: 1fr }
-  .punch-breakdown { border-left: 0; padding-left: 0 }
-  .records-head .month-nav { width: 100%; justify-content: center }
+  .punch-breakdown { border-left: 0; padding: 24px }
+  .records-head { gap: 8px; flex-wrap: nowrap }
+  .records-head .month-nav { width: auto; justify-content: flex-start; margin: 0; min-width: 0 }
+  .records-head .month-nav { gap: 8px }
+  .records-head .month-nav .m { min-width: 0; padding: 0 2px; font-size: 14px }
+  .view-tabs button { width: 42px; font-size: 11px }
   .ms-inputs { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px }
   .stats-filter { display: block }
   .stats-filter .range-select { width: 100%; min-width: 0 }
   .stats-filter-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px }
+  .stats-filter-range { justify-content: center; text-align: center }
+  .auth-card { padding: 34px 22px }
   .set-group .row { grid-template-columns: minmax(0, 1fr) auto; gap: 12px }
   .set-group .ctl { width: min(42vw, 220px); justify-content: flex-end }
   .appearance-group .ctl { width: auto }
   .appearance-group .accent-options { justify-content: flex-end }
   .io-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px }
   .io-row .ui-button { width: 100%; padding-left: 8px; padding-right: 8px }
+}
+
+@media (max-width: 400px) {
+  .view-tabs button { width: 34px; font-size: 10px }
+  .records-head .month-nav { gap: 5px }
 }
 
 /* ---------- 16. Element Plus 覆盖 ---------- */

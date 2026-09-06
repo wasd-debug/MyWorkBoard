@@ -51,9 +51,10 @@
       </div>
       <div v-if="viewMode === 'month'" class="cal-grid">
         <div v-for="n in leadBlanks" :key="'b' + n" class="cal-cell blank"></div>
-        <button v-for="day in monthCells" :key="day.k" class="cal-cell" :class="cellCls(day)" type="button" @click="edit(day.k)">
+        <button v-for="day in monthCells" :key="day.k" class="cal-cell month-cell" :class="[cellCls(day), { expanded: expandedDay === day.k }]" type="button" @click.stop="handleMonthDayClick(day.k)" @dblclick.stop="handleMonthDayDoubleClick(day.k)">
           <div class="cal-head"><span class="cal-d num">{{ Number(day.k.slice(8)) }}</span><span v-if="day.holName" class="cal-hol" :title="day.holName">{{ day.holName }}</span></div>
           <div v-if="day.min > 0" class="cal-body"><span class="cal-h num">{{ hours(day.min) }}h</span><span class="cal-o num" :class="day.ot >= 0 ? 'warn' : 'up'">{{ signed(day.ot) }}</span></div>
+          <div v-if="expandedDay === day.k" class="cal-expanded"><span v-if="day.min > 0">{{ recOf(day.k).start || '—' }} – {{ recOf(day.k).end || '—' }}</span><span v-if="day.min > 0">加班 {{ signed(day.ot) }}</span><span v-else>暂无打卡记录</span></div>
         </button>
       </div>
       <div v-else class="cal-grid">
@@ -104,11 +105,13 @@ import Button from '../components/ui/Button.vue'
 import { useAppStore } from '../stores/app'
 import { CALC } from '../utils/calc'
 
-const TABS = [{ v: 'month', l: '月' }, { v: '2week', l: '两周' }, { v: 'week', l: '周' }, { v: 'list', l: '列表' }]
+const TABS = [{ v: 'month', l: '月度' }, { v: '2week', l: '双周' }, { v: 'week', l: '单周' }, { v: 'list', l: '列表' }]
 const store = useAppStore()
 const router = useRouter()
 const viewMode = ref('month')
 const cursor = ref(new Date(store.recMonth + '-01T00:00:00'))
+const expandedDay = ref(null)
+let monthClickTimer
 
 const navLabel = computed(() => {
   const date = cursor.value
@@ -163,7 +166,8 @@ const weekCells = computed(() => {
   })
 })
 const todayKey = CALC.dateKey(new Date())
-const cellCls = day => ({ off: day.off && day.min <= 0, 'off-worked': day.off && day.min > 0, today: day.k === todayKey })
+const dayHeat = day => day.min <= 0 ? 0 : day.min < 240 ? 1 : day.min < 420 ? 2 : day.min < 600 ? 3 : 4
+const cellCls = day => ({ off: day.off && day.min <= 0, 'off-worked': day.off && day.min > 0, today: day.k === todayKey, [`heat-${dayHeat(day)}`]: true })
 const recOf = key => store.records[key] || {}
 const restOf = key => Number((store.records[key] || {}).rest) || 0
 
@@ -203,6 +207,14 @@ function saveMonthSalary() {
   ElMessage.success('本月工资已保存')
 }
 function edit(key) { store.punchDate = key; router.push('/punch'); window.scrollTo(0, 0) }
+function handleMonthDayClick(key) {
+  clearTimeout(monthClickTimer)
+  monthClickTimer = window.setTimeout(() => { expandedDay.value = expandedDay.value === key ? null : key }, 220)
+}
+function handleMonthDayDoubleClick(key) {
+  clearTimeout(monthClickTimer)
+  edit(key)
+}
 function remove(key) {
   if (!window.confirm('确定删除这条打卡记录？')) return
   delete store.records[key]

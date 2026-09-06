@@ -105,7 +105,7 @@ export const CALC = (() => {
     while (d <= e) { out.push(dateKey(d)); d = addDays(d, 1); }
     return out;
   }
-  const weekKeysTo = today => rangeKeys(monday(today), today);
+  const weekKeysTo = today => rangeKeys(monday(today), addDays(monday(today), 6));
   const monthKeysTo = today => rangeKeys(monthFirst(today), today);
   /* 数字/金额格式化 */
   const fmtHours = min => {

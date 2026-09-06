@@ -118,7 +118,7 @@ const diff = computed(() => base.value > 0 ? (rate.value - base.value) / base.va
 const dayPay = computed(() => CALC.dayPay(ctx.value, store.settings.basis, effDays.value))
 const hasSalary = computed(() => CALC.salary(ctx.value, store.settings.basis) > 0)
 const rest = computed(() => Number(rec.value.rest) || 0)
-const wk = computed(() => CALC.periodStats(CALC.weekKeysTo(new Date()), store.records, ctx.value, store.settings.basis, undefined, store.holidays, ym => CALC.monthSalary(store.settings.salaries, store.settings, store.settings.basis, ym)))
+const wk = computed(() => CALC.periodStats(CALC.weekKeysTo(new Date(punchDate.value + 'T00:00:00')), store.records, ctx.value, store.settings.basis, undefined, store.holidays, ym => CALC.monthSalary(store.settings.salaries, store.settings, store.settings.basis, ym)))
 const isOffDay = computed(() => CALC.dayType(punchDate.value, store.holidays) === 'off')
 const dayLabel = computed(() => { const name = CALC.holidayName(punchDate.value, store.holidays); return name ? `${name} · 法定假日` : '周末休息日' })
 

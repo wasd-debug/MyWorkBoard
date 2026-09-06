@@ -74,7 +74,7 @@
           <span><span class="dot ot"></span>加班</span>
         </div>
       </div>
-      <div ref="chartRef" class="echart" aria-label="工时趋势图"></div>
+      <div class="chart-scroll"><div ref="chartRef" class="echart" aria-label="工时趋势图"></div></div>
       <div v-if="selected" class="selected-detail">
         <div class="d-head">SELECTED // {{ selected.label }}</div>
         <div class="d-grid">
@@ -179,6 +179,7 @@ function formatDate(value) { return value ? value.replaceAll('-', '/') : '—' }
 
 const rangeDates = computed(() => CALC.rangeKeys(startDate.value, endDate.value))
 const chartGranularity = computed(() => granularity.value)
+const annualRange = computed(() => ['year', 'lastYear'].includes(activeQuick.value) || rangeDates.value.length >= 300)
 const stats = computed(() => CALC.periodStats(
   rangeDates.value,
   store.records,
@@ -197,7 +198,7 @@ const chartData = computed(() => {
       const minutes = CALC.actualMin(store.records[key], store.settings)
       const off = store.holidays && CALC.dayType(key, store.holidays) === 'off'
       const ot = minutes > 0 ? (off ? minutes : Math.max(0, minutes - CALC.stdWorkMin(store.settings))) : 0
-      if (!months[ym]) months[ym] = { key: ym, label: ym.replace('-', '/'), total: 0, ot: 0, start: '', end: '' }
+      if (!months[ym]) months[ym] = { key: ym, label: annualRange.value ? `${Number(ym.slice(5))}月` : ym.replace('-', '/'), total: 0, ot: 0, start: '', end: '' }
       months[ym].total += minutes / 60
       months[ym].ot += ot / 60
     }
@@ -208,7 +209,8 @@ const chartData = computed(() => {
     const off = store.holidays && CALC.dayType(key, store.holidays) === 'off'
     const ot = minutes > 0 ? (off ? minutes : Math.max(0, minutes - CALC.stdWorkMin(store.settings))) : 0
     const rec = store.records[key] || {}
-    return { key, label: key.slice(5), total: minutes / 60, ot: ot / 60, start: rec.start || '', end: rec.end || '' }
+    const day = Number(key.slice(8))
+    return { key, label: annualRange.value ? (day === 1 ? `${Number(key.slice(5, 7))}月` : '') : key.slice(5), total: minutes / 60, ot: ot / 60, start: rec.start || '', end: rec.end || '' }
   })
 })
 
@@ -218,6 +220,8 @@ const periodTip = computed(() => stats.value.days === 0
 
 function renderChart() {
   if (!chartRef.value) return
+  const minWidth = annualRange.value ? (chartGranularity.value === 'month' ? 760 : 1500) : null
+  chartRef.value.style.width = minWidth ? `${minWidth}px` : '100%'
   if (!chart) {
     chart = echarts.init(chartRef.value)
     chart.on('click', params => {
@@ -248,7 +252,7 @@ function renderChart() {
       data: data.map(item => item.label),
       axisLine: { lineStyle: { color: varColor('--line2') } },
       axisTick: { lineStyle: { color: varColor('--line2') } },
-      axisLabel: { color: varColor('--ink2'), interval: Math.max(0, Math.ceil(data.length / 10) - 1) }
+      axisLabel: { color: varColor('--ink2'), interval: annualRange.value ? 0 : Math.max(0, Math.ceil(data.length / 10) - 1), hideOverlap: true }
     },
     yAxis: {
       type: 'value',
