@@ -410,6 +410,8 @@ section { margin: 0 }
 }
 .view-tabs button.on { background: var(--ink); color: #fff }
 html.dark .top-ticker .basis-seg button.on, html.dark .view-tabs button.on { background: var(--accent); color: #132019 }
+html.dark .ui-button.variant-ink { background: var(--accent); color: #132019 }
+html.dark .ui-button.variant-ink:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 82%, #000) }
 .month-sum {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px;
   background: var(--line); border: 1px solid var(--line); border-radius: 4px;
@@ -616,7 +618,8 @@ html.dark .top-ticker .basis-seg button.on, html.dark .view-tabs button.on { bac
 
 /* ---------- 12. 登录页 (Login) ---------- */
 .auth-shell {
-  min-height: 100vh; display: flex; align-items: center; justify-content: center; position: relative;
+  flex: 1 1 auto; width: 100%; min-width: 0; min-height: 100vh;
+  display: flex; align-items: center; justify-content: center; position: relative;
   padding: 24px;
   background:
     radial-gradient(circle at 17% 19%, color-mix(in srgb, var(--card) 70%, transparent) 0 1px, transparent 1.6px) 0 0 / 19px 21px,
