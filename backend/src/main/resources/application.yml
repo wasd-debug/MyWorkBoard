@@ -37,3 +37,7 @@ app:
   legacy-open: ${LEGACY_API_OPEN:false}
   legacy-admin-password: ${LEGACY_ADMIN_PASSWORD:}
   cookie-secure: ${COOKIE_SECURE:false}
+  ai:
+    endpoint: ${LLM_ENDPOINT:}
+    model: ${LLM_MODEL:deepseek-chat}
+    api-key: ${LLM_API_KEY:}

@@ -8,10 +8,17 @@
           <div class="label">PERSONAL WORKSPACE</div>
         </div>
         <nav class="sidebar-nav">
-          <router-link v-for="(item, index) in navItems" :key="item.to" :to="item.to">
-            <span>{{ item.label }}</span>
-            <span class="nav-index num">{{ String(index + 1).padStart(2, '0') }}</span>
-          </router-link>
+          <section v-for="group in navGroups" :key="group.key" class="nav-group" :class="{ open: isGroupOpen(group) }">
+            <button v-if="group.items.length" class="nav-group-head" type="button" :aria-expanded="isGroupOpen(group)" @click="toggleGroup(group.key)">
+              <span class="nav-group-title">{{ group.label }}</span><span class="nav-group-chevron" aria-hidden="true">⌄</span>
+            </button>
+            <div v-show="isGroupOpen(group)" class="nav-group-items">
+              <router-link v-for="item in group.items" :key="item.key" :to="item.to" :class="{ 'nav-item-disabled': item.disabled }" :aria-disabled="item.disabled || undefined" @click="item.disabled && $event.preventDefault()">
+                <span class="nav-item-icon" aria-hidden="true">{{ item.icon }}</span><span>{{ item.label }}</span><span v-if="item.disabled" class="nav-item-soon">即将开放</span>
+              </router-link>
+            </div>
+          </section>
+          <router-link class="nav-settings-link" to="/settings"><span class="nav-item-icon" aria-hidden="true">⚙</span><span>设置</span></router-link>
         </nav>
         <div class="sidebar-foot">
           <div class="sidebar-status">
@@ -19,6 +26,9 @@
             <span>{{ store.dbMode ? '数据库已同步' : '本地离线' }}</span>
           </div>
           <div class="sidebar-actions">
+            <button class="ui-button variant-icon size-sm" type="button" :aria-label="store.theme === 'dark' ? '切换日间模式' : '切换暗夜模式'" :aria-pressed="store.theme === 'dark'" @click="store.toggleTheme()">
+              <span aria-hidden="true">{{ store.theme === 'dark' ? '☀' : '☾' }}</span>
+            </button>
             <button class="ui-button variant-icon size-sm" type="button" aria-label="同步状态" :title="store.dbMode ? '数据库已连接' : '本地离线'" @click="onSyncClick">
               {{ store.dbMode ? '◉' : '◌' }}
             </button>
@@ -28,35 +38,12 @@
       </aside>
 
       <main class="app-main">
-        <header class="top-ticker" aria-label="实时指标">
-          <div class="tick">
-            <span class="k">DATE</span>
-            <span class="v num">{{ todayText }}</span>
-          </div>
-          <div class="tick">
-            <span class="k">BASE</span>
-            <span class="v num">{{ baseRate > 0 ? money(baseRate) + '/h' : '—' }}</span>
-          </div>
-          <div class="tick">
-            <span class="k">WEEK_AVG</span>
-            <span class="v num" :class="week.realRate >= baseRate ? 'up' : 'warn'">{{ week.realRate > 0 ? money(week.realRate) + '/h' : '—' }}</span>
-          </div>
-          <div class="tick">
-            <span class="k">OT_WEEK</span>
-            <span class="v num" :class="week.otMin > 0 ? 'warn' : ''">{{ hours(week.otMin) }}h</span>
-          </div>
-          <div class="tick">
-            <span class="k">ΔBASE</span>
-            <span class="v num" :class="weekDiff >= 0 ? 'up' : 'down'">{{ weekDiff >= 0 ? '▲' : '▼' }} {{ Math.abs(weekDiff).toFixed(1) }}%</span>
-          </div>
-          <button class="theme-icon-toggle" type="button" :aria-label="store.theme === 'dark' ? '切换日间模式' : '切换暗夜模式'" :aria-pressed="store.theme === 'dark'" @click="store.toggleTheme()">
-            <span aria-hidden="true">{{ store.theme === 'dark' ? '☀' : '☾' }}</span>
-          </button>
+        <div v-if="showBasis" class="page-toolbar">
           <div class="basis-seg" aria-label="工资口径">
             <button :class="{ on: basis === 'pre' }" type="button" @click="setBasis('pre')">税前</button>
             <button :class="{ on: basis === 'post' }" type="button" @click="setBasis('post')">税后</button>
           </div>
-        </header>
+        </div>
         <div class="page-content">
           <router-view v-slot="{ Component }">
             <transition name="fade" mode="out-in">
@@ -71,42 +58,36 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAppStore } from './stores/app'
+import { useRoute } from 'vue-router'
 import BottomNav from './components/BottomNav.vue'
 import LoginView from './views/LoginView.vue'
-import { CALC } from './utils/calc'
 
 const store = useAppStore()
+const route = useRoute()
 
-const navItems = [
-  { to: '/punch', label: '打卡' },
-  { to: '/records', label: '记录' },
-  { to: '/stats', label: '统计' },
-  { to: '/settings', label: '设置' }
+const navGroups = [
+  { key: 'work', label: '工时记录', items: [{ key: 'punch', to: '/punch', label: '打卡', icon: '◷' }, { key: 'records', to: '/records', label: '记录', icon: '▦' }, { key: 'stats', to: '/stats', label: '统计', icon: '⌁' }] },
+  { key: 'ledger', label: '个人账本', items: [{ key: 'overview', to: '/ledger', label: '总览', icon: '◫' }, { key: 'details', to: { path: '/ledger', query: { view: 'details' } }, label: '明细', icon: '≡' }, { key: 'accounts', to: { path: '/ledger', query: { view: 'accounts' } }, label: '账户', icon: '◎' }] },
+  { key: 'knowledge', label: '个人知识库', items: [{ key: 'knowledge-home', to: '/knowledge', label: '知识库', icon: '◇', disabled: true }] },
+  { key: 'tasks', label: '任务', items: [{ key: 'task-home', to: '/tasks', label: '任务清单', icon: '✓', disabled: true }] }
 ]
+const openGroups = ref(new Set(['work']))
+
+function groupHasRoute(group) {
+  return group.items.some(item => typeof item.to === 'string' ? route.path === item.to : route.path === item.to.path)
+}
+function isGroupOpen(group) { return openGroups.value.has(group.key) || groupHasRoute(group) }
+function toggleGroup(key) {
+  const next = new Set(openGroups.value)
+  next.has(key) ? next.delete(key) : next.add(key)
+  openGroups.value = next
+}
 
 const basis = computed(() => store.settings.basis)
-const today = new Date()
-const todayText = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')} ${CALC.WEEK_CN[today.getDay()]}`
-
-const monthCtx = computed(() => CALC.monthCtx(store.settings.salaries, store.settings, CALC.dateKey(today).slice(0, 7)))
-const effDays = computed(() => CALC.effDaysPerMonth(monthCtx.value, CALC.dateKey(today).slice(0, 7), store.holidays, store.records))
-const baseRate = computed(() => CALC.baseRate(monthCtx.value, store.settings.basis, effDays.value))
-const week = computed(() => CALC.periodStats(
-  CALC.weekKeysTo(today),
-  store.records,
-  monthCtx.value,
-  store.settings.basis,
-  undefined,
-  store.holidays,
-  ym => CALC.monthSalary(store.settings.salaries, store.settings, store.settings.basis, ym)
-))
-const weekDiff = computed(() => baseRate.value > 0 && week.value.realRate > 0 ? (week.value.realRate - baseRate.value) / baseRate.value * 100 : 0)
-
-const hours = CALC.fmtHours
-const money = CALC.fmtMoney
+const showBasis = computed(() => ['/punch', '/records', '/stats'].includes(route.path))
 
 function setBasis(value) {
   if (store.settings.basis === value) return

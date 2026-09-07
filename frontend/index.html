@@ -8,7 +8,9 @@
     <title>个人工作台</title>
 <script>
 (function(){
-  var theme = localStorage.getItem('st_theme') === 'dark' ? 'dark' : 'light';
+  var stored = localStorage.getItem('st_theme');
+  var mobile = window.matchMedia && (matchMedia('(max-width: 640px)').matches || matchMedia('(pointer: coarse)').matches);
+  var theme = stored === 'dark' || stored === 'light' ? stored : (mobile && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   document.documentElement.className = theme;
 })();
 </script>

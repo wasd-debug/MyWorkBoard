@@ -24,6 +24,8 @@
         <spring-modulith.version>1.1.4</spring-modulith.version>
         <springdoc.version>2.5.0</springdoc.version>
         <flyway.version>10.10.0</flyway.version>
+        <easyexcel.version>3.3.4</easyexcel.version>
+        <shedlock.version>5.13.0</shedlock.version>
     </properties>
 
     <modules>
@@ -70,6 +72,22 @@
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>
             <version>${flyway.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>easyexcel</artifactId>
+            <version>${easyexcel.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>net.javacrumbs.shedlock</groupId>
+            <artifactId>shedlock-spring</artifactId>
+            <version>${shedlock.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>net.javacrumbs.shedlock</groupId>
+            <artifactId>shedlock-provider-jdbc-template</artifactId>
+            <version>${shedlock.version}</version>
         </dependency>
 
         <dependency>

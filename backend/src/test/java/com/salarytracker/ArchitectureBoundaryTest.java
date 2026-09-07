@@ -17,4 +17,14 @@ class ArchitectureBoundaryTest {
     static final ArchRule worktime_does_not_depend_on_controllers = noClasses()
             .that().resideInAnyPackage("com.salarytracker.worktime..")
             .should().dependOnClassesThat().resideInAnyPackage("com.salarytracker.controller..");
+
+    @ArchTest
+    static final ArchRule ledger_does_not_depend_on_worktime = noClasses()
+            .that().resideInAnyPackage("com.salarytracker.ledger..")
+            .should().dependOnClassesThat().resideInAnyPackage("com.salarytracker.worktime..");
+
+    @ArchTest
+    static final ArchRule worktime_does_not_depend_on_ledger = noClasses()
+            .that().resideInAnyPackage("com.salarytracker.worktime..")
+            .should().dependOnClassesThat().resideInAnyPackage("com.salarytracker.ledger..");
 }

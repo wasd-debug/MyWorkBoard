@@ -42,7 +42,12 @@ export const useAppStore = defineStore('app', {
   actions: {
     /* ---------- 主题 ---------- */
     applyTheme() {
-      const theme = localStorage.getItem(LS_THEME) === 'dark' ? 'dark' : 'light'
+      const storedTheme = localStorage.getItem(LS_THEME)
+      const isMobile = window.matchMedia?.('(max-width: 640px)').matches || window.matchMedia?.('(pointer: coarse)').matches
+      const systemDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
+      const theme = storedTheme === 'dark' || storedTheme === 'light'
+        ? storedTheme
+        : (isMobile && systemDark ? 'dark' : 'light')
       const accent = ACCENTS[localStorage.getItem(LS_ACCENT)] ? localStorage.getItem(LS_ACCENT) : 'green'
       this.theme = theme
       this.accent = accent
