@@ -26,13 +26,13 @@
             <span>{{ store.dbMode ? '数据库已同步' : '本地离线' }}</span>
           </div>
           <div class="sidebar-actions">
-            <button class="ui-button variant-icon size-sm" type="button" :aria-label="store.theme === 'dark' ? '切换日间模式' : '切换暗夜模式'" :aria-pressed="store.theme === 'dark'" @click="store.toggleTheme()">
+            <button class="sidebar-action sidebar-theme-action" type="button" :aria-label="store.theme === 'dark' ? '切换日间模式' : '切换暗夜模式'" :title="store.theme === 'dark' ? '切换日间模式' : '切换暗夜模式'" @click="store.toggleTheme()">
               <Sunny v-if="store.theme === 'dark'" aria-hidden="true" /><Moon v-else aria-hidden="true" />
             </button>
-            <button class="ui-button variant-icon size-sm" type="button" aria-label="同步状态" :title="store.dbMode ? '数据库已连接' : '本地离线'" @click="onSyncClick">
-              {{ store.dbMode ? '◉' : '◌' }}
+            <button class="sidebar-action" type="button" aria-label="同步状态" :title="store.dbMode ? '数据库已连接' : '本地离线'" @click="onSyncClick">
+              <Connection v-if="store.dbMode" aria-hidden="true" /><Refresh v-else aria-hidden="true" />
             </button>
-            <button class="ui-button variant-icon size-sm" type="button" aria-label="退出登录" @click="store.logout()">→</button>
+            <button class="sidebar-action" type="button" aria-label="退出登录" title="退出登录" @click="store.logout()"><SwitchButton aria-hidden="true" /></button>
           </div>
         </div>
       </aside>
@@ -62,7 +62,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAppStore } from './stores/app'
 import { useRoute } from 'vue-router'
-import { ArrowDown, Calendar, CreditCard, DataAnalysis, List, Moon, Notebook, Setting, Sunny, Tickets, Timer, Wallet } from '@element-plus/icons-vue'
+import { ArrowDown, Calendar, Connection, CreditCard, DataAnalysis, List, Moon, Notebook, Refresh, Setting, Sunny, SwitchButton, Tickets, Timer, Wallet } from '@element-plus/icons-vue'
 import BottomNav from './components/BottomNav.vue'
 import LoginView from './views/LoginView.vue'
 

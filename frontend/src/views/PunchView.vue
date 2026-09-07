@@ -159,5 +159,5 @@ function saveRec() {
 }
 function nowStart() { recStart.value = nowStr(); saveRec() }
 function nowEnd() { recEnd.value = nowStr(); saveRec() }
-watch(() => store.ready, value => { if (value) { punchDate.value = store.punchDate; syncInputs() } })
+watch(() => store.ready, value => { if (value) { punchDate.value = store.punchDate; syncInputs() } }, { immediate: true })
 </script>
