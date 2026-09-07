@@ -178,7 +178,7 @@ select {
   font-size: 11px; font-weight: 700; letter-spacing: .1em; text-align: left; cursor: pointer;
 }
 .nav-group-head:hover { color: var(--ink) }
-.nav-group-chevron { font-size: 15px; line-height: 1; transition: transform .18s ease }
+.nav-group-chevron { width: 14px; height: 14px; transition: transform .18s ease }
 .nav-group:not(.open) .nav-group-chevron { transform: rotate(-90deg) }
 .nav-group-items { display: flex; flex-direction: column; gap: 2px }
 .sidebar-nav a {
@@ -187,13 +187,13 @@ select {
   color: var(--ink2); font-size: 13px; transition: all .14s; white-space: nowrap;
 }
 .sidebar-nav a:hover { color: var(--ink); background: color-mix(in srgb, var(--accent-soft) 52%, transparent) }
-.sidebar-nav a.router-link-active {
+.sidebar-nav a.nav-item-current, .sidebar-nav .nav-settings-link.router-link-active {
   border-left-color: var(--accent); color: var(--ink); font-weight: 650;
   background: linear-gradient(90deg, var(--accent-soft), transparent 92%);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 4px 14px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .nav-item-icon { width: 18px; flex: 0 0 18px; color: var(--muted); text-align: center; font-size: 14px }
-.router-link-active .nav-item-icon { color: var(--accent) }
+.nav-item-current .nav-item-icon, .nav-settings-link.router-link-active .nav-item-icon { color: var(--accent) }
 .nav-item-soon { margin-left: auto; color: var(--muted); font-size: 10px }
 .nav-item-disabled { opacity: .62; cursor: default }
 .nav-settings-link { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 12px !important }

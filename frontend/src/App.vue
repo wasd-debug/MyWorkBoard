@@ -10,15 +10,15 @@
         <nav class="sidebar-nav">
           <section v-for="group in navGroups" :key="group.key" class="nav-group" :class="{ open: isGroupOpen(group) }">
             <button v-if="group.items.length" class="nav-group-head" type="button" :aria-expanded="isGroupOpen(group)" @click="toggleGroup(group.key)">
-              <span class="nav-group-title">{{ group.label }}</span><span class="nav-group-chevron" aria-hidden="true">⌄</span>
+              <span class="nav-group-title">{{ group.label }}</span><ArrowDown class="nav-group-chevron" aria-hidden="true" />
             </button>
             <div v-show="isGroupOpen(group)" class="nav-group-items">
-              <router-link v-for="item in group.items" :key="item.key" :to="item.to" :class="{ 'nav-item-disabled': item.disabled }" :aria-disabled="item.disabled || undefined" @click="item.disabled && $event.preventDefault()">
-                <span class="nav-item-icon" aria-hidden="true">{{ item.icon }}</span><span>{{ item.label }}</span><span v-if="item.disabled" class="nav-item-soon">即将开放</span>
+              <router-link v-for="item in group.items" :key="item.key" :to="item.to" active-class="nav-route-active" :class="{ 'nav-item-disabled': item.disabled, 'nav-item-current': isNavItemActive(item) }" :aria-disabled="item.disabled || undefined" @click="item.disabled && $event.preventDefault()">
+                <component :is="item.icon" class="nav-item-icon" aria-hidden="true" /><span>{{ item.label }}</span><span v-if="item.disabled" class="nav-item-soon">即将开放</span>
               </router-link>
             </div>
           </section>
-          <router-link class="nav-settings-link" to="/settings"><span class="nav-item-icon" aria-hidden="true">⚙</span><span>设置</span></router-link>
+          <router-link class="nav-settings-link" to="/settings"><Setting class="nav-item-icon" aria-hidden="true" /><span>设置</span></router-link>
         </nav>
         <div class="sidebar-foot">
           <div class="sidebar-status">
@@ -27,7 +27,7 @@
           </div>
           <div class="sidebar-actions">
             <button class="ui-button variant-icon size-sm" type="button" :aria-label="store.theme === 'dark' ? '切换日间模式' : '切换暗夜模式'" :aria-pressed="store.theme === 'dark'" @click="store.toggleTheme()">
-              <span aria-hidden="true">{{ store.theme === 'dark' ? '☀' : '☾' }}</span>
+              <Sunny v-if="store.theme === 'dark'" aria-hidden="true" /><Moon v-else aria-hidden="true" />
             </button>
             <button class="ui-button variant-icon size-sm" type="button" aria-label="同步状态" :title="store.dbMode ? '数据库已连接' : '本地离线'" @click="onSyncClick">
               {{ store.dbMode ? '◉' : '◌' }}
@@ -62,6 +62,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAppStore } from './stores/app'
 import { useRoute } from 'vue-router'
+import { ArrowDown, Calendar, CreditCard, DataAnalysis, List, Moon, Notebook, Setting, Sunny, Tickets, Timer, Wallet } from '@element-plus/icons-vue'
 import BottomNav from './components/BottomNav.vue'
 import LoginView from './views/LoginView.vue'
 
@@ -69,15 +70,21 @@ const store = useAppStore()
 const route = useRoute()
 
 const navGroups = [
-  { key: 'work', label: '工时记录', items: [{ key: 'punch', to: '/punch', label: '打卡', icon: '◷' }, { key: 'records', to: '/records', label: '记录', icon: '▦' }, { key: 'stats', to: '/stats', label: '统计', icon: '⌁' }] },
-  { key: 'ledger', label: '个人账本', items: [{ key: 'overview', to: '/ledger', label: '总览', icon: '◫' }, { key: 'details', to: { path: '/ledger', query: { view: 'details' } }, label: '明细', icon: '≡' }, { key: 'accounts', to: { path: '/ledger', query: { view: 'accounts' } }, label: '账户', icon: '◎' }] },
-  { key: 'knowledge', label: '个人知识库', items: [{ key: 'knowledge-home', to: '/knowledge', label: '知识库', icon: '◇', disabled: true }] },
-  { key: 'tasks', label: '任务', items: [{ key: 'task-home', to: '/tasks', label: '任务清单', icon: '✓', disabled: true }] }
+  { key: 'work', label: '工时记录', items: [{ key: 'punch', to: '/punch', label: '打卡', icon: Timer }, { key: 'records', to: '/records', label: '记录', icon: Calendar }, { key: 'stats', to: '/stats', label: '统计', icon: DataAnalysis }] },
+  { key: 'ledger', label: '个人账本', items: [{ key: 'overview', to: '/ledger', label: '总览', icon: Wallet }, { key: 'details', to: { path: '/ledger', query: { view: 'details' } }, label: '明细', icon: Tickets }, { key: 'accounts', to: { path: '/ledger', query: { view: 'accounts' } }, label: '账户', icon: CreditCard }] },
+  { key: 'knowledge', label: '个人知识库', items: [{ key: 'knowledge-home', to: '/knowledge', label: '知识库', icon: Notebook, disabled: true }] },
+  { key: 'tasks', label: '任务', items: [{ key: 'task-home', to: '/tasks', label: '任务清单', icon: List, disabled: true }] }
 ]
-const openGroups = ref(new Set(['work']))
+const openGroups = ref(new Set())
 
 function groupHasRoute(group) {
   return group.items.some(item => typeof item.to === 'string' ? route.path === item.to : route.path === item.to.path)
+}
+function isNavItemActive(item) {
+  if (item.disabled) return false
+  const target = typeof item.to === 'string' ? { path: item.to } : item.to
+  if (route.path !== target.path) return false
+  return target.query?.view ? route.query.view === target.query.view : !route.query.view
 }
 function isGroupOpen(group) { return openGroups.value.has(group.key) || groupHasRoute(group) }
 function toggleGroup(key) {
