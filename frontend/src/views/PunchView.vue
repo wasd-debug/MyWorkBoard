@@ -1,6 +1,6 @@
 <template>
   <section>
-    <div class="page-heading">
+    <div class="page-heading punch-heading">
       <div>
         <div class="label">WORKTIME / DAILY ENTRY</div>
         <h1>打卡</h1>

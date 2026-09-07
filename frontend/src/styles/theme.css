@@ -272,6 +272,17 @@ section { margin: 0 }
   font-family: Georgia, "Times New Roman", "Songti SC", "SimSun", serif;
   font-size: 32px; font-weight: 700; letter-spacing: -0.02em; margin: 6px 0 0;
 }
+.punch-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+}
+.punch-heading .punch-date-nav {
+  grid-column: 2;
+  justify-self: center;
+  margin-left: 0;
+  margin-right: 0;
+}
 
 /* ---------- 8. 打卡页 (Punch) ---------- */
 .punch-date-nav {
@@ -694,6 +705,8 @@ html.dark .top-ticker .basis-seg button.on, html.dark .view-tabs button.on { bac
   .top-ticker .basis-seg { margin-left: 0 }
   .page-content { padding: 20px 16px 92px }
   .page-heading h1 { font-size: 26px }
+  .punch-heading { display: flex; align-items: stretch; gap: 12px }
+  .punch-heading .punch-date-nav { width: 100%; justify-content: center; margin-left: 0; margin-right: 0 }
   .big-rate { font-size: clamp(48px, 15vw, 70px) }
   .punch-date-nav { flex-wrap: wrap; justify-content: center; width: 100%; margin-left: 0; margin-right: 0 }
   .punch-date-nav span { min-width: auto }
