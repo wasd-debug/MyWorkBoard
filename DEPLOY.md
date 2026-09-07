@@ -97,6 +97,30 @@ sudo docker compose -f docker-compose.prod.yml ps frontend
 
 ## 本地联调
 
+### 一键启动后端与开发数据库
+
+首次需要把服务器数据同步到本地时执行：
+
+```bash
+bash deploy/dev-backend.sh --sync-production
+```
+
+脚本会启动独立的 `salary-mysql-dev`（MySQL 8，宿主机端口 `3307`），通过 SSH 只读导出生产数据库并覆盖本地开发库，然后打包并启动后端。SSH 密码只在终端交互输入；数据库快照保存在 `.local/db/`，该目录已被 Git 忽略。
+
+后续不需要重新同步生产数据时：
+
+```bash
+bash deploy/dev-backend.sh
+```
+
+已有最新 JAR 时可以附加 `--skip-build`。只刷新本地数据库、不启动后端时使用：
+
+```bash
+bash deploy/sync-prod-db.sh
+```
+
+生产快照包含真实用户数据，只能留在受控的本地开发机；不要复制到仓库、聊天记录或共享目录。同步脚本只读取生产库，但会删除并重建本地 `salary` 数据库。
+
 先构建后端和前端产物：
 
 ```bash
