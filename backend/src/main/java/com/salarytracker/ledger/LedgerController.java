@@ -117,7 +117,7 @@ public class LedgerController {
     @PostMapping(value = "/import/excel", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAuthority('ledger:import')")
     @Audit(module = "ledger", action = "import.excel", targetType = "ledger_transaction")
-    public ApiResponse<List<Map<String, Object>>> importExcel(@RequestPart("file") MultipartFile file) throws Exception { return ApiResponse.ok(service.importExcel(file)); }
+    public ApiResponse<Map<String, Object>> importExcel(@RequestPart("file") MultipartFile file) throws Exception { return ApiResponse.ok(service.importExcel(file)); }
 
     @GetMapping("/export")
     @PreAuthorize("hasAuthority('ledger:read')")

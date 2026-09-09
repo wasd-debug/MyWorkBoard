@@ -3,6 +3,8 @@ package com.salarytracker.ledger;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.alibaba.excel.EasyExcel;
+import com.alibaba.excel.ExcelReader;
+import com.alibaba.excel.read.metadata.ReadSheet;
 import com.salarytracker.identity.CurrentUserResolver;
 import com.salarytracker.platform.ConflictException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -10,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -29,7 +32,7 @@ import java.util.regex.Pattern;
 @Service
 public class LedgerService {
     private static final Pattern MONEY = Pattern.compile("([0-9]+(?:\\.[0-9]{1,2})?)");
-    private static final Pattern DATE = Pattern.compile("(20\\d{2}[-/]\\d{1,2}[-/]\\d{1,2})");
+    private static final Pattern DATE = Pattern.compile("((?:19|20)\\d{2}[-/]\\d{1,2}[-/]\\d{1,2})");
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final CurrentUserResolver currentUser;
@@ -232,10 +235,11 @@ public class LedgerService {
                 if (line.isBlank()) continue; String[] cells = splitCsv(line);
                 String date = cell(cells, columns, "date", "日期", "交易日期"); String amount = cell(cells, columns, "amount", "金额", "收支金额");
                 if (date.isBlank() || amount.isBlank()) continue;
-                String normalizedDate = date.replace('/', '-'); LocalDate.parse(normalizedDate);
+                String normalizedDate = normalizeImportDate(date);
                 String rawKind = cell(cells, columns, "kind", "类型", "交易类型", "收支");
+                if (isTransfer(rawKind)) continue;
                 String kind = rawKind.contains("收") || rawKind.equalsIgnoreCase("income") ? "INCOME" : "EXPENSE";
-                String accountName = cell(cells, columns, "account", "账户", "账户名称", "收入账户"); if (accountName.isBlank()) accountName = "现金";
+                String accountName = cell(cells, columns, "account", "账户", "账户名称", "支出账户", "收入账户"); if (accountName.isBlank()) accountName = "现金";
                 long accountId = ensureNamedAccount(accountName, user);
                 String primaryCategory = cell(cells, columns, "一级分类"); String secondaryCategory = cell(cells, columns, "二级分类"); String categoryName = defaultText(secondaryCategory, defaultText(primaryCategory, cell(cells, columns, "category", "分类", "类别")));
                 Long parentId = primaryCategory.isBlank() ? null : ensureNamedCategory(primaryCategory, kind, user); Long categoryId = categoryName.isBlank() ? null : (secondaryCategory.isBlank() && !primaryCategory.isBlank() ? parentId : ensureNamedCategory(categoryName, kind, user, parentId));
@@ -246,28 +250,36 @@ public class LedgerService {
         return imported;
     }
 
-    public List<Map<String, Object>> importExcel(MultipartFile file) throws IOException {
+    @Transactional
+    public Map<String, Object> importExcel(MultipartFile file) throws IOException {
         if (file == null || file.isEmpty()) throw new IllegalArgumentException("请选择 Excel 文件");
-        List<Map<Integer, String>> rows = EasyExcel.read(file.getInputStream()).headRowNumber(0).sheet().doReadSync();
-        if (rows.isEmpty()) return List.of();
-        Map<Integer, String> headers = rows.get(0);
-        Map<String, Integer> columns = new LinkedHashMap<>();
-        headers.forEach((key, value) -> columns.put(String.valueOf(value).trim().toLowerCase(Locale.ROOT), key));
-        long user = currentUser.id(); List<Map<String, Object>> imported = new ArrayList<>();
-        for (Map<Integer, String> row : rows.subList(1, rows.size())) {
-            String date = excelCell(row, columns, "date", "日期", "交易日期");
-            String rawAmount = excelCell(row, columns, "amount", "金额", "收支金额");
-            if (date.isBlank() || rawAmount.isBlank()) continue;
-            String normalizedDate = date.replace('/', '-'); LocalDate.parse(normalizedDate);
-            String rawKind = excelCell(row, columns, "kind", "类型", "交易类型", "收支");
-            String kind = rawKind.contains("收") || rawKind.equalsIgnoreCase("income") ? "INCOME" : "EXPENSE";
-            long accountId = ensureNamedAccount(defaultText(excelCell(row, columns, "account", "账户", "账户名称", "收入账户"), "现金"), user);
-            String primaryCategory = excelCell(row, columns, "一级分类"); String secondaryCategory = excelCell(row, columns, "二级分类"); String categoryName = defaultText(secondaryCategory, defaultText(primaryCategory, excelCell(row, columns, "category", "分类", "类别")));
-            Long parentId = primaryCategory.isBlank() ? null : ensureNamedCategory(primaryCategory, kind, user); Long categoryId = categoryName.isBlank() ? null : (secondaryCategory.isBlank() && !primaryCategory.isBlank() ? parentId : ensureNamedCategory(categoryName, kind, user, parentId));
-            Map<String, Object> body = new LinkedHashMap<>(); body.put("accountId", accountId); body.put("categoryId", categoryId); body.put("kind", kind); body.put("amount", rawAmount.replace(",", "")); body.put("occurredOn", normalizedDate); body.put("payee", excelCell(row, columns, "payee", "商户", "商家", "对方")); body.put("note", excelCell(row, columns, "note", "备注", "说明")); body.put("source", "import");
-            imported.add(createTransaction(body, "excel-" + UUID.randomUUID()));
+        byte[] content = file.getBytes();
+        List<ReadSheet> sheets;
+        try (ExcelReader reader = EasyExcel.read(new ByteArrayInputStream(content)).build()) {
+            sheets = reader.excelExecutor().sheetList();
         }
-        return imported;
+
+        long user = currentUser.id(); List<Map<String, Object>> imported = new ArrayList<>(); int skippedTransfers = 0;
+        for (ReadSheet sheet : sheets) {
+            List<Map<Integer, String>> rows = EasyExcel.read(new ByteArrayInputStream(content)).headRowNumber(0).sheet(sheet.getSheetNo()).doReadSync();
+            if (rows.isEmpty()) continue;
+            Map<String, Integer> columns = excelHeaders(rows.get(0));
+            for (Map<Integer, String> row : rows.subList(1, rows.size())) {
+                String date = excelCell(row, columns, "date", "日期", "交易日期");
+                String rawAmount = excelCell(row, columns, "amount", "金额", "收支金额");
+                if (date.isBlank() || rawAmount.isBlank()) continue;
+                String rawKind = excelCell(row, columns, "kind", "类型", "交易类型", "收支");
+                if (isTransfer(rawKind) || columns.containsKey("转出账户") || columns.containsKey("转入账户")) { skippedTransfers++; continue; }
+                String normalizedDate = normalizeImportDate(date);
+                String kind = rawKind.contains("收") || rawKind.equalsIgnoreCase("income") ? "INCOME" : "EXPENSE";
+                long accountId = ensureNamedAccount(defaultText(excelCell(row, columns, "account", "账户", "账户名称", "支出账户", "收入账户"), "现金"), user);
+                String primaryCategory = excelCell(row, columns, "一级分类"); String secondaryCategory = excelCell(row, columns, "二级分类"); String categoryName = defaultText(secondaryCategory, defaultText(primaryCategory, excelCell(row, columns, "category", "分类", "类别")));
+                Long parentId = primaryCategory.isBlank() ? null : ensureNamedCategory(primaryCategory, kind, user); Long categoryId = categoryName.isBlank() ? null : (secondaryCategory.isBlank() && !primaryCategory.isBlank() ? parentId : ensureNamedCategory(categoryName, kind, user, parentId));
+                Map<String, Object> body = new LinkedHashMap<>(); body.put("accountId", accountId); body.put("categoryId", categoryId); body.put("kind", kind); body.put("amount", rawAmount.replace(",", "")); body.put("occurredOn", normalizedDate); body.put("payee", excelCell(row, columns, "payee", "商户", "商家", "对方")); body.put("note", excelCell(row, columns, "note", "备注", "说明")); body.put("source", "import");
+                imported.add(createTransaction(body, "excel-" + UUID.randomUUID()));
+            }
+        }
+        return Map.of("transactions", imported, "skippedTransfers", skippedTransfers);
     }
 
     public byte[] exportCsv(String from, String to) {
@@ -362,9 +374,14 @@ public class LedgerService {
     private String json(Object value){try{return mapper.writeValueAsString(value);}catch(Exception e){return "{}";}}
     @SuppressWarnings("unchecked") private Map<String,Object> cast(Map<?,?> value){return (Map<String,Object>)value;}
     private String[] splitCsv(String line){List<String> cells=new ArrayList<>();StringBuilder cell=new StringBuilder();boolean quoted=false;for(char ch:line.toCharArray()){if(ch=='\"'){quoted=!quoted;}else if(ch==','&&!quoted){cells.add(cell.toString().trim());cell.setLength(0);}else cell.append(ch);}cells.add(cell.toString().trim());return cells.toArray(String[]::new);}
-    private Map<String,Integer> headerMap(String[] headers){Map<String,Integer> result=new LinkedHashMap<>();for(int i=0;i<headers.length;i++)result.put(headers[i].toLowerCase(Locale.ROOT),i);return result;}
+    private Map<String,Integer> headerMap(String[] headers){Map<String,Integer> result=new LinkedHashMap<>();for(int i=0;i<headers.length;i++)result.put(normalizeHeader(headers[i]),i);return result;}
     private String cell(String[] cells,Map<String,Integer> columns,String... aliases){for(String alias:aliases){Integer index=columns.get(alias.toLowerCase(Locale.ROOT));if(index!=null&&index<cells.length)return cells[index].trim();}return "";}
-    private String excelCell(Map<Integer, String> row, Map<String, Integer> columns, String... aliases) { for (String alias : aliases) { Integer index = columns.get(alias.toLowerCase(Locale.ROOT)); if (index != null) return String.valueOf(row.getOrDefault(index, "")).trim(); } return ""; }
+    private String excelCell(Map<Integer, String> row, Map<String, Integer> columns, String... aliases) { for (String alias : aliases) { Integer index = columns.get(alias.toLowerCase(Locale.ROOT)); if (index != null) return normalizeImportCell(row.get(index)); } return ""; }
+    private Map<String, Integer> excelHeaders(Map<Integer, String> headers) { Map<String, Integer> columns = new LinkedHashMap<>(); headers.forEach((key, value) -> columns.put(normalizeHeader(value), key)); return columns; }
+    private String normalizeHeader(Object value) { return String.valueOf(value == null ? "" : value).replace("\uFEFF", "").trim().toLowerCase(Locale.ROOT); }
+    static String normalizeImportCell(Object value) { return value == null ? "" : String.valueOf(value).trim(); }
+    static String normalizeImportDate(String value) { Matcher matcher = DATE.matcher(String.valueOf(value).trim()); if (!matcher.find()) throw new IllegalArgumentException("日期格式不正确: " + value); String[] parts = matcher.group(1).replace('/', '-').split("-"); return LocalDate.of(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]), Integer.parseInt(parts[2])).toString(); }
+    private boolean isTransfer(String kind) { return kind != null && kind.contains("转账"); }
     private String defaultText(String value, String fallback) { return value == null || value.isBlank() ? fallback : value; }
     private String csvCell(Object raw){String value=raw==null?"":String.valueOf(raw);return value.contains(",")||value.contains("\"")?"\""+value.replace("\"","\"\"")+"\"":value;}
 }
