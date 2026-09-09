@@ -81,12 +81,6 @@ api_post '/ledger/budgets' "{\"monthKey\":\"$YEAR-$MONTH\",\"categoryId\":$food,
 api_post '/ledger/budgets' "{\"monthKey\":\"$YEAR-$MONTH\",\"categoryId\":$transport,\"amount\":300}" >/dev/null
 api_post '/ledger/budgets' "{\"monthKey\":\"$YEAR-$MONTH\",\"categoryId\":$shopping,\"amount\":500}" >/dev/null
 
-recurring_id=$(api_get '/ledger/recurring' | jq -r '.data[] | select(.title == "本地联调会员") | .id' | head -1)
-if [[ -z "$recurring_id" ]]; then
-  api_post '/ledger/recurring' "{\"title\":\"本地联调会员\",\"accountId\":$wallet,\"categoryId\":$food,\"amount\":38,\"frequency\":\"MONTHLY\",\"nextDue\":\"$YEAR-$MONTH-08\"}" >/dev/null
-fi
-api_post '/ledger/recurring/run' '{}' >/dev/null
-
 echo "账本调试数据已就绪"
 echo "账号: $USERNAME"
 echo "密码: $PASSWORD"
