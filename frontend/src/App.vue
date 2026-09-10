@@ -71,7 +71,7 @@ const route = useRoute()
 
 const navGroups = [
   { key: 'work', label: '工时记录', items: [{ key: 'punch', to: '/punch', label: '打卡', icon: Timer }, { key: 'records', to: '/records', label: '记录', icon: Calendar }, { key: 'stats', to: '/stats', label: '统计', icon: DataAnalysis }] },
-  { key: 'ledger', label: '个人账本', items: [{ key: 'overview', to: '/ledger', label: '总览', icon: Wallet }, { key: 'details', to: { path: '/ledger', query: { view: 'details' } }, label: '明细', icon: Tickets }, { key: 'accounts', to: { path: '/ledger', query: { view: 'accounts' } }, label: '账户', icon: CreditCard }] },
+  { key: 'ledger', label: '个人账本', items: [{ key: 'overview', to: '/ledger', label: '总览', icon: Wallet }, { key: 'details', to: '/ledger/transactions', label: '流水', icon: Tickets }, { key: 'accounts', to: { path: '/ledger', query: { view: 'accounts' } }, label: '账户', icon: CreditCard }] },
   { key: 'knowledge', label: '个人知识库', items: [{ key: 'knowledge-home', to: '/knowledge', label: '知识库', icon: Notebook, disabled: true }] },
   { key: 'tasks', label: '任务', items: [{ key: 'task-home', to: '/tasks', label: '任务清单', icon: List, disabled: true }] }
 ]

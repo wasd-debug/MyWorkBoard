@@ -29,7 +29,7 @@ const router = useRouter()
 const openItem = ref(null)
 const items = [
   { key: 'work', label: '工时', icon: Timer, children: [{ key: 'punch', to: '/punch', label: '打卡', icon: Timer }, { key: 'records', to: '/records', label: '记录', icon: Calendar }, { key: 'stats', to: '/stats', label: '统计', icon: DataAnalysis }] },
-  { key: 'ledger', label: '账本', icon: Wallet, children: [{ key: 'overview', to: '/ledger', label: '总览', icon: Wallet }, { key: 'details', to: { path: '/ledger', query: { view: 'details' } }, label: '明细', icon: Tickets }, { key: 'accounts', to: { path: '/ledger', query: { view: 'accounts' } }, label: '账户', icon: CreditCard }] },
+  { key: 'ledger', label: '账本', icon: Wallet, children: [{ key: 'overview', to: '/ledger', label: '总览', icon: Wallet }, { key: 'details', to: '/ledger/transactions', label: '流水', icon: Tickets }, { key: 'accounts', to: { path: '/ledger', query: { view: 'accounts' } }, label: '账户', icon: CreditCard }] },
   { key: 'knowledge', label: '知识库', icon: Notebook, children: [{ key: 'knowledge-home', to: '/knowledge', label: '知识库', icon: Notebook, disabled: true }] },
   { key: 'tasks', label: '任务', icon: List, children: [{ key: 'task-home', to: '/tasks', label: '任务清单', icon: List, disabled: true }] },
   { key: 'more', label: '更多', icon: MoreFilled, children: [{ key: 'settings', to: '/settings', label: '设置', icon: Setting }] }
