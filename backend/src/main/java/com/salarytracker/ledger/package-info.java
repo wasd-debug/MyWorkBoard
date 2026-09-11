@@ -1,2 +1,2 @@
-/** Phase 1 ledger domain: accounts, categories, transactions, budgets and recurring bills. */
+/** Phase 1 ledger domain: books, accounts, categories, transactions, budgets and offline synchronization. */
 package com.salarytracker.ledger;

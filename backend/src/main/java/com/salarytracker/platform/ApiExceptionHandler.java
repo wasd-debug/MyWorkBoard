@@ -1,5 +1,4 @@
 package com.salarytracker.platform;
-
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -25,6 +24,16 @@ public class ApiExceptionHandler {
     @ExceptionHandler(UnauthorizedException.class)
     public ProblemDetail unauthorized(UnauthorizedException exception, HttpServletRequest request) {
         return problem(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", exception.getMessage(), request, Map.of());
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ProblemDetail forbidden(ForbiddenException exception, HttpServletRequest request) {
+        return problem(HttpStatus.FORBIDDEN, "LEDGER_FORBIDDEN", exception.getMessage(), request, Map.of());
+    }
+
+    @ExceptionHandler(SyncResetRequiredException.class)
+    public ProblemDetail syncReset(SyncResetRequiredException exception, HttpServletRequest request) {
+        return problem(HttpStatus.GONE, "SYNC_RESET_REQUIRED", exception.getMessage(), request, Map.of());
     }
 
     @ExceptionHandler(Exception.class)

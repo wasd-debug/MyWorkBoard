@@ -40,11 +40,16 @@ public class LedgerService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final CurrentUserResolver currentUser;
+    private final LedgerBookAccess bookAccess;
 
-    public LedgerService(JdbcTemplate jdbc, ObjectMapper mapper, CurrentUserResolver currentUser) {
+    public LedgerService(JdbcTemplate jdbc,
+                         ObjectMapper mapper,
+                         CurrentUserResolver currentUser,
+                         LedgerBookAccess bookAccess) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.currentUser = currentUser;
+        this.bookAccess = bookAccess;
     }
 
     public List<Map<String, Object>> accounts() {
@@ -59,11 +64,13 @@ public class LedgerService {
     @Transactional
     public Map<String, Object> createAccount(Map<String, Object> input) {
         long user = currentUser.id();
+        LedgerBookAccess.Context book = bookAccess.resolve("default");
         String name = required(input, "name");
         String type = normalizeType(input == null ? null : input.get("accountType"), "cash");
         String currency = String.valueOf(input == null ? "CNY" : input.getOrDefault("currency", "CNY")).toUpperCase(Locale.ROOT);
         BigDecimal opening = amount(input == null ? null : input.getOrDefault("openingBalance", 0));
-        jdbc.update("INSERT INTO ledger_account (user_id, name, account_type, currency, opening_balance) VALUES (?, ?, ?, ?, ?)", user, name, type, currency, opening);
+        jdbc.update("INSERT INTO ledger_account (public_id,user_id,book_id,name,account_type,currency,opening_balance,created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                UUID.randomUUID().toString(), user, book.bookId(), name, type, currency, opening, user);
         long id = jdbc.queryForObject("SELECT id FROM ledger_account WHERE user_id = ? ORDER BY id DESC LIMIT 1", Long.class, user);
         return account(id, user);
     }
@@ -104,12 +111,14 @@ public class LedgerService {
     @Transactional
     public Map<String, Object> createCategory(Map<String, Object> input) {
         long user = currentUser.id();
+        LedgerBookAccess.Context book = bookAccess.resolve("default");
         String name = required(input, "name");
         String kind = normalizeCategoryKind(input == null ? null : input.get("kind"));
         Long parent = longValue(input == null ? null : input.get("parentId"));
         if (parent != null) ensureCategory(parent, user);
         String color = String.valueOf(input == null ? "#0f5132" : input.getOrDefault("color", "#0f5132"));
-        jdbc.update("INSERT INTO ledger_category (user_id, name, kind, parent_id, color) VALUES (?, ?, ?, ?, ?)", user, name, kind, parent, color);
+        jdbc.update("INSERT INTO ledger_category (public_id,user_id,book_id,name,kind,parent_id,color,created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                UUID.randomUUID().toString(), user, book.bookId(), name, kind, parent, color, user);
         long id = jdbc.queryForObject("SELECT id FROM ledger_category WHERE user_id = ? ORDER BY id DESC LIMIT 1", Long.class, user);
         return category(id, user);
     }
@@ -150,6 +159,7 @@ public class LedgerService {
     @Transactional
     public Map<String, Object> createTransaction(Map<String, Object> input, String idempotencyKey) {
         long user = currentUser.id();
+        LedgerBookAccess.Context book = bookAccess.resolve("default");
         String opId = idempotencyKey == null || idempotencyKey.isBlank() ? String.valueOf(input == null ? "" : input.getOrDefault("clientOpId", "")) : idempotencyKey.trim();
         if (!opId.isBlank()) {
             List<Map<String, Object>> previous = jdbc.queryForList("SELECT id FROM ledger_transaction WHERE user_id = ? AND client_op_id = ?", user, opId);
@@ -165,7 +175,9 @@ public class LedgerService {
         String currency = String.valueOf(value.getOrDefault("currency", "CNY")).toUpperCase(Locale.ROOT);
         String payee = text(value.get("payee")); String member = text(value.get("member")); String project = text(value.get("project")); String note = text(value.get("note"));
         String source = String.valueOf(value.getOrDefault("source", "manual")); Long recurring = longValue(value.get("recurringId"));
-        jdbc.update("INSERT INTO ledger_transaction (user_id, account_id, category_id, kind, amount, currency, occurred_on, payee, member_name, project_name, note, source, recurring_id, client_op_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", user, account, category, kind, amount, currency, date, payee, member, project, note, source, recurring, opId.isBlank() ? null : opId);
+        jdbc.update("INSERT INTO ledger_transaction (public_id,user_id,book_id,account_id,category_id,kind,amount,currency,occurred_on,payee,member_name,project_name,note,source,recurring_id,client_op_id,created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                UUID.randomUUID().toString(), user, book.bookId(), account, category, kind, amount, currency, date, payee, member, project, note, source, recurring,
+                opId.isBlank() ? null : opId, user);
         long id = jdbc.queryForObject("SELECT id FROM ledger_transaction WHERE user_id = ? ORDER BY id DESC LIMIT 1", Long.class, user);
         Map<String, Object> result = transaction(id, user); appendHistory(id, user, "CREATE", result); appendSync(user, opId.isBlank() ? UUID.randomUUID().toString() : opId, "transaction", id, "UPSERT", result);
         return result;
@@ -239,10 +251,11 @@ public class LedgerService {
     }
 
     private long insertTransferEntry(long user, long account, long counterparty, String groupId, long category, String kind, BigDecimal valueAmount, String currency, String date, String payee, String member, String project, String note, String source, String opId) {
+        LedgerBookAccess.Context book = bookAccess.resolve("default");
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(connection -> {
-            var statement = connection.prepareStatement("INSERT INTO ledger_transaction (user_id, account_id, counterparty_account_id, transfer_group_id, category_id, kind, amount, currency, occurred_on, payee, member_name, project_name, note, source, client_op_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS);
-            statement.setLong(1, user); statement.setLong(2, account); statement.setLong(3, counterparty); statement.setString(4, groupId); statement.setLong(5, category); statement.setString(6, kind); statement.setBigDecimal(7, valueAmount); statement.setString(8, currency); statement.setString(9, date); statement.setString(10, payee); statement.setString(11, member); statement.setString(12, project); statement.setString(13, note); statement.setString(14, source); statement.setString(15, opId);
+            var statement = connection.prepareStatement("INSERT INTO ledger_transaction (public_id,user_id,book_id,account_id,counterparty_account_id,transfer_group_id,category_id,kind,amount,currency,occurred_on,payee,member_name,project_name,note,source,client_op_id,created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS);
+            statement.setString(1, UUID.randomUUID().toString()); statement.setLong(2, user); statement.setLong(3, book.bookId()); statement.setLong(4, account); statement.setLong(5, counterparty); statement.setString(6, groupId); statement.setLong(7, category); statement.setString(8, kind); statement.setBigDecimal(9, valueAmount); statement.setString(10, currency); statement.setString(11, date); statement.setString(12, payee); statement.setString(13, member); statement.setString(14, project); statement.setString(15, note); statement.setString(16, source); statement.setString(17, opId); statement.setLong(18, user);
             return statement;
         }, keyHolder);
         if (keyHolder.getKey() == null) throw new IllegalStateException("转账流水创建失败");
@@ -279,9 +292,10 @@ public class LedgerService {
 
     @Transactional
     public Map<String, Object> createBudget(Map<String, Object> input) {
-        long user = currentUser.id(); long category = requiredLong(input, "categoryId"); ensureCategory(category, user);
+        long user = currentUser.id(); LedgerBookAccess.Context book = bookAccess.resolve("default"); long category = requiredLong(input, "categoryId"); ensureCategory(category, user);
         String month = String.valueOf(input.getOrDefault("monthKey", YearMonth.now())); YearMonth.parse(month); BigDecimal amount = amount(input.get("amount"));
-        jdbc.update("INSERT INTO ledger_budget(user_id,category_id,month_key,amount) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE amount=VALUES(amount), deleted=FALSE, revision=revision+1", user, category, month, amount);
+        jdbc.update("INSERT INTO ledger_budget(public_id,user_id,book_id,category_id,month_key,amount,created_by) VALUES(?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE amount=VALUES(amount), deleted=FALSE, revision=revision+1",
+                UUID.randomUUID().toString(), user, book.bookId(), category, month, amount, user);
         return budgets(month).stream().filter(row -> number(row.get("category_id")) == category).findFirst().orElseThrow();
     }
 
@@ -413,7 +427,9 @@ public class LedgerService {
             long id = number(account.get("id")); BigDecimal balance = new BigDecimal(String.valueOf(account.get("opening_balance")));
             Map<String, Object> row = jdbc.queryForMap("SELECT COALESCE(SUM(" + BALANCE_DELTA + "),0) delta FROM ledger_transaction t WHERE user_id=? AND account_id=? AND deleted=FALSE AND occurred_on<=?", user, id, end);
             balance = balance.add(new BigDecimal(String.valueOf(row.get("delta"))));
-            jdbc.update("INSERT INTO ledger_balance_snapshot (user_id, account_id, month_key, balance) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE balance=VALUES(balance), calculated_at=CURRENT_TIMESTAMP", user, id, month, balance); count++;
+            LedgerBookAccess.Context book = bookAccess.resolve("default");
+            jdbc.update("INSERT INTO ledger_balance_snapshot (user_id,book_id,account_id,month_key,balance) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE balance=VALUES(balance), calculated_at=CURRENT_TIMESTAMP",
+                    user, book.bookId(), id, month, balance); count++;
         }
         return count;
     }
@@ -426,12 +442,12 @@ public class LedgerService {
     private void ensureAccount(long id,long user){if(jdbc.queryForList("SELECT id FROM ledger_account WHERE id=? AND user_id=? AND deleted=FALSE",id,user).isEmpty())throw new IllegalArgumentException("账户不存在");}
     private void ensureCategory(long id,long user){if(jdbc.queryForList("SELECT id FROM ledger_category WHERE id=? AND user_id=? AND deleted=FALSE",id,user).isEmpty())throw new IllegalArgumentException("分类不存在");}
     private long requiredSecondaryCategory(Map<String,Object> value,long user,String transactionKind){Long id=longValue(value.get("categoryId"));if(id==null)throw new IllegalArgumentException("categoryId 必填");List<Map<String,Object>> rows=jdbc.queryForList("SELECT id,kind,parent_id FROM ledger_category WHERE id=? AND user_id=? AND deleted=FALSE",id,user);if(rows.isEmpty())throw new IllegalArgumentException("分类不存在");Map<String,Object> category=rows.get(0);if(category.get("parent_id")==null)throw new IllegalArgumentException("分类必须选择到二级");String expected=categoryKindForTransaction(transactionKind);if(expected!=null&&!expected.equals(normalizeCategoryKind(category.get("kind"))))throw new IllegalArgumentException("分类类型与流水类型不匹配");return id;}
-    private long ensureNamedAccount(String name,long user){List<Map<String,Object>> r=jdbc.queryForList("SELECT id FROM ledger_account WHERE user_id=? AND name=? AND deleted=FALSE",user,name);if(!r.isEmpty())return number(r.get(0).get("id"));jdbc.update("INSERT INTO ledger_account(user_id,name) VALUES(?,?)",user,name);return jdbc.queryForObject("SELECT id FROM ledger_account WHERE user_id=? ORDER BY id DESC LIMIT 1",Long.class,user);}
+    private long ensureNamedAccount(String name,long user){List<Map<String,Object>> r=jdbc.queryForList("SELECT id FROM ledger_account WHERE user_id=? AND name=? AND deleted=FALSE",user,name);if(!r.isEmpty())return number(r.get(0).get("id"));LedgerBookAccess.Context book=bookAccess.resolve("default");jdbc.update("INSERT INTO ledger_account(public_id,user_id,book_id,name,created_by) VALUES(?,?,?,?,?)",UUID.randomUUID().toString(),user,book.bookId(),name,user);return jdbc.queryForObject("SELECT id FROM ledger_account WHERE user_id=? ORDER BY id DESC LIMIT 1",Long.class,user);}
     private long ensureNamedCategory(String name,String kind,long user){return ensureNamedCategory(name,kind,user,null);}
-    private long ensureNamedCategory(String name,String kind,long user,Long parentId){List<Map<String,Object>> r=jdbc.queryForList("SELECT id FROM ledger_category WHERE user_id=? AND name=? AND kind=? AND parent_id <=> ? AND deleted=FALSE",user,name,normalizeCategoryKind(kind),parentId);if(!r.isEmpty())return number(r.get(0).get("id"));jdbc.update("INSERT INTO ledger_category(user_id,name,kind,parent_id) VALUES(?,?,?,?)",user,name,normalizeCategoryKind(kind),parentId);return jdbc.queryForObject("SELECT id FROM ledger_category WHERE user_id=? ORDER BY id DESC LIMIT 1",Long.class,user);}
+    private long ensureNamedCategory(String name,String kind,long user,Long parentId){List<Map<String,Object>> r=jdbc.queryForList("SELECT id FROM ledger_category WHERE user_id=? AND name=? AND kind=? AND parent_id <=> ? AND deleted=FALSE",user,name,normalizeCategoryKind(kind),parentId);if(!r.isEmpty())return number(r.get(0).get("id"));LedgerBookAccess.Context book=bookAccess.resolve("default");jdbc.update("INSERT INTO ledger_category(public_id,user_id,book_id,name,kind,parent_id,created_by) VALUES(?,?,?,?,?,?,?)",UUID.randomUUID().toString(),user,book.bookId(),name,normalizeCategoryKind(kind),parentId,user);return jdbc.queryForObject("SELECT id FROM ledger_category WHERE user_id=? ORDER BY id DESC LIMIT 1",Long.class,user);}
     private long ensureImportSecondaryCategory(String primaryName,String secondaryName,String genericName,String kind,long user){String primary=text(primaryName);String secondary=text(secondaryName);String generic=text(genericName);if(primary.isBlank()){primary=generic.isBlank()?"其他":generic;}if(secondary.isBlank())secondary="其他";long parentId=ensureNamedCategory(primary,kind,user);return ensureNamedCategory(secondary,kind,user,parentId);}
     private void appendHistory(long id,long user,String action,Map<String,Object> payload){List<Map<String,Object>> r=jdbc.queryForList("SELECT revision FROM ledger_transaction WHERE id=? AND user_id=?",id,user);long rev=r.isEmpty()?0:number(r.get(0).get("revision"));jdbc.update("INSERT INTO ledger_transaction_history(transaction_id,user_id,operation,payload_json,revision) VALUES(?,?,?,?,?)",id,user,action,json(payload),rev);}
-    private void appendSync(long user,String opId,String entity,long entityId,String action,Map<String,Object> payload){jdbc.update("INSERT IGNORE INTO ledger_sync_oplog(user_id,op_id,entity_type,entity_id,operation,payload_json) VALUES(?,?,?,?,?,?)",user,opId,entity,String.valueOf(entityId),action,json(payload));}
+    private void appendSync(long user,String opId,String entity,long entityId,String action,Map<String,Object> payload){LedgerBookAccess.Context book=bookAccess.resolve("default");jdbc.update("INSERT IGNORE INTO ledger_sync_oplog(user_id,book_id,actor_user_id,op_id,entity_type,entity_id,operation,payload_json) VALUES(?,?,?,?,?,?,?,?)",user,book.bookId(),user,opId,entity,String.valueOf(entityId),action,json(payload));}
     private String required(Map<String,Object> value,String key){Object raw=value==null?null:value.get(key);if(raw==null||String.valueOf(raw).isBlank())throw new IllegalArgumentException(key+" 必填");return String.valueOf(raw).trim();}
     private long requiredLong(Map<String,Object> value,String key){Long result=longValue(value.get(key));if(result==null)throw new IllegalArgumentException(key+" 必填");return result;}
     private BigDecimal amount(Object value){try{return new BigDecimal(String.valueOf(value)).abs().setScale(2,java.math.RoundingMode.HALF_UP);}catch(Exception e){throw new IllegalArgumentException("amount 格式不正确");}}

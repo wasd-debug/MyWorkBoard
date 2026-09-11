@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Service
@@ -44,6 +45,49 @@ public class LlmGateway {
             return Map.of("content", content, "provider", endpoint, "configured", true);
         } catch (Exception ignored) {
             return Map.of("content", body, "provider", endpoint, "configured", true);
+        }
+    }
+
+    public boolean configured() {
+        return endpoint != null && !endpoint.isBlank();
+    }
+
+    public String structured(String systemPrompt,
+                             String userPrompt,
+                             byte[] image,
+                             String mediaType) {
+        if (!configured()) throw new IllegalStateException("AI 网关尚未配置");
+        List<Map<String, Object>> messages;
+        if (image == null || image.length == 0) {
+            messages = List.of(
+                    Map.of("role", "system", "content", systemPrompt),
+                    Map.of("role", "user", "content", userPrompt));
+        } else {
+            String encoded = java.util.Base64.getEncoder().encodeToString(image);
+            List<Map<String, Object>> content = List.of(
+                    Map.of("type", "text", "text", userPrompt),
+                    Map.of("type", "image_url", "image_url",
+                            Map.of("url", "data:" + mediaType + ";base64," + encoded)));
+            messages = List.of(
+                    Map.of("role", "system", "content", systemPrompt),
+                    Map.of("role", "user", "content", content));
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("model", model);
+        payload.put("messages", messages);
+        payload.put("temperature", 0.1);
+        payload.put("response_format", Map.of("type", "json_object"));
+        RestClient.RequestBodySpec request = client.post().uri(endpoint)
+                .contentType(MediaType.APPLICATION_JSON).body(payload);
+        if (apiKey != null && !apiKey.isBlank()) {
+            request = request.header("Authorization", "Bearer " + apiKey);
+        }
+        String body = request.retrieve().body(String.class);
+        try {
+            JsonNode root = mapper.readTree(body);
+            return root.path("choices").path(0).path("message").path("content").asText(body);
+        } catch (Exception ignored) {
+            return body;
         }
     }
 }

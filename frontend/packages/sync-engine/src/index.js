@@ -1,14 +1,22 @@
-const DEFAULT_DB = 'salary-tracker-sync-v1'
-const DEFAULT_STORES = ['ledger-accounts', 'ledger-categories', 'ledger-transactions', 'ledger-recurring']
+const DEFAULT_DB = 'salary-tracker-sync-v2'
+const DEFAULT_STORES = [
+  'ledger-books',
+  'ledger-accounts',
+  'ledger-categories',
+  'ledger-merchants',
+  'ledger-members',
+  'ledger-projects',
+  'ledger-roles',
+  'ledger-budgets',
+  'ledger-transactions'
+]
 
 export class SyncEngine {
   constructor({ dbName = DEFAULT_DB, stores = DEFAULT_STORES, transport = {} } = {}) {
     this.dbName = dbName
     this.stores = stores
     this.transport = transport
-    this.memory = new Map(stores.map(store => [store, new Map()]))
-    this.memory.set('oplog', new Map())
-    this.memory.set('meta', new Map())
+    this.memory = new Map([...stores, 'oplog', 'meta', 'conflicts', 'rejected'].map(store => [store, new Map()]))
     this.dbPromise = null
   }
 
@@ -19,8 +27,8 @@ export class SyncEngine {
       const request = indexedDB.open(this.dbName, 1)
       request.onupgradeneeded = () => {
         const db = request.result
-        for (const store of [...this.stores, 'oplog', 'meta']) {
-          if (!db.objectStoreNames.contains(store)) db.createObjectStore(store, { keyPath: 'id' })
+        for (const store of [...this.stores, 'oplog', 'meta', 'conflicts', 'rejected']) {
+          if (!db.objectStoreNames.contains(store)) db.createObjectStore(store, { keyPath: 'key' })
         }
       }
       request.onsuccess = () => resolve(request.result)
@@ -29,108 +37,321 @@ export class SyncEngine {
     return this.dbPromise
   }
 
-  async put(entityType, value, { opId = cryptoRandom(), operation = 'UPSERT', recordOp = true } = {}) {
+  async put(entityType, value, options = {}) {
     const entityStore = this.storeName(entityType)
-    const record = { ...value, id: String(value.id ?? cryptoRandom()), updatedAt: value.updatedAt ?? new Date().toISOString() }
+    const entityId = String(value.id ?? randomId())
+    const bookId = String(options.bookId || value.bookId || (singular(entityType) === 'book' ? entityId : 'default'))
+    const opId = options.opId || randomId()
+    const record = {
+      ...value,
+      id: entityId,
+      bookId,
+      key: entityKey(bookId, entityId),
+      updatedAt: value.updatedAt ?? new Date().toISOString()
+    }
     await this.write(entityStore, record)
-    if (recordOp) await this.write('oplog', { id: opId, opId, entityType, entityId: record.id, operation, payload: record, createdAt: new Date().toISOString() })
-    return record
+    if (options.recordOp !== false) {
+      await this.write('oplog', {
+        key: opId,
+        id: opId,
+        opId,
+        bookId,
+        entityType: singular(entityType),
+        entityId,
+        operation: options.operation || 'UPSERT',
+        baseRevision: Number(options.baseRevision ?? value.revision ?? 0),
+        payload: stripLocal(record),
+        createdAt: new Date().toISOString()
+      })
+    }
+    return stripLocal(record)
   }
 
-  async remove(entityType, id, { opId = cryptoRandom() } = {}) {
-    const record = await this.get(entityType, id)
-    const deleted = { ...(record || { id: String(id) }), id: String(id), deleted: true, updatedAt: new Date().toISOString() }
-    return this.put(entityType, deleted, { opId, operation: 'DELETE' })
+  async remove(entityType, id, options = {}) {
+    const record = await this.get(entityType, id, { bookId: options.bookId })
+    return this.put(entityType, {
+      ...(record || { id: String(id), bookId: options.bookId }),
+      deleted: true,
+      deletedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }, {
+      ...options,
+      operation: 'DELETE',
+      baseRevision: options.baseRevision ?? record?.revision ?? 0
+    })
   }
 
-  async get(entityType, id) { return this.read(this.storeName(entityType), String(id)) }
-  async list(entityType, { includeDeleted = false } = {}) {
+  async get(entityType, id, { bookId } = {}) {
+    if (bookId) return stripLocal(await this.read(this.storeName(entityType), entityKey(bookId, id)))
     const records = await this.readAll(this.storeName(entityType))
-    return records.filter(record => includeDeleted || !record.deleted).sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
-  }
-  async pendingOperations() { return this.readAll('oplog') }
-
-  async sync() {
-    const push = this.transport.push
-    const pull = this.transport.pull
-    let pushed = 0
-    const pending = await this.pendingOperations()
-    if (pending.length && push) {
-      const result = await push(pending)
-      pushed = Number(result?.accepted ?? pending.length)
-      if (pushed > 0) await Promise.all(pending.slice(0, pushed).map(operation => this.removeStore('oplog', operation.id)))
-    }
-    let pulled = 0
-    let cursor = Number(await this.meta('cursor') || 0)
-    if (pull) {
-      const result = await pull(cursor)
-      for (const operation of result?.operations || []) {
-        await this.merge(operation)
-        cursor = Math.max(cursor, Number(operation.cursor || 0))
-        pulled++
-      }
-      await this.setMeta('cursor', cursor)
-    }
-    return { pushed, pulled, cursor, pending: (await this.pendingOperations()).length }
+    return stripLocal(records.find(record => String(record.id) === String(id)))
   }
 
-  async merge(operation) {
-    const entityType = operation.entityType || 'transaction'
-    const payload = { ...(operation.payload || {}), id: String(operation.entityId ?? operation.payload?.id) }
+  async list(entityType, { bookId, includeDeleted = false } = {}) {
+    return (await this.readAll(this.storeName(entityType)))
+      .filter(record => !bookId || String(record.bookId) === String(bookId))
+      .filter(record => includeDeleted || !record.deleted)
+      .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+      .map(stripLocal)
+  }
+
+  async replace(entityType, values, { bookId } = {}) {
     const store = this.storeName(entityType)
-    let current = await this.get(entityType, payload.id)
-    if (!current && payload.clientOpId) {
-      const candidates = await this.readAll(store)
-      const local = candidates.find(item => item.clientOpId && item.clientOpId === payload.clientOpId)
-      if (local) {
-        current = local
-        if (String(local.id) !== payload.id) await this.removeStore(store, local.id)
+    if (bookId) {
+      const current = await this.readAll(store)
+      await Promise.all(current
+        .filter(item => String(item.bookId) === String(bookId))
+        .map(item => this.removeStore(store, item.key)))
+    }
+    for (const value of values || []) {
+      await this.put(entityType, value, { bookId: bookId || value.bookId, recordOp: false })
+    }
+    return this.list(entityType, { bookId, includeDeleted: true })
+  }
+
+  async pendingOperations(bookId) {
+    return (await this.readAll('oplog'))
+      .filter(item => !bookId || String(item.bookId) === String(bookId))
+      .map(stripLocal)
+  }
+
+  async conflicts(bookId) {
+    return (await this.readAll('conflicts'))
+      .filter(item => !bookId || String(item.bookId) === String(bookId))
+      .map(stripLocal)
+  }
+
+  async rejected(bookId) {
+    return (await this.readAll('rejected'))
+      .filter(item => !bookId || String(item.bookId) === String(bookId))
+      .map(stripLocal)
+  }
+
+  async sync(bookId) {
+    if (!bookId) throw new Error('bookId is required')
+    let pushed = 0
+    const pending = await this.pendingOperations(bookId)
+    if (pending.length && this.transport.push) {
+      const response = await this.transport.push(bookId, pending)
+      const byId = new Map(pending.map(operation => [operation.opId, operation]))
+      for (const result of response?.results || []) {
+        const operation = byId.get(result.opId)
+        if (!operation) continue
+        if (result.status === 'APPLIED' || result.status === 'DUPLICATE') {
+          await this.removeStore('oplog', operation.opId)
+          if (result.entity) {
+            await this.merge({ ...result, operation: 'UPSERT', payload: result.entity }, bookId)
+          }
+          pushed++
+        } else if (result.status === 'CONFLICT') {
+          await this.write('conflicts', {
+            key: operation.opId,
+            id: operation.opId,
+            bookId,
+            operation,
+            result,
+            createdAt: new Date().toISOString()
+          })
+        } else if (result.status === 'FORBIDDEN') {
+          await this.write('rejected', {
+            key: operation.opId,
+            id: operation.opId,
+            bookId,
+            operation,
+            result,
+            createdAt: new Date().toISOString()
+          })
+          await this.removeStore('oplog', operation.opId)
+        }
       }
     }
-    const currentVersion = Number(current?.revision || 0)
-    const incomingVersion = Number(payload.revision || 0)
-    if (current && currentVersion > incomingVersion) return current
+
+    let pulled = 0
+    let cursor = Number(await this.meta(`cursor:${bookId}`) || 0)
+    if (this.transport.pull) {
+      try {
+        let hasMore = true
+        while (hasMore) {
+          const response = await this.transport.pull(bookId, cursor)
+          for (const operation of response?.operations || []) {
+            await this.merge(operation, bookId)
+            cursor = Math.max(cursor, Number(operation.cursor || 0))
+            pulled++
+          }
+          cursor = Math.max(cursor, Number(response?.cursor || 0))
+          hasMore = Boolean(response?.hasMore)
+        }
+        await this.setMeta(`cursor:${bookId}`, cursor)
+      } catch (error) {
+        if (error?.response?.status !== 410 && error?.code !== 'SYNC_RESET_REQUIRED') throw error
+        await this.resetBook(bookId)
+        await this.setMeta(`cursor:${bookId}`, 0)
+        return {
+          pushed,
+          pulled,
+          cursor: 0,
+          resetRequired: true,
+          pending: (await this.pendingOperations(bookId)).length
+        }
+      }
+    }
+    return {
+      pushed,
+      pulled,
+      cursor,
+      pending: (await this.pendingOperations(bookId)).length,
+      conflicts: (await this.conflicts(bookId)).length,
+      rejected: (await this.rejected(bookId)).length
+    }
+  }
+
+  async merge(operation, bookId = operation.bookId) {
+    const entityType = singular(operation.entityType || 'transaction')
+    const entityId = String(operation.entityId ?? operation.payload?.id)
+    const scope = String(bookId || operation.payload?.bookId || 'default')
+    const payload = {
+      ...(operation.payload || {}),
+      id: entityId,
+      bookId: scope,
+      key: entityKey(scope, entityId)
+    }
+    const store = this.storeName(entityType)
+    const current = await this.read(store, payload.key)
+    if (current && Number(current.revision || 0) > Number(payload.revision || 0)) return stripLocal(current)
     if (operation.operation === 'DELETE' || payload.deleted) payload.deleted = true
     await this.write(store, payload)
-    return payload
+    return stripLocal(payload)
+  }
+
+  async resolveConflict(opId, strategy, mergedPayload) {
+    const conflict = await this.read('conflicts', String(opId))
+    if (!conflict) return null
+    if (strategy === 'server') {
+      const server = conflict.result?.serverEntity
+      if (server) {
+        await this.put(conflict.operation.entityType, server, {
+          bookId: conflict.bookId,
+          recordOp: false
+        })
+      }
+      await this.removeStore('oplog', opId)
+    } else {
+      const payload = strategy === 'merged' ? mergedPayload : conflict.operation.payload
+      await this.write('oplog', {
+        ...conflict.operation,
+        key: conflict.operation.opId,
+        payload,
+        baseRevision: conflict.result?.serverRevision || 0
+      })
+    }
+    await this.removeStore('conflicts', opId)
+    return true
+  }
+
+  async resetBook(bookId) {
+    for (const store of this.stores) {
+      const records = await this.readAll(store)
+      await Promise.all(records
+        .filter(item => String(item.bookId) === String(bookId))
+        .map(item => this.removeStore(store, item.key)))
+    }
+  }
+
+  async exportRejected(bookId) {
+    return JSON.stringify({
+      exportedAt: new Date().toISOString(),
+      bookId,
+      operations: (await this.rejected(bookId)).map(item => item.operation)
+    }, null, 2)
   }
 
   storeName(entityType) {
-    const normalized = entityType.replace(/^ledger-/, '')
+    const normalized = singular(entityType)
     if (normalized === 'category') return 'ledger-categories'
-    if (normalized === 'transaction') return 'ledger-transactions'
-    if (normalized === 'account') return 'ledger-accounts'
-    if (normalized === 'recurring') return 'ledger-recurring'
     return `ledger-${normalized}s`
   }
-  async meta(key) { const value = await this.read('meta', key); return value?.value }
-  async setMeta(key, value) { return this.write('meta', { id: key, value }) }
 
-  async read(store, id) {
-    const db = await this.open()
-    if (!db) return this.memory.get(store)?.get(String(id))
-    return new Promise(resolve => { const tx = db.transaction(store, 'readonly'); const request = tx.objectStore(store).get(String(id)); request.onsuccess = () => resolve(request.result); request.onerror = () => resolve(undefined) })
+  async meta(key) {
+    return (await this.read('meta', String(key)))?.value
   }
+
+  async setMeta(key, value) {
+    return this.write('meta', { key: String(key), id: String(key), value })
+  }
+
+  async read(store, key) {
+    const db = await this.open()
+    if (!db) return this.memory.get(store)?.get(String(key))
+    return new Promise(resolve => {
+      const request = db.transaction(store, 'readonly').objectStore(store).get(String(key))
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => resolve(undefined)
+    })
+  }
+
   async readAll(store) {
     const db = await this.open()
     if (!db) return [...(this.memory.get(store)?.values() || [])]
-    return new Promise(resolve => { const tx = db.transaction(store, 'readonly'); const request = tx.objectStore(store).getAll(); request.onsuccess = () => resolve(request.result || []); request.onerror = () => resolve([]) })
+    return new Promise(resolve => {
+      const request = db.transaction(store, 'readonly').objectStore(store).getAll()
+      request.onsuccess = () => resolve(request.result || [])
+      request.onerror = () => resolve([])
+    })
   }
+
   async write(store, value) {
+    const record = { ...value, key: String(value.key ?? value.id) }
     const db = await this.open()
-    if (!db) { if (!this.memory.has(store)) this.memory.set(store, new Map()); this.memory.get(store).set(String(value.id), value); return value }
-    return new Promise((resolve, reject) => { const tx = db.transaction(store, 'readwrite'); tx.objectStore(store).put(value); tx.oncomplete = () => resolve(value); tx.onerror = () => reject(tx.error) })
+    if (!db) {
+      if (!this.memory.has(store)) this.memory.set(store, new Map())
+      this.memory.get(store).set(record.key, record)
+      return record
+    }
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(store, 'readwrite')
+      tx.objectStore(store).put(record)
+      tx.oncomplete = () => resolve(record)
+      tx.onerror = () => reject(tx.error)
+    })
   }
-  async removeStore(store, id) {
+
+  async removeStore(store, key) {
     const db = await this.open()
-    if (!db) { this.memory.get(store)?.delete(String(id)); return }
-    return new Promise(resolve => { const tx = db.transaction(store, 'readwrite'); tx.objectStore(store).delete(String(id)); tx.oncomplete = () => resolve() })
+    if (!db) {
+      this.memory.get(store)?.delete(String(key))
+      return
+    }
+    return new Promise(resolve => {
+      const tx = db.transaction(store, 'readwrite')
+      tx.objectStore(store).delete(String(key))
+      tx.oncomplete = () => resolve()
+    })
   }
 }
 
-function cryptoRandom() {
+function singular(entityType) {
+  let value = String(entityType || '').replace(/^ledger-/, '').toLowerCase()
+  if (value.endsWith('ies')) return `${value.slice(0, -3)}y`
+  if (value.endsWith('s')) value = value.slice(0, -1)
+  return value
+}
+
+function entityKey(bookId, id) {
+  return `${bookId}:${id}`
+}
+
+function stripLocal(value) {
+  if (!value) return value
+  const result = { ...value }
+  delete result.key
+  return result
+}
+
+function randomId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-export function createLedgerSyncEngine(transport) { return new SyncEngine({ transport }) }
+export function createLedgerSyncEngine(transport) {
+  return new SyncEngine({ transport })
+}

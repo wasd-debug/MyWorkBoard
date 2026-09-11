@@ -1,5 +1,6 @@
 <template>
   <section class="ledger-flow-page">
+    <LedgerBookSwitcher />
     <div class="page-heading flow-heading">
       <div><div class="label">PERSONAL FINANCE / TRANSACTIONS</div><h1>流水 <span class="heading-slash">// DETAILS</span></h1><p class="muted">{{ rangeLabel }} · {{ filteredTransactions.length }} 笔</p></div>
       <div class="flow-heading-actions">
@@ -105,12 +106,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { CopyDocument, Delete, EditPen, Filter, Plus, Setting, SortDown, SortUp } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { apiCreateLedgerTransaction, apiDeleteLedgerTransaction, apiListLedgerAccounts, apiListLedgerCategories, apiListLedgerTransactions, apiUpdateLedgerTransaction } from '../api'
 import LedgerTransactionEditor from '../components/ledger/LedgerTransactionEditor.vue'
 import LedgerTransactionFilters from '../components/ledger/LedgerTransactionFilters.vue'
+import LedgerBookSwitcher from '../components/ledger/LedgerBookSwitcher.vue'
+import { useLedgerStore } from '../stores/ledger'
 import Button from '../components/ui/Button.vue'
 import Card from '../components/ui/Card.vue'
 import Dialog from '../components/ui/Dialog.vue'
@@ -152,9 +155,10 @@ const form = reactive({ kind: 'EXPENSE', amount: '', occurredOn: today, accountI
 
 const visibleColumns = computed(() => columns.filter(item => item.fixed || item.visible))
 const configurableColumns = computed(() => columns.filter(item => !item.fixed))
-const merchantOptions = computed(() => uniqueOptions('payee'))
-const memberOptions = computed(() => uniqueOptions('member'))
-const projectOptions = computed(() => uniqueOptions('project'))
+const ledgerStore = useLedgerStore()
+const merchantOptions = computed(() => ledgerStore.visibleMerchants.length ? ledgerStore.visibleMerchants.map(item => item.name) : uniqueOptions('payee'))
+const memberOptions = computed(() => ledgerStore.activeMembers.length ? ledgerStore.activeMembers.map(item => item.displayName || item.username) : uniqueOptions('member'))
+const projectOptions = computed(() => ledgerStore.visibleProjects.length ? ledgerStore.visibleProjects.map(item => item.name) : uniqueOptions('project'))
 const activeFilterCount = computed(() => (filters.from || filters.to ? 1 : 0) + Object.entries(filters).filter(([key, value]) => !['from', 'to'].includes(key) && value).length)
 const rangeLabel = computed(() => filters.from || filters.to ? `${filters.from || '最早'} 至 ${filters.to || '今天'}` : '全部日期')
 
@@ -173,7 +177,7 @@ const filteredTransactions = computed(() => transactions.value.filter(item => {
 const sortedTransactions = computed(() => [...filteredTransactions.value].sort((left, right) => {
   const a = sort.key === 'amount' ? Number(left[sort.key]) : String(left[sort.key] || '').toLocaleLowerCase()
   const b = sort.key === 'amount' ? Number(right[sort.key]) : String(right[sort.key] || '').toLocaleLowerCase()
-  const result = a < b ? -1 : a > b ? 1 : Number(left.id) - Number(right.id)
+  const result = a < b ? -1 : a > b ? 1 : String(left.id || '').localeCompare(String(right.id || ''))
   return sort.direction === 'asc' ? result : -result
 }))
 const totalPages = computed(() => Math.max(1, Math.ceil(sortedTransactions.value.length / pageSize.value)))
@@ -211,13 +215,16 @@ function blankForm() { Object.assign(form, { kind: 'EXPENSE', amount: '', occurr
 function openCreate() { editing.value = null; blankForm(); editorOpen.value = true }
 function openEdit(item) { editing.value = item; Object.assign(form, { kind: item.kind, amount: item.amount, occurredOn: item.occurredOn, accountId: String(item.accountId), targetAccountId: item.targetAccountId ? String(item.targetAccountId) : '', categoryId: item.categoryId ? String(item.categoryId) : '', payee: item.payee || '', member: item.member || '', project: item.project || '', note: item.note || '' }); editorOpen.value = true }
 function openCopy(item) { editing.value = null; Object.assign(form, { kind: item.kind, amount: item.amount, occurredOn: today, accountId: String(item.accountId), targetAccountId: item.targetAccountId ? String(item.targetAccountId) : '', categoryId: item.categoryId ? String(item.categoryId) : '', payee: item.payee || '', member: item.member || '', project: item.project || '', note: item.note || '' }); editorOpen.value = true }
-async function saveTransaction() { saving.value = true; try { const payload = { ...form, amount: Number(form.amount), accountId: Number(form.accountId), targetAccountId: form.targetAccountId ? Number(form.targetAccountId) : null, categoryId: Number(form.categoryId), clientOpId: `web-flow-${Date.now()}` }; if (editing.value) await apiUpdateLedgerTransaction(editing.value.id, payload, editing.value.revision); else await apiCreateLedgerTransaction(payload, payload.clientOpId); editorOpen.value = false; ElMessage.success(editing.value ? '流水已更新' : '流水已添加'); await loadData() } catch (error) { ElMessage.error(error.response?.data?.detail || '流水保存失败') } finally { saving.value = false } }
+async function saveTransaction() { saving.value = true; try { const payload = { ...form, amount: Number(form.amount), accountId: String(form.accountId), targetAccountId: form.targetAccountId ? String(form.targetAccountId) : null, categoryId: String(form.categoryId), clientOpId: `web-flow-${Date.now()}` }; if (!payload.categoryId) throw new Error('请选择二级分类'); if (editing.value) await apiUpdateLedgerTransaction(editing.value.id, payload, editing.value.revision); else await apiCreateLedgerTransaction(payload, payload.clientOpId); editorOpen.value = false; ElMessage.success(editing.value ? '流水已更新' : '流水已添加'); await loadData() } catch (error) { ElMessage.error(error.response?.data?.detail || error.message || '流水保存失败') } finally { saving.value = false } }
 async function removeTransaction() { if (!deleteTarget.value) return; deleting.value = true; try { await apiDeleteLedgerTransaction(deleteTarget.value.id, deleteTarget.value.revision); deleteTarget.value = null; ElMessage.success('流水已删除'); await loadData() } catch (error) { ElMessage.error(error.response?.data?.detail || '流水删除失败') } finally { deleting.value = false } }
 async function loadData() { loading.value = true; try { const [accountRows, categoryRows, transactionRows] = await Promise.all([apiListLedgerAccounts(), apiListLedgerCategories(), apiListLedgerTransactions({ limit: 2000 })]); accounts.value = accountRows || []; categories.value = categoryRows || []; transactions.value = transactionRows || [] } catch (error) { ElMessage.error(error.response?.data?.detail || '流水读取失败') } finally { loading.value = false } }
 
+async function saveTransactionFixed() { saving.value = true; try { const payload = { ...form, amount: Number(form.amount), accountId: String(form.accountId), targetAccountId: form.targetAccountId ? String(form.targetAccountId) : null, categoryId: String(form.categoryId), clientOpId: `web-flow-${Date.now()}` }; if (editing.value) await apiUpdateLedgerTransaction(editing.value.id, payload, editing.value.revision); else await apiCreateLedgerTransaction(payload, payload.clientOpId); editorOpen.value = false; ElMessage.success(editing.value ? '流水已更新' : '流水已添加'); await loadData() } catch (error) { ElMessage.error(error.response?.data?.detail || '流水保存失败') } finally { saving.value = false } }
+saveTransaction = saveTransactionFixed
 watch(filteredTransactions, () => { currentPage.value = 1 })
 watch(totalPages, pages => { if (currentPage.value > pages) currentPage.value = pages })
-onMounted(loadData)
+onMounted(() => { loadData(); window.addEventListener('ledger-book-changed', loadData) })
+onBeforeUnmount(() => window.removeEventListener('ledger-book-changed', loadData))
 </script>
 
 <style scoped>

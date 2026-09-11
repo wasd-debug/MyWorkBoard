@@ -7,6 +7,7 @@ const routes = [
   { path: '/stats', name: 'stats', component: () => import('../views/StatsView.vue'), meta: { title: '统计' } },
   { path: '/ledger', name: 'ledger', component: () => import('../views/LedgerView.vue'), meta: { title: '账本' } },
   { path: '/ledger/transactions', name: 'ledger-transactions', component: () => import('../views/LedgerTransactionsView.vue'), meta: { title: '流水' } },
+  { path: '/ledger/manage', name: 'ledger-manage', component: () => import('../views/LedgerManagementView.vue'), meta: { title: '账本管理' } },
   { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue'), meta: { title: '设置' } }
 ]
 
