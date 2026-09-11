@@ -2,3 +2,5 @@
 deploy/.env
 .local/
 .docs/
+/.github/
+/docs/
