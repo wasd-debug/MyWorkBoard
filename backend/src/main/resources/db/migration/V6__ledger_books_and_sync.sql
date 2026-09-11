@@ -124,8 +124,8 @@ WHERE NOT EXISTS (
     SELECT 1 FROM ledger_book b WHERE b.owner_user_id = u.id AND b.deleted = FALSE
 );
 
-INSERT INTO ledger_role (public_id, book_id, code, name, system_role)
-SELECT UUID(), b.id, role_seed.code, role_seed.name, TRUE
+INSERT INTO ledger_role (public_id, book_id, code, name, system_role, created_by)
+SELECT UUID(), b.id, role_seed.code, role_seed.name, TRUE, b.owner_user_id
 FROM ledger_book b
 JOIN (
     SELECT 'OWNER' code, '账本主人' name
@@ -171,8 +171,8 @@ LEFT JOIN ledger_role_permission existing
     ON existing.role_id = r.id AND existing.permission_code = permission_seed.permission_code
 WHERE existing.role_id IS NULL;
 
-INSERT INTO ledger_book_member (public_id, book_id, user_id, role_id)
-SELECT UUID(), b.id, b.owner_user_id, r.id
+INSERT INTO ledger_book_member (public_id, book_id, user_id, role_id, created_by)
+SELECT UUID(), b.id, b.owner_user_id, r.id, b.owner_user_id
 FROM ledger_book b
 JOIN ledger_role r ON r.book_id = b.id AND r.code = 'OWNER'
 WHERE NOT EXISTS (
