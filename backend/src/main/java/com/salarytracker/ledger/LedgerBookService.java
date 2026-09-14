@@ -2,6 +2,7 @@ package com.salarytracker.ledger;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.salarytracker.platform.ConflictException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -20,6 +21,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class LedgerBookService {
@@ -28,9 +31,27 @@ public class LedgerBookService {
             "TRANSACTION_ANY_WRITE", "TRANSACTION_OWN_WRITE", "AUDIT_ALL_READ",
             "AUDIT_ALL_CLEAR", "AUDIT_SELF_READ", "RECYCLE_ALL", "RECYCLE_SELF",
             "IMPORT_EXPORT");
+    private static final Set<String> RESOURCE_ICONS = Set.of(
+            "wallet", "bank-card", "cash", "coin", "food", "transport", "home",
+            "shopping", "health", "education", "entertainment", "travel", "work",
+            "user", "shop", "folder", "tag", "other", "bank-boc", "bank-abc",
+            "bank-icbc", "bank-ccb", "bank-cmb", "bank-bocom", "bank-psbc",
+            "alipay", "wechat-pay", "bills", "gift", "service", "location",
+            "goods", "ticket", "trophy", "chat");
     private static final String BALANCE_DELTA =
             "CASE WHEN t.kind IN ('INCOME','BORROW_IN','COLLECT_DEBT','TRANSFER_IN') THEN t.amount " +
                     "WHEN t.kind IN ('EXPENSE','LEND_OUT','REPAY_DEBT','TRANSFER_OUT') THEN -t.amount ELSE 0 END";
+    private static final String ACCOUNT_BALANCE_DELTA =
+            "CASE WHEN t.counterparty_account_id=a.id AND t.kind='TRANSFER_OUT' THEN t.amount " +
+                    "WHEN t.account_id=a.id AND t.kind='TRANSFER_IN' THEN t.amount " +
+                    "WHEN t.account_id=a.id AND t.kind IN ('INCOME','BORROW_IN','COLLECT_DEBT') THEN t.amount " +
+                    "WHEN t.account_id=a.id AND t.kind IN ('EXPENSE','LEND_OUT','REPAY_DEBT','TRANSFER_OUT') THEN -t.amount " +
+                    "ELSE 0 END";
+    private static final double CATEGORY_HUE_BASE = 178;
+    private static final double CATEGORY_HUE_STEP = 137.508;
+    private static final Pattern HSL_COLOR = Pattern.compile(
+            "hsl\\(\\s*(\\d{1,3})(?:deg)?[\\s,]+(\\d{1,3})%[\\s,]+(\\d{1,3})%\\s*\\)",
+            Pattern.CASE_INSENSITIVE);
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
@@ -54,7 +75,9 @@ public class LedgerBookService {
         return jdbc.queryForList(
                 "SELECT b.id,b.public_id,b.name,b.currency,b.owner_user_id,b.revision,b.archived,b.created_at," +
                         "r.code role_code,r.name role_name," +
-                        "(SELECT COUNT(*) FROM ledger_book_member all_members WHERE all_members.book_id=b.id AND all_members.deleted=FALSE) member_count " +
+                        "(SELECT COUNT(*) FROM ledger_book_member all_members WHERE all_members.book_id=b.id AND all_members.deleted=FALSE) member_count," +
+                        "(SELECT COUNT(*) FROM ledger_transaction all_transactions WHERE all_transactions.book_id=b.id " +
+                        "AND all_transactions.deleted=FALSE AND all_transactions.kind<>'TRANSFER_IN') transaction_count " +
                         "FROM ledger_book b JOIN ledger_book_member m ON m.book_id=b.id " +
                         "JOIN ledger_role r ON r.id=m.role_id " +
                         "WHERE m.user_id=? AND m.deleted=FALSE AND b.deleted=FALSE ORDER BY b.created_at,b.id",
@@ -130,9 +153,13 @@ public class LedgerBookService {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         String hidden = includeHidden ? "" : " AND a.hidden=FALSE";
         return jdbc.queryForList(
-                "SELECT a.public_id,a.name,a.account_type,a.currency,a.opening_balance,a.hidden,a.revision,a.created_at," +
-                        "a.opening_balance+COALESCE(SUM(" + BALANCE_DELTA + "),0) balance " +
-                        "FROM ledger_account a LEFT JOIN ledger_transaction t ON t.account_id=a.id AND t.book_id=a.book_id AND t.deleted=FALSE " +
+                "SELECT a.public_id,a.name,a.icon,a.account_type,a.currency,a.opening_balance,a.hidden,a.revision,a.created_at," +
+                        "a.opening_balance+COALESCE(SUM(" + ACCOUNT_BALANCE_DELTA + "),0) balance " +
+                        "FROM ledger_account a LEFT JOIN ledger_transaction t ON t.book_id=a.book_id AND t.deleted=FALSE " +
+                        "AND ((t.account_id=a.id AND t.kind<>'TRANSFER_IN') OR (t.counterparty_account_id=a.id AND t.kind='TRANSFER_OUT') " +
+                        "OR (t.account_id=a.id AND t.kind='TRANSFER_IN' AND NOT EXISTS " +
+                        "(SELECT 1 FROM ledger_transaction source_transfer WHERE source_transfer.transfer_group_id=t.transfer_group_id " +
+                        "AND source_transfer.kind='TRANSFER_OUT' AND source_transfer.book_id=t.book_id AND source_transfer.deleted=FALSE))) " +
                         "WHERE a.book_id=? AND a.deleted=FALSE" + hidden +
                         " GROUP BY a.id ORDER BY a.created_at,a.id",
                 context.bookId()).stream().map(this::accountView).toList();
@@ -144,9 +171,10 @@ public class LedgerBookService {
         access.require(context, "RESOURCE_MANAGE");
         String publicId = requestedPublicId(input);
         jdbc.update(
-                "INSERT INTO ledger_account(public_id,user_id,book_id,name,account_type,currency,opening_balance,hidden,created_by) " +
-                        "VALUES(?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO ledger_account(public_id,user_id,book_id,name,icon,account_type,currency,opening_balance,hidden,created_by) " +
+                        "VALUES(?,?,?,?,?,?,?,?,?,?)",
                 publicId, context.userId(), context.bookId(), required(input, "name"),
+                icon(input.get("icon"), "wallet"),
                 accountType(input.get("accountType")), currency(input.get("currency")),
                 amount(input.getOrDefault("openingBalance", 0)), booleanValue(input.get("hidden"), false),
                 context.userId());
@@ -166,9 +194,11 @@ public class LedgerBookService {
         Map<String, Object> before = account(context, resourceId, true);
         checkRevision(ifMatch, number(before.get("revision")));
         jdbc.update(
-                "UPDATE ledger_account SET name=?,account_type=?,currency=?,opening_balance=?,hidden=?,revision=revision+1 " +
+                "UPDATE ledger_account SET name=?,icon=?,account_type=?,currency=?,opening_balance=?,hidden=?,revision=revision+1 " +
                         "WHERE public_id=? AND book_id=? AND deleted=FALSE",
                 optionalText(input, "name", String.valueOf(before.get("name"))),
+                input != null && input.containsKey("icon")
+                        ? icon(input.get("icon"), "wallet") : before.get("icon"),
                 input != null && input.containsKey("accountType")
                         ? accountType(input.get("accountType")) : before.get("accountType"),
                 input != null && input.containsKey("currency")
@@ -194,7 +224,7 @@ public class LedgerBookService {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         String hidden = includeHidden ? "" : " AND c.hidden=FALSE";
         return jdbc.queryForList(
-                "SELECT c.public_id,c.name,c.kind,c.color,c.hidden,c.revision,c.created_at,parent.public_id parent_public_id " +
+                "SELECT c.public_id,c.name,c.icon,c.kind,c.color,c.hidden,c.revision,c.created_at,parent.public_id parent_public_id " +
                         "FROM ledger_category c LEFT JOIN ledger_category parent ON parent.id=c.parent_id " +
                         "WHERE c.book_id=? AND c.deleted=FALSE" + hidden + " ORDER BY c.kind,c.parent_id,c.name",
                 context.bookId()).stream().map(this::categoryView).toList();
@@ -207,18 +237,20 @@ public class LedgerBookService {
         String publicId = requestedPublicId(input);
         String kind = categoryKind(input.get("kind"));
         Long parentId = internalId(context, "ledger_category", text(input.get("parentId")), false);
+        Map<String, Object> parent = null;
         if (parentId != null) {
-            Map<String, Object> parent = jdbc.queryForMap(
-                    "SELECT kind,parent_id FROM ledger_category WHERE id=? AND book_id=? AND deleted=FALSE",
+            parent = jdbc.queryForMap(
+                    "SELECT public_id,name,kind,parent_id,color FROM ledger_category WHERE id=? AND book_id=? AND deleted=FALSE",
                     parentId, context.bookId());
             if (parent.get("parent_id") != null) throw new IllegalArgumentException("分类最多支持两级");
             if (!kind.equals(parent.get("kind"))) throw new IllegalArgumentException("父子分类类型必须一致");
         }
         jdbc.update(
-                "INSERT INTO ledger_category(public_id,user_id,book_id,name,kind,parent_id,color,hidden,created_by) " +
-                        "VALUES(?,?,?,?,?,?,?,?,?)",
-                publicId, context.userId(), context.bookId(), required(input, "name"), kind, parentId,
-                textOr(input.get("color"), "#0f5132"), booleanValue(input.get("hidden"), false),
+                "INSERT INTO ledger_category(public_id,user_id,book_id,name,icon,kind,parent_id,color,hidden,created_by) " +
+                        "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                publicId, context.userId(), context.bookId(), required(input, "name"),
+                icon(input.get("icon"), "tag"), kind, parentId,
+                categoryInputColor(input, context.bookId(), kind, parentId, parent), booleanValue(input.get("hidden"), false),
                 context.userId());
         Map<String, Object> result = category(context, publicId, true);
         changed(context, opId, "category.create", "category", publicId, "UPSERT", null, result);
@@ -249,9 +281,12 @@ public class LedgerBookService {
             if (!kind.equals(parent.get("kind"))) throw new IllegalArgumentException("父子分类类型必须一致");
         }
         jdbc.update(
-                "UPDATE ledger_category SET name=?,kind=?,parent_id=?,color=?,hidden=?,revision=revision+1 " +
+                "UPDATE ledger_category SET name=?,icon=?,kind=?,parent_id=?,color=?,hidden=?,revision=revision+1 " +
                         "WHERE public_id=? AND book_id=? AND deleted=FALSE",
-                optionalText(input, "name", String.valueOf(before.get("name"))), kind, parentId,
+                optionalText(input, "name", String.valueOf(before.get("name"))),
+                input != null && input.containsKey("icon")
+                        ? icon(input.get("icon"), "tag") : before.get("icon"),
+                kind, parentId,
                 input != null && input.containsKey("color") ? textOr(input.get("color"), "#0f5132") : before.get("color"),
                 booleanValue(input == null ? null : input.get("hidden"), Boolean.TRUE.equals(before.get("hidden"))),
                 resourceId, context.bookId());
@@ -294,14 +329,16 @@ public class LedgerBookService {
         String publicId = requestedPublicId(input);
         if ("project".equals(type)) {
             jdbc.update(
-                    "INSERT INTO ledger_project(public_id,book_id,name,color,note,hidden,created_by) VALUES(?,?,?,?,?,?,?)",
+                    "INSERT INTO ledger_project(public_id,book_id,name,icon,color,note,hidden,created_by) VALUES(?,?,?,?,?,?,?,?)",
                     publicId, context.bookId(), required(input, "name"),
+                    icon(input.get("icon"), "folder"),
                     textOr(input.get("color"), "#0f5132"), text(input.get("note")),
                     booleanValue(input.get("hidden"), false), context.userId());
         } else {
             jdbc.update(
-                    "INSERT INTO ledger_merchant(public_id,book_id,name,note,hidden,created_by) VALUES(?,?,?,?,?,?)",
-                    publicId, context.bookId(), required(input, "name"), text(input.get("note")),
+                    "INSERT INTO ledger_merchant(public_id,book_id,name,icon,note,hidden,created_by) VALUES(?,?,?,?,?,?,?)",
+                    publicId, context.bookId(), required(input, "name"), icon(input.get("icon"), "shop"),
+                    text(input.get("note")),
                     booleanValue(input.get("hidden"), false), context.userId());
         }
         Map<String, Object> result = namedResource(context, table, publicId, true);
@@ -323,18 +360,22 @@ public class LedgerBookService {
         checkRevision(ifMatch, number(before.get("revision")));
         if ("project".equals(type)) {
             jdbc.update(
-                    "UPDATE ledger_project SET name=?,color=?,note=?,hidden=?,revision=revision+1 " +
+                    "UPDATE ledger_project SET name=?,icon=?,color=?,note=?,hidden=?,revision=revision+1 " +
                             "WHERE public_id=? AND book_id=? AND deleted=FALSE",
                     optionalText(input, "name", String.valueOf(before.get("name"))),
+                    input != null && input.containsKey("icon")
+                            ? icon(input.get("icon"), "folder") : before.get("icon"),
                     input != null && input.containsKey("color") ? textOr(input.get("color"), "#0f5132") : before.get("color"),
                     input != null && input.containsKey("note") ? text(input.get("note")) : before.get("note"),
                     booleanValue(input == null ? null : input.get("hidden"), Boolean.TRUE.equals(before.get("hidden"))),
                     resourceId, context.bookId());
         } else {
             jdbc.update(
-                    "UPDATE ledger_merchant SET name=?,note=?,hidden=?,revision=revision+1 " +
+                    "UPDATE ledger_merchant SET name=?,icon=?,note=?,hidden=?,revision=revision+1 " +
                             "WHERE public_id=? AND book_id=? AND deleted=FALSE",
                     optionalText(input, "name", String.valueOf(before.get("name"))),
+                    input != null && input.containsKey("icon")
+                            ? icon(input.get("icon"), "shop") : before.get("icon"),
                     input != null && input.containsKey("note") ? text(input.get("note")) : before.get("note"),
                     booleanValue(input == null ? null : input.get("hidden"), Boolean.TRUE.equals(before.get("hidden"))),
                     resourceId, context.bookId());
@@ -356,7 +397,7 @@ public class LedgerBookService {
     public List<Map<String, Object>> members(String bookPublicId) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         return jdbc.queryForList(
-                "SELECT m.public_id,m.user_id,m.created_by,u.username,u.nickname,r.public_id role_public_id,r.code role_code,r.name role_name," +
+                "SELECT m.public_id,m.user_id,m.created_by,m.icon,u.username,u.nickname,r.public_id role_public_id,r.code role_code,r.name role_name," +
                         "m.revision,m.created_at FROM ledger_book_member m JOIN app_user u ON u.id=m.user_id " +
                         "JOIN ledger_role r ON r.id=m.role_id WHERE m.book_id=? AND m.deleted=FALSE ORDER BY m.created_at,m.id",
                 context.bookId()).stream().map(this::memberView).toList();
@@ -368,18 +409,28 @@ public class LedgerBookService {
         access.require(context, "MEMBER_MANAGE");
         String username = required(input, "username");
         List<Map<String, Object>> users = jdbc.queryForList(
-                "SELECT id FROM app_user WHERE username=? AND status='ACTIVE'", username);
-        if (users.isEmpty()) throw new IllegalArgumentException("用户不存在或不可用");
+                "SELECT id FROM app_user WHERE username=? AND status='ACTIVE' FOR UPDATE", username);
+        if (users.isEmpty()) throw new IllegalArgumentException("该用户名未注册或账号不可用，请先确认用户名");
         long userId = number(users.get(0).get("id"));
+        Integer existingActive = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM ledger_book_member WHERE book_id=? AND user_id=? AND deleted=FALSE",
+                Integer.class, context.bookId(), userId);
+        if (existingActive != null && existingActive > 0) {
+            throw new IllegalArgumentException("该用户已是当前账本成员");
+        }
         String rolePublicId = text(input.get("roleId"));
         Long roleId = rolePublicId.isBlank()
                 ? jdbc.queryForObject("SELECT id FROM ledger_role WHERE book_id=? AND code='MEMBER'", Long.class, context.bookId())
                 : internalId(context, "ledger_role", rolePublicId, true);
         String memberPublicId = requestedPublicId(input);
-        jdbc.update(
-                "INSERT INTO ledger_book_member(public_id,book_id,user_id,role_id,created_by) VALUES(?,?,?,?,?) " +
-                        "ON DUPLICATE KEY UPDATE role_id=VALUES(role_id),deleted=FALSE,deleted_at=NULL,revision=revision+1",
-                memberPublicId, context.bookId(), userId, roleId, context.userId());
+        try {
+            jdbc.update(
+                    "INSERT INTO ledger_book_member(public_id,book_id,user_id,role_id,icon,created_by) VALUES(?,?,?,?,?,?) " +
+                            "ON DUPLICATE KEY UPDATE role_id=VALUES(role_id),icon=VALUES(icon),deleted=FALSE,deleted_at=NULL,revision=revision+1",
+                    memberPublicId, context.bookId(), userId, roleId, icon(input.get("icon"), "user"), context.userId());
+        } catch (DuplicateKeyException exception) {
+            throw new IllegalArgumentException("该用户已是当前账本成员，请刷新后重试", exception);
+        }
         Map<String, Object> result = memberByUser(context, userId);
         changed(context, opId, "member.add", "member", String.valueOf(result.get("id")), "UPSERT", null, result);
         return result;
@@ -395,16 +446,24 @@ public class LedgerBookService {
         access.require(context, "MEMBER_MANAGE");
         Map<String, Object> before = member(context, memberPublicId, true);
         checkRevision(ifMatch, number(before.get("revision")));
-        if ("OWNER".equals(before.get("roleCode"))) throw new IllegalArgumentException("不能修改账本主人的角色");
-        String rolePublicId = required(input, "roleId");
+        String rolePublicId = input != null && input.containsKey("roleId")
+                ? required(input, "roleId") : String.valueOf(before.get("roleId"));
         long roleId = internalId(context, "ledger_role", rolePublicId, true);
+        if ("OWNER".equals(before.get("roleCode")) && !rolePublicId.equals(before.get("roleId"))) {
+            throw new IllegalArgumentException("不能修改账本主人的角色");
+        }
         String roleCode = jdbc.queryForObject(
                 "SELECT code FROM ledger_role WHERE id=? AND book_id=? AND deleted=FALSE",
                 String.class, roleId, context.bookId());
-        if ("OWNER".equals(roleCode)) throw new IllegalArgumentException("不能通过成员编辑转移账本所有权");
+        if ("OWNER".equals(roleCode) && !"OWNER".equals(before.get("roleCode"))) {
+            throw new IllegalArgumentException("不能通过成员编辑转移账本所有权");
+        }
         jdbc.update(
-                "UPDATE ledger_book_member SET role_id=?,revision=revision+1 WHERE public_id=? AND book_id=? AND deleted=FALSE",
-                roleId, memberPublicId, context.bookId());
+                "UPDATE ledger_book_member SET role_id=?,icon=?,revision=revision+1 WHERE public_id=? AND book_id=? AND deleted=FALSE",
+                roleId,
+                input != null && input.containsKey("icon")
+                        ? icon(input.get("icon"), "user") : before.get("icon"),
+                memberPublicId, context.bookId());
         Map<String, Object> result = member(context, memberPublicId, true);
         changed(context, opId, "member.update", "member", memberPublicId, "UPSERT", before, result);
         return result;
@@ -629,9 +688,13 @@ public class LedgerBookService {
     Map<String, Object> account(LedgerBookAccess.Context context, String publicId, boolean includeHidden) {
         String hidden = includeHidden ? "" : " AND a.hidden=FALSE";
         List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT a.public_id,a.name,a.account_type,a.currency,a.opening_balance,a.hidden,a.revision,a.created_at," +
-                        "a.opening_balance+COALESCE((SELECT SUM(" + BALANCE_DELTA + ") FROM ledger_transaction t " +
-                        "WHERE t.account_id=a.id AND t.book_id=a.book_id AND t.deleted=FALSE),0) balance " +
+                "SELECT a.public_id,a.name,a.icon,a.account_type,a.currency,a.opening_balance,a.hidden,a.revision,a.created_at," +
+                        "a.opening_balance+COALESCE((SELECT SUM(" + ACCOUNT_BALANCE_DELTA + ") FROM ledger_transaction t " +
+                        "WHERE t.book_id=a.book_id AND t.deleted=FALSE " +
+                        "AND ((t.account_id=a.id AND t.kind<>'TRANSFER_IN') OR (t.counterparty_account_id=a.id AND t.kind='TRANSFER_OUT') " +
+                        "OR (t.account_id=a.id AND t.kind='TRANSFER_IN' AND NOT EXISTS " +
+                        "(SELECT 1 FROM ledger_transaction source_transfer WHERE source_transfer.transfer_group_id=t.transfer_group_id " +
+                        "AND source_transfer.kind='TRANSFER_OUT' AND source_transfer.book_id=t.book_id AND source_transfer.deleted=FALSE))),0) balance " +
                         "FROM ledger_account a WHERE a.public_id=? AND a.book_id=? AND a.deleted=FALSE" + hidden,
                 publicId, context.bookId());
         if (rows.isEmpty()) throw new IllegalArgumentException("账户不存在");
@@ -641,7 +704,7 @@ public class LedgerBookService {
     Map<String, Object> category(LedgerBookAccess.Context context, String publicId, boolean includeHidden) {
         String hidden = includeHidden ? "" : " AND c.hidden=FALSE";
         List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT c.public_id,c.name,c.kind,c.color,c.hidden,c.revision,c.created_at,parent.public_id parent_public_id " +
+                "SELECT c.public_id,c.name,c.icon,c.kind,c.color,c.hidden,c.revision,c.created_at,parent.public_id parent_public_id " +
                         "FROM ledger_category c LEFT JOIN ledger_category parent ON parent.id=c.parent_id " +
                         "WHERE c.public_id=? AND c.book_id=? AND c.deleted=FALSE" + hidden,
                 publicId, context.bookId());
@@ -758,7 +821,7 @@ public class LedgerBookService {
         ResourceTable table = resourceTable(type);
         String hidden = includeHidden ? "" : " AND hidden=FALSE";
         return jdbc.queryForList(
-                "SELECT public_id,name,note,hidden,revision,created_at" +
+                "SELECT public_id,name,icon,note,hidden,revision,created_at" +
                         ("project".equals(type) ? ",color" : "") +
                         " FROM " + table.table() + " WHERE book_id=? AND deleted=FALSE" + hidden +
                         " ORDER BY name",
@@ -771,7 +834,7 @@ public class LedgerBookService {
                                               boolean includeHidden) {
         String hidden = includeHidden ? "" : " AND hidden=FALSE";
         List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT public_id,name,note,hidden,revision,created_at" +
+                "SELECT public_id,name,icon,note,hidden,revision,created_at" +
                         ("project".equals(table.type()) ? ",color" : "") +
                         " FROM " + table.table() + " WHERE public_id=? AND book_id=? AND deleted=FALSE" + hidden,
                 publicId, context.bookId());
@@ -784,7 +847,7 @@ public class LedgerBookService {
                                        boolean activeOnly) {
         String deleted = activeOnly ? " AND m.deleted=FALSE" : "";
         List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT m.public_id,m.user_id,m.created_by,u.username,u.nickname,r.public_id role_public_id,r.code role_code,r.name role_name," +
+                "SELECT m.public_id,m.user_id,m.created_by,m.icon,u.username,u.nickname,r.public_id role_public_id,r.code role_code,r.name role_name," +
                         "m.revision,m.created_at FROM ledger_book_member m JOIN app_user u ON u.id=m.user_id " +
                         "JOIN ledger_role r ON r.id=m.role_id WHERE m.public_id=? AND m.book_id=?" + deleted,
                 publicId, context.bookId());
@@ -794,7 +857,7 @@ public class LedgerBookService {
 
     private Map<String, Object> memberByUser(LedgerBookAccess.Context context, long userId) {
         Map<String, Object> row = jdbc.queryForMap(
-                "SELECT m.public_id,m.user_id,m.created_by,u.username,u.nickname,r.public_id role_public_id,r.code role_code,r.name role_name," +
+                "SELECT m.public_id,m.user_id,m.created_by,m.icon,u.username,u.nickname,r.public_id role_public_id,r.code role_code,r.name role_name," +
                         "m.revision,m.created_at FROM ledger_book_member m JOIN app_user u ON u.id=m.user_id " +
                         "JOIN ledger_role r ON r.id=m.role_id WHERE m.user_id=? AND m.book_id=? AND m.deleted=FALSE",
                 userId, context.bookId());
@@ -835,7 +898,9 @@ public class LedgerBookService {
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT b.public_id,b.name,b.currency,b.owner_user_id,b.revision,b.archived,b.created_at," +
                         "r.code role_code,r.name role_name," +
-                        "(SELECT COUNT(*) FROM ledger_book_member all_members WHERE all_members.book_id=b.id AND all_members.deleted=FALSE) member_count " +
+                        "(SELECT COUNT(*) FROM ledger_book_member all_members WHERE all_members.book_id=b.id AND all_members.deleted=FALSE) member_count," +
+                        "(SELECT COUNT(*) FROM ledger_transaction all_transactions WHERE all_transactions.book_id=b.id " +
+                        "AND all_transactions.deleted=FALSE AND all_transactions.kind<>'TRANSFER_IN') transaction_count " +
                         "FROM ledger_book b JOIN ledger_book_member m ON m.book_id=b.id " +
                         "JOIN ledger_role r ON r.id=m.role_id " +
                         "WHERE b.public_id=? AND m.user_id=? AND m.deleted=FALSE AND b.deleted=FALSE",
@@ -866,66 +931,109 @@ public class LedgerBookService {
                               String kind,
                               List<String> children) {
         String parentPublicId = UUID.randomUUID().toString();
+        String parentColor = primaryCategoryColor(kind, parentName,
+                jdbc.queryForObject("SELECT COUNT(*) FROM ledger_category WHERE book_id=? AND parent_id IS NULL",
+                        Integer.class, bookId));
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             var statement = connection.prepareStatement(
-                    "INSERT INTO ledger_category(public_id,user_id,book_id,name,kind,created_by) VALUES(?,?,?,?,?,?)",
+                    "INSERT INTO ledger_category(public_id,user_id,book_id,name,kind,color,created_by) VALUES(?,?,?,?,?,?,?)",
                     Statement.RETURN_GENERATED_KEYS);
             statement.setString(1, parentPublicId);
             statement.setLong(2, userId);
             statement.setLong(3, bookId);
             statement.setString(4, parentName);
             statement.setString(5, kind);
-            statement.setLong(6, userId);
+            statement.setString(6, parentColor);
+            statement.setLong(7, userId);
             return statement;
         }, keyHolder);
         long parentId = keyHolder.getKey().longValue();
         for (String child : children) {
             jdbc.update(
-                    "INSERT INTO ledger_category(public_id,user_id,book_id,name,kind,parent_id,created_by) VALUES(?,?,?,?,?,?,?)",
-                    UUID.randomUUID().toString(), userId, bookId, child, kind, parentId, userId);
+                    "INSERT INTO ledger_category(public_id,user_id,book_id,name,kind,parent_id,color,created_by) VALUES(?,?,?,?,?,?,?,?)",
+                    UUID.randomUUID().toString(), userId, bookId, child, kind, parentId,
+                    childCategoryColor(parentColor, parentPublicId, children.indexOf(child)), userId);
         }
+    }
+
+    private String categoryInputColor(Map<String, Object> input,
+                                      long bookId,
+                                      String kind,
+                                      Long parentId,
+                                      Map<String, Object> parent) {
+        String requested = text(input == null ? null : input.get("color"));
+        if (!requested.isBlank() && !"#0f5132".equalsIgnoreCase(requested)) return requested;
+        String name = required(input, "name");
+        if (parentId == null) {
+            int index = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM ledger_category WHERE book_id=? AND parent_id IS NULL",
+                    Integer.class, bookId);
+            return primaryCategoryColor(kind, name, index);
+        }
+        int index = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM ledger_category WHERE book_id=? AND parent_id=? AND deleted=FALSE",
+                Integer.class, bookId, parentId);
+        return childCategoryColor(
+                text(parent.get("color")),
+                text(parent.get("public_id")).isBlank() ? text(parent.get("name")) : text(parent.get("public_id")),
+                index);
+    }
+
+    static String primaryCategoryColor(String kind, String name, int index) {
+        int hue = Math.floorMod((int) Math.round(CATEGORY_HUE_BASE + Math.max(0, index) * CATEGORY_HUE_STEP), 360);
+        int lightness = 46 + Math.floorMod(index, 3) * 5;
+        return "hsl(" + hue + " 64% " + lightness + "%)";
+    }
+
+    static String childCategoryColor(String parentColor, String familyKey, int index) {
+        int hue = Math.floorMod(String.valueOf(familyKey).hashCode(), 360);
+        Matcher matcher = HSL_COLOR.matcher(parentColor == null ? "" : parentColor.trim());
+        if (matcher.matches()) hue = Math.floorMod(Integer.parseInt(matcher.group(1)), 360);
+        int saturation = 58 + Math.floorMod(index, 2) * 8;
+        int lightness = 38 + Math.floorMod(index, 6) * 8;
+        return "hsl(" + hue + " " + saturation + "% " + lightness + "%)";
     }
 
     private void copyResources(LedgerBookAccess.Context source, long targetBookId, long userId) {
         for (Map<String, Object> account : jdbc.queryForList(
-                "SELECT name,account_type,currency,opening_balance,hidden FROM ledger_account " +
+                "SELECT name,icon,account_type,currency,opening_balance,hidden FROM ledger_account " +
                         "WHERE book_id=? AND deleted=FALSE ORDER BY id",
                 source.bookId())) {
             jdbc.update(
-                    "INSERT INTO ledger_account(public_id,user_id,book_id,name,account_type,currency,opening_balance,hidden,created_by) " +
-                            "VALUES(?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO ledger_account(public_id,user_id,book_id,name,icon,account_type,currency,opening_balance,hidden,created_by) " +
+                            "VALUES(?,?,?,?,?,?,?,?,?,?)",
                     UUID.randomUUID().toString(), userId, targetBookId, account.get("name"),
-                    account.get("account_type"), account.get("currency"), account.get("opening_balance"),
+                    account.get("icon"), account.get("account_type"), account.get("currency"), account.get("opening_balance"),
                     account.get("hidden"), userId);
         }
         Map<Long, Long> categoryIds = new LinkedHashMap<>();
         for (Map<String, Object> category : jdbc.queryForList(
-                "SELECT id,name,kind,color,hidden FROM ledger_category WHERE book_id=? AND deleted=FALSE AND parent_id IS NULL ORDER BY id",
+                "SELECT id,name,icon,kind,color,hidden FROM ledger_category WHERE book_id=? AND deleted=FALSE AND parent_id IS NULL ORDER BY id",
                 source.bookId())) {
             long newId = insertCopiedCategory(targetBookId, userId, category, null);
             categoryIds.put(number(category.get("id")), newId);
         }
         for (Map<String, Object> category : jdbc.queryForList(
-                "SELECT id,parent_id,name,kind,color,hidden FROM ledger_category WHERE book_id=? AND deleted=FALSE AND parent_id IS NOT NULL ORDER BY id",
+                "SELECT id,parent_id,name,icon,kind,color,hidden FROM ledger_category WHERE book_id=? AND deleted=FALSE AND parent_id IS NOT NULL ORDER BY id",
                 source.bookId())) {
             Long parentId = categoryIds.get(number(category.get("parent_id")));
             insertCopiedCategory(targetBookId, userId, category, parentId);
         }
         for (Map<String, Object> merchant : jdbc.queryForList(
-                "SELECT name,note,hidden FROM ledger_merchant WHERE book_id=? AND deleted=FALSE ORDER BY id",
+                "SELECT name,icon,note,hidden FROM ledger_merchant WHERE book_id=? AND deleted=FALSE ORDER BY id",
                 source.bookId())) {
             jdbc.update(
-                    "INSERT INTO ledger_merchant(public_id,book_id,name,note,hidden,created_by) VALUES(?,?,?,?,?,?)",
-                    UUID.randomUUID().toString(), targetBookId, merchant.get("name"), merchant.get("note"),
+                    "INSERT INTO ledger_merchant(public_id,book_id,name,icon,note,hidden,created_by) VALUES(?,?,?,?,?,?,?)",
+                    UUID.randomUUID().toString(), targetBookId, merchant.get("name"), merchant.get("icon"), merchant.get("note"),
                     merchant.get("hidden"), userId);
         }
         for (Map<String, Object> project : jdbc.queryForList(
-                "SELECT name,color,note,hidden FROM ledger_project WHERE book_id=? AND deleted=FALSE ORDER BY id",
+                "SELECT name,icon,color,note,hidden FROM ledger_project WHERE book_id=? AND deleted=FALSE ORDER BY id",
                 source.bookId())) {
             jdbc.update(
-                    "INSERT INTO ledger_project(public_id,book_id,name,color,note,hidden,created_by) VALUES(?,?,?,?,?,?,?)",
-                    UUID.randomUUID().toString(), targetBookId, project.get("name"), project.get("color"),
+                    "INSERT INTO ledger_project(public_id,book_id,name,icon,color,note,hidden,created_by) VALUES(?,?,?,?,?,?,?,?)",
+                    UUID.randomUUID().toString(), targetBookId, project.get("name"), project.get("icon"), project.get("color"),
                     project.get("note"), project.get("hidden"), userId);
         }
     }
@@ -937,19 +1045,20 @@ public class LedgerBookService {
         KeyHolder holder = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             var statement = connection.prepareStatement(
-                    "INSERT INTO ledger_category(public_id,user_id,book_id,name,kind,parent_id,color,hidden,created_by) " +
-                            "VALUES(?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO ledger_category(public_id,user_id,book_id,name,icon,kind,parent_id,color,hidden,created_by) " +
+                            "VALUES(?,?,?,?,?,?,?,?,?,?)",
                     Statement.RETURN_GENERATED_KEYS);
             statement.setString(1, UUID.randomUUID().toString());
             statement.setLong(2, userId);
             statement.setLong(3, targetBookId);
             statement.setString(4, String.valueOf(category.get("name")));
-            statement.setString(5, String.valueOf(category.get("kind")));
-            if (parentId == null) statement.setNull(6, java.sql.Types.BIGINT);
-            else statement.setLong(6, parentId);
-            statement.setString(7, String.valueOf(category.get("color")));
-            statement.setBoolean(8, Boolean.TRUE.equals(category.get("hidden")));
-            statement.setLong(9, userId);
+            statement.setString(5, String.valueOf(category.get("icon")));
+            statement.setString(6, String.valueOf(category.get("kind")));
+            if (parentId == null) statement.setNull(7, java.sql.Types.BIGINT);
+            else statement.setLong(7, parentId);
+            statement.setString(8, String.valueOf(category.get("color")));
+            statement.setBoolean(9, Boolean.TRUE.equals(category.get("hidden")));
+            statement.setLong(10, userId);
             return statement;
         }, holder);
         return holder.getKey().longValue();
@@ -1060,6 +1169,7 @@ public class LedgerBookService {
         result.put("roleCode", row.get("role_code"));
         result.put("roleName", row.get("role_name"));
         result.put("memberCount", number(row.get("member_count")));
+        result.put("transactionCount", number(row.get("transaction_count")));
         result.put("createdAt", row.get("created_at"));
         return result;
     }
@@ -1068,6 +1178,7 @@ public class LedgerBookService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", row.get("public_id"));
         result.put("name", row.get("name"));
+        result.put("icon", row.get("icon"));
         result.put("accountType", row.get("account_type"));
         result.put("currency", row.get("currency"));
         result.put("openingBalance", row.get("opening_balance"));
@@ -1082,6 +1193,7 @@ public class LedgerBookService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", row.get("public_id"));
         result.put("name", row.get("name"));
+        result.put("icon", row.get("icon"));
         result.put("kind", row.get("kind"));
         result.put("parentId", row.get("parent_public_id"));
         result.put("color", row.get("color"));
@@ -1095,6 +1207,7 @@ public class LedgerBookService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", row.get("public_id"));
         result.put("name", row.get("name"));
+        result.put("icon", row.get("icon"));
         result.put("note", row.get("note"));
         if ("project".equals(type)) result.put("color", row.get("color"));
         result.put("hidden", Boolean.TRUE.equals(row.get("hidden")));
@@ -1114,6 +1227,7 @@ public class LedgerBookService {
         result.put("roleId", row.get("role_public_id"));
         result.put("roleCode", row.get("role_code"));
         result.put("roleName", row.get("role_name"));
+        result.put("icon", row.get("icon"));
         result.put("revision", number(row.get("revision")));
         result.put("createdAt", row.get("created_at"));
         return result;
@@ -1216,6 +1330,12 @@ public class LedgerBookService {
             throw new IllegalArgumentException("账户类型不正确");
         }
         return type;
+    }
+
+    private String icon(Object value, String fallback) {
+        String result = textOr(value, fallback).toLowerCase(Locale.ROOT);
+        if (!RESOURCE_ICONS.contains(result)) throw new IllegalArgumentException("图标类型不正确");
+        return result;
     }
 
     private String categoryKind(Object value) {

@@ -145,16 +145,17 @@ public class LedgerAiService {
             resolveByName(draft, "accountId", "accountName", accounts, warnings, "账户");
             if ("TRANSFER".equals(kind)) {
                 resolveByName(draft, "targetAccountId", "targetAccountName", accounts, warnings, "转入账户");
+                if (text(draft.get("targetAccountId")).isBlank()) warnings.add("请选择转入账户");
             }
             List<Map<String, Object>> secondaries = categories.stream()
                     .filter(item -> item.get("parentId") != null)
                     .filter(item -> categoryKind(kind).equals(item.get("kind"))).toList();
-            resolveByName(draft, "categoryId", "categoryName", secondaries, warnings, "二级分类");
+            resolveCategory(draft, secondaries, categories, kind, warnings);
             resolveByName(draft, "merchantId", "merchantName", merchants, warnings, "商家");
             resolveByName(draft, "projectId", "projectName", projects, warnings, "项目");
             resolveMember(draft, members, warnings);
             if (text(draft.get("accountId")).isBlank()) warnings.add("请选择账户");
-            if (text(draft.get("categoryId")).isBlank()) warnings.add("请选择二级分类");
+            if (requiresCategory(kind) && text(draft.get("categoryId")).isBlank()) warnings.add("请选择二级分类");
             draft.put("warnings", warnings.stream().distinct().toList());
             result.add(draft);
         }
@@ -170,15 +171,14 @@ public class LedgerAiService {
                 可以返回多笔，无法确定的字段使用空字符串。不得直接入账。
                 当前日期：%s
                 当前账户：%s
-                当前二级分类：%s
+                当前分类（一级 / 二级）：%s
                 当前商家：%s
                 当前成员：%s
                 当前项目：%s
                 """.formatted(
                 LocalDate.now(),
                 names(books.accounts(context.bookPublicId(), false), "name"),
-                names(books.categories(context.bookPublicId(), false).stream()
-                        .filter(item -> item.get("parentId") != null).toList(), "name"),
+                categoryPaths(books.categories(context.bookPublicId(), false)),
                 names(books.merchants(context.bookPublicId(), false), "name"),
                 names(books.members(context.bookPublicId()), "displayName"),
                 names(books.projects(context.bookPublicId(), false), "name"));
@@ -225,6 +225,114 @@ public class LedgerAiService {
                 .filter(item -> name.equalsIgnoreCase(text(item.get("name")))).toList();
         if (matched.size() == 1) draft.put(idField, matched.get(0).get("id"));
         else warnings.add(label + "“" + name + "”未匹配");
+    }
+
+    private void resolveCategory(Map<String, Object> draft,
+                                 List<Map<String, Object>> secondaries,
+                                 List<Map<String, Object>> allCategories,
+                                 String kind,
+                                 List<String> warnings) {
+        if (!requiresCategory(kind)) {
+            draft.put("categoryMatchStatus", "not_required");
+            return;
+        }
+        String id = text(draft.get("categoryId"));
+        Map<String, Object> byId = secondaries.stream()
+                .filter(item -> id.equals(text(item.get("id"))))
+                .findFirst().orElse(null);
+        if (byId != null) {
+            enrichCategoryNames(draft, byId, allCategories);
+            draft.put("categoryMatchStatus", "matched");
+            return;
+        }
+        String childName = text(draft.get("categoryName"));
+        String parentName = text(draft.get("parentCategoryName"));
+        String[] reference = categoryReference(childName, parentName);
+        final String resolvedParentName = reference[0];
+        final String resolvedChildName = reference[1];
+        parentName = resolvedParentName;
+        childName = resolvedChildName;
+        if (parentName.isBlank() && !resolvedChildName.isBlank()
+                && allCategories.stream().anyMatch(item -> item.get("parentId") == null
+                && kind.equals(item.get("kind"))
+                && resolvedChildName.equalsIgnoreCase(text(item.get("name"))))) {
+            draft.put("categoryMatchStatus", "primary_only");
+            warnings.add("分类“" + childName + "”只有一级分类，请补充二级分类");
+            return;
+        }
+        if (childName.isBlank() && !parentName.isBlank()) {
+            draft.put("categoryMatchStatus", "primary_only");
+            warnings.add("分类“" + parentName + "”只有一级分类，请补充二级分类");
+            return;
+        }
+        if (childName.isBlank()) {
+            draft.put("categoryMatchStatus", "missing");
+            warnings.add("缺少二级分类，请补充分类");
+            return;
+        }
+        List<Map<String, Object>> matched = secondaries.stream().filter(item -> {
+            if (!resolvedChildName.equalsIgnoreCase(text(item.get("name")))) return false;
+            if (resolvedParentName.isBlank()) return true;
+            Map<String, Object> parent = allCategories.stream()
+                    .filter(candidate -> text(candidate.get("id")).equals(text(item.get("parentId"))))
+                    .findFirst().orElse(null);
+            return resolvedParentName.equalsIgnoreCase(text(parent == null ? null : parent.get("name")));
+        }).toList();
+        if (matched.size() == 1) {
+            Map<String, Object> category = matched.get(0);
+            draft.put("categoryId", category.get("id"));
+            enrichCategoryNames(draft, category, allCategories);
+            draft.put("categoryMatchStatus", "matched");
+        } else if (matched.isEmpty()) {
+            draft.put("categoryMatchStatus", "unmatched");
+            warnings.add("二级分类“" + childName + "”未匹配当前账本");
+        } else {
+            draft.put("categoryMatchStatus", "ambiguous");
+            warnings.add("二级分类“" + childName + "”存在多个匹配，请选择一级分类");
+        }
+    }
+
+    private void enrichCategoryNames(Map<String, Object> draft,
+                                     Map<String, Object> category,
+                                     List<Map<String, Object>> allCategories) {
+        draft.put("categoryName", category.get("name"));
+        allCategories.stream()
+                .filter(item -> text(item.get("id")).equals(text(category.get("parentId"))))
+                .findFirst()
+                .ifPresent(parent -> draft.put("parentCategoryName", parent.get("name")));
+    }
+
+    /** Accept both separate fields and the path format emitted by the LLM, e.g. "餐饮 / 早餐". */
+    static String[] categoryReference(String childName, String parentName) {
+        String child = childName == null ? "" : childName.trim();
+        String parent = parentName == null ? "" : parentName.trim();
+        if (parent.isBlank()) {
+            String[] parts = child.split("\\s*(?:/|／|>|＞|→)\\s*", 2);
+            if (parts.length == 2) {
+                parent = parts[0].trim();
+                child = parts[1].trim();
+            }
+        }
+        return new String[]{parent, child};
+    }
+
+    private boolean requiresCategory(String kind) {
+        return "INCOME".equals(kind) || "EXPENSE".equals(kind);
+    }
+
+    private String categoryPaths(List<Map<String, Object>> categories) {
+        return categories.stream()
+                .filter(item -> item.get("parentId") != null)
+                .map(item -> {
+                    String parent = categories.stream()
+                            .filter(candidate -> text(candidate.get("id")).equals(text(item.get("parentId"))))
+                            .map(candidate -> text(candidate.get("name")))
+                            .findFirst().orElse("");
+                    return parent.isBlank() ? text(item.get("name")) : parent + " / " + text(item.get("name"));
+                })
+                .filter(value -> !value.isBlank())
+                .toList()
+                .toString();
     }
 
     private void resolveMember(Map<String, Object> draft,

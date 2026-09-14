@@ -38,16 +38,17 @@ export class SyncEngine {
   }
 
   async put(entityType, value, options = {}) {
+    const safeValue = cloneSerializable(value)
     const entityStore = this.storeName(entityType)
-    const entityId = String(value.id ?? randomId())
-    const bookId = String(options.bookId || value.bookId || (singular(entityType) === 'book' ? entityId : 'default'))
+    const entityId = String(safeValue.id ?? randomId())
+    const bookId = String(options.bookId || safeValue.bookId || (singular(entityType) === 'book' ? entityId : 'default'))
     const opId = options.opId || randomId()
     const record = {
-      ...value,
+      ...safeValue,
       id: entityId,
       bookId,
       key: entityKey(bookId, entityId),
-      updatedAt: value.updatedAt ?? new Date().toISOString()
+      updatedAt: safeValue.updatedAt ?? new Date().toISOString()
     }
     await this.write(entityStore, record)
     if (options.recordOp !== false) {
@@ -59,7 +60,7 @@ export class SyncEngine {
         entityType: singular(entityType),
         entityId,
         operation: options.operation || 'UPSERT',
-        baseRevision: Number(options.baseRevision ?? value.revision ?? 0),
+        baseRevision: Number(options.baseRevision ?? safeValue.revision ?? 0),
         payload: stripLocal(record),
         createdAt: new Date().toISOString()
       })
@@ -97,12 +98,10 @@ export class SyncEngine {
 
   async replace(entityType, values, { bookId } = {}) {
     const store = this.storeName(entityType)
-    if (bookId) {
-      const current = await this.readAll(store)
-      await Promise.all(current
-        .filter(item => String(item.bookId) === String(bookId))
-        .map(item => this.removeStore(store, item.key)))
-    }
+    const current = await this.readAll(store)
+    await Promise.all(current
+      .filter(item => !bookId || String(item.bookId) === String(bookId))
+      .map(item => this.removeStore(store, item.key)))
     for (const value of values || []) {
       await this.put(entityType, value, { bookId: bookId || value.bookId, recordOp: false })
     }
@@ -171,10 +170,12 @@ export class SyncEngine {
     if (this.transport.pull) {
       try {
         let hasMore = true
+        const mergeCaches = new Map()
         while (hasMore) {
           const response = await this.transport.pull(bookId, cursor)
-          for (const operation of response?.operations || []) {
-            await this.merge(operation, bookId)
+          const operations = response?.operations || []
+          await this.mergeBatch(operations, bookId, mergeCaches)
+          for (const operation of operations) {
             cursor = Math.max(cursor, Number(operation.cursor || 0))
             pulled++
           }
@@ -206,21 +207,46 @@ export class SyncEngine {
   }
 
   async merge(operation, bookId = operation.bookId) {
-    const entityType = singular(operation.entityType || 'transaction')
-    const entityId = String(operation.entityId ?? operation.payload?.id)
-    const scope = String(bookId || operation.payload?.bookId || 'default')
-    const payload = {
-      ...(operation.payload || {}),
-      id: entityId,
-      bookId: scope,
-      key: entityKey(scope, entityId)
-    }
-    const store = this.storeName(entityType)
-    const current = await this.read(store, payload.key)
-    if (current && Number(current.revision || 0) > Number(payload.revision || 0)) return stripLocal(current)
-    if (operation.operation === 'DELETE' || payload.deleted) payload.deleted = true
-    await this.write(store, payload)
-    return stripLocal(payload)
+    return (await this.mergeBatch([operation], bookId))[0]
+  }
+
+  async mergeBatch(operations, bookId, caches = new Map()) {
+    const groups = new Map()
+    const results = new Array(operations.length)
+    operations.forEach((operation, index) => {
+      const store = this.storeName(operation.entityType || 'transaction')
+      if (!groups.has(store)) groups.set(store, [])
+      groups.get(store).push({ operation, index })
+    })
+    await Promise.all([...groups.entries()].map(async ([store, entries]) => {
+      let cache = caches.get(store)
+      if (!cache) {
+        cache = new Map((await this.readAll(store)).map(record => [String(record.key), record]))
+        caches.set(store, cache)
+      }
+      const writes = new Map()
+      for (const { operation, index } of entries) {
+        const entityId = String(operation.entityId ?? operation.payload?.id)
+        const scope = String(bookId || operation.bookId || operation.payload?.bookId || 'default')
+        const payload = {
+          ...(operation.payload || {}),
+          id: entityId,
+          bookId: scope,
+          key: entityKey(scope, entityId)
+        }
+        const current = cache.get(payload.key)
+        if (current && Number(current.revision || 0) > Number(payload.revision || 0)) {
+          results[index] = stripLocal(current)
+          continue
+        }
+        if (operation.operation === 'DELETE' || payload.deleted) payload.deleted = true
+        cache.set(payload.key, payload)
+        writes.set(payload.key, payload)
+        results[index] = stripLocal(payload)
+      }
+      await this.writeMany(store, [...writes.values()])
+    }))
+    return results
   }
 
   async resolveConflict(opId, strategy, mergedPayload) {
@@ -300,7 +326,8 @@ export class SyncEngine {
   }
 
   async write(store, value) {
-    const record = { ...value, key: String(value.key ?? value.id) }
+    const safeValue = cloneSerializable(value)
+    const record = { ...safeValue, key: String(safeValue.key ?? safeValue.id) }
     const db = await this.open()
     if (!db) {
       if (!this.memory.has(store)) this.memory.set(store, new Map())
@@ -311,6 +338,28 @@ export class SyncEngine {
       const tx = db.transaction(store, 'readwrite')
       tx.objectStore(store).put(record)
       tx.oncomplete = () => resolve(record)
+      tx.onerror = () => reject(tx.error)
+    })
+  }
+
+  async writeMany(store, values) {
+    const records = values.map(value => {
+      const safeValue = cloneSerializable(value)
+      return { ...safeValue, key: String(safeValue.key ?? safeValue.id) }
+    })
+    if (!records.length) return []
+    const db = await this.open()
+    if (!db) {
+      if (!this.memory.has(store)) this.memory.set(store, new Map())
+      const target = this.memory.get(store)
+      records.forEach(record => target.set(record.key, record))
+      return records
+    }
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(store, 'readwrite')
+      const objectStore = tx.objectStore(store)
+      records.forEach(record => objectStore.put(record))
+      tx.oncomplete = () => resolve(records)
       tx.onerror = () => reject(tx.error)
     })
   }
@@ -342,8 +391,23 @@ function entityKey(bookId, id) {
 
 function stripLocal(value) {
   if (!value) return value
-  const result = { ...value }
+  const result = cloneSerializable(value)
   delete result.key
+  return result
+}
+
+function cloneSerializable(value, seen = new WeakMap()) {
+  if (value === null || value === undefined) return value
+  if (typeof value === 'function' || typeof value === 'symbol') return undefined
+  if (typeof value !== 'object') return value
+  if (value instanceof Date) return value.toISOString()
+  if (seen.has(value)) return seen.get(value)
+  const result = Array.isArray(value) ? [] : {}
+  seen.set(value, result)
+  for (const [key, child] of Object.entries(value)) {
+    const cloned = cloneSerializable(child, seen)
+    if (cloned !== undefined) result[key] = cloned
+  }
   return result
 }
 

@@ -22,19 +22,31 @@
 <script setup>
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowRight, Calendar, Close, CreditCard, DataAnalysis, List, MoreFilled, Notebook, Setting, Tickets, Timer, Wallet } from '@element-plus/icons-vue'
+import { ArrowRight, Calendar, Close, CreditCard, DataAnalysis, DeleteFilled, Document, List, Management, MoreFilled, Notebook, Setting, Tickets, Timer, UserFilled, Wallet } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 const openItem = ref(null)
 const items = [
   { key: 'work', label: '工时', icon: Timer, children: [{ key: 'punch', to: '/punch', label: '打卡', icon: Timer }, { key: 'records', to: '/records', label: '记录', icon: Calendar }, { key: 'stats', to: '/stats', label: '统计', icon: DataAnalysis }] },
-  { key: 'ledger', label: '账本', icon: Wallet, children: [{ key: 'overview', to: '/ledger', label: '总览', icon: Wallet }, { key: 'details', to: '/ledger/transactions', label: '流水', icon: Tickets }, { key: 'accounts', to: { path: '/ledger', query: { view: 'accounts' } }, label: '账户', icon: CreditCard }] },
+  { key: 'ledger', label: '账本', icon: Wallet, children: [
+    { key: 'overview', to: '/ledger', label: '总览', icon: Wallet },
+    { key: 'details', to: '/ledger/transactions', label: '流水', icon: Tickets },
+    { key: 'accounts', to: { path: '/ledger/manage', query: { view: 'accounts' } }, label: '账户', icon: CreditCard },
+    { key: 'reports', to: '/ledger/reports', label: '报表', icon: DataAnalysis },
+    { key: 'management', to: { path: '/ledger/manage', query: { view: 'categories' } }, views: ['categories', 'merchants', 'projects', 'books'], label: '管理', icon: Management },
+    { key: 'members', to: { path: '/ledger/manage', query: { view: 'members' } }, label: '成员与角色权限', icon: UserFilled },
+    { key: 'recycle', to: { path: '/ledger/manage', query: { view: 'recycle' } }, label: '回收站', icon: DeleteFilled },
+    { key: 'audit', to: { path: '/ledger/manage', query: { view: 'audit' } }, label: '操作日志', icon: Document }
+  ] },
   { key: 'knowledge', label: '知识库', icon: Notebook, children: [{ key: 'knowledge-home', to: '/knowledge', label: '知识库', icon: Notebook, disabled: true }] },
   { key: 'tasks', label: '任务', icon: List, children: [{ key: 'task-home', to: '/tasks', label: '任务清单', icon: List, disabled: true }] },
   { key: 'more', label: '更多', icon: MoreFilled, children: [{ key: 'settings', to: '/settings', label: '设置', icon: Setting }] }
 ]
-function isChildActive(child) { return route.path === (typeof child.to === 'string' ? child.to : child.to.path) && (!child.to.query || route.query.view === child.to.query.view) }
+function isChildActive(child) {
+  if (child.views?.length) return route.path === child.to.path && child.views.includes(String(route.query.view))
+  return route.path === (typeof child.to === 'string' ? child.to : child.to.path) && (!child.to.query || route.query.view === child.to.query.view)
+}
 function isActive(item) { return item.children.some(child => !child.disabled && isChildActive(child)) }
 function select(item) { if (item.children.length === 1 && !item.children[0].disabled) return go(item.children[0]); openItem.value = openItem.value?.key === item.key ? null : item }
 function go(child) { if (child.disabled) return; router.push(child.to); openItem.value = null }

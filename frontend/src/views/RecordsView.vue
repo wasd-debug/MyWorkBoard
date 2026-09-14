@@ -54,7 +54,7 @@
         <button v-for="day in monthCells" :key="day.k" class="cal-cell month-cell" :class="[cellCls(day), { expanded: expandedDay === day.k }]" type="button" @click.stop="handleMonthDayClick(day.k)" @dblclick.stop="handleMonthDayDoubleClick(day.k)">
           <div class="cal-head"><span class="cal-d num">{{ Number(day.k.slice(8)) }}</span><span v-if="day.holName" class="cal-hol" :title="day.holName">{{ day.holName }}</span></div>
           <div v-if="day.min > 0" class="cal-body"><span class="cal-h num">{{ hours(day.min) }}h</span><span class="cal-o num" :class="day.ot >= 0 ? 'warn' : 'up'">{{ signed(day.ot) }}</span></div>
-          <div v-if="expandedDay === day.k" class="cal-expanded"><span v-if="day.min > 0">{{ recOf(day.k).start || '—' }} – {{ recOf(day.k).end || '—' }}</span><span v-if="day.min > 0">加班 {{ signed(day.ot) }}</span><span v-else>暂无打卡记录</span></div>
+          <Transition name="card-expand"><div v-if="expandedDay === day.k" class="cal-expanded"><span v-if="day.min > 0">{{ recOf(day.k).start || '—' }} – {{ recOf(day.k).end || '—' }}</span><span v-if="day.min > 0">加班 {{ signed(day.ot) }}</span><span v-else>暂无打卡记录</span></div></Transition>
         </button>
       </div>
       <div v-else class="cal-grid">

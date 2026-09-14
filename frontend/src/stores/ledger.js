@@ -21,6 +21,7 @@ const engine = createLedgerSyncEngine({
 
 let listenersInstalled = false
 let syncTimer
+let activeSyncPromise
 
 export const useLedgerStore = defineStore('ledger', {
   state: () => ({
@@ -46,14 +47,23 @@ export const useLedgerStore = defineStore('ledger', {
   getters: {
     currentBook: state => state.books.find(book => String(book.id) === String(state.currentBookId)),
     visibleAccounts: state => state.accounts.filter(item => !item.hidden && !item.deleted),
-    visibleCategories: state => state.categories.filter(item => !item.hidden && !item.deleted),
+    visibleCategories: state => state.categories.filter(item => {
+      if (item.hidden || item.deleted) return false
+      if (!item.parentId) return true
+      const parent = state.categories.find(parentItem => String(parentItem.id) === String(item.parentId))
+      return Boolean(parent && !parent.hidden && !parent.deleted)
+    }),
     visibleMerchants: state => state.merchants.filter(item => !item.hidden && !item.deleted),
     visibleProjects: state => state.projects.filter(item => !item.hidden && !item.deleted),
     activeMembers: state => state.members.filter(item => !item.deleted),
-    secondaryCategories: state => state.categories.filter(item => item.parentId && !item.hidden && !item.deleted)
+    secondaryCategories: state => state.categories.filter(item => {
+      if (!item.parentId || item.hidden || item.deleted) return false
+      const parent = state.categories.find(parentItem => String(parentItem.id) === String(item.parentId))
+      return Boolean(parent && !parent.hidden && !parent.deleted)
+    })
   },
   actions: {
-    async init() {
+    async init({ waitForRemote = true } = {}) {
       if (this.ready) return
       this.loading = true
       this.installListeners()
@@ -61,7 +71,10 @@ export const useLedgerStore = defineStore('ledger', {
         this.books = await engine.list('book')
         this.currentBookId = localStorage.getItem('ledger-current-book') || this.books[0]?.id || ''
         if (this.currentBookId) await this.hydrate()
-        if (this.online) await this.refreshServer()
+        if (this.online) {
+          const refresh = this.refreshServer()
+          if (waitForRemote) await refresh
+        }
       } finally {
         this.loading = false
         this.ready = true
@@ -86,7 +99,10 @@ export const useLedgerStore = defineStore('ledger', {
       this.currentBookId = String(bookId)
       localStorage.setItem('ledger-current-book', this.currentBookId)
       await this.hydrate()
-      if (this.online) await this.refreshCurrentBook()
+      if (this.online) {
+        await this.refreshResources()
+        await this.syncNow()
+      }
     },
 
     async createBook(payload) {
@@ -100,23 +116,27 @@ export const useLedgerStore = defineStore('ledger', {
 
     async refreshServer() {
       try {
-        const remoteBooks = await apiListLedgerBooks()
-        for (const book of remoteBooks) {
-          await engine.put('book', book, { bookId: book.id, recordOp: false })
-        }
-        this.books = await engine.list('book')
+        await this.refreshBooks()
         if (!this.books.length) return
         if (!this.books.some(book => String(book.id) === String(this.currentBookId))) {
           this.currentBookId = String(this.books[0].id)
           localStorage.setItem('ledger-current-book', this.currentBookId)
         }
-        await this.refreshCurrentBook()
+        await this.refreshResources()
+        await this.syncNow()
       } catch (error) {
         this.syncError = error?.response?.data?.detail || error?.message || '账本加载失败'
       }
     },
 
-    async refreshCurrentBook(month = new Date().toISOString().slice(0, 7)) {
+    async refreshBooks() {
+      if (!this.online) return
+      const remoteBooks = await apiListLedgerBooks()
+      await engine.replace('book', remoteBooks)
+      this.books = await engine.list('book')
+    },
+
+    async refreshResources(month = new Date().toISOString().slice(0, 7)) {
       const bookId = this.currentBookId
       if (!bookId || !this.online) return
       const [accounts, categories, merchants, members, projects, roles, budgets] = await Promise.all([
@@ -137,6 +157,22 @@ export const useLedgerStore = defineStore('ledger', {
         engine.replace('role', roles, { bookId }),
         engine.replace('budget', budgets, { bookId })
       ])
+      await this.hydrate()
+    },
+
+    async refreshAccounts() {
+      const bookId = this.currentBookId
+      if (!bookId || !this.online) return
+      const accounts = await apiListLedgerAccounts(bookId, true)
+      if (String(bookId) !== String(this.currentBookId)) return
+      await engine.replace('account', accounts, { bookId })
+      this.accounts = await engine.list('account', { bookId })
+    },
+
+    async refreshCurrentBook(month = new Date().toISOString().slice(0, 7), { sync = true } = {}) {
+      const bookId = this.currentBookId
+      if (!bookId || !this.online) return
+      await this.refreshResources(month)
       const transactions = []
       let page = 1
       while (true) {
@@ -147,7 +183,8 @@ export const useLedgerStore = defineStore('ledger', {
       }
       await engine.replace('transaction', transactions, { bookId })
       await this.hydrate()
-      await this.syncNow()
+      await this.refreshBooks()
+      if (sync) await this.syncNow()
     },
 
     async hydrate() {
@@ -208,19 +245,24 @@ export const useLedgerStore = defineStore('ledger', {
     },
 
     async syncNow() {
-      if (!this.online || !this.currentBookId || this.syncing) return
+      if (!this.online || !this.currentBookId) return
+      if (activeSyncPromise) return activeSyncPromise
       this.syncing = true
       this.syncError = ''
-      try {
-        const result = await engine.sync(this.currentBookId)
-        if (result.resetRequired) await this.refreshCurrentBook()
-        else await this.hydrate()
-        return result
-      } catch (error) {
-        this.syncError = error?.response?.data?.detail || error?.message || '同步失败'
-      } finally {
-        this.syncing = false
-      }
+      activeSyncPromise = (async () => {
+        try {
+          const result = await engine.sync(this.currentBookId)
+          if (result.resetRequired) await this.refreshCurrentBook(undefined, { sync: false })
+          else await this.hydrate()
+          return result
+        } catch (error) {
+          this.syncError = error?.response?.data?.detail || error?.message || '同步失败'
+        } finally {
+          this.syncing = false
+          activeSyncPromise = null
+        }
+      })()
+      return activeSyncPromise
     },
 
     async resolveConflict(opId, strategy, mergedPayload) {

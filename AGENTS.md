@@ -7,6 +7,7 @@
 - `frontend/` contains the Vue 3/Vite client. Put views in `src/views`, reusable components in `src/components`, API wrappers in `src/api`, Pinia stores in `src/stores`, and theme styles in `src/styles`.
 - `frontend/packages/` holds shared packages such as `sync-engine`, `api-client`, and UI primitives.
 - `deploy/` contains Dockerfiles, Compose definitions, Nginx configuration, database initialization, and local/deployment helpers.
+- docs/ 目前包含了架构设计 部署文档 阶段1的详细设计文档，开始任务前一定要参考，并且修改后对应修改文档
 
 ## Build, Test, and Development Commands
 

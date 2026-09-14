@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div v-if="open" class="ui-dialog-backdrop" @click.self="$emit('update:open', false)">
+    <Transition name="modal-fade"><div v-if="open" class="ui-dialog-backdrop" @click.self="$emit('update:open', false)">
       <section class="ui-dialog" role="dialog" aria-modal="true" :aria-label="title">
         <header class="ui-dialog-head">
           <h2>{{ title }}</h2>
@@ -9,7 +9,7 @@
         <div class="ui-dialog-body"><slot /></div>
         <footer v-if="$slots.footer" class="ui-dialog-foot"><slot name="footer" /></footer>
       </section>
-    </div>
+    </div></Transition>
   </Teleport>
 </template>
 

@@ -36,6 +36,17 @@ test('不同账本使用独立游标和存储范围', async () => {
   assert.equal((await engine.list('account', { bookId: 'book-b' }))[0].name, 'B')
 })
 
+test('写入前清理嵌套展示对象中的不可克隆值', async () => {
+  const engine = new SyncEngine()
+  const row = await engine.put('category', {
+    id: 'category-1',
+    name: '餐饮',
+    children: [{ id: 'child-1', render: () => '仅用于界面' }]
+  }, { bookId: 'book-a', recordOp: false })
+  assert.equal(row.children[0].id, 'child-1')
+  assert.equal('render' in row.children[0], false)
+})
+
 test('较新的服务端版本覆盖本地版本并保留墓碑', async () => {
   const engine = new SyncEngine()
   await engine.put('transaction', { id: '1', amount: 10, revision: 1 }, { bookId: 'book-a', recordOp: false })
@@ -49,6 +60,42 @@ test('较新的服务端版本覆盖本地版本并保留墓碑', async () => {
   assert.equal(row.amount, 15)
   assert.equal(row.deleted, true)
   assert.equal((await engine.list('transaction', { bookId: 'book-a' })).length, 0)
+})
+
+test('分页拉取批量合并并保留最后版本', async () => {
+  let page = 0
+  const engine = new SyncEngine({
+    transport: {
+      pull: async (_bookId, cursor) => {
+        page++
+        if (page === 1) {
+          return {
+            cursor: 2,
+            hasMore: true,
+            operations: [
+              { cursor: 1, entityType: 'transaction', entityId: 'a', operation: 'UPSERT', payload: { amount: 10, revision: 1 } },
+              { cursor: 2, entityType: 'transaction', entityId: 'b', operation: 'UPSERT', payload: { amount: 20, revision: 1 } }
+            ]
+          }
+        }
+        assert.equal(cursor, 2)
+        return {
+          cursor: 4,
+          hasMore: false,
+          operations: [
+            { cursor: 3, entityType: 'transaction', entityId: 'a', operation: 'UPSERT', payload: { amount: 15, revision: 2 } },
+            { cursor: 4, entityType: 'transaction', entityId: 'b', operation: 'DELETE', payload: { amount: 20, revision: 2 } }
+          ]
+        }
+      }
+    }
+  })
+  const result = await engine.sync('book-a')
+  assert.equal(result.pulled, 4)
+  assert.equal(result.cursor, 4)
+  assert.equal(page, 2)
+  assert.equal((await engine.get('transaction', 'a', { bookId: 'book-a' })).amount, 15)
+  assert.equal((await engine.get('transaction', 'b', { bookId: 'book-a' })).deleted, true)
 })
 
 test('冲突保留待处理操作，权限撤销写入可导出队列', async () => {

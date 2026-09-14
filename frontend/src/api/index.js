@@ -169,20 +169,47 @@ export function apiLedgerAiPreview(bookId, text) {
   if (text === undefined) { text = bookId; bookId = null }
   return api.post(bookPath(bookId, '/ai/preview'), { text }).then(unwrap)
 }
+export function apiLedgerMonthlyAnalysis(bookId, payload) { return api.post(bookPath(bookId, '/ai/monthly-analysis'), payload, { timeout: 30000 }).then(unwrap) }
 export function apiLedgerAiImagePreview(bookId, file) { const body = new FormData(); body.append('file', file); return api.post(bookPath(bookId, '/ai/image-preview'), body).then(unwrap) }
 export function apiLedgerAiConfirm(bookId, draftId, transactions, opId) { return api.post(bookPath(bookId, `/ai/${draftId}/confirm`), { transactions }, { headers: revisionHeaders(null, opId) }).then(unwrap) }
 export function apiPushLedgerSync(bookId, operations) { return api.post(bookPath(bookId, '/sync/push'), operations).then(unwrap) }
 export function apiPullLedgerSync(bookId, cursor = 0) { return api.get(bookPath(bookId, '/sync/pull'), { params: { cursor } }).then(unwrap) }
-export function apiImportLedgerPreview(bookId, file, template = 'AUTO') { const body = new FormData(); body.append('file', file); return api.post(bookPath(bookId, '/imports/preview'), body, { params: { template } }).then(unwrap) }
-export function apiImportLedgerConfirm(bookId, batchId) { return api.post(bookPath(bookId, `/imports/${batchId}/confirm`)).then(unwrap) }
-export function apiImportLedgerCsv(file) {
-  return apiImportLedgerPreview(activeBookId(), file, 'AUTO').then(preview =>
-    apiImportLedgerConfirm(activeBookId(), preview.batchId))
+export function apiImportLedgerPreview(bookId, file, template = 'AUTO', onUploadProgress) {
+  const body = new FormData()
+  body.append('file', file)
+  return api.post(bookPath(bookId, '/imports/preview'), body, {
+    params: { template },
+    timeout: 120000,
+    onUploadProgress: event => {
+      if (!onUploadProgress) return
+      const total = Number(event.total || file.size || 0)
+      onUploadProgress(total ? Math.min(100, Math.round(Number(event.loaded || 0) / total * 100)) : 0)
+    }
+  }).then(unwrap)
 }
-export function apiImportLedgerExcel(file) { return apiImportLedgerCsv(file) }
+export function apiImportLedgerConfirm(bookId, batchId) {
+  return api.post(bookPath(bookId, `/imports/${batchId}/confirm`), {}, { timeout: 600000 }).then(unwrap)
+}
+export function apiImportLedgerCsv(file, progress = {}) {
+  const bookId = activeBookId()
+  progress.onStage?.('upload')
+  return apiImportLedgerPreview(bookId, file, 'AUTO', progress.onUploadProgress).then(preview => {
+    progress.onPreview?.(preview)
+    progress.onStage?.('confirm')
+    return apiImportLedgerConfirm(bookId, preview.batchId)
+  })
+}
+export function apiImportLedgerExcel(file, progress = {}) { return apiImportLedgerCsv(file, progress) }
 export function ledgerExportUrl(bookId, format = 'csv', params = {}) {
   const query = new URLSearchParams({ format, ...Object.fromEntries(Object.entries(params).filter(([, value]) => value)) })
   return `/api${bookPath(bookId, '/export')}?${query}`
+}
+export function apiDownloadLedgerExport(bookId, format = 'xlsx', params = {}) {
+  return api.get(bookPath(bookId, '/export'), {
+    params: { format, ...params },
+    responseType: 'blob',
+    timeout: 600000
+  }).then(response => response.data)
 }
 
 export function apiGetData() { return apiGetWorktimeSnapshot() }

@@ -38,6 +38,6 @@ app:
   legacy-admin-password: ${LEGACY_ADMIN_PASSWORD:}
   cookie-secure: ${COOKIE_SECURE:false}
   ai:
-    endpoint: ${LLM_ENDPOINT:}
-    model: ${LLM_MODEL:deepseek-chat}
-    api-key: ${LLM_API_KEY:}
+    endpoint: ${LLM_ENDPOINT:https://api.deepseek.com/chat/completions}
+    model: ${LLM_MODEL:deepseek-flash}
+    api-key: ${DEEPSEEK_API_KEY:${LLM_API_KEY:}}

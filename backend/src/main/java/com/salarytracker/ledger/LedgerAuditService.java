@@ -89,18 +89,60 @@ public class LedgerAuditService {
 
     private Map<String, Object> view(Map<String, Object> row) {
         Map<String, Object> result = new LinkedHashMap<>();
+        Object before = parse(row.get("before_json"));
+        Object after = parse(row.get("after_json"));
         result.put("id", number(row.get("id")));
         result.put("action", row.get("action"));
         result.put("targetType", row.get("target_type"));
         result.put("targetId", row.get("target_public_id"));
-        result.put("before", parse(row.get("before_json")));
-        result.put("after", parse(row.get("after_json")));
+        result.put("targetName", targetName(String.valueOf(row.get("target_type")), after, before));
+        result.put("before", before);
+        result.put("after", after);
         result.put("actor", Map.of(
                 "id", number(row.get("actor_user_id")),
                 "username", String.valueOf(row.get("username")),
                 "nickname", String.valueOf(row.get("nickname"))));
         result.put("createdAt", row.get("created_at"));
         return result;
+    }
+
+    private String targetName(String type, Object after, Object before) {
+        List<Map<?, ?>> sources = new java.util.ArrayList<>();
+        if (after instanceof Map<?, ?> map && !map.isEmpty()) sources.add(map);
+        if (before instanceof Map<?, ?> map && !map.isEmpty()) sources.add(map);
+        for (Map<?, ?> source : sources) {
+            for (String key : List.of("name", "displayName", "category", "username", "label")) {
+                String value = text(source.get(key));
+                if (!value.isBlank()) return value;
+            }
+        }
+        if ("transaction".equals(type)) {
+            for (Map<?, ?> source : sources) {
+                String date = text(source.get("occurredOn"));
+                String payee = text(source.get("payee"));
+                String amount = text(source.get("amount"));
+                String label = String.join(" ", List.of(date, payee,
+                        amount.isBlank() ? "" : "¥" + amount)).trim().replaceAll("\\s+", " ");
+                if (!label.isBlank()) return label;
+            }
+        }
+        if ("budget".equals(type)) {
+            for (Map<?, ?> source : sources) {
+                String month = text(source.get("monthKey"));
+                if (!month.isBlank()) return month + " 预算";
+            }
+        }
+        return switch (type) {
+            case "account" -> "已删除账户";
+            case "category" -> "已删除分类";
+            case "merchant" -> "已删除商家";
+            case "member" -> "已删除成员";
+            case "project" -> "已删除项目";
+            case "role" -> "已删除角色";
+            case "book" -> "已删除账本";
+            case "transaction" -> "已删除流水";
+            default -> "已删除对象";
+        };
     }
 
     private Map<String, Object> page(List<Map<String, Object>> items, long total, int page, int pageSize) {
@@ -132,5 +174,9 @@ public class LedgerAuditService {
 
     private long number(Object value) {
         return value instanceof Number number ? number.longValue() : Long.parseLong(String.valueOf(value));
+    }
+
+    private String text(Object value) {
+        return value == null ? "" : String.valueOf(value).trim();
     }
 }

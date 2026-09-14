@@ -21,8 +21,8 @@ public class LlmGateway {
 
     public LlmGateway(ObjectMapper mapper,
                       RestClient.Builder builder,
-                      @Value("${app.ai.endpoint:}") String endpoint,
-                      @Value("${app.ai.model:deepseek-chat}") String model,
+                      @Value("${app.ai.endpoint:https://api.deepseek.com/chat/completions}") String endpoint,
+                      @Value("${app.ai.model:deepseek-flash}") String model,
                       @Value("${app.ai.api-key:}") String apiKey) {
         this.mapper = mapper;
         this.client = builder.build();
@@ -32,10 +32,14 @@ public class LlmGateway {
     }
 
     public Map<String, Object> chat(String message) {
-        if (endpoint == null || endpoint.isBlank()) {
+        if (!configured()) {
             return Map.of("content", "AI 网关尚未配置，已启用本地自然语言记账解析。", "provider", "local-fallback", "configured", false);
         }
-        Map<String, Object> payload = Map.of("model", model, "messages", List.of(Map.of("role", "user", "content", message)), "temperature", 0.1);
+        Map<String, Object> payload = Map.of(
+                "model", model,
+                "messages", List.of(Map.of("role", "user", "content", message)),
+                "thinking", Map.of("type", "disabled"),
+                "temperature", 0.1);
         RestClient.RequestBodySpec request = client.post().uri(endpoint).contentType(MediaType.APPLICATION_JSON).body(payload);
         if (apiKey != null && !apiKey.isBlank()) request = request.header("Authorization", "Bearer " + apiKey);
         String body = request.retrieve().body(String.class);
@@ -49,7 +53,7 @@ public class LlmGateway {
     }
 
     public boolean configured() {
-        return endpoint != null && !endpoint.isBlank();
+        return endpoint != null && !endpoint.isBlank() && apiKey != null && !apiKey.isBlank();
     }
 
     public String structured(String systemPrompt,
@@ -75,6 +79,7 @@ public class LlmGateway {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", model);
         payload.put("messages", messages);
+        payload.put("thinking", Map.of("type", "disabled"));
         payload.put("temperature", 0.1);
         payload.put("response_format", Map.of("type", "json_object"));
         RestClient.RequestBodySpec request = client.post().uri(endpoint)

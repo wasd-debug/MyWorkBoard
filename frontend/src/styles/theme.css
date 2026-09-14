@@ -124,6 +124,22 @@ img, svg { display: block; max-width: 100% }
 .ui-drawer-handle { width: 42px; height: 4px; border-radius: 4px; background: var(--line2); margin: 10px auto 0 }
 @keyframes sheet-in { from { transform: translateX(100%) } to { transform: translateX(0) } }
 @keyframes drawer-in { from { transform: translateY(100%) } to { transform: translateY(0) } }
+.modal-fade-enter-active, .modal-fade-leave-active { transition: opacity .18s ease }
+.modal-fade-enter-active .ui-sheet, .modal-fade-leave-active .ui-sheet,
+.modal-fade-enter-active .ui-drawer, .modal-fade-leave-active .ui-drawer,
+.modal-fade-enter-active .ui-dialog, .modal-fade-leave-active .ui-dialog { transition: transform .2s ease, opacity .18s ease }
+.modal-fade-enter-from, .modal-fade-leave-to { opacity: 0 }
+.modal-fade-enter-from .ui-sheet, .modal-fade-leave-to .ui-sheet { opacity: 0; transform: translateX(28px) }
+.modal-fade-enter-from .ui-drawer, .modal-fade-leave-to .ui-drawer { opacity: 0; transform: translateY(28px) }
+.modal-fade-enter-from .ui-dialog, .modal-fade-leave-to .ui-dialog { opacity: 0; transform: translateY(8px) scale(.985) }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important }
+  .modal-fade-enter-active, .modal-fade-leave-active,
+  .modal-fade-enter-active .ui-sheet, .modal-fade-leave-active .ui-sheet,
+  .modal-fade-enter-active .ui-drawer, .modal-fade-leave-active .ui-drawer,
+  .modal-fade-enter-active .ui-dialog, .modal-fade-leave-active .ui-dialog,
+  .card-expand-enter-active, .card-expand-leave-active { transition: none !important; animation: none !important }
+}
 @media (max-width: 767px) { .ui-sheet-backdrop { align-items: flex-end } .ui-sheet { width: 100%; height: auto; max-height: 92vh; border-left: 0; border-radius: 14px 14px 0 0; animation: drawer-in .2s ease } .ui-sheet-head { padding: 18px 20px } .ui-sheet-body { padding: 20px } }
 select {
   height: 34px; padding: 0 10px; font-size: 13px; appearance: none;
@@ -558,6 +574,8 @@ html.dark .ui-button.variant-ink:hover:not(:disabled) { background: color-mix(in
 .cal-cell.month-cell.expanded { min-height: 92px; z-index: 2; box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 18%, transparent); }
 .cal-expanded { display: flex; flex-direction: column; gap: 1px; margin-top: 4px; color: var(--ink2); font-size: 9px; line-height: 1.35; overflow: hidden; }
 .cal-expanded span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-expand-enter-active, .card-expand-leave-active { max-height: 34px; transition: max-height .18s ease, opacity .15s ease, transform .18s ease; }
+.card-expand-enter-from, .card-expand-leave-to { max-height: 0; opacity: 0; transform: translateY(-4px); }
 .cal-cell.wk { aspect-ratio: auto; min-height: 110px }
 .cal-cell.blank { background: transparent; border-color: transparent }
 .cal-cell.off { opacity: .5 }

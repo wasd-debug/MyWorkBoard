@@ -28,13 +28,13 @@ public class LedgerTransactionService {
     private static final Set<String> INCOME_KINDS = Set.of("INCOME", "BORROW_IN", "COLLECT_DEBT");
     private static final Set<String> EXPENSE_KINDS = Set.of("EXPENSE", "LEND_OUT", "REPAY_DEBT");
     private static final String SELECT =
-            "SELECT t.id internal_id,t.public_id,t.book_id,t.account_id,a.public_id account_public_id,a.name account_name," +
-                    "t.counterparty_account_id,target.public_id target_account_public_id,target.name target_account_name," +
-                    "t.transfer_group_id,t.category_id,c.public_id category_public_id,c.name category_name," +
-                    "parent.public_id parent_category_public_id,parent.name parent_category_name," +
-                    "t.merchant_id,m.public_id merchant_public_id,m.name merchant_name," +
-                    "t.member_id,bm.public_id member_public_id,u.username member_username,u.nickname member_nickname," +
-                    "t.project_id,p.public_id project_public_id,p.name project_name," +
+            "SELECT t.id internal_id,t.public_id,t.book_id,t.account_id,a.public_id account_public_id,a.name account_name,a.icon account_icon," +
+                    "t.counterparty_account_id,target.public_id target_account_public_id,target.name target_account_name,target.icon target_account_icon," +
+                    "t.transfer_group_id,t.category_id,c.public_id category_public_id,c.name category_name,c.icon category_icon,c.color category_color," +
+                    "parent.public_id parent_category_public_id,parent.name parent_category_name,parent.icon parent_category_icon,parent.color parent_category_color," +
+                    "t.merchant_id,m.public_id merchant_public_id,m.name merchant_name,m.icon merchant_icon," +
+                    "t.member_id,bm.public_id member_public_id,bm.icon member_icon,u.username member_username,u.nickname member_nickname," +
+                    "t.project_id,p.public_id project_public_id,p.name project_name,p.icon project_icon,p.color project_color," +
                     "t.kind,t.amount,t.currency,t.occurred_on,t.payee,t.member_name,t.project_name legacy_project_name," +
                     "t.note,t.source,t.client_op_id,t.revision,t.deleted,t.deleted_at,t.created_by,t.created_at,t.updated_at " +
                     "FROM ledger_transaction t JOIN ledger_account a ON a.id=t.account_id " +
@@ -483,7 +483,7 @@ public class LedgerTransactionService {
         } else {
             addEquals(where, args, "t.kind=?", filterKind);
         }
-        addPublicId(where, args, "t.account_id", "ledger_account", filters.get("accountId"), context.bookId());
+        addAccountPublicId(where, args, filters.get("accountId"), context.bookId());
         addPublicId(where, args, "t.category_id", "ledger_category",
                 text(filters.get("categoryId")).isBlank() ? filters.get("secondaryCategoryId") : filters.get("categoryId"),
                 context.bookId());
@@ -559,15 +559,16 @@ public class LedgerTransactionService {
                     required(value, "targetAccountId"), true);
             if (targetAccountId == accountId) throw new IllegalArgumentException("转出账户与转入账户不能相同");
         }
-        long categoryId = resources.internalId(context, "ledger_category", required(value, "categoryId"), true);
-        Map<String, Object> category = jdbc.queryForMap(
-                "SELECT kind,parent_id FROM ledger_category WHERE id=? AND book_id=? AND deleted=FALSE AND hidden=FALSE",
-                categoryId, context.bookId());
-        if (category.get("parent_id") == null) throw new IllegalArgumentException("分类必须选择到二级");
-        String expectedCategoryKind = INCOME_KINDS.contains(kind) ? "INCOME"
-                : EXPENSE_KINDS.contains(kind) ? "EXPENSE" : null;
-        if (expectedCategoryKind != null && !expectedCategoryKind.equals(category.get("kind"))) {
-            throw new IllegalArgumentException("分类类型与流水类型不匹配");
+        Long categoryId = null;
+        if ("INCOME".equals(kind) || "EXPENSE".equals(kind)) {
+            categoryId = resources.internalId(context, "ledger_category", required(value, "categoryId"), true);
+            Map<String, Object> category = jdbc.queryForMap(
+                    "SELECT kind,parent_id FROM ledger_category WHERE id=? AND book_id=? AND deleted=FALSE AND hidden=FALSE",
+                    categoryId, context.bookId());
+            if (category.get("parent_id") == null) throw new IllegalArgumentException("分类必须选择到二级");
+            if (!kind.equals(category.get("kind"))) {
+                throw new IllegalArgumentException("分类类型与流水类型不匹配");
+            }
         }
         Long merchantId = optionalInternal(context, "ledger_merchant", value.get("merchantId"));
         Long memberId = optionalInternal(context, "ledger_book_member", value.get("memberId"));
@@ -613,7 +614,7 @@ public class LedgerTransactionService {
             if (draft.targetAccountId() == null) statement.setNull(5, java.sql.Types.BIGINT);
             else statement.setLong(5, draft.targetAccountId());
             statement.setString(6, transferGroupId);
-            statement.setLong(7, draft.categoryId());
+            setNullableLong(statement, 7, draft.categoryId());
             setNullableLong(statement, 8, draft.merchantId());
             setNullableLong(statement, 9, draft.memberId());
             setNullableLong(statement, 10, draft.projectId());
@@ -792,27 +793,51 @@ public class LedgerTransactionService {
         args.add(bookId);
     }
 
+    private void addAccountPublicId(StringBuilder where,
+                                    List<Object> args,
+                                    String publicId,
+                                    long bookId) {
+        String id = text(publicId);
+        if (id.isBlank()) return;
+        where.append(" AND (t.account_id=(SELECT id FROM ledger_account WHERE public_id=? AND book_id=?)")
+                .append(" OR t.counterparty_account_id=(SELECT id FROM ledger_account WHERE public_id=? AND book_id=?))");
+        args.add(id);
+        args.add(bookId);
+        args.add(id);
+        args.add(bookId);
+    }
+
     private Map<String, Object> view(Map<String, Object> row) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("internalId", number(row.get("internal_id")));
         result.put("id", row.get("public_id"));
         result.put("accountId", row.get("account_public_id"));
         result.put("accountName", row.get("account_name"));
+        result.put("accountIcon", row.get("account_icon"));
         result.put("targetAccountId", row.get("target_account_public_id"));
         result.put("targetAccountName", row.get("target_account_name"));
+        result.put("targetAccountIcon", row.get("target_account_icon"));
         result.put("transferGroupId", row.get("transfer_group_id"));
         result.put("categoryId", row.get("category_public_id"));
         result.put("categoryName", row.get("category_name"));
+        result.put("categoryIcon", row.get("category_icon"));
+        result.put("categoryColor", row.get("category_color"));
         result.put("parentCategoryId", row.get("parent_category_public_id"));
         result.put("parentCategoryName", row.get("parent_category_name"));
+        result.put("parentCategoryIcon", row.get("parent_category_icon"));
+        result.put("parentCategoryColor", row.get("parent_category_color"));
         result.put("merchantId", row.get("merchant_public_id"));
         result.put("merchantName", row.get("merchant_name"));
+        result.put("merchantIcon", row.get("merchant_icon"));
         result.put("payee", row.get("merchant_name") == null ? row.get("payee") : row.get("merchant_name"));
         result.put("memberId", row.get("member_public_id"));
+        result.put("memberIcon", row.get("member_icon"));
         result.put("memberUsername", row.get("member_username"));
         String memberName = text(row.get("member_nickname"));
         result.put("member", memberName.isBlank() ? row.get("member_username") : memberName);
         result.put("projectId", row.get("project_public_id"));
+        result.put("projectIcon", row.get("project_icon"));
+        result.put("projectColor", row.get("project_color"));
         result.put("projectName", row.get("project_name") == null
                 ? row.get("legacy_project_name") : row.get("project_name"));
         result.put("project", result.get("projectName"));
@@ -1001,7 +1026,7 @@ public class LedgerTransactionService {
 
     private record Draft(long accountId,
                          Long targetAccountId,
-                         long categoryId,
+                         Long categoryId,
                          Long merchantId,
                          Long memberId,
                          Long projectId,

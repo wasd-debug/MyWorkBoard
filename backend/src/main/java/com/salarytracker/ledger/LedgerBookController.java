@@ -37,19 +37,22 @@ public class LedgerBookController {
     private final LedgerImportService imports;
     private final LedgerSyncService sync;
     private final LedgerAiService ai;
+    private final LedgerReportAiService reportAi;
 
     public LedgerBookController(LedgerBookService books,
                                 LedgerTransactionService transactions,
                                 LedgerAuditService audit,
                                 LedgerImportService imports,
                                 LedgerSyncService sync,
-                                LedgerAiService ai) {
+                                LedgerAiService ai,
+                                LedgerReportAiService reportAi) {
         this.books = books;
         this.transactions = transactions;
         this.audit = audit;
         this.imports = imports;
         this.sync = sync;
         this.ai = ai;
+        this.reportAi = reportAi;
     }
 
     @GetMapping("/books")
@@ -431,6 +434,12 @@ public class LedgerBookController {
     public ApiResponse<Map<String, Object>> aiPreview(@PathVariable String bookId,
                                                       @RequestBody Map<String, Object> body) {
         return ApiResponse.ok(ai.previewText(bookId, String.valueOf(body.getOrDefault("text", ""))));
+    }
+
+    @PostMapping("/books/{bookId}/ai/monthly-analysis")
+    public ApiResponse<Map<String, Object>> aiMonthlyAnalysis(@PathVariable String bookId,
+                                                              @RequestBody Map<String, Object> body) {
+        return ApiResponse.ok(reportAi.analyzeMonth(bookId, body));
     }
 
     @PostMapping(value = "/books/{bookId}/ai/image-preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
