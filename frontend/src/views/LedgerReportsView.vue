@@ -842,6 +842,58 @@ function loadExportImage(url) {
   })
 }
 
+function legacyColorValue(value) {
+  return String(value || '').replace(/color\((?:srgb|display-p3)\s+([^\)]+)\)/gi, (_, channels) => {
+    const parts = channels.trim().split(/[\s/]+/).filter(Boolean)
+    if (parts.length < 3) return _
+    const rgb = parts.slice(0, 3).map(part => {
+      const number = Number(part)
+      return `${Math.round(Math.max(0, Math.min(1, number)) * 255)}`
+    })
+    const alpha = parts[3] == null ? 1 : Number(parts[3])
+    return alpha >= 0.999 ? `rgb(${rgb.join(',')})` : `rgba(${rgb.join(',')},${Math.max(0, Math.min(1, alpha))})`
+  })
+}
+
+function exportStyleValue(value) {
+  const normalized = legacyColorValue(value)
+  return /(?:color\(|oklch\(|oklab\(|lch\(|lab\()/i.test(normalized) ? '' : normalized
+}
+
+async function renderFlatExport(clone, width, height, background) {
+  const frame = document.createElement('iframe')
+  frame.setAttribute('aria-hidden', 'true')
+  frame.style.cssText = `position:absolute;left:-100000px;top:0;width:${width}px;height:${height}px;border:0;visibility:hidden;`
+  document.body.appendChild(frame)
+  try {
+    const frameDocument = frame.contentDocument
+    if (!frameDocument) throw new Error('无法创建导出画布')
+    frameDocument.open()
+    frameDocument.write('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>')
+    frameDocument.close()
+    frameDocument.documentElement.style.background = background
+    frameDocument.body.style.cssText = `margin:0;width:${width}px;min-height:${height}px;background:${background};overflow:visible;`
+    const root = frameDocument.importNode(clone, true)
+    root.style.width = `${width}px`
+    root.style.minHeight = `${height}px`
+    frameDocument.body.appendChild(root)
+    await new Promise(resolve => frame.contentWindow.requestAnimationFrame(() => frame.contentWindow.requestAnimationFrame(resolve)))
+    return await html2canvas(root, {
+      backgroundColor: background,
+      scale: Math.min(2, window.devicePixelRatio || 1),
+      useCORS: false,
+      allowTaint: false,
+      logging: false,
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: width,
+      windowHeight: height
+    })
+  } finally {
+    frame.remove()
+  }
+}
+
 function downloadExport(blob, filename) {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
@@ -854,7 +906,6 @@ function downloadExport(blob, filename) {
 async function exportReportImage() {
   if (reportExporting.value) return
   reportExporting.value = true
-  let host
   try {
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     const source = reportExportRef.value
@@ -867,7 +918,10 @@ async function exportReportImage() {
       const target = cloneNodes[index]
       if (!target) return
       const computed = getComputedStyle(node)
-      target.style.cssText = Array.from(computed).filter(name => !name.startsWith('--')).map(name => `${name}:${computed.getPropertyValue(name)};`).join('')
+      target.style.cssText = Array.from(computed).filter(name => !name.startsWith('--')).map(name => {
+        const value = exportStyleValue(computed.getPropertyValue(name))
+        return value ? `${name}:${value};` : ''
+      }).join('')
     })
     clone.querySelectorAll('.report-heading-actions,.date-picker-popover,.report-library-popover,.report-tab-remove').forEach(node => node.remove())
     const sourceCanvases = Array.from(source.querySelectorAll('canvas'))
@@ -883,21 +937,8 @@ async function exportReportImage() {
     const rect = source.getBoundingClientRect()
     const width = Math.max(1, Math.ceil(source.scrollWidth || rect.width))
     const height = Math.max(1, Math.ceil(source.scrollHeight || rect.height))
-    host = document.createElement('div')
-    host.dataset.reportExportHost = 'true'
-    host.style.cssText = `position:absolute;left:-100000px;top:0;width:${width}px;min-height:${height}px;background:${getComputedStyle(document.documentElement).getPropertyValue('--paper').trim() || '#fff'};overflow:visible;`
-    host.appendChild(clone)
-    document.body.appendChild(host)
-    const canvas = await html2canvas(host, {
-      backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--paper').trim() || '#ffffff',
-      scale: Math.min(2, window.devicePixelRatio || 1), useCORS: true, logging: false,
-      scrollX: 0, scrollY: 0, windowWidth: width,
-      onclone: clonedDocument => {
-        clonedDocument.querySelectorAll('style,link[rel="stylesheet"]').forEach(node => node.remove())
-        const clonedHost = clonedDocument.querySelector('[data-report-export-host]')
-        if (clonedHost) clonedHost.style.left = '0'
-      }
-    })
+    const background = getComputedStyle(document.documentElement).getPropertyValue('--paper').trim() || '#ffffff'
+    const canvas = await renderFlatExport(clone, width, height, background)
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
     if (!blob) throw new Error('图片生成失败')
     downloadExport(blob, `ledger-report-${selectedReport.value}-${period.value}.png`)
@@ -905,7 +946,6 @@ async function exportReportImage() {
   } catch (error) {
     ElMessage.error(error.message || '报表图片导出失败')
   } finally {
-    host?.remove()
     reportExporting.value = false
   }
 }
