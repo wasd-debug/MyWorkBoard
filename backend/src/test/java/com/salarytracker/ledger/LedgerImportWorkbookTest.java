@@ -60,14 +60,16 @@ class LedgerImportWorkbookTest {
                 new MockMultipartFile("file", "fixture.xlsx", null, Files.readAllBytes(Path.of(fixture))),
                 "AUTO");
         List<Map<String, Object>> rows = rows(preview);
-        assertEquals(7660, rows.size());
+        // The workbook contains one real record on the 退款 sheet in addition to
+        // the transfer, expense, income and borrow sheets.
+        assertEquals(7661, rows.size());
         assertEquals(534, rows.stream().filter(row -> "TRANSFER".equals(row.get("kind"))).count());
         assertEquals(0, preview.get("errorCount"));
         assertEquals(0, preview.get("duplicateCount"));
-        assertEquals(7660, preview.get("validCount"));
+        assertEquals(7661, preview.get("validCount"));
         assertTrue(rows.stream().anyMatch(row -> "TRANSFER".equals(row.get("kind"))
                 && "2026-09-08".equals(row.get("occurredOn"))));
-        assertEquals(477, rows.stream().filter(row ->
+        assertEquals(478, rows.stream().filter(row ->
                 String.valueOf(row.get("occurredOn")).compareTo("2026-06-04") >= 0).count());
     }
 

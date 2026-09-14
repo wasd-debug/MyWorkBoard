@@ -694,7 +694,7 @@ public class LedgerBookService {
                         "AND ((t.account_id=a.id AND t.kind<>'TRANSFER_IN') OR (t.counterparty_account_id=a.id AND t.kind='TRANSFER_OUT') " +
                         "OR (t.account_id=a.id AND t.kind='TRANSFER_IN' AND NOT EXISTS " +
                         "(SELECT 1 FROM ledger_transaction source_transfer WHERE source_transfer.transfer_group_id=t.transfer_group_id " +
-                        "AND source_transfer.kind='TRANSFER_OUT' AND source_transfer.book_id=t.book_id AND source_transfer.deleted=FALSE))),0) balance " +
+                        "AND source_transfer.kind='TRANSFER_OUT' AND source_transfer.book_id=t.book_id AND source_transfer.deleted=FALSE)))),0) balance " +
                         "FROM ledger_account a WHERE a.public_id=? AND a.book_id=? AND a.deleted=FALSE" + hidden,
                 publicId, context.bookId());
         if (rows.isEmpty()) throw new IllegalArgumentException("账户不存在");
