@@ -15,6 +15,7 @@ tar --exclude='./frontend/node_modules' \
     --exclude='./frontend/dist' \
     --exclude='./frontend/node_modules/.npm-cache' \
     --exclude='./backend/target' \
+    --exclude='*/target' \
     --exclude='./deploy/build/local-db-backups' \
     --exclude='./.git' \
     --exclude='.DS_Store' \
