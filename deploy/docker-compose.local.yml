@@ -43,6 +43,9 @@ services:
       DB_PASSWORD: SalaryApp@2026
       JWT_SECRET: "local-development-secret-change-me-32-bytes"
       COOKIE_SECURE: "false"
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      LLM_ENDPOINT: ${LLM_ENDPOINT:-https://api.deepseek.com/chat/completions}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-flash}
     ports:
       - "8080:8080"
     depends_on:

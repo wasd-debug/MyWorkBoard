@@ -4,8 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.util.List;
 import java.util.LinkedHashMap;
@@ -25,7 +28,10 @@ public class LlmGateway {
                       @Value("${app.ai.model:deepseek-flash}") String model,
                       @Value("${app.ai.api-key:}") String apiKey) {
         this.mapper = mapper;
-        this.client = builder.build();
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(10_000);
+        requestFactory.setReadTimeout(45_000);
+        this.client = builder.requestFactory(requestFactory).build();
         this.endpoint = endpoint;
         this.model = model;
         this.apiKey = apiKey;
@@ -38,11 +44,17 @@ public class LlmGateway {
         Map<String, Object> payload = Map.of(
                 "model", model,
                 "messages", List.of(Map.of("role", "user", "content", message)),
-                "thinking", Map.of("type", "disabled"),
                 "temperature", 0.1);
         RestClient.RequestBodySpec request = client.post().uri(endpoint).contentType(MediaType.APPLICATION_JSON).body(payload);
         if (apiKey != null && !apiKey.isBlank()) request = request.header("Authorization", "Bearer " + apiKey);
-        String body = request.retrieve().body(String.class);
+        String body;
+        try {
+            body = request.retrieve().body(String.class);
+        } catch (RestClientResponseException exception) {
+            throw upstreamError(exception.getResponseBodyAsString(), exception.getStatusCode().value());
+        } catch (RestClientException exception) {
+            throw new IllegalStateException("DeepSeek 暂时不可用，请稍后重试", exception);
+        }
         try {
             JsonNode root = mapper.readTree(body);
             String content = root.path("choices").path(0).path("message").path("content").asText(body);
@@ -79,7 +91,6 @@ public class LlmGateway {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", model);
         payload.put("messages", messages);
-        payload.put("thinking", Map.of("type", "disabled"));
         payload.put("temperature", 0.1);
         payload.put("response_format", Map.of("type", "json_object"));
         RestClient.RequestBodySpec request = client.post().uri(endpoint)
@@ -87,12 +98,35 @@ public class LlmGateway {
         if (apiKey != null && !apiKey.isBlank()) {
             request = request.header("Authorization", "Bearer " + apiKey);
         }
-        String body = request.retrieve().body(String.class);
+        String body;
+        try {
+            body = request.retrieve().body(String.class);
+        } catch (RestClientResponseException exception) {
+            throw upstreamError(exception.getResponseBodyAsString(), exception.getStatusCode().value());
+        } catch (RestClientException exception) {
+            throw new IllegalStateException("DeepSeek 暂时不可用，请稍后重试", exception);
+        }
         try {
             JsonNode root = mapper.readTree(body);
             return root.path("choices").path(0).path("message").path("content").asText(body);
         } catch (Exception ignored) {
             return body;
         }
+    }
+
+    private IllegalStateException upstreamError(String body, int status) {
+        String detail = "";
+        try {
+            JsonNode root = mapper.readTree(body);
+            detail = root.path("error").path("message").asText("");
+        } catch (Exception ignored) {
+            // Providers may return an empty or non-JSON error body.
+        }
+        if (detail.isBlank()) {
+            detail = status == 401 || status == 403
+                    ? "DeepSeek API 密钥无效或已过期"
+                    : "DeepSeek 暂时不可用，请稍后重试";
+        }
+        return new IllegalStateException(detail);
     }
 }

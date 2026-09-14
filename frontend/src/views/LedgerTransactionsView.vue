@@ -30,7 +30,7 @@
           <template #header>
             <div class="flow-table-head">
               <div><div class="flow-card-kicker">TRANSACTION LEDGER</div><h2>流水明细</h2></div>
-              <div class="flow-search"><input v-model="searchText" class="ui-input" placeholder="搜索商家、项目、成员或备注"><button v-if="searchText" type="button" aria-label="清空搜索" @click="searchText=''">×</button></div>
+              <div class="flow-table-tools"><div class="flow-view-switch" role="group" aria-label="流水展示方式"><button type="button" :class="{active:displayMode==='flat'}" @click="displayMode='flat'">平铺</button><button type="button" :class="{active:displayMode==='day'}" @click="displayMode='day'">按天</button></div><div class="flow-search"><input v-model="searchText" class="ui-input" placeholder="搜索商家、项目、成员或备注"><button v-if="searchText" type="button" aria-label="清空搜索" @click="searchText=''">×</button></div></div>
             </div>
           </template>
 
@@ -47,7 +47,7 @@
                   </th>
                   <th class="flow-actions-column fixed-actions">操作</th>
                 </tr></thead>
-                <tbody><tr v-for="item in paginatedTransactions" :key="item.id">
+                <tbody v-if="displayMode==='flat'"><tr v-for="item in paginatedTransactions" :key="item.id">
                   <td v-for="column in visibleColumns" :key="column.key" :class="columnClass(column)" :style="columnStickyStyle(column)">
                     <template v-if="column.key==='date'"><span class="flow-date">{{ formatDate(item.occurredOn) }}</span></template>
                     <template v-else-if="column.key==='kind'"><span class="flow-kind" :class="`tone-${kindMeta(item.kind).tone}`">{{ kindMeta(item.kind).label }}</span></template>
@@ -62,10 +62,18 @@
                   </td>
                   <td class="flow-row-actions fixed-actions"><LedgerActionIcon action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon action="delete" label="删除流水" @click="deleteTarget=item" /></td>
                 </tr></tbody>
+                <tbody v-else><template v-for="group in transactionGroups" :key="group.date"><tr class="flow-day-divider"><td :colspan="visibleColumns.length + 1"><b>{{ formatDate(group.date) }}</b><span>收入 ¥{{ money(group.income) }} · 支出 ¥{{ money(group.expense) }} · {{ group.items.length }} 笔</span></td></tr><tr v-for="item in group.items" :key="item.id">
+                  <td v-for="column in visibleColumns" :key="column.key" :class="columnClass(column)" :style="columnStickyStyle(column)">
+                    <template v-if="column.key==='date'"><span class="flow-date">{{ formatDate(item.occurredOn) }}</span></template>
+                    <template v-else-if="column.key==='kind'"><span class="flow-kind" :class="`tone-${kindMeta(item.kind).tone}`">{{ kindMeta(item.kind).label }}</span></template>
+                    <template v-else-if="column.key==='category'"><span class="flow-resource"><LedgerResourceIcon :icon="item.categoryIcon || item.parentCategoryIcon" type="category" :color="item.categoryColor || item.parentCategoryColor" compact /><span><b class="flow-category">{{ item.categoryName|| (item.kind==='TRANSFER'?'账户互转':'未分类') }}</b><small v-if="item.parentCategoryName">{{ item.parentCategoryName }}</small></span></span></template>
+                    <template v-else-if="column.key==='account'"><span>{{ item.accountName }}</span></template><template v-else-if="column.key==='targetAccount'"><span>{{ item.targetAccountName||'—' }}</span></template><template v-else-if="column.key==='payee'"><span>{{ item.payee||'—' }}</span></template><template v-else-if="column.key==='member'"><span>{{ item.member||'—' }}</span></template><template v-else-if="column.key==='project'"><span v-if="item.project" class="flow-resource"><LedgerResourceIcon :icon="item.projectIcon" type="project" :color="item.projectColor" compact /><span>{{ item.project }}</span></span><span v-else>—</span></template><template v-else-if="column.key==='note'"><span class="flow-note" :title="item.note||''">{{ item.note||'—' }}</span></template><template v-else-if="column.key==='amount'"><b :class="amountClass(item)">{{ amountPrefix(item) }}¥{{ money(item.amount) }}</b></template>
+                  </td><td class="flow-row-actions fixed-actions"><LedgerActionIcon action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon action="delete" label="删除流水" @click="deleteTarget=item" /></td>
+                </tr></template></tbody>
               </Table>
             </div>
 
-            <div class="flow-mobile-list">
+            <div class="flow-mobile-list" v-if="displayMode==='flat'">
               <article v-for="item in paginatedTransactions" :key="item.id" class="flow-mobile-item">
                 <div class="flow-mobile-top"><span class="flow-kind" :class="`tone-${kindMeta(item.kind).tone}`">{{ kindMeta(item.kind).label }}</span><b :class="amountClass(item)">{{ amountPrefix(item) }}¥{{ money(item.amount) }}</b></div>
                 <div class="flow-mobile-title"><strong>{{ item.payee||item.categoryName||(item.kind==='TRANSFER'?'账户互转':'未命名流水') }}</strong><span>{{ formatDate(item.occurredOn) }}</span></div>
@@ -74,6 +82,9 @@
                 <div class="flow-mobile-actions"><LedgerActionIcon action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon action="delete" label="删除流水" @click="deleteTarget=item" /></div>
               </article>
             </div>
+            <div v-else class="flow-mobile-list flow-mobile-day-list"><template v-for="group in transactionGroups" :key="group.date"><div class="flow-day-heading"><b>{{ formatDate(group.date) }}</b><span>收入 ¥{{ money(group.income) }} · 支出 ¥{{ money(group.expense) }}</span></div><article v-for="item in group.items" :key="item.id" class="flow-mobile-item">
+              <div class="flow-mobile-top"><span class="flow-kind" :class="`tone-${kindMeta(item.kind).tone}`">{{ kindMeta(item.kind).label }}</span><b :class="amountClass(item)">{{ amountPrefix(item) }}¥{{ money(item.amount) }}</b></div><div class="flow-mobile-title"><strong>{{ item.payee||item.categoryName||(item.kind==='TRANSFER'?'账户互转':'未命名流水') }}</strong><span>{{ formatDate(item.occurredOn) }}</span></div><div class="flow-mobile-meta"><span>{{ item.accountName }}<template v-if="item.targetAccountName"> → {{ item.targetAccountName }}</template></span><span class="flow-mobile-resource"><i :style="{ background: item.categoryColor || item.parentCategoryColor || 'var(--muted)' }" />{{ item.categoryName||'未分类' }}</span><span v-if="item.member">{{ item.member }}</span><span v-if="item.project" class="flow-mobile-resource"><i :style="{ background: item.projectColor || 'var(--muted)' }" />{{ item.project }}</span></div><p v-if="item.note" class="flow-mobile-note" :title="item.note">{{ item.note }}</p><div class="flow-mobile-actions"><LedgerActionIcon action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon action="delete" label="删除流水" @click="deleteTarget=item" /></div>
+            </article></template></div>
           </template>
           <template #footer>
             <div class="flow-table-footer">
@@ -154,6 +165,7 @@ const serverTotal = ref(0)
 const serverSummary = ref(null)
 const pageSizeOptions = [10, 20, 50, 100]
 const pageSize = ref(20)
+const displayMode = ref(localStorage.getItem('ledger-transactions-display-mode') === 'day' ? 'day' : 'flat')
 const currentPage = ref(1)
 const filters = reactive({
   from: allRange ? '' : queryValue(route.query.from) || monthStart,
@@ -236,6 +248,19 @@ const pageEnd = computed(() => Math.min(pageStart.value + paginatedTransactions.
 const paginatedTransactions = computed(() => serverMode.value
   ? sortedTransactions.value
   : sortedTransactions.value.slice(pageStart.value, pageStart.value + pageSize.value))
+const transactionGroups = computed(() => {
+  const groups = new Map()
+  for (const item of paginatedTransactions.value) {
+    const date = String(item.occurredOn || '未设置日期')
+    const group = groups.get(date) || { date, income: 0, expense: 0, items: [] }
+    const amount = Number(item.amount || 0)
+    if (['INCOME', 'BORROW_IN', 'COLLECT_DEBT'].includes(item.kind)) group.income += amount
+    if (['EXPENSE', 'LEND_OUT', 'REPAY_DEBT'].includes(item.kind)) group.expense += amount
+    group.items.push(item)
+    groups.set(date, group)
+  }
+  return [...groups.values()].sort((left, right) => right.date.localeCompare(left.date))
+})
 const localSummary = computed(() => filteredTransactions.value.reduce((result, item) => {
   const amount = Number(item.amount) || 0
   if (item.kind === 'INCOME') result.income += amount
@@ -391,6 +416,7 @@ async function saveTransactionFixed() {
 }
 saveTransaction = saveTransactionFixed
 watch(totalPages, pages => { if (currentPage.value > pages) currentPage.value = pages })
+watch(displayMode, value => localStorage.setItem('ledger-transactions-display-mode', value))
 watch([columns, columnWidths], () => {
   localStorage.setItem(columnStorageKey, JSON.stringify(columns.map(column => ({ key: column.key, visible: column.visible, pinned: isColumnPinned(column), width: columnWidths[column.key] }))))
 }, { deep: true })
@@ -453,6 +479,10 @@ onBeforeUnmount(() => {
 .flow-table-card :deep(> div) { min-width: 0 }
 .flow-table-card :deep(> footer) { border-top: 1px solid var(--line) }
 .flow-table-head { display: flex; align-items: center; justify-content: space-between; gap: 20px }
+.flow-table-tools { display:flex; align-items:center; justify-content:flex-end; gap:10px; min-width:0 }
+.flow-view-switch { display:flex; flex:0 0 auto; align-items:center; gap:2px; padding:2px; border:1px solid var(--line2); border-radius:4px; background:var(--paper) }
+.flow-view-switch button { height:27px; padding:0 9px; border:0; border-radius:3px; background:transparent; color:var(--muted); font-size:10px }
+.flow-view-switch button.active { background:var(--card); color:var(--accent); box-shadow:0 1px 3px #00000012; font-weight:650 }
 .flow-table-head h2 { margin: 3px 0 0; color: var(--ink); font: 700 21px Georgia,serif }
 .flow-search { position: relative; width: min(330px,42vw) }
 .flow-search .ui-input { height: 34px; padding-right: 34px; font-size: 12px }
@@ -467,6 +497,8 @@ onBeforeUnmount(() => {
 .flow-desktop-table :deep(tr:hover td) { background: var(--accent-soft) }
 .flow-sort-button { display: inline-flex; align-items: center; gap: 4px; width: 100%; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 10px; font-weight: 650; letter-spacing: .08em; text-align: left }
 .flow-sort-button svg { width: 12px; height: 12px; color: var(--accent) }
+.flow-day-divider td { height:36px!important; padding:7px 12px!important; background:var(--paper)!important; border-bottom:1px solid var(--line); color:var(--ink2); font-size:11px }
+.flow-day-divider td span { margin-left:12px; color:var(--muted); font-size:10px }
 .flow-resize-handle { position: absolute; top: 8px; right: -2px; width: 5px; height: 26px; cursor: col-resize; z-index: 7 }
 .flow-resize-handle::after { content: ''; position: absolute; left: 2px; top: 5px; width: 1px; height: 16px; background: var(--line2) }
 .flow-desktop-table :deep(.fixed-category) { position: sticky; left: 0; z-index: 3; box-shadow: 1px 0 0 var(--line) }
@@ -504,6 +536,8 @@ onBeforeUnmount(() => {
 .flow-pagination button:disabled { opacity: .38; cursor: not-allowed }
 .flow-pagination b { min-width: 42px; color: var(--ink2); text-align: center; white-space: nowrap }
 .flow-mobile-list { display: none }
+.flow-day-heading { display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:9px 12px 5px; border-bottom:1px solid var(--line); background:var(--paper); color:var(--ink2); font-size:11px }
+.flow-day-heading span { color:var(--muted); font-size:10px }
 .flow-editor { display: flex; flex-direction: column; gap: 15px }
 .flow-editor-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px }
 .flow-delete-copy { margin: 0; color: var(--ink2); font-size: 13px; line-height: 1.7 }
@@ -524,7 +558,7 @@ onBeforeUnmount(() => {
 .flow-column-drag svg,.flow-column-pin svg { width: 15px; height: 15px }
 .flow-column-setting :deep(.ui-toggle) { flex: 0 0 auto }
 @media(max-width:1023px){.flow-workspace{grid-template-columns:220px minmax(0,1fr)}.flow-sidebar{position:static}.flow-desktop-table :deep(.ui-table-wrap){max-height:none}}
-@media(max-width:767px){.ledger-flow-page,.flow-main,.flow-table-card{min-width:0;max-width:100%}.flow-heading{align-items:flex-start}.flow-heading-actions{width:100%;min-width:0}.flow-heading-actions .ui-button{min-width:0;flex:1;padding:0 7px}.flow-workspace{display:block;min-width:0}.flow-sidebar{display:none}.flow-table-card{width:100%;margin:0 auto;box-sizing:border-box}.flow-table-card :deep(> header){padding:13px 16px}.flow-table-head{min-width:0;align-items:flex-start;flex-direction:column;gap:10px}.flow-search{width:100%;max-width:100%}.flow-desktop-table{display:none}.flow-mobile-list{display:flex;min-width:0;flex-direction:column}.flow-mobile-item{min-width:0;max-width:100%;padding:11px 12px;border-bottom:1px solid var(--line);background:var(--card)}.flow-mobile-item:last-child{border-bottom:0}.flow-mobile-top,.flow-mobile-title,.flow-mobile-actions{display:flex;min-width:0;max-width:100%;align-items:center;justify-content:space-between;gap:8px}.flow-mobile-top>b{min-width:0;font-size:14px}.flow-mobile-title{margin-top:8px}.flow-mobile-title strong{min-width:0;overflow:hidden;color:var(--ink);font-size:13px;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-title span{flex:0 0 auto;color:var(--muted);font-size:10px}.flow-mobile-meta{display:flex;min-width:0;max-width:100%;flex-wrap:wrap;gap:3px 9px;margin-top:5px;color:var(--ink2);font-size:10px}.flow-mobile-meta span{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-resource{display:inline-flex;align-items:center;gap:4px}.flow-mobile-resource i{flex:0 0 6px;width:6px;height:6px;border-radius:50%}.flow-mobile-note{display:block;max-width:100%;margin:6px 0 0;overflow:hidden;color:var(--muted);font-size:10px;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-actions{justify-content:flex-end;margin-top:7px}.flow-mobile-actions button{display:inline-flex;min-width:0;align-items:center;gap:3px;padding:3px 5px;border:0;background:transparent;color:var(--ink2);font-size:10px}.flow-mobile-actions button.danger{color:var(--down)}.flow-mobile-actions svg{width:12px;height:12px}.flow-table-footer{min-height:42px;padding:8px 12px;align-items:flex-start;flex-direction:column;font-size:10px}.flow-table-totals,.flow-pagination{width:100%;justify-content:space-between;gap:6px}.flow-pagination label{gap:4px}.flow-pagination button{min-width:46px;padding:0 5px}.flow-pagination>b{display:none}}
+@media(max-width:767px){.ledger-flow-page,.flow-main,.flow-table-card{min-width:0;max-width:100%}.flow-heading{align-items:flex-start}.flow-heading-actions{width:100%;min-width:0}.flow-heading-actions .ui-button{min-width:0;flex:1;padding:0 7px}.flow-workspace{display:block;min-width:0}.flow-sidebar{display:none}.flow-table-card{width:100%;margin:0 auto;box-sizing:border-box}.flow-table-card :deep(> header){padding:13px 16px}.flow-table-head{min-width:0;align-items:flex-start;flex-direction:column;gap:10px}.flow-table-tools{width:100%;justify-content:stretch;flex-direction:column;align-items:stretch;gap:8px}.flow-view-switch{align-self:flex-start}.flow-search{width:100%;max-width:100%}.flow-desktop-table{display:none}.flow-mobile-list{display:flex;min-width:0;flex-direction:column}.flow-mobile-item{min-width:0;max-width:100%;padding:11px 12px;border-bottom:1px solid var(--line);background:var(--card)}.flow-mobile-item:last-child{border-bottom:0}.flow-mobile-top,.flow-mobile-title,.flow-mobile-actions{display:flex;min-width:0;max-width:100%;align-items:center;justify-content:space-between;gap:8px}.flow-mobile-top>b{min-width:0;font-size:14px}.flow-mobile-title{margin-top:8px}.flow-mobile-title strong{min-width:0;overflow:hidden;color:var(--ink);font-size:13px;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-title span{flex:0 0 auto;color:var(--muted);font-size:10px}.flow-mobile-meta{display:flex;min-width:0;max-width:100%;flex-wrap:wrap;gap:3px 9px;margin-top:5px;color:var(--ink2);font-size:10px}.flow-mobile-meta span{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-resource{display:inline-flex;align-items:center;gap:4px}.flow-mobile-resource i{flex:0 0 6px;width:6px;height:6px;border-radius:50%}.flow-mobile-note{display:block;max-width:100%;margin:6px 0 0;overflow:hidden;color:var(--muted);font-size:10px;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-actions{justify-content:flex-end;margin-top:7px}.flow-mobile-actions button{display:inline-flex;min-width:0;align-items:center;gap:3px;padding:3px 5px;border:0;background:transparent;color:var(--ink2);font-size:10px}.flow-mobile-actions button.danger{color:var(--down)}.flow-mobile-actions svg{width:12px;height:12px}.flow-table-footer{min-height:42px;padding:8px 12px;align-items:flex-start;flex-direction:column;font-size:10px}.flow-table-totals,.flow-pagination{width:100%;justify-content:space-between;gap:6px}.flow-pagination label{gap:4px}.flow-pagination button{min-width:46px;padding:0 5px}.flow-pagination>b{display:none}}
 .flow-filter-action{position:relative;display:inline-flex}
 .flow-filter-action i{position:absolute;top:-5px;right:-5px;display:grid;place-items:center;min-width:15px;height:15px;padding:0 2px;border-radius:999px;background:var(--accent);color:var(--card);font-size:9px;font-style:normal}
 .flow-row-actions .ledger-action-icon{display:inline-grid;flex:0 0 28px;width:28px;height:28px;padding:0;border:1px solid var(--line2);background:var(--card);color:var(--ink2)}

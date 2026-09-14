@@ -854,29 +854,50 @@ function downloadExport(blob, filename) {
 async function exportReportImage() {
   if (reportExporting.value) return
   reportExporting.value = true
+  let host
   try {
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     const source = reportExportRef.value
     if (!source) throw new Error('报表内容尚未准备好')
-    const hiddenNodes = [
-      ...source.querySelectorAll('.report-heading-actions,.date-picker-popover,.report-library-popover,.report-tab-remove')
-    ]
-    const previousDisplay = hiddenNodes.map(node => node.style.display)
-    hiddenNodes.forEach(node => { node.style.display = 'none' })
-    let canvas
-    try {
-      canvas = await html2canvas(source, {
-        backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--paper').trim() || '#ffffff',
-        scale: Math.min(2, window.devicePixelRatio || 1),
-        useCORS: true,
-        logging: false,
-        scrollX: 0,
-        scrollY: -window.scrollY,
-        windowWidth: Math.max(document.documentElement.clientWidth, source.scrollWidth)
-      })
-    } finally {
-      hiddenNodes.forEach((node, index) => { node.style.display = previousDisplay[index] })
-    }
+    const clone = source.cloneNode(true)
+    clone.dataset.reportExport = 'flat'
+    const sourceNodes = [source, ...source.querySelectorAll('*')]
+    const cloneNodes = [clone, ...clone.querySelectorAll('*')]
+    sourceNodes.forEach((node, index) => {
+      const target = cloneNodes[index]
+      if (!target) return
+      const computed = getComputedStyle(node)
+      target.style.cssText = Array.from(computed).filter(name => !name.startsWith('--')).map(name => `${name}:${computed.getPropertyValue(name)};`).join('')
+    })
+    clone.querySelectorAll('.report-heading-actions,.date-picker-popover,.report-library-popover,.report-tab-remove').forEach(node => node.remove())
+    const sourceCanvases = Array.from(source.querySelectorAll('canvas'))
+    const cloneCanvases = Array.from(clone.querySelectorAll('canvas'))
+    sourceCanvases.forEach((canvas, index) => {
+      const image = document.createElement('img')
+      image.src = canvas.toDataURL('image/png')
+      image.width = canvas.width
+      image.height = canvas.height
+      image.style.cssText = `display:block;width:${canvas.clientWidth || canvas.width}px;height:${canvas.clientHeight || canvas.height}px;`
+      cloneCanvases[index]?.replaceWith(image)
+    })
+    const rect = source.getBoundingClientRect()
+    const width = Math.max(1, Math.ceil(source.scrollWidth || rect.width))
+    const height = Math.max(1, Math.ceil(source.scrollHeight || rect.height))
+    host = document.createElement('div')
+    host.dataset.reportExportHost = 'true'
+    host.style.cssText = `position:absolute;left:-100000px;top:0;width:${width}px;min-height:${height}px;background:${getComputedStyle(document.documentElement).getPropertyValue('--paper').trim() || '#fff'};overflow:visible;`
+    host.appendChild(clone)
+    document.body.appendChild(host)
+    const canvas = await html2canvas(host, {
+      backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--paper').trim() || '#ffffff',
+      scale: Math.min(2, window.devicePixelRatio || 1), useCORS: true, logging: false,
+      scrollX: 0, scrollY: 0, windowWidth: width,
+      onclone: clonedDocument => {
+        clonedDocument.querySelectorAll('style,link[rel="stylesheet"]').forEach(node => node.remove())
+        const clonedHost = clonedDocument.querySelector('[data-report-export-host]')
+        if (clonedHost) clonedHost.style.left = '0'
+      }
+    })
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
     if (!blob) throw new Error('图片生成失败')
     downloadExport(blob, `ledger-report-${selectedReport.value}-${period.value}.png`)
@@ -884,6 +905,7 @@ async function exportReportImage() {
   } catch (error) {
     ElMessage.error(error.message || '报表图片导出失败')
   } finally {
+    host?.remove()
     reportExporting.value = false
   }
 }
