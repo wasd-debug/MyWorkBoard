@@ -179,7 +179,7 @@ export function apiImportLedgerPreview(bookId, file, template = 'AUTO', onUpload
   body.append('file', file)
   return api.post(bookPath(bookId, '/imports/preview'), body, {
     params: { template },
-    timeout: 120000,
+    timeout: 900000,
     onUploadProgress: event => {
       if (!onUploadProgress) return
       const total = Number(event.total || file.size || 0)
