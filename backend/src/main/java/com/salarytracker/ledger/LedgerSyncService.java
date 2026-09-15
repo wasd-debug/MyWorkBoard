@@ -233,8 +233,8 @@ public class LedgerSyncService {
     private Map<String, Object> currentBudget(LedgerBookAccess.Context context, String publicId) {
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT b.public_id,b.month_key,b.amount,b.revision,b.deleted,b.created_by," +
-                        "c.public_id category_id,c.name category " +
-                        "FROM ledger_budget b JOIN ledger_category c ON c.id=b.category_id " +
+                "c.public_id category_id,c.name category " +
+                        "FROM ledger_budget b LEFT JOIN ledger_category c ON c.id=b.category_id " +
                         "WHERE b.public_id=? AND b.book_id=?",
                 publicId, context.bookId());
         if (rows.isEmpty()) return null;
@@ -245,7 +245,8 @@ public class LedgerSyncService {
         result.put("budget", row.get("amount"));
         result.put("revision", number(row.get("revision")));
         result.put("categoryId", row.get("category_id"));
-        result.put("category", row.get("category"));
+        result.put("scope", row.get("category_id") == null ? "TOTAL" : "CATEGORY");
+        result.put("category", row.get("category") == null ? "月度总预算" : row.get("category"));
         result.put("deleted", row.get("deleted"));
         result.put("createdBy", row.get("created_by"));
         return result;

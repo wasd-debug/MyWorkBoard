@@ -275,7 +275,7 @@ public class LedgerService {
         report.put("categories", jdbc.queryForList("SELECT c.id category_id, c.parent_id, COALESCE(c.name,'未分类') category, COALESCE(parent.name, c.name, '未分类') parent_category, t.kind, SUM(t.amount) amount FROM ledger_transaction t LEFT JOIN ledger_category c ON c.id=t.category_id LEFT JOIN ledger_category parent ON parent.id=c.parent_id AND parent.user_id=t.user_id WHERE t.user_id = ? AND t.deleted = FALSE AND t.occurred_on BETWEEN ? AND ? GROUP BY c.id, c.parent_id, c.name, parent.name, t.kind ORDER BY amount DESC", user, start, end));
         report.put("monthly", jdbc.queryForList("SELECT DATE_FORMAT(occurred_on, '%Y-%m') month, COALESCE(SUM(CASE WHEN kind='INCOME' THEN amount ELSE 0 END),0) income, COALESCE(SUM(CASE WHEN kind='EXPENSE' THEN amount ELSE 0 END),0) expense FROM ledger_transaction WHERE user_id = ? AND deleted = FALSE AND occurred_on BETWEEN ? AND ? GROUP BY DATE_FORMAT(occurred_on, '%Y-%m') ORDER BY month", user, start, end));
         String month = start.length() >= 7 ? start.substring(0, 7) : YearMonth.now().toString();
-        List<Map<String, Object>> budgetRows = jdbc.queryForList("SELECT b.id, b.category_id, c.name category, b.month_key, b.amount budget, COALESCE(SUM(CASE WHEN t.kind='EXPENSE' THEN t.amount ELSE 0 END),0) spent FROM ledger_budget b JOIN ledger_category c ON c.id=b.category_id LEFT JOIN ledger_transaction t ON t.category_id=b.category_id AND t.user_id=b.user_id AND t.deleted=FALSE AND DATE_FORMAT(t.occurred_on, '%Y-%m')=b.month_key WHERE b.user_id=? AND b.month_key=? AND b.deleted=FALSE GROUP BY b.id, c.name", user, month);
+        List<Map<String, Object>> budgetRows = jdbc.queryForList("SELECT b.id, b.category_id, COALESCE(c.name,'月度总预算') category, b.month_key, b.amount budget, COALESCE((SELECT SUM(t.amount) FROM ledger_transaction t WHERE t.user_id=b.user_id AND t.kind='EXPENSE' AND t.deleted=FALSE AND DATE_FORMAT(t.occurred_on,'%Y-%m')=b.month_key AND (b.category_id IS NULL OR t.category_id=b.category_id OR EXISTS (SELECT 1 FROM ledger_category tc WHERE tc.id=t.category_id AND tc.parent_id=b.category_id))),0) spent FROM ledger_budget b LEFT JOIN ledger_category c ON c.id=b.category_id WHERE b.user_id=? AND b.month_key=? AND b.deleted=FALSE", user, month);
         report.put("budgets", budgetRows);
         BigDecimal budgetTotal = budgetRows.stream().map(row -> decimal(row.get("budget"))).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal spentTotal = budgetRows.stream().map(row -> decimal(row.get("spent"))).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -287,16 +287,16 @@ public class LedgerService {
         String monthKey = month == null || month.isBlank() ? YearMonth.now().toString() : month;
         YearMonth.parse(monthKey);
         long user = currentUser.id();
-        return jdbc.queryForList("SELECT b.id, b.category_id, c.name category, b.month_key, b.amount budget, COALESCE((SELECT SUM(t.amount) FROM ledger_transaction t WHERE t.user_id=b.user_id AND t.category_id=b.category_id AND t.kind='EXPENSE' AND t.deleted=FALSE AND DATE_FORMAT(t.occurred_on, '%Y-%m')=b.month_key),0) spent, b.revision FROM ledger_budget b JOIN ledger_category c ON c.id=b.category_id WHERE b.user_id=? AND b.month_key=? AND b.deleted=FALSE ORDER BY c.name", user, monthKey);
+        return jdbc.queryForList("SELECT b.id, b.category_id, COALESCE(c.name,'月度总预算') category, b.month_key, b.amount budget, COALESCE((SELECT SUM(t.amount) FROM ledger_transaction t WHERE t.user_id=b.user_id AND t.kind='EXPENSE' AND t.deleted=FALSE AND DATE_FORMAT(t.occurred_on, '%Y-%m')=b.month_key AND (b.category_id IS NULL OR t.category_id=b.category_id OR EXISTS (SELECT 1 FROM ledger_category tc WHERE tc.id=t.category_id AND tc.parent_id=b.category_id))),0) spent, b.revision FROM ledger_budget b LEFT JOIN ledger_category c ON c.id=b.category_id WHERE b.user_id=? AND b.month_key=? AND b.deleted=FALSE ORDER BY c.name", user, monthKey);
     }
 
     @Transactional
     public Map<String, Object> createBudget(Map<String, Object> input) {
-        long user = currentUser.id(); LedgerBookAccess.Context book = bookAccess.resolve("default"); long category = requiredLong(input, "categoryId"); ensureCategory(category, user);
+        long user = currentUser.id(); LedgerBookAccess.Context book = bookAccess.resolve("default"); Object categoryInput = input.get("categoryId"); Long category = categoryInput == null || String.valueOf(categoryInput).isBlank() ? null : requiredLong(input, "categoryId"); if (category != null) ensureCategory(category, user);
         String month = String.valueOf(input.getOrDefault("monthKey", YearMonth.now())); YearMonth.parse(month); BigDecimal amount = amount(input.get("amount"));
         jdbc.update("INSERT INTO ledger_budget(public_id,user_id,book_id,category_id,month_key,amount,created_by) VALUES(?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE amount=VALUES(amount), deleted=FALSE, revision=revision+1",
                 UUID.randomUUID().toString(), user, book.bookId(), category, month, amount, user);
-        return budgets(month).stream().filter(row -> number(row.get("category_id")) == category).findFirst().orElseThrow();
+        return budgets(month).stream().filter(row -> category == null ? row.get("category_id") == null : number(row.get("category_id")) == category).findFirst().orElseThrow();
     }
 
     @Transactional

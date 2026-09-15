@@ -1145,8 +1145,8 @@ const monthNarrative = computed(() => {
 })
 const budgetRows = computed(() => remoteBudgets.value.length ? remoteBudgets.value : ledger.budgets.filter(item => item.monthKey === budgetMonth.value))
 const budgetMonth = computed(() => rangeScope.value === 'month' ? period.value : rangeScope.value === 'custom' ? rangeDates.value.from.slice(0, 7) : `${period.value}-${currentMonth.slice(5)}`)
-const budgetTotal = computed(() => budgetRows.value.reduce((total, item) => total + Number(item.budget || 0), 0))
-const budgetSpent = computed(() => budgetRows.value.reduce((total, item) => total + Number(item.spent || 0), 0))
+const budgetTotal = computed(() => { const total = budgetRows.value.find(item => item.scope === 'TOTAL' || !item.categoryId); const rows = total ? [total] : budgetRows.value; return rows.reduce((sum, item) => sum + Number(item.budget || 0), 0) })
+const budgetSpent = computed(() => { const total = budgetRows.value.find(item => item.scope === 'TOTAL' || !item.categoryId); const rows = total ? [total] : budgetRows.value; return rows.reduce((sum, item) => sum + Number(item.spent || 0), 0) })
 const budgetSubtitle = computed(() => `${budgetMonth.value.replace('-', ' 年 ')} 月 · ¥${money(budgetSpent.value)} / ¥${money(budgetTotal.value)}`)
 
 const expenseCategoryPieOption = computed(() => pieOption(expenseCategoryRows.value, categorySeries(expenseCategoryRows.value)))

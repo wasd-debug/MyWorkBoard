@@ -564,12 +564,13 @@ public class LedgerBookService {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         String monthKey = month == null || month.isBlank() ? YearMonth.now().toString() : YearMonth.parse(month).toString();
         return jdbc.queryForList(
-                "SELECT b.public_id,b.month_key,b.amount budget,b.revision,c.public_id category_id,c.name category," +
+                "SELECT b.public_id,b.month_key,b.amount budget,b.revision,b.category_id,c.public_id category_public_id,c.name category," +
                         "COALESCE((SELECT SUM(t.amount) FROM ledger_transaction t WHERE t.book_id=b.book_id " +
-                        "AND t.category_id=b.category_id AND t.kind='EXPENSE' AND t.deleted=FALSE " +
-                        "AND DATE_FORMAT(t.occurred_on,'%Y-%m')=b.month_key),0) spent " +
-                        "FROM ledger_budget b JOIN ledger_category c ON c.id=b.category_id " +
-                        "WHERE b.book_id=? AND b.month_key=? AND b.deleted=FALSE ORDER BY c.name",
+                        "AND t.kind='EXPENSE' AND t.deleted=FALSE AND DATE_FORMAT(t.occurred_on,'%Y-%m')=b.month_key " +
+                        "AND (b.category_id IS NULL OR t.category_id=b.category_id OR EXISTS " +
+                        "(SELECT 1 FROM ledger_category tc WHERE tc.id=t.category_id AND tc.parent_id=b.category_id))),0) spent " +
+                        "FROM ledger_budget b LEFT JOIN ledger_category c ON c.id=b.category_id " +
+                        "WHERE b.book_id=? AND b.month_key=? AND b.deleted=FALSE ORDER BY b.category_id IS NOT NULL,c.name",
                 context.bookId(), monthKey).stream().map(this::budgetView).toList();
     }
 
@@ -578,11 +579,14 @@ public class LedgerBookService {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         access.require(context, "RESOURCE_MANAGE");
         String month = YearMonth.parse(required(input, "monthKey")).toString();
-        long categoryId = internalId(context, "ledger_category", required(input, "categoryId"), true);
+        Object categoryInput = input == null ? null : input.get("categoryId");
+        Long categoryId = categoryInput == null || String.valueOf(categoryInput).isBlank()
+                ? null : internalId(context, "ledger_category", String.valueOf(categoryInput), true);
         String publicId = requestedPublicId(input);
         List<Map<String, Object>> existing = jdbc.queryForList(
-                "SELECT public_id FROM ledger_budget WHERE book_id=? AND category_id=? AND month_key=?",
-                context.bookId(), categoryId, month);
+                "SELECT public_id FROM ledger_budget WHERE book_id=? AND month_key=? " +
+                        "AND ((category_id IS NULL AND ? IS NULL) OR category_id=?)",
+                context.bookId(), month, categoryId, categoryId);
         Map<String, Object> before = null;
         if (existing.isEmpty()) {
             jdbc.update(
@@ -883,11 +887,12 @@ public class LedgerBookService {
                                        boolean activeOnly) {
         String deleted = activeOnly ? " AND b.deleted=FALSE" : "";
         List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT b.public_id,b.month_key,b.amount budget,b.revision,c.public_id category_id,c.name category," +
+                "SELECT b.public_id,b.month_key,b.amount budget,b.revision,b.category_id,c.public_id category_public_id,c.name category," +
                         "COALESCE((SELECT SUM(t.amount) FROM ledger_transaction t WHERE t.book_id=b.book_id " +
-                        "AND t.category_id=b.category_id AND t.kind='EXPENSE' AND t.deleted=FALSE " +
-                        "AND DATE_FORMAT(t.occurred_on,'%Y-%m')=b.month_key),0) spent " +
-                        "FROM ledger_budget b JOIN ledger_category c ON c.id=b.category_id " +
+                        "AND t.kind='EXPENSE' AND t.deleted=FALSE AND DATE_FORMAT(t.occurred_on,'%Y-%m')=b.month_key " +
+                        "AND (b.category_id IS NULL OR t.category_id=b.category_id OR EXISTS " +
+                        "(SELECT 1 FROM ledger_category tc WHERE tc.id=t.category_id AND tc.parent_id=b.category_id))),0) spent " +
+                        "FROM ledger_budget b LEFT JOIN ledger_category c ON c.id=b.category_id " +
                         "WHERE b.public_id=? AND b.book_id=?" + deleted,
                 publicId, context.bookId());
         if (rows.isEmpty()) throw new IllegalArgumentException("预算不存在");
@@ -1250,8 +1255,9 @@ public class LedgerBookService {
     private Map<String, Object> budgetView(Map<String, Object> row) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", row.get("public_id"));
-        result.put("categoryId", row.get("category_id"));
-        result.put("category", row.get("category"));
+        result.put("categoryId", row.get("category_public_id"));
+        result.put("category", row.get("category") == null ? "月度总预算" : row.get("category"));
+        result.put("scope", row.get("category_id") == null ? "TOTAL" : "CATEGORY");
         result.put("monthKey", row.get("month_key"));
         result.put("budget", row.get("budget"));
         result.put("spent", row.get("spent"));
