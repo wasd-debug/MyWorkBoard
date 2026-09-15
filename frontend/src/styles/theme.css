@@ -4,7 +4,7 @@
 
 /* ---------- 0. Reset & Base ---------- */
 *, *::before, *::after { box-sizing: border-box }
-html, body { margin: 0; padding: 0 }
+html, body { margin: 0; padding: 0; max-width: 100%; overflow-x: clip }
 html { -webkit-text-size-adjust: 100% }
 body {
   min-height: 100vh;
@@ -15,7 +15,7 @@ body {
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
-#app { min-height: 100vh }
+#app { min-height: 100vh; max-width: 100%; overflow-x: clip }
 a { color: var(--accent); text-decoration: none }
 button { font-family: inherit; cursor: pointer }
 input, select, textarea, button { font-family: inherit }
@@ -802,6 +802,7 @@ html.dark .ui-button.variant-ink:hover:not(:disabled) { background: color-mix(in
 
 /* ---------- 15. 响应式 ---------- */
 @media (max-width: 640px) {
+  input, select, textarea, .ui-input, .ui-textarea { font-size: 16px !important; }
   .top-ticker { padding: 0 12px; overflow: visible }
   .top-ticker .tick { display: none }
   .top-ticker .theme-icon-toggle { margin-left: auto }
