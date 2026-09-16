@@ -292,8 +292,8 @@ public class LedgerService {
 
     @Transactional
     public Map<String, Object> createBudget(Map<String, Object> input) {
-        long user = currentUser.id(); LedgerBookAccess.Context book = bookAccess.resolve("default"); Object categoryInput = input.get("categoryId"); Long category = categoryInput == null || String.valueOf(categoryInput).isBlank() ? null : requiredLong(input, "categoryId"); if (category != null) ensureCategory(category, user);
-        String month = String.valueOf(input.getOrDefault("monthKey", YearMonth.now())); YearMonth.parse(month); BigDecimal amount = amount(input.get("amount"));
+        long user = currentUser.id(); LedgerBookAccess.Context book = bookAccess.resolve("default"); Object categoryInput = input.get("categoryId"); String categoryValue = categoryInput == null ? "" : String.valueOf(categoryInput).trim(); Long category = categoryValue.isBlank() || "0".equals(categoryValue) ? null : requiredLong(input, "categoryId"); if (category != null) ensureCategory(category, user);
+        String month = String.valueOf(input.getOrDefault("monthKey", YearMonth.now())); YearMonth.parse(month); BigDecimal amount = amount(input.get("amount")); if (amount.signum() <= 0) throw new IllegalArgumentException("预算金额必须大于 0");
         jdbc.update("INSERT INTO ledger_budget(public_id,user_id,book_id,category_id,month_key,amount,created_by) VALUES(?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE amount=VALUES(amount), deleted=FALSE, revision=revision+1",
                 UUID.randomUUID().toString(), user, book.bookId(), category, month, amount, user);
         return budgets(month).stream().filter(row -> category == null ? row.get("category_id") == null : number(row.get("category_id")) == category).findFirst().orElseThrow();

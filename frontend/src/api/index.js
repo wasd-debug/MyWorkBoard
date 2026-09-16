@@ -154,9 +154,20 @@ export function apiGetLedgerReports(bookId, params = {}) {
   if (typeof bookId === 'object') { params = bookId; bookId = null }
   return api.get(bookPath(bookId, '/overview'), { params }).then(unwrap)
 }
-export function apiListLedgerBudgets(bookId, month) { return api.get(bookPath(bookId, '/budgets'), { params: month ? { month } : undefined }).then(unwrap) }
-export function apiCreateLedgerBudget(bookId, payload, opId) { return api.put(bookPath(bookId, '/budgets'), payload, { headers: revisionHeaders(null, opId) }).then(unwrap) }
-export function apiDeleteLedgerBudget(bookId, id, revision, opId) { return api.delete(bookPath(bookId, `/budgets/${id}`), { headers: revisionHeaders(revision, opId) }).then(unwrap) }
+export function apiListLedgerBudgets(bookId, month) {
+  if (!bookId || typeof bookId !== 'string') throw new TypeError('bookId is required')
+  return api.get(bookPath(bookId, '/budgets'), { params: month ? { month } : undefined }).then(unwrap)
+}
+export function apiCreateLedgerBudget(bookId, payload, opId) {
+  if (!bookId || typeof bookId !== 'string') throw new TypeError('bookId is required')
+  if (!payload || typeof payload !== 'object') throw new TypeError('budget payload is required')
+  return api.put(bookPath(bookId, '/budgets'), payload, { headers: revisionHeaders(null, opId) }).then(unwrap)
+}
+export function apiDeleteLedgerBudget(bookId, id, revision, opId) {
+  if (!bookId || typeof bookId !== 'string') throw new TypeError('bookId is required')
+  if (!id || typeof id !== 'string') throw new TypeError('budget id is required')
+  return api.delete(bookPath(bookId, `/budgets/${id}`), { headers: revisionHeaders(revision, opId) }).then(unwrap)
+}
 
 export function apiListLedgerRecycle(bookId, params = {}) { return api.get(bookPath(bookId, '/recycle'), { params }).then(unwrap) }
 export function apiRestoreLedgerRecycle(bookId, type, id, opId) { return api.post(bookPath(bookId, `/recycle/${type}/${id}/restore`), {}, { headers: revisionHeaders(null, opId) }).then(unwrap) }
@@ -164,6 +175,11 @@ export function apiPurgeLedgerRecycle(bookId, type, id) { return api.delete(book
 export function apiListLedgerAuditLogs(bookId, params = {}) { return api.get(bookPath(bookId, '/audit-logs'), { params }).then(unwrap) }
 export function apiClearLedgerAuditLogs(bookId, ids = []) { return api.delete(bookPath(bookId, '/audit-logs'), { data: { ids } }).then(unwrap) }
 export function apiMaterializeLedger(bookId, month) { return api.post(bookPath(bookId, '/materialize'), {}, { params: month ? { month } : undefined }).then(unwrap) }
+export function apiListLedgerScheduledTasks(bookId, params = {}) { return api.get(bookPath(bookId, '/scheduled-tasks'), { params }).then(unwrap) }
+export function apiCreateLedgerScheduledTask(bookId, payload) { return api.post(bookPath(bookId, '/scheduled-tasks'), payload).then(unwrap) }
+export function apiUpdateLedgerScheduledTask(bookId, id, payload, revision) { return api.patch(bookPath(bookId, `/scheduled-tasks/${id}`), payload, { headers: revisionHeaders(revision) }).then(unwrap) }
+export function apiDeleteLedgerScheduledTask(bookId, id) { return api.delete(bookPath(bookId, `/scheduled-tasks/${id}`)).then(unwrap) }
+export function apiRunLedgerScheduledTask(bookId, id) { return api.post(bookPath(bookId, `/scheduled-tasks/${id}/run`), {}).then(unwrap) }
 
 export function apiLedgerAiPreview(bookId, text) {
   if (text === undefined) { text = bookId; bookId = null }

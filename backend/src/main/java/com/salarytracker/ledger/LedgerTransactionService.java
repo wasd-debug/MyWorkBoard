@@ -155,6 +155,20 @@ public class LedgerTransactionService {
                                       Map<String, Object> input,
                                       String idempotencyKey) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
+        return createWithContext(context, input, idempotencyKey);
+    }
+
+    /** Used by ShedLock background jobs after the job has resolved the book owner context. */
+    @Transactional
+    Map<String, Object> createForSystem(LedgerBookAccess.Context context,
+                                        Map<String, Object> input,
+                                        String idempotencyKey) {
+        return createWithContext(context, input, idempotencyKey);
+    }
+
+    private Map<String, Object> createWithContext(LedgerBookAccess.Context context,
+                                                  Map<String, Object> input,
+                                                  String idempotencyKey) {
         if (!context.permissions().contains("TRANSACTION_OWN_WRITE")
                 && !context.permissions().contains("TRANSACTION_ANY_WRITE")
                 && !context.isOwner()) {

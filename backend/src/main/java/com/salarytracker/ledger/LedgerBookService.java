@@ -578,10 +578,10 @@ public class LedgerBookService {
     public Map<String, Object> upsertBudget(String bookPublicId, Map<String, Object> input, String opId) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         access.require(context, "RESOURCE_MANAGE");
-        String month = YearMonth.parse(required(input, "monthKey")).toString();
+        String month = budgetMonth(input);
         Object categoryInput = input == null ? null : input.get("categoryId");
-        Long categoryId = categoryInput == null || String.valueOf(categoryInput).isBlank()
-                ? null : internalId(context, "ledger_category", String.valueOf(categoryInput), true);
+        Long categoryId = budgetCategoryId(context, categoryInput);
+        BigDecimal budgetAmount = positiveBudgetAmount(input == null ? null : input.get("amount"));
         String publicId = requestedPublicId(input);
         List<Map<String, Object>> existing = jdbc.queryForList(
                 "SELECT public_id FROM ledger_budget WHERE book_id=? AND month_key=? " +
@@ -593,19 +593,56 @@ public class LedgerBookService {
                     "INSERT INTO ledger_budget(public_id,user_id,book_id,category_id,month_key,amount,created_by) " +
                             "VALUES(?,?,?,?,?,?,?)",
                     publicId, context.userId(), context.bookId(), categoryId, month,
-                    amount(input.get("amount")), context.userId());
+                    budgetAmount, context.userId());
         } else {
             publicId = String.valueOf(existing.get(0).get("public_id"));
             before = budget(context, publicId, true);
             jdbc.update(
                     "UPDATE ledger_budget SET amount=?,deleted=FALSE,deleted_at=NULL,revision=revision+1 " +
                             "WHERE public_id=? AND book_id=?",
-                    amount(input.get("amount")), publicId, context.bookId());
+                    budgetAmount, publicId, context.bookId());
         }
         Map<String, Object> result = budget(context, publicId, true);
         changed(context, opId, before == null ? "budget.create" : "budget.update",
                 "budget", publicId, "UPSERT", before, result);
         return result;
+    }
+
+    String budgetMonth(Map<String, Object> input) {
+        String value = required(input, "monthKey");
+        try {
+            return YearMonth.parse(value).toString();
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("monthKey 格式不正确，应为 YYYY-MM");
+        }
+    }
+
+    BigDecimal positiveBudgetAmount(Object value) {
+        if (value == null || String.valueOf(value).isBlank()) {
+            throw new IllegalArgumentException("amount 必填");
+        }
+        BigDecimal result = amount(value);
+        if (result.signum() <= 0) throw new IllegalArgumentException("预算金额必须大于 0");
+        return result;
+    }
+
+    Long budgetCategoryId(LedgerBookAccess.Context context, Object value) {
+        String publicId = text(value);
+        if (publicId.isBlank() || "0".equals(publicId)) return null;
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT id,kind,hidden FROM ledger_category " +
+                        "WHERE public_id=? AND book_id=? AND deleted=FALSE",
+                publicId, context.bookId());
+        if (rows.isEmpty()) throw new IllegalArgumentException("分类不存在");
+        Map<String, Object> category = rows.get(0);
+        if (!"EXPENSE".equals(String.valueOf(category.get("kind")))) {
+            throw new IllegalArgumentException("预算只能关联支出分类");
+        }
+        Object hidden = category.get("hidden");
+        if (Boolean.TRUE.equals(hidden) || (hidden instanceof Number number && number.intValue() != 0)) {
+            throw new IllegalArgumentException("隐藏分类不能设置预算");
+        }
+        return number(category.get("id"));
     }
 
     @Transactional

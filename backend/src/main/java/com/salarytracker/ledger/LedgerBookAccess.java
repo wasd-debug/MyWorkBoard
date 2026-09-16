@@ -65,6 +65,24 @@ public class LedgerBookAccess {
                 permissions);
     }
 
+    /** Resolve a book for background jobs without an HTTP-authenticated user. */
+    public Context resolveForSystem(long bookId) {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT b.id book_id,b.public_id,b.owner_user_id,m.id member_id,m.role_id,r.code role_code " +
+                        "FROM ledger_book b JOIN ledger_book_member m ON m.book_id=b.id " +
+                        "JOIN ledger_role r ON r.id=m.role_id " +
+                        "WHERE b.id=? AND b.deleted=FALSE AND m.user_id=b.owner_user_id AND m.deleted=FALSE AND r.deleted=FALSE",
+                bookId);
+        if (rows.isEmpty()) throw new ForbiddenException("账本不存在");
+        Map<String,Object> row = rows.get(0);
+        long roleId = number(row.get("role_id"));
+        Set<String> permissions = new LinkedHashSet<>(jdbc.queryForList(
+                "SELECT permission_code FROM ledger_role_permission WHERE role_id=?", String.class, roleId));
+        return new Context(number(row.get("book_id")), String.valueOf(row.get("public_id")),
+                number(row.get("owner_user_id")), number(row.get("owner_user_id")), number(row.get("member_id")),
+                roleId, String.valueOf(row.get("role_code")), permissions);
+    }
+
     public void require(Context context, String permission) {
         if (context.isOwner() || context.permissions().contains(permission)) return;
         throw new ForbiddenException("当前角色缺少权限：" + permission);

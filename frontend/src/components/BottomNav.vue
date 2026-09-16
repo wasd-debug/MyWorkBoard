@@ -34,6 +34,7 @@ const items = [
     { key: 'details', to: '/ledger/transactions', label: '流水', icon: Tickets },
     { key: 'accounts', to: { path: '/ledger/manage', query: { view: 'accounts' } }, label: '账户', icon: CreditCard },
     { key: 'reports', to: '/ledger/reports', label: '报表', icon: DataAnalysis },
+    { key: 'scheduled-tasks', to: '/ledger/scheduled-tasks', label: '定时任务', icon: Timer },
     { key: 'management', to: { path: '/ledger/manage', query: { view: 'categories' } }, views: ['categories', 'merchants', 'projects', 'books'], label: '管理', icon: Management },
     { key: 'members', to: { path: '/ledger/manage', query: { view: 'members' } }, label: '成员与角色权限', icon: UserFilled },
     { key: 'recycle', to: { path: '/ledger/manage', query: { view: 'recycle' } }, label: '回收站', icon: DeleteFilled },

@@ -38,6 +38,7 @@ public class LedgerBookController {
     private final LedgerSyncService sync;
     private final LedgerAiService ai;
     private final LedgerReportAiService reportAi;
+    private final LedgerScheduledTaskService scheduledTasks;
 
     public LedgerBookController(LedgerBookService books,
                                 LedgerTransactionService transactions,
@@ -45,7 +46,8 @@ public class LedgerBookController {
                                 LedgerImportService imports,
                                 LedgerSyncService sync,
                                 LedgerAiService ai,
-                                LedgerReportAiService reportAi) {
+                                LedgerReportAiService reportAi,
+                                LedgerScheduledTaskService scheduledTasks) {
         this.books = books;
         this.transactions = transactions;
         this.audit = audit;
@@ -53,6 +55,7 @@ public class LedgerBookController {
         this.sync = sync;
         this.ai = ai;
         this.reportAi = reportAi;
+        this.scheduledTasks = scheduledTasks;
     }
 
     @GetMapping("/books")
@@ -271,6 +274,42 @@ public class LedgerBookController {
                                                          @RequestHeader(value = "If-Match", required = false) String revision,
                                                          @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.deleteBudget(bookId, id, revision, opId));
+    }
+
+    @GetMapping("/books/{bookId}/scheduled-tasks")
+    public ApiResponse<List<Map<String, Object>>> scheduledTasks(@PathVariable String bookId,
+                                                                  @RequestParam(defaultValue = "false") boolean includeDeleted) {
+        return ApiResponse.ok(scheduledTasks.list(bookId, includeDeleted).stream().map(this::safe).toList());
+    }
+
+    @PostMapping("/books/{bookId}/scheduled-tasks")
+    @PreAuthorize("hasAuthority('ledger:write')")
+    public ApiResponse<Map<String, Object>> createScheduledTask(@PathVariable String bookId,
+                                                                @RequestBody Map<String, Object> body) {
+        return ApiResponse.ok(safe(scheduledTasks.create(bookId, body)));
+    }
+
+    @PatchMapping("/books/{bookId}/scheduled-tasks/{id}")
+    @PreAuthorize("hasAuthority('ledger:write')")
+    public ApiResponse<Map<String, Object>> updateScheduledTask(@PathVariable String bookId,
+                                                                @PathVariable String id,
+                                                                @RequestBody Map<String, Object> body,
+                                                                @RequestHeader(value = "If-Match", required = false) String revision) {
+        return ApiResponse.ok(safe(scheduledTasks.update(bookId, id, body, revision)));
+    }
+
+    @DeleteMapping("/books/{bookId}/scheduled-tasks/{id}")
+    @PreAuthorize("hasAuthority('ledger:write')")
+    public ApiResponse<Map<String, Object>> deleteScheduledTask(@PathVariable String bookId,
+                                                                @PathVariable String id) {
+        return ApiResponse.ok(scheduledTasks.delete(bookId, id));
+    }
+
+    @PostMapping("/books/{bookId}/scheduled-tasks/{id}/run")
+    @PreAuthorize("hasAuthority('ledger:write')")
+    public ApiResponse<Map<String, Object>> runScheduledTask(@PathVariable String bookId,
+                                                             @PathVariable String id) {
+        return ApiResponse.ok(safe(scheduledTasks.run(bookId, id)));
     }
 
     @GetMapping("/books/{bookId}/transactions")
