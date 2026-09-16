@@ -134,6 +134,9 @@ public class LedgerAiService {
         List<Map<String, Object>> merchants = books.merchants(context.bookPublicId(), false);
         List<Map<String, Object>> projects = books.projects(context.bookPublicId(), false);
         List<Map<String, Object>> members = books.members(context.bookPublicId());
+        Map<String, Object> currentMember = members.stream()
+                .filter(item -> context.userId() == number(item.get("userId")))
+                .findFirst().orElse(null);
         List<Map<String, Object>> result = new ArrayList<>();
         for (Map<String, Object> raw : source) {
             Map<String, Object> draft = new LinkedHashMap<>(raw);
@@ -153,8 +156,14 @@ public class LedgerAiService {
             resolveCategory(draft, secondaries, categories, kind, warnings);
             resolveByName(draft, "merchantId", "merchantName", merchants, warnings, "商家");
             resolveByName(draft, "projectId", "projectName", projects, warnings, "项目");
+            if (text(draft.get("memberId")).isBlank() && text(draft.get("member")).isBlank()
+                    && currentMember != null) {
+                draft.put("memberId", currentMember.get("id"));
+                draft.put("member", currentMember.get("displayName"));
+            }
             resolveMember(draft, members, warnings);
             if (text(draft.get("accountId")).isBlank()) warnings.add("请选择账户");
+            if (text(draft.get("memberId")).isBlank()) warnings.add("请选择成员");
             if (requiresCategory(kind) && text(draft.get("categoryId")).isBlank()) warnings.add("请选择二级分类");
             draft.put("warnings", warnings.stream().distinct().toList());
             result.add(draft);
@@ -218,12 +227,23 @@ public class LedgerAiService {
                                List<String> warnings,
                                String label) {
         String id = text(draft.get(idField));
-        if (!id.isBlank() && options.stream().anyMatch(item -> id.equals(item.get("id")))) return;
+        if (!id.isBlank()) {
+            Map<String, Object> matchedById = options.stream()
+                    .filter(item -> id.equals(text(item.get("id"))))
+                    .findFirst().orElse(null);
+            if (matchedById != null) {
+                draft.put(nameField, matchedById.get("name"));
+                return;
+            }
+        }
         String name = text(draft.get(nameField));
         if (name.isBlank()) return;
         List<Map<String, Object>> matched = options.stream()
                 .filter(item -> name.equalsIgnoreCase(text(item.get("name")))).toList();
-        if (matched.size() == 1) draft.put(idField, matched.get(0).get("id"));
+        if (matched.size() == 1) {
+            draft.put(idField, matched.get(0).get("id"));
+            draft.put(nameField, matched.get(0).get("name"));
+        }
         else warnings.add(label + "“" + name + "”未匹配");
     }
 
@@ -339,13 +359,24 @@ public class LedgerAiService {
                                List<Map<String, Object>> members,
                                List<String> warnings) {
         String id = text(draft.get("memberId"));
-        if (!id.isBlank() && members.stream().anyMatch(item -> id.equals(item.get("id")))) return;
+        if (!id.isBlank()) {
+            Map<String, Object> matchedById = members.stream()
+                    .filter(item -> id.equals(text(item.get("id"))))
+                    .findFirst().orElse(null);
+            if (matchedById != null) {
+                draft.put("member", matchedById.get("displayName"));
+                return;
+            }
+        }
         String name = text(draft.get("member"));
         if (name.isBlank()) return;
         List<Map<String, Object>> matched = members.stream().filter(item ->
                 name.equalsIgnoreCase(text(item.get("username")))
                         || name.equalsIgnoreCase(text(item.get("displayName")))).toList();
-        if (matched.size() == 1) draft.put("memberId", matched.get(0).get("id"));
+        if (matched.size() == 1) {
+            draft.put("memberId", matched.get(0).get("id"));
+            draft.put("member", matched.get(0).get("displayName"));
+        }
         else warnings.add("成员“" + name + "”未匹配");
     }
 
@@ -440,5 +471,10 @@ public class LedgerAiService {
 
     private String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
+    }
+
+    private long number(Object value) {
+        if (value == null) return 0;
+        return value instanceof Number number ? number.longValue() : Long.parseLong(String.valueOf(value));
     }
 }

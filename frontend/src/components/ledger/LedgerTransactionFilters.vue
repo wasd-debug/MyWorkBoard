@@ -15,8 +15,8 @@
     <div class="flow-filter-section flow-filter-grid">
       <label>流水类型<select :value="model.kind" @change="set('kind', $event.target.value)"><option value="">全部类型</option><option v-for="item in kinds" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
       <label>账户<select :value="model.accountId" @change="set('accountId', $event.target.value)"><option value="">全部账户</option><option v-for="account in accounts" :key="account.id" :value="String(account.id)">{{ account.name }}</option></select></label>
-      <label>一级分类<select :value="model.primaryCategoryId" @change="set('primaryCategoryId', $event.target.value)"><option value="">全部一级分类</option><option v-for="category in primaryCategories" :key="category.id" :value="String(category.id)">{{ category.name }}</option></select></label>
-      <label>二级分类<select :value="model.secondaryCategoryId" :disabled="!model.primaryCategoryId" @change="set('secondaryCategoryId', $event.target.value)"><option value="">{{ model.primaryCategoryId ? '全部二级分类' : '请先选择一级分类' }}</option><option v-for="category in secondaryCategories" :key="category.id" :value="String(category.id)">{{ category.name }}</option></select></label>
+      <label>一级分类<div class="filter-combobox"><input v-model="primaryQuery" class="ui-input" autocomplete="off" placeholder="输入一级分类，留空为全部" @focus="primaryOpen=true" @input="handlePrimaryInput" @blur="closeMenusSoon"><div v-if="primaryOpen" class="filter-options"><button v-for="category in filteredPrimaryCategories" :key="category.id" type="button" @mousedown.prevent="selectPrimary(category)">{{category.name}}</button><span v-if="!filteredPrimaryCategories.length">没有匹配分类</span></div></div></label>
+      <label>二级分类<div class="filter-combobox"><input v-model="secondaryQuery" class="ui-input" autocomplete="off" placeholder="输入二级分类或一级 / 二级" @focus="secondaryOpen=true" @input="handleSecondaryInput" @blur="closeMenusSoon"><div v-if="secondaryOpen" class="filter-options"><button v-for="category in filteredSecondaryCategories" :key="category.id" type="button" @mousedown.prevent="selectSecondary(category)"><b>{{category.name}}</b><small>{{categoryParentName(category)}}</small></button><span v-if="!filteredSecondaryCategories.length">没有匹配分类</span></div></div></label>
     </div>
 
     <div class="flow-filter-section flow-filter-grid">
@@ -31,8 +31,9 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import Button from '../ui/Button.vue'
+import { exactLedgerSecondaryCategory, filterLedgerPrimaryCategories, filterLedgerSecondaryCategories, ledgerCategoryParent } from './ledgerCategoryMatcher'
 
 const props = defineProps({
   model: { type: Object, required: true },
@@ -44,13 +45,61 @@ const props = defineProps({
   projectOptions: { type: Array, default: () => [] }
 })
 const emit = defineEmits(['update', 'reset', 'reset-period', 'quick-period'])
-const primaryCategories = computed(() => props.categories.filter(item => !item.parentId))
-const secondaryCategories = computed(() => props.categories.filter(item => item.parentId && (!props.model.primaryCategoryId || String(item.parentId) === String(props.model.primaryCategoryId))))
+const primaryQuery = ref('')
+const secondaryQuery = ref('')
+const primaryOpen = ref(false)
+const secondaryOpen = ref(false)
+const filteredPrimaryCategories = computed(() => props.categories.filter(item => !item.parentId && (!primaryQuery.value.trim() || item.name.toLocaleLowerCase().includes(primaryQuery.value.trim().toLocaleLowerCase()))))
+const filteredSecondaryCategories = computed(() => filterLedgerSecondaryCategories(props.categories, '', secondaryQuery.value, props.model.primaryCategoryId).filter(item => item.kind))
+
+watch([() => props.model.primaryCategoryId, () => props.model.secondaryCategoryId, () => props.categories], () => {
+  if (!primaryOpen.value && !secondaryOpen.value) syncQueries()
+}, { immediate: true, deep: true })
 
 function set(key, value) {
   emit('update', { key, value })
   if (key === 'primaryCategoryId' && value !== props.model.primaryCategoryId) emit('update', { key: 'secondaryCategoryId', value: '' })
 }
+function syncQueries() {
+  const primary = props.categories.find(item => String(item.id) === String(props.model.primaryCategoryId || ''))
+  const secondary = props.categories.find(item => String(item.id) === String(props.model.secondaryCategoryId || ''))
+  primaryQuery.value = primary?.name || ''
+  secondaryQuery.value = secondary?.name || ''
+}
+function categoryParentName(category) { return ledgerCategoryParent(props.categories, category)?.name || '' }
+function selectPrimary(category) {
+  primaryQuery.value = category.name
+  secondaryQuery.value = ''
+  set('primaryCategoryId', String(category.id))
+  primaryOpen.value = false
+  secondaryOpen.value = true
+}
+function selectSecondary(category) {
+  const parent = ledgerCategoryParent(props.categories, category)
+  emit('update', { key: 'primaryCategoryId', value: String(category.parentId) })
+  emit('update', { key: 'secondaryCategoryId', value: String(category.id) })
+  primaryQuery.value = parent?.name || ''
+  secondaryQuery.value = category.name
+  secondaryOpen.value = false
+}
+function handlePrimaryInput() {
+  const query = primaryQuery.value.trim().toLocaleLowerCase()
+  const exact = filterLedgerPrimaryCategories(props.categories, 'EXPENSE', primaryQuery.value)
+    .concat(filterLedgerPrimaryCategories(props.categories, 'INCOME', primaryQuery.value))
+    .find(item => item.name.trim().toLocaleLowerCase() === query)
+  emit('update', { key: 'primaryCategoryId', value: exact ? String(exact.id) : '' })
+  emit('update', { key: 'secondaryCategoryId', value: '' })
+  secondaryQuery.value = ''
+  primaryOpen.value = true
+}
+function handleSecondaryInput() {
+  const kinds = ['EXPENSE', 'INCOME']
+  const matches = kinds.map(kind => exactLedgerSecondaryCategory(props.categories, kind, secondaryQuery.value, props.model.primaryCategoryId)).filter(Boolean)
+  if (matches.length === 1) selectSecondary(matches[0])
+  else emit('update', { key: 'secondaryCategoryId', value: '' })
+  secondaryOpen.value = true
+}
+function closeMenusSoon() { window.setTimeout(() => { primaryOpen.value=false; secondaryOpen.value=false }, 120) }
 </script>
 
 <style scoped>
@@ -68,4 +117,5 @@ function set(key, value) {
 .flow-quick-periods button { height: 30px; border: 1px solid var(--line2); border-radius: 3px; background: var(--card); color: var(--ink2); font-size: 11px }
 .flow-quick-periods button:hover { border-color: var(--accent); color: var(--accent) }
 .flow-reset-button { width: 100% }
+.filter-combobox{position:relative;min-width:0}.filter-options{position:absolute;z-index:40;top:calc(100% + 4px);left:0;right:0;max-height:210px;overflow:auto;padding:4px;border:1px solid var(--line2);border-radius:4px;background:var(--card);box-shadow:0 12px 28px rgba(20,23,28,.14)}.filter-options button{display:flex;width:100%;min-height:32px;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border:0;border-radius:3px;background:transparent;color:var(--ink2);font-size:11px;text-align:left;cursor:pointer}.filter-options button:hover{background:var(--accent-soft);color:var(--ink)}.filter-options small{color:var(--muted);font-size:9px}.filter-options>span{display:block;padding:8px;color:var(--muted);font-size:10px;text-align:center}
 </style>

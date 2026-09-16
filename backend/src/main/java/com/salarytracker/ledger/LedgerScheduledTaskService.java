@@ -117,7 +117,11 @@ public class LedgerScheduledTaskService {
 
     private Map<String,Object> byPublicId(LedgerBookAccess.Context c,String id){ List<Map<String,Object>> rows=jdbc.queryForList("SELECT id,public_id,book_id,task_type,name,enabled,frequency,interval_value,start_on,next_run_on,end_on,max_runs,run_count,payload_json,last_run_at,last_run_status,last_error,revision,deleted,created_at,updated_at FROM ledger_scheduled_task WHERE public_id=? AND book_id=?",id,c.bookId()); if(rows.isEmpty()) throw new IllegalArgumentException("定时任务不存在"); return view(rows.get(0)); }
     private Map<String,Object> view(Map<String,Object> r){ Map<String,Object> v=new LinkedHashMap<>(); v.put("internalId",r.get("id")); v.put("id",r.get("public_id")); v.put("taskType",r.get("task_type")); v.put("name",r.get("name")); v.put("enabled",r.get("enabled")); v.put("frequency",r.get("frequency")); v.put("intervalValue",r.get("interval_value")); v.put("startOn",String.valueOf(r.get("start_on"))); v.put("nextRunOn",String.valueOf(r.get("next_run_on"))); v.put("endOn",r.get("end_on")); v.put("maxRuns",r.get("max_runs")); v.put("runCount",r.get("run_count")); v.put("payload",payload(r.get("payload_json"))); v.put("lastRunAt",r.get("last_run_at")); v.put("lastRunStatus",r.get("last_run_status")); v.put("lastError",r.get("last_error")); v.put("revision",r.get("revision")); v.put("deleted",r.get("deleted")); return v; }
-    private Map<String,Object> payload(Object raw){ try{return mapper.readValue(String.valueOf(raw),new TypeReference<Map<String,Object>>(){});}catch(Exception e){return new LinkedHashMap<>();} }
+    @SuppressWarnings("unchecked")
+    Map<String,Object> payload(Object raw){
+        if(raw instanceof Map<?,?> map)return new LinkedHashMap<>((Map<String,Object>)map);
+        try{return mapper.readValue(String.valueOf(raw),new TypeReference<Map<String,Object>>(){});}catch(Exception e){return new LinkedHashMap<>();}
+    }
     private String json(Object value){try{return mapper.writeValueAsString(value);}catch(Exception e){return "{}";}}
     private LocalDate nextDate(LocalDate d,String f,long i){return switch(f){case "ONCE"->d;case "DAILY"->d.plusDays(i);case "WEEKLY"->d.plusWeeks(i);case "YEARLY"->d.plusYears(i);default->d.plusMonths(i);};}
     private String uuid(Object v){String s=text(v,"");if(s.isBlank())return UUID.randomUUID().toString();UUID.fromString(s);return s;}

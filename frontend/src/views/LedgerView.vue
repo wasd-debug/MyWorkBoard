@@ -30,7 +30,35 @@
     <Sheet v-model:open="editorOpen" :title="editing?'编辑交易':'记一笔'"><form class="form" @submit.prevent="saveTransaction"><LedgerTransactionEditor :model="form" :accounts="accounts" :categories="categories" :usage-transactions="optionTransactions" :kinds="kindOptions" :merchant-options="merchantOptions" :member-options="memberOptions" :project-options="projectOptions" :lock-kind="editing?.kind==='TRANSFER'"/><div class="form-footer"><LedgerActionIcon action="close" label="取消记账" @click="editorOpen=false"/><LedgerActionIcon action="confirm" label="保存交易" type="submit" :disabled="pageLoading"/></div></form></Sheet>
     <Drawer v-model:open="managerOpen" title="账户与分类"><div class="manager-tabs"><button :class="{active:managerTab==='accounts'}" @click="managerTab='accounts'">账户</button><button :class="{active:managerTab==='categories'}" @click="managerTab='categories'">分类</button></div><div v-if="managerTab==='accounts'" class="form"><div v-for="a in accounts" :key="a.id" class="manager-row"><span><b>{{a.name}}</b><small>{{accountType(a.accountType)}} · ¥{{money(a.balance)}}</small></span><LedgerActionIcon action="delete" :label="`删除${a.name}`" @click="removeAccount(a)"/></div><form class="form" @submit.prevent="saveAccount"><input v-model="accountForm.name" class="ui-input" placeholder="账户名称" required/><select v-model="accountForm.accountType"><option value="cash">现金</option><option value="bank">银行卡</option><option value="card">信用卡</option><option value="wallet">电子钱包</option></select><input v-model="accountForm.openingBalance" class="ui-input" type="number" placeholder="期初余额"/><LedgerActionIcon action="add" label="添加账户" type="submit"/></form></div><div v-else class="form"><div v-for="c in categories" :key="c.id" class="manager-row"><span><b>{{categoryPath(c)}}</b><small>{{c.kind==='INCOME'?'收入':'支出'}}</small></span><LedgerActionIcon action="delete" :label="`删除${categoryPath(c)}`" @click="removeCategory(c)"/></div><form class="form" @submit.prevent="saveCategory"><input v-model="categoryForm.name" class="ui-input" placeholder="分类名称" required/><select v-model="categoryForm.kind"><option value="EXPENSE">支出</option><option value="INCOME">收入</option></select><select v-model="categoryForm.parentId"><option value="">一级分类</option><option v-for="c in parents" :key="c.id" :value="String(c.id)">{{c.name}}</option></select><LedgerActionIcon action="add" label="添加分类" type="submit"/></form></div></Drawer>
     <Sheet v-model:open="budgetOpen" title="预算设置"><p class="ai-intro">可设置月度总预算，也可为一级或二级支出分类分别设置预算；流水保存后执行金额会自动更新。</p><div v-for="b in budgets" :key="b.id" class="manager-row"><span><b>{{b.category}}</b><small>¥{{money(b.spent)}} / ¥{{money(b.budget)}}</small></span><LedgerActionIcon action="delete" :label="`删除${b.category}预算`" @click="deleteBudgetFixed(b)"/></div><form class="form" @submit.prevent="saveBudget"><label>月份<input v-model="budgetForm.monthKey" class="ui-input" type="month" required/></label><label>预算范围<input v-model="budgetCategoryQuery" class="ui-input" list="budget-category-options" placeholder="输入分类名称，或留空设置月度总预算" autocomplete="off"/><datalist id="budget-category-options"><option value="月度总预算"/><option v-for="c in filteredBudgetCategories" :key="c.id" :value="categoryPath(c)">{{categoryPath(c)}}</option></datalist></label><label>金额<input v-model="budgetForm.amount" class="ui-input" type="number" min=".01" step=".01" required/></label><div class="form-footer"><LedgerActionIcon action="close" label="关闭预算设置" @click="budgetOpen=false"/><LedgerActionIcon action="confirm" label="保存预算" type="submit"/></div></form></Sheet>
-    <Sheet v-model:open="aiOpen" title="自然语言记账"><div class="ai-panel"><div class="ai-panel-intro"><div><span class="ai-eyebrow">AI ASSISTED ENTRY</span><h3>把一句话整理成流水</h3><p>识别后会先生成草稿。每一行都可以修改，确认后才会写入账本。</p></div><span class="ai-status"><i :class="{ready:!aiLoading}"></i>{{ aiLoading ? '识别中' : '待审核' }}</span></div><textarea v-model="aiText" class="ui-textarea ai-input" placeholder="例如：今天午饭花了 32 元，晚上打车 26 元"/><div class="ai-panel-actions"><span>支持一段文字解析多笔流水</span><LedgerActionIcon class="ai-button" action="ai" :label="aiLoading?'识别中':'开始识别'" :disabled="aiLoading||!aiText.trim()" @click="aiPreviewRequest"/></div><div v-if="aiPreview" class="ai-preview"><div class="ai-preview-head"><div><b>识别结果</b><span>{{ aiDrafts.length }} 笔草稿 · {{ aiPreview.localFallback ? '本地规则解析' : 'DeepSeek 已返回' }} · 尚未入账</span></div><LedgerActionIcon action="refresh" label="重新识别" :disabled="aiLoading" @click="aiPreviewRequest"/></div><div class="ai-draft-list"><article v-for="(draft,index) in aiDrafts" :key="`${draft.occurredOn||'draft'}-${index}`" class="ai-draft"><div class="ai-draft-head"><span class="ai-draft-index">{{ String(index+1).padStart(2,'0') }}</span><span class="ai-kind">{{ aiKindLabel(draft.kind) }}</span><b :class="aiAmountClass(draft.kind)">{{aiAmountSign(draft.kind)}}¥{{money(draft.amount)}}</b><span class="ai-draft-state" :class="{invalid:draft.warnings?.length}">{{ draft.warnings?.length ? '需要补全' : '已匹配' }}</span></div><div class="ai-draft-fields"><label>金额<input class="ui-input" type="number" min="0.01" step="0.01" :value="draft.amount" @input="updateAiDraft(index,{amount:$event.target.value})"></label><label>日期<input class="ui-input" type="date" :value="draft.occurredOn" @input="updateAiDraft(index,{occurredOn:$event.target.value})"></label><label>账户<select :value="draft.accountId||''" @change="updateAiDraft(index,{accountId:$event.target.value})"><option value="">请选择账户</option><option v-for="account in accounts" :key="account.id" :value="String(account.id)">{{account.name}}</option></select></label><label v-if="draft.kind==='TRANSFER'">转入账户<select :value="draft.targetAccountId||''" @change="updateAiDraft(index,{targetAccountId:$event.target.value})"><option value="">请选择账户</option><option v-for="account in accounts" :key="account.id" :value="String(account.id)">{{account.name}}</option></select></label><template v-if="requiresAiCategory(draft.kind)"><label>一级分类<select :value="draft.parentCategoryId||parentCategoryId(draft)" @change="updateAiCategory(index,{parentCategoryId:$event.target.value})"><option value="">请选择一级分类</option><option v-for="parent in aiCategoryParents(draft.kind)" :key="parent.id" :value="String(parent.id)">{{parent.name}}</option></select></label><label>二级分类<select :value="draft.categoryId||''" @change="updateAiCategory(index,{categoryId:$event.target.value})"><option value="">请选择二级分类</option><option v-for="category in aiCategoryChildren(draft)" :key="category.id" :value="String(category.id)">{{category.name}}</option></select></label></template><label class="ai-note-field">备注<input class="ui-input" :value="draft.note||''" maxlength="500" @input="updateAiDraft(index,{note:$event.target.value})"></label></div><p v-if="draft.warnings?.length" class="ai-warning"><span>!</span>{{draft.warnings.join('；')}}</p></article></div><div class="ai-preview-footer"><span v-if="!aiCanConfirm">请补全带警告的字段后确认</span><LedgerActionIcon action="confirm" label="确认全部记账" :disabled="!aiCanConfirm||pageLoading" @click="confirmAi"/></div></div></div></Sheet>
+    <Sheet v-model:open="aiOpen" title="自然语言记账">
+      <div class="ai-panel">
+        <div class="ai-panel-intro"><div><span class="ai-eyebrow">AI ASSISTED ENTRY</span><h3>把一句话整理成流水</h3><p>识别后会先生成草稿。每一行都可以审核全部信息，确认后才会写入账本。</p></div><span class="ai-status"><i :class="{ready:!aiLoading}"></i>{{ aiLoading ? '识别中' : '待审核' }}</span></div>
+        <textarea v-model="aiText" class="ui-textarea ai-input" placeholder="每行可写一笔，例如：今天买 DQ 冰淇淋 26 元，中行账户"/>
+        <div class="ai-panel-actions"><span>支持多行解析；商家、成员和项目均从当前账本匹配</span><LedgerActionIcon class="ai-button" action="ai" :label="aiLoading?'识别中':'开始识别'" :disabled="aiLoading||!aiText.trim()" @click="aiPreviewRequest"/></div>
+        <div v-if="aiPreview" class="ai-preview">
+          <div class="ai-preview-head"><div><b>识别结果</b><span>{{ aiDrafts.length }} 笔草稿 · {{ aiPreview.localFallback ? '本地规则解析' : 'DeepSeek 已返回' }} · 尚未入账</span></div><LedgerActionIcon action="refresh" label="重新识别" :disabled="aiLoading" @click="aiPreviewRequest"/></div>
+          <div class="ai-draft-list">
+            <article v-for="(draft,index) in aiDrafts" :key="`${draft.occurredOn||'draft'}-${index}`" class="ai-draft">
+              <div class="ai-draft-head"><span class="ai-draft-index">{{ String(index+1).padStart(2,'0') }}</span><span class="ai-kind">{{ aiKindLabel(draft.kind) }}</span><b :class="aiAmountClass(draft.kind)">{{aiAmountSign(draft.kind)}}¥{{money(draft.amount)}}</b><span class="ai-draft-state" :class="{invalid:draft.warnings?.length}">{{ draft.warnings?.length ? '需要补全' : '已匹配' }}</span></div>
+              <div class="ai-draft-fields">
+                <label>流水类型<select :value="draft.kind" @change="updateAiDraft(index,{kind:$event.target.value})"><option v-for="item in kindOptions" :key="item.value" :value="item.value">{{item.label}}</option></select></label>
+                <label>金额<input class="ui-input" type="number" min="0.01" step="0.01" :value="draft.amount" @input="updateAiDraft(index,{amount:$event.target.value})"></label>
+                <label>日期<input class="ui-input" type="date" :value="draft.occurredOn" @input="updateAiDraft(index,{occurredOn:$event.target.value})"></label>
+                <label>账户<select :value="draft.accountId||''" @change="updateAiDraft(index,{accountId:$event.target.value})"><option value="">请选择账户</option><option v-for="account in accounts" :key="account.id" :value="String(account.id)">{{account.name}}</option></select></label>
+                <label v-if="draft.kind==='TRANSFER'">转入账户<select :value="draft.targetAccountId||''" @change="updateAiDraft(index,{targetAccountId:$event.target.value})"><option value="">请选择账户</option><option v-for="account in accounts" :key="account.id" :value="String(account.id)">{{account.name}}</option></select></label>
+                <LedgerCategoryCombobox v-if="requiresAiCategory(draft.kind)" :model-value="draft.categoryId||''" :kind="draft.kind" :categories="categories" :usage-transactions="optionTransactions" @update:model-value="value=>updateAiCategory(index,{categoryId:value})" />
+                <label>商家<select :value="aiResourceValue(draft,'merchant')" @change="updateAiResource(index,'merchant',$event.target.value)"><option v-if="draft.merchantName&&!draft.merchantId" value="__unmatched" disabled>未匹配：{{draft.merchantName}}</option><option value="">不记录商家</option><option v-for="item in ledgerStore.visibleMerchants" :key="item.id" :value="String(item.id)">{{item.name}}</option></select></label>
+                <label>成员<select :value="aiResourceValue(draft,'member')" @change="updateAiResource(index,'member',$event.target.value)"><option v-if="draft.member&&!draft.memberId" value="__unmatched" disabled>未匹配：{{draft.member}}</option><option value="">请选择成员</option><option v-for="item in ledgerStore.activeMembers" :key="item.id" :value="String(item.id)">{{item.displayName||item.username}}</option></select></label>
+                <label>项目<select :value="aiResourceValue(draft,'project')" @change="updateAiResource(index,'project',$event.target.value)"><option v-if="draft.projectName&&!draft.projectId" value="__unmatched" disabled>未匹配：{{draft.projectName}}</option><option value="">不记录项目</option><option v-for="item in ledgerStore.visibleProjects" :key="item.id" :value="String(item.id)">{{item.name}}</option></select></label>
+                <label class="ai-note-field">备注<input class="ui-input" :value="draft.note||''" maxlength="500" @input="updateAiDraft(index,{note:$event.target.value})"></label>
+              </div>
+              <p v-if="draft.warnings?.length" class="ai-warning"><span>!</span>{{draft.warnings.join('；')}}</p>
+            </article>
+          </div>
+          <div class="ai-preview-footer"><span v-if="!aiCanConfirm">请补全账户、成员和必需分类，并处理未匹配项</span><LedgerActionIcon action="confirm" label="确认全部记账" :disabled="!aiCanConfirm||pageLoading" @click="confirmAi"/></div>
+        </div>
+      </div>
+    </Sheet>
     <Sheet v-model:open="layoutOpen" title="自定义首页"><p class="ai-intro">选择首页卡片，并调整它们的显示顺序。</p><div v-for="group in widgetGroups" :key="group.key" class="widget-settings"><div class="widget-settings-title">{{group.label}}</div><div v-for="(widget,index) in widgetConfig[group.key]" :key="widget.id" class="widget-setting-row"><LedgerActionIcon :action="widget.visible!==false?'hide':'show'" :label="widget.visible!==false?'移除卡片':'新增卡片'" @click="widget.visible=widget.visible===false"/><span>{{widget.label}}</span><LedgerActionIcon action="previous" label="上移卡片" :disabled="index===0" @click="moveWidget(group.key,index,-1)"/><LedgerActionIcon action="next" label="下移卡片" :disabled="index===widgetConfig[group.key].length-1" @click="moveWidget(group.key,index,1)"/></div></div><div class="form-footer"><LedgerActionIcon action="restore" label="恢复默认" @click="resetWidgets"/><LedgerActionIcon action="close" label="完成" @click="layoutOpen=false"/></div></Sheet>
     <Dialog :open="Boolean(deleteTarget)" title="删除流水" @update:open="value=>{if(!value)deleteTarget=null}"><p class="transaction-delete-copy">删除后这笔流水将不再计入账本统计，确定继续吗？</p><template #footer><LedgerActionIcon action="close" label="取消删除" :disabled="deleting" @click="deleteTarget=null"/><LedgerActionIcon action="delete" :label="deleting?'删除中':'确认删除流水'" :disabled="deleting" @click="removeTransaction"/></template></Dialog>
   </section>
@@ -47,6 +75,7 @@ import { Upload } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import Card from '../components/ui/Card.vue'; import Table from '../components/ui/Table.vue'; import Sheet from '../components/ui/Sheet.vue'; import Drawer from '../components/ui/Drawer.vue'; import Dialog from '../components/ui/Dialog.vue'
 import LedgerTransactionEditor from '../components/ledger/LedgerTransactionEditor.vue'
+import LedgerCategoryCombobox from '../components/ledger/LedgerCategoryCombobox.vue'
 import LedgerResourceIcon from '../components/ledger/LedgerResourceIcon.vue'
 import LedgerActionIcon from '../components/ledger/LedgerActionIcon.vue'
 import LoadingOverlay from '../components/ledger/LoadingOverlay.vue'
@@ -88,10 +117,12 @@ const requiresAiCategory=kind=>kind==='INCOME'||kind==='EXPENSE'
 const aiCategoryParents=kind=>categories.value.filter(item=>item.kind===kind&&!item.parentId&&!item.deleted&&!item.hidden)
 const parentCategoryId=draft=>{const child=categories.value.find(item=>String(item.id)===String(draft?.categoryId||''));return child?.parentId||''}
 const aiCategoryChildren=draft=>{const kind=draft?.kind==='INCOME'?'INCOME':'EXPENSE';const parentId=draft?.parentCategoryId||parentCategoryId(draft);return categories.value.filter(item=>item.kind===kind&&item.parentId&&(!parentId||String(item.parentId)===String(parentId))&&!item.deleted&&!item.hidden)}
-const aiCanConfirm=computed(()=>aiDrafts.value.length>0&&aiDrafts.value.every(draft=>Number(draft.amount)>0&&Boolean(draft.occurredOn)&&Boolean(draft.accountId)&&(!requiresAiCategory(draft.kind)||Boolean(draft.categoryId))&&(draft.kind!=='TRANSFER'||Boolean(draft.targetAccountId))&&!draft.warnings?.length))
+const currentLedgerMember=computed(()=>ledgerStore.activeMembers.find(item=>String(item.userId)===String(appStore.authUser?.id||'')))
+const aiCanConfirm=computed(()=>aiDrafts.value.length>0&&aiDrafts.value.every(draft=>Number(draft.amount)>0&&Boolean(draft.occurredOn)&&Boolean(draft.accountId)&&Boolean(draft.memberId)&&(!requiresAiCategory(draft.kind)||Boolean(draft.categoryId))&&(draft.kind!=='TRANSFER'||Boolean(draft.targetAccountId))&&!draft.warnings?.length))
 const aiKindLabel=kind=>kindOptions.find(item=>item.value===kind)?.label||'流水'
 const aiAmountClass=kind=>incomeKinds.includes(kind)?'income':expenseKinds.includes(kind)?'expense':'transfer'
 const aiAmountSign=kind=>incomeKinds.includes(kind)?'+':expenseKinds.includes(kind)?'−':''
+const aiResourceValue=(draft,type)=>draft?.[`${type}Id`]||(draft?.[type==='member'?'member':`${type}Name`]?'__unmatched':'')
 const effectiveTotalAssets=computed(()=>totalLedgerAssets(accounts.value,optionTransactions.value))
 const dateKeys=(from,to)=>{const keys=[];for(let d=new Date(`${from}T00:00:00`),end=new Date(`${to}T00:00:00`);d<=end;d.setDate(d.getDate()+1)){const local=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);keys.push(local)}return keys}; const monthKeys=(from,to)=>{const keys=[];let [year,month]=from.slice(0,7).split('-').map(Number);const end=to.slice(0,7);while(`${year}-${String(month).padStart(2,'0')}`<=end){keys.push(`${year}-${String(month).padStart(2,'0')}`);month++;if(month>12){year++;month=1}}return keys}; const dailyRows=computed(()=>{const granularity=homeTrendGranularity.value;const keys=granularity==='month'?monthKeys(overviewStart.value,overviewEnd.value):dateKeys(overviewStart.value,overviewEnd.value);return keys.map(key=>{const rows=overviewItems.value.filter(x=>granularity==='month'?String(x.occurredOn||'').startsWith(key):x.occurredOn===key);return{date:key,label:granularity==='month'?key.replace('-','/'):key.slice(5).replace('-','/'),...sum(rows)}})}); const monthCalendarRows=computed(()=>Array.from({length:Number(monthEnd.value.slice(-2))},(_,i)=>{const date=`${selectedMonth.value}-${String(i+1).padStart(2,'0')}`;return{date,...sum(monthItems.value.filter(x=>x.occurredOn===date))}})); const budgetSummary=computed(()=>({budget:budgets.value.reduce((n,x)=>n+Number(x.budget||x.amount||0),0),spent:budgets.value.reduce((n,x)=>n+Number(x.spent||0),0)})); const budgetLeft=computed(()=>Number(budgetSummary.value.budget||0)-Number(budgetSummary.value.spent||0)); const rank=computed(()=>{const map=new Map,source=(categoryScope.value==='range'?overviewItems.value:categoryScope.value==='month'?monthItems.value:transactions.value.filter(x=>range(x.occurredOn,yearStart.value,yearEnd.value))).filter(x=>expenseKinds.includes(x.kind));if(source){for(const x of source){const current=categories.value.find(c=>String(c.id)===String(x.categoryId)),parent=categories.value.find(c=>String(c.id)===String(current?.parentId));const category=categoryLevel.value==='primary'?(parent||current):current;const key=category?.name||x.categoryName||'未分类';const row=map.get(key)||{name:key,amount:0,color:category?.color,parentId:category?.parentId,id:category?.id,parentColor:parent?.color,paletteIndex:category&&!category.parentId?categoryPaletteIndex(category):undefined,parentPaletteIndex:parent?categoryPaletteIndex(parent):undefined};row.amount+=Number(x.amount||0);map.set(key,row)}}return[...map.values()].sort((a,b)=>b.amount-a.amount).slice(0,8).map((item,index)=>({...item,color:categoryColor(item,index)}))}); const months=computed(()=>Array.from({length:12},(_,i)=>{const key=`${selectedYear.value}-${String(i+1).padStart(2,'0')}`,monthSummary=sum(transactions.value.filter(x=>String(x.occurredOn||'').startsWith(key)));return{label:`${i+1}月`,income:monthSummary.income,expense:monthSummary.expense,net:monthSummary.net}})); const weekStart=()=>{const d=new Date(`${today}T00:00:00`);d.setDate(d.getDate()-(d.getDay()||7)+1);return d.toISOString().slice(0,10)}; const snapshots=computed(()=>[{label:'今天',range:today.replaceAll('-','.'),...sum(transactions.value.filter(x=>x.occurredOn===today))},{label:'本周',range:`${weekStart().slice(5).replace('-','.')} - ${today.slice(5).replace('-','.')}`,...sum(transactions.value.filter(x=>range(x.occurredOn,weekStart(),today)))},{label:'本年',range:`${selectedYear.value}.01.01 - ${selectedYear.value}.12.31`,...sum(transactions.value.filter(x=>range(x.occurredOn,yearStart.value,yearEnd.value)))}]); const calendarCells=computed(()=>{const blank=new Date(`${selectedMonth.value}-01T00:00:00`).getDay(),days=monthCalendarRows.value.map(x=>({key:x.date,day:+x.date.slice(-2),income:x.income,expense:x.expense,today:x.date===today}));return[...Array.from({length:blank},(_,i)=>({key:`a${i}`})),...days,...Array.from({length:(7-(blank+days.length)%7)%7},(_,i)=>({key:`b${i}`}))]})
 const money=x=>Number(x||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2}); const compact=x=>Number(x)>=1000?`${(Number(x)/1000).toFixed(1)}k`:Number(x).toFixed(0); const formatDate=x=>String(x||'').replaceAll('-','/'); const endOfMonth=m=>{const [y,n]=m.split('-').map(Number);return`${m}-${String(new Date(y,n,0).getDate()).padStart(2,'0')}`}; const daysBetween=(from,to)=>Math.max(0,Math.round((new Date(`${to}T00:00:00`)-new Date(`${from}T00:00:00`))/86400000)); const accountIcon=x=>({cash:'¥',bank:'▣',card:'▤',wallet:'◒'})[x]||'·'; const accountType=x=>({cash:'现金',bank:'银行卡',card:'信用卡',wallet:'电子钱包'})[x]||'其他账户'; const categoryPath=x=>{const p=categories.value.find(y=>String(y.id)===String(x.parentId));return p?`${p.name} / ${x.name}`:x.name}; const categoryPaletteIndex=x=>{const index=categories.value.filter(item=>!item.parentId).findIndex(item=>String(item.id)===String(x?.id));return index>=0?index:undefined}; const shiftMonth=n=>{const [y,m]=selectedMonth.value.split('-').map(Number);selectedMonth.value=new Date(y,m-1+n,1).toISOString().slice(0,7)}
@@ -285,18 +316,43 @@ async function aiPreviewRequest(){if(!aiText.value.trim())return;aiLoading.value
    }catch(e){ElMessage.error(e.response?.data?.detail||'预算删除失败')}
    finally{pageLoading.value=false}
  }
- async function aiPreviewRequestFixed(){if(!aiText.value.trim())return;aiLoading.value=true;try{const result=await apiLedgerAiPreview(aiText.value);const drafts=(result.drafts||[]).map(draft=>{const child=categories.value.find(item=>String(item.id)===String(draft.categoryId||''));return {...draft,parentCategoryId:draft.parentCategoryId||child?.parentId||''}});const draft=drafts[0];if(draft)aiPreview.value={...draft,_draftId:result.draftId,_allDrafts:drafts,localFallback:Boolean(result.localFallback)}}catch(e){ElMessage.error(e.response?.data?.detail||'DeepSeek 暂时不可用，请稍后重试')}finally{aiLoading.value=false}}
+ async function aiPreviewRequestFixed(){
+   if(!aiText.value.trim())return
+   aiLoading.value=true
+   try{
+     const result=await apiLedgerAiPreview(ledgerStore.currentBookId,aiText.value)
+     const drafts=(result.drafts||[]).map(draft=>{
+       const child=categories.value.find(item=>String(item.id)===String(draft.categoryId||''))
+       const member=currentLedgerMember.value
+       return {...draft,parentCategoryId:draft.parentCategoryId||child?.parentId||'',
+         memberId:draft.memberId||member?.id||'',member:draft.member||member?.displayName||member?.username||''}
+     })
+     const draft=drafts[0]
+     if(draft)aiPreview.value={...draft,_draftId:result.draftId,_allDrafts:drafts,localFallback:Boolean(result.localFallback)}
+   }catch(e){ElMessage.error(e.response?.data?.detail||'DeepSeek 暂时不可用，请稍后重试')}
+   finally{aiLoading.value=false}
+ }
  function updateAiDraft(index,patch){
    const drafts=aiDrafts.value.map(item=>({...item}))
    const draft=drafts[index]
    if(!draft)return
    Object.assign(draft,patch)
+   if(Object.prototype.hasOwnProperty.call(patch,'kind')){
+     draft.categoryId=''
+     draft.categoryName=''
+     draft.parentCategoryId=''
+     draft.parentCategoryName=''
+     draft.categoryMatchStatus=requiresAiCategory(draft.kind)?'missing':'not_required'
+     draft.warnings=(draft.warnings||[]).filter(warning=>!/(分类|二级分类|转入账户不能|请选择转入账户)/.test(warning))
+     if(requiresAiCategory(draft.kind))draft.warnings=[...(draft.warnings||[]),'请选择二级分类']
+     if(draft.kind!=='TRANSFER')draft.targetAccountId=''
+   }
    const warnings=draft.warnings||[]
    if(Object.prototype.hasOwnProperty.call(patch,'accountId') && patch.accountId){
      draft.warnings=warnings.filter(warning=>warning!=='请选择账户'&&!warning.startsWith('账户“'))
    }
-   if(Object.prototype.hasOwnProperty.call(patch,'targetAccountId') && patch.targetAccountId){
-     draft.warnings=(draft.warnings||[]).filter(warning=>warning!=='请选择转入账户'&&!warning.startsWith('转入账户“'))
+   if(Object.prototype.hasOwnProperty.call(patch,'targetAccountId')){
+     draft.warnings=(draft.warnings||[]).filter(warning=>warning!=='请选择转入账户'&&!warning.startsWith('转入账户“')&&warning!=='转入账户不能与转出账户相同')
    }
    if(draft.kind==='TRANSFER' && !draft.targetAccountId && !(draft.warnings||[]).includes('请选择转入账户')){
      draft.warnings=[...(draft.warnings||[]),'请选择转入账户']
@@ -304,6 +360,22 @@ async function aiPreviewRequest(){if(!aiText.value.trim())return;aiLoading.value
    if(draft.accountId && draft.kind==='TRANSFER' && draft.targetAccountId===draft.accountId){
      draft.warnings=[...(draft.warnings||[]).filter(warning=>warning!=='请选择转入账户'),'转入账户不能与转出账户相同']
    }
+   aiPreview.value={...draft,_draftId:aiPreview.value._draftId,_allDrafts:drafts,localFallback:aiPreview.value.localFallback}
+ }
+ function updateAiResource(index,type,value){
+   const drafts=aiDrafts.value.map(item=>({...item}))
+   const draft=drafts[index]
+   if(!draft)return
+   const config={
+     merchant:{items:ledgerStore.visibleMerchants,id:'merchantId',name:'merchantName',label:'商家'},
+     member:{items:ledgerStore.activeMembers,id:'memberId',name:'member',label:'成员'},
+     project:{items:ledgerStore.visibleProjects,id:'projectId',name:'projectName',label:'项目'}
+   }[type]
+   const selected=config.items.find(item=>String(item.id)===String(value||''))
+   draft[config.id]=selected?String(selected.id):''
+   draft[config.name]=selected?(type==='member'?(selected.displayName||selected.username):selected.name):''
+   draft.warnings=(draft.warnings||[]).filter(warning=>!warning.startsWith(`${config.label}“`)&&warning!==`请选择${config.label}`)
+   if(type==='member'&&!selected)draft.warnings=[...(draft.warnings||[]),'请选择成员']
    aiPreview.value={...draft,_draftId:aiPreview.value._draftId,_allDrafts:drafts,localFallback:aiPreview.value.localFallback}
  }
  function updateAiCategory(index,patch){
@@ -325,7 +397,7 @@ async function aiPreviewRequest(){if(!aiText.value.trim())return;aiLoading.value
    else if(!categoryWarning)draft.warnings=[...(draft.warnings||[]),'请选择二级分类']
    aiPreview.value={...draft,_draftId:aiPreview.value._draftId,_allDrafts:drafts,localFallback:aiPreview.value.localFallback}
  }
- async function confirmAiFixed(){pageLoading.value=true;try{if(!aiPreview.value?._draftId)throw new Error('请先识别交易');if(!aiCanConfirm.value)throw new Error('请先补全账户和二级分类，并处理未匹配项');await apiLedgerAiConfirm(null,aiPreview.value._draftId,aiDrafts.value,`ai-web-${Date.now()}`);aiOpen.value=false;aiPreview.value=null;await loadData();ElMessage.success('AI 记账完成')}catch(e){ElMessage.error(e.response?.data?.detail||e.message||'记账失败')}finally{pageLoading.value=false}}
+ async function confirmAiFixed(){pageLoading.value=true;try{if(!aiPreview.value?._draftId)throw new Error('请先识别交易');if(!aiCanConfirm.value)throw new Error('请先补全账户、成员和二级分类，并处理未匹配项');await apiLedgerAiConfirm(ledgerStore.currentBookId,aiPreview.value._draftId,aiDrafts.value,`ai-web-${Date.now()}`);aiOpen.value=false;aiPreview.value=null;await loadData();ElMessage.success('AI 记账完成')}catch(e){ElMessage.error(e.response?.data?.detail||e.message||'记账失败')}finally{pageLoading.value=false}}
  async function importFileWithProgress(event){
    const file=event.target.files?.[0]
    if(!file||importState.active)return
