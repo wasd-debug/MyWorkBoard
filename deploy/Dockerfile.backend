@@ -7,7 +7,6 @@ COPY backend/pom.xml ./pom.xml
 COPY backend/app ./app
 COPY backend/modules ./modules
 RUN mvn -q -DskipTests dependency:go-offline
-COPY backend/src ./src
 RUN mvn -q -DskipTests package
 
 # 运行阶段：JRE
