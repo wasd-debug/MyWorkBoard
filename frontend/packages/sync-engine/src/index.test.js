@@ -130,3 +130,31 @@ test('冲突保留待处理操作，权限撤销写入可导出队列', async ()
   assert.equal((await engine.rejected('book-a')).length, 1)
   assert.match(await engine.exportRejected('book-a'), /op-a/)
 })
+
+test('服务端校验拒绝移出待同步队列并保留可定位信息', async () => {
+  const engine = new SyncEngine({
+    transport: {
+      push: async (_bookId, operations) => ({
+        results: operations.map(operation => ({
+          opId: operation.opId,
+          status: 'REJECTED',
+          message: '预算金额必须大于 0'
+        }))
+      }),
+      pull: async (_bookId, cursor) => ({ cursor, operations: [] })
+    }
+  })
+  await engine.put('budget', { id: 'budget-a', amount: 0 }, { bookId: 'book-a', opId: 'invalid-budget' })
+
+  await engine.sync('book-a')
+
+  assert.equal((await engine.pendingOperations('book-a')).length, 0)
+  const rejected = await engine.rejected('book-a')
+  assert.equal(rejected.length, 1)
+  assert.equal(rejected[0].operation.opId, 'invalid-budget')
+  assert.equal(rejected[0].result.message, '预算金额必须大于 0')
+  const exported = JSON.parse(await engine.exportRejected('book-a'))
+  assert.equal(exported.operations[0].opId, 'invalid-budget')
+  assert.equal(exported.rejections[0].status, 'REJECTED')
+  assert.equal(exported.rejections[0].message, '预算金额必须大于 0')
+})

@@ -1,4 +1,5 @@
 <template>
+  <ToastViewport />
   <LoadingOverlay :open="!store.ready || navigationLoading" :label="!store.ready ? '正在初始化工作台…' : '正在切换页面…'" />
   <div v-if="store.ready" class="app-shell">
     <LoginView v-if="store.authRequired" />
@@ -71,16 +72,19 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from './services/message.js'
 import { useAppStore } from './stores/app'
+import { useWorktimeStore } from './stores/worktime.js'
 import { useRoute } from 'vue-router'
-import { ArrowDown, Calendar, Connection, CreditCard, DataAnalysis, DeleteFilled, Document, List, Management, Moon, Notebook, Refresh, Setting, Sunny, SwitchButton, Tickets, Timer, UserFilled, Wallet } from '@element-plus/icons-vue'
+import { ArrowDown, Calendar, Connection, CreditCard, DataAnalysis, DeleteFilled, Document, List, Management, Moon, Notebook, Refresh, Setting, Sunny, SwitchButton, Tickets, Timer, UserFilled, Wallet } from './icons.js'
 import BottomNav from './components/BottomNav.vue'
 import LoadingOverlay from './components/ledger/LoadingOverlay.vue'
+import ToastViewport from './components/ui/ToastViewport.vue'
 import LoginView from './views/LoginView.vue'
 import router from './router'
 
 const store = useAppStore()
+const worktimeStore = useWorktimeStore()
 const route = useRoute()
 const navigationLoading = ref(false)
 let navigationFinishTimer
@@ -156,13 +160,12 @@ function toggleGroup(key) {
   openGroups.value = next
 }
 
-const basis = computed(() => store.settings.basis)
+const basis = computed(() => worktimeStore.settings.basis)
 const showBasis = computed(() => ['/punch', '/records', '/stats'].includes(route.path))
 
-function setBasis(value) {
-  if (store.settings.basis === value) return
-  store.settings.basis = value
-  store.saveAll()
+async function setBasis(value) {
+  if (worktimeStore.settings.basis === value) return
+  await worktimeStore.saveSettings({ basis: value })
 }
 
 function onSyncClick() {

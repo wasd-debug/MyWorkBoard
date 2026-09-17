@@ -21,7 +21,7 @@
 
 <script setup>
 import { reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '../../services/message.js'
 import { useLedgerStore } from '../../stores/ledger'
 import Button from '../ui/Button.vue'
 import Sheet from '../ui/Sheet.vue'

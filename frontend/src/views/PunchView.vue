@@ -7,7 +7,7 @@
       </div>
       <div class="punch-date-nav">
         <Button variant="icon" size="sm" @click="shiftPunch(-1)">‹</Button>
-        <Input v-model="punchDate" type="date" @change="onDateChange" />
+        <Input v-model="punchDate" aria-label="打卡日期" type="date" @change="onDateChange" />
         <Button variant="icon" size="sm" @click="shiftPunch(1)">›</Button>
         <Button size="sm" variant="ghost" @click="goToday">今天</Button>
       </div>
@@ -41,19 +41,19 @@
         <div class="punch-times">
           <div class="time-entry">
             <div class="label">实际上班 · IN</div>
-            <Input v-model="recStart" type="time" @change="saveRec" />
+            <Input v-model="recStart" aria-label="实际上班时间" type="time" @change="saveRec" />
             <button class="now-btn" type="button" @click="nowStart">记录现在 →</button>
           </div>
           <div class="time-entry">
             <div class="label">实际下班 · OUT</div>
-            <Input v-model="recEnd" type="time" @change="saveRec" />
+            <Input v-model="recEnd" aria-label="实际下班时间" type="time" @change="saveRec" />
             <button class="now-btn" type="button" @click="nowEnd">记录现在 →</button>
           </div>
         </div>
 
         <div class="rest-input-row">
           <span class="lbl">自定义休息 BREAK</span>
-          <Input v-model="recRest" type="number" min="0" max="600" step="5" @change="saveRec" />
+          <Input v-model="recRest" aria-label="自定义休息分钟" type="number" min="0" max="600" step="5" @change="saveRec" />
           <span class="hint">分钟 · 摸鱼 / 晚饭 / 健身</span>
         </div>
       </div>
@@ -90,9 +90,11 @@ import { ref, computed, watch } from 'vue'
 import Button from '../components/ui/Button.vue'
 import Input from '../components/ui/Input.vue'
 import { useAppStore } from '../stores/app'
+import { useWorktimeStore } from '../stores/worktime.js'
 import { CALC } from '../utils/calc'
 
-const store = useAppStore()
+const appStore = useAppStore()
+const store = useWorktimeStore()
 const punchDate = ref(store.punchDate)
 const recStart = ref('')
 const recEnd = ref('')
@@ -108,19 +110,19 @@ const rec = computed(() => {
 })
 const m = computed(() => CALC.actualMin(rec.value, ctx.value))
 const std = computed(() => CALC.stdWorkMin(ctx.value))
-const ot = computed(() => isOffDay.value ? m.value : m.value - std.value)
+const ot = computed(() => rec.value.id ? Number(rec.value.overtimeMin || 0) : (isOffDay.value ? m.value : m.value - std.value))
 const otLabel = computed(() => isOffDay.value ? '加班 OT' : (ot.value >= 0 ? '加班 OT' : '早退 EARLY'))
-const effDays = computed(() => CALC.effDaysPerMonth(ctx.value, punchDate.value.slice(0, 7), store.holidays, store.records))
-const rate = computed(() => CALC.dayRate(rec.value, ctx.value, store.settings.basis, effDays.value))
+const effDays = computed(() => CALC.effDaysPerMonth(ctx.value, punchDate.value.slice(0, 7), appStore.holidays, store.records))
+const rate = computed(() => rec.value.id ? Number(rec.value.realHourlyWage || 0) : CALC.dayRate(rec.value, ctx.value, store.settings.basis, effDays.value))
 const otherRate = computed(() => CALC.dayRate(rec.value, ctx.value, store.settings.basis === 'pre' ? 'post' : 'pre', effDays.value))
 const base = computed(() => CALC.baseRate(ctx.value, store.settings.basis, effDays.value))
 const diff = computed(() => base.value > 0 ? (rate.value - base.value) / base.value * 100 : 0)
 const dayPay = computed(() => CALC.dayPay(ctx.value, store.settings.basis, effDays.value))
 const hasSalary = computed(() => CALC.salary(ctx.value, store.settings.basis) > 0)
 const rest = computed(() => Number(rec.value.rest) || 0)
-const wk = computed(() => CALC.periodStats(CALC.weekKeysTo(new Date(punchDate.value + 'T00:00:00')), store.records, ctx.value, store.settings.basis, undefined, store.holidays, ym => CALC.monthSalary(store.settings.salaries, store.settings, store.settings.basis, ym)))
-const isOffDay = computed(() => CALC.dayType(punchDate.value, store.holidays) === 'off')
-const dayLabel = computed(() => { const name = CALC.holidayName(punchDate.value, store.holidays); return name ? `${name} · 法定假日` : '周末休息日' })
+const wk = computed(() => CALC.periodStats(CALC.weekKeysTo(new Date(punchDate.value + 'T00:00:00')), store.records, ctx.value, store.settings.basis, undefined, appStore.holidays, ym => CALC.monthSalary(store.settings.salaries, store.settings, store.settings.basis, ym)))
+const isOffDay = computed(() => CALC.dayType(punchDate.value, appStore.holidays) === 'off')
+const dayLabel = computed(() => { const name = CALC.holidayName(punchDate.value, appStore.holidays); return name ? `${name} · 法定假日` : '周末休息日' })
 
 const hours = CALC.fmtHours
 const signed = CALC.fmtSigned
@@ -141,23 +143,22 @@ function syncInputs() {
   const record = store.records[punchDate.value]
   if (record && (record.start || record.end)) { recStart.value = record.start || ''; recEnd.value = record.end || ''; recRest.value = Number(record.rest) > 0 ? Number(record.rest) : 0; return }
   const key = punchDate.value
-  store.ensureHolidays(Number(key.slice(0, 4))).then(() => {
+  appStore.ensureHolidays(Number(key.slice(0, 4))).then(() => {
     if (punchDate.value !== key || store.records[key]) return
-    if (CALC.dayType(key, store.holidays) !== 'work') { recStart.value = ''; recEnd.value = ''; recRest.value = 0; return }
+    if (CALC.dayType(key, appStore.holidays) !== 'work') { recStart.value = ''; recEnd.value = ''; recRest.value = 0; return }
     recStart.value = store.settings.workStart || '08:30'; recEnd.value = store.settings.workEnd || '17:30'; recRest.value = 0
     if (key === CALC.dateKey(new Date())) saveRec()
   })
 }
-function onDateChange() { if (!punchDate.value) punchDate.value = CALC.dateKey(new Date()); store.punchDate = punchDate.value; store.ensureHolidays(Number(punchDate.value.slice(0, 4))); syncInputs() }
+function onDateChange() { if (!punchDate.value) punchDate.value = CALC.dateKey(new Date()); store.punchDate = punchDate.value; appStore.ensureHolidays(Number(punchDate.value.slice(0, 4))); syncInputs() }
 function shiftPunch(amount) { const date = new Date(punchDate.value + 'T00:00:00'); punchDate.value = CALC.dateKey(CALC.addDays(date, amount)); onDateChange() }
 function goToday() { punchDate.value = CALC.dateKey(new Date()); onDateChange() }
-function saveRec() {
+async function saveRec() {
   const key = punchDate.value; const restValue = Number(recRest.value) || 0
-  if (!recStart.value && !recEnd.value) delete store.records[key]
-  else { store.records[key] = { start: recStart.value, end: recEnd.value }; if (restValue > 0) store.records[key].rest = restValue }
-  store.saveAll()
+  if (!recStart.value && !recEnd.value) await store.deleteRecord(key)
+  else await store.saveRecord({ date: key, start: recStart.value, end: recEnd.value, rest: restValue })
 }
 function nowStart() { recStart.value = nowStr(); saveRec() }
 function nowEnd() { recEnd.value = nowStr(); saveRec() }
-watch(() => store.ready, value => { if (value) { punchDate.value = store.punchDate; syncInputs() } }, { immediate: true })
+watch(() => appStore.ready, value => { if (value) { punchDate.value = store.punchDate; syncInputs() } }, { immediate: true })
 </script>

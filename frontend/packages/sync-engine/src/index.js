@@ -157,7 +157,7 @@ export class SyncEngine {
             result,
             createdAt: new Date().toISOString()
           })
-        } else if (result.status === 'FORBIDDEN') {
+        } else if (result.status === 'FORBIDDEN' || result.status === 'REJECTED') {
           await this.write('rejected', {
             key: operation.opId,
             id: operation.opId,
@@ -290,10 +290,19 @@ export class SyncEngine {
   }
 
   async exportRejected(bookId) {
+    const rejected = await this.rejected(bookId)
     return JSON.stringify({
       exportedAt: new Date().toISOString(),
       bookId,
-      operations: (await this.rejected(bookId)).map(item => item.operation)
+      operations: rejected.map(item => item.operation),
+      rejections: rejected.map(item => ({
+        opId: item.operation?.opId || item.id,
+        entityType: item.operation?.entityType,
+        entityId: item.operation?.entityId,
+        status: item.result?.status || 'REJECTED',
+        message: item.result?.message || '',
+        operation: item.operation
+      }))
     }, null, 2)
   }
 

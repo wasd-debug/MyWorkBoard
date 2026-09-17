@@ -705,8 +705,8 @@
 <script setup>
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, TransitionGroup, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowDown, ArrowLeft, ArrowRight, Close, Grid, Plus, Remove } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ArrowDown, ArrowLeft, ArrowRight, Close, Grid, Plus, Remove } from '../icons.js'
+import { ElMessage } from '../services/message.js'
 import html2canvas from 'html2canvas'
 import Card from '../components/ui/Card.vue'
 import Empty from '../components/ui/Empty.vue'

@@ -842,6 +842,3 @@ html.dark .ui-button.variant-ink:hover:not(:disabled) { background: color-mix(in
 }
 
 /* ---------- 16. Element Plus 覆盖 ---------- */
-.el-message { border-radius: 4px !important; border: 1px solid var(--line) !important; background: var(--card) !important; }
-.el-message__content { color: var(--ink) !important; font-family: inherit !important }
-.el-loading-mask { background: rgba(247,245,241,.7) !important }

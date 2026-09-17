@@ -59,14 +59,14 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '../services/message.js'
 import Card from '../components/ui/Card.vue'
 import Dialog from '../components/ui/Dialog.vue'
 import Empty from '../components/ui/Empty.vue'
 import LoadingOverlay from '../components/ledger/LoadingOverlay.vue'
 import LedgerCategoryCombobox from '../components/ledger/LedgerCategoryCombobox.vue'
 import { useLedgerStore } from '../stores/ledger'
-import { apiCreateLedgerScheduledTask, apiDeleteLedgerScheduledTask, apiListLedgerScheduledTasks, apiRunLedgerScheduledTask, apiUpdateLedgerScheduledTask } from '../api'
+import { apiListLedgerScheduledTasks } from '../api'
 
 const ledger = useLedgerStore()
 const tasks = ref([])
@@ -89,10 +89,10 @@ watch(maxYearlyDay, maximum => {
     form.calendarRule.dayOfMonth = maximum
   }
 })
-async function saveTask() { saving.value=true; try { if(form.taskType==='RECURRING_TRANSACTION'&&['EXPENSE','INCOME'].includes(payload.kind)){const category=ledger.categories.find(item=>String(item.id)===String(payload.categoryId||''));if(!category?.parentId||category.kind!==payload.kind)throw new Error('请选择对应流水类型的二级分类')} const request={...form,calendarRule:form.scheduleMode==='CALENDAR'?{...form.calendarRule}:{},payload:form.taskType==='RECURRING_TRANSACTION'?{...payload}:{}}; await apiCreateLedgerScheduledTask(ledger.currentBookId,request); formOpen.value=false; await load(); ElMessage.success('定时任务已创建') } catch(error) { ElMessage.error(error.response?.data?.detail||error.message||'保存失败') } finally { saving.value=false } }
-async function toggleTask(task) { try { await apiUpdateLedgerScheduledTask(ledger.currentBookId,task.id,{enabled:!task.enabled},task.revision); await load() } catch(error) { ElMessage.error(error.response?.data?.detail||'更新失败') } }
-async function runTask(task) { try { const result=await apiRunLedgerScheduledTask(ledger.currentBookId,task.id); ElMessage.success(result.status==='APPLIED'?'已生成流水':result.status==='DUPLICATE'?'该日期已执行':'任务未执行'); await load() } catch(error) { ElMessage.error(error.response?.data?.detail||error.message||'执行失败') } }
-async function removeTask(task) { if(!window.confirm(`删除“${task.name}”？`))return; try { await apiDeleteLedgerScheduledTask(ledger.currentBookId,task.id); await load() } catch(error) { ElMessage.error(error.response?.data?.detail||'删除失败') } }
+async function saveTask() { saving.value=true; try { if(form.taskType==='RECURRING_TRANSACTION'&&['EXPENSE','INCOME'].includes(payload.kind)){const category=ledger.categories.find(item=>String(item.id)===String(payload.categoryId||''));if(!category?.parentId||category.kind!==payload.kind)throw new Error('请选择对应流水类型的二级分类')} const request={...form,calendarRule:form.scheduleMode==='CALENDAR'?{...form.calendarRule}:{},payload:form.taskType==='RECURRING_TRANSACTION'?{...payload}:{}}; await ledger.createScheduledTask(request); formOpen.value=false; await load(); ElMessage.success('定时任务已创建') } catch(error) { ElMessage.error(error.response?.data?.detail||error.message||'保存失败') } finally { saving.value=false } }
+async function toggleTask(task) { try { await ledger.updateScheduledTask(task,{enabled:!task.enabled}); await load() } catch(error) { ElMessage.error(error.response?.data?.detail||error.message||'更新失败') } }
+async function runTask(task) { try { const result=await ledger.runScheduledTask(task); ElMessage.success(result.status==='APPLIED'?'已生成流水':result.status==='DUPLICATE'?'该日期已执行':'任务未执行'); await load() } catch(error) { ElMessage.error(error.response?.data?.detail||error.message||'执行失败') } }
+async function removeTask(task) { if(!window.confirm(`删除“${task.name}”？`))return; try { await ledger.deleteScheduledTask(task); await load() } catch(error) { ElMessage.error(error.response?.data?.detail||error.message||'删除失败') } }
 function scheduleLabel(task) { if(task.scheduleMode!=='CALENDAR'||task.frequency==='ONCE')return task.frequency==='ONCE'?'仅一次':`每 ${task.intervalValue||1} ${intervalLabel(task.frequency)}`;const rule=task.calendarRule||{};if(task.frequency==='WEEKLY')return `每周${weekdayShort(rule.dayOfWeek)}`;if(task.frequency==='YEARLY')return `每年 ${rule.month} 月 ${rule.dayOfMonth} 日`;if(rule.monthlyMode==='NTH_WEEKDAY')return `每月第 ${rule.weekOfMonth} 周${weekdayShort(rule.dayOfWeek)}`;return `每月 ${rule.dayOfMonth} 日` }
 function intervalLabel(frequency) { return ({DAILY:'天',WEEKLY:'周',MONTHLY:'个月',YEARLY:'年'}[frequency]||'个周期') }
 function weekdayShort(value) { return weekdays.find(item=>item.value===Number(value))?.label.replace('星期','周')||'' }

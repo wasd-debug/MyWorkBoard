@@ -17,7 +17,7 @@ import {
   ArrowLeft, ArrowRight, Check, Close, CopyDocument, Delete, Download, Document,
   EditPen, Filter, Grid, Hide, MagicStick, Operation, Plus, Refresh, RefreshLeft,
   Setting, Switch, Upload, View
-} from '@element-plus/icons-vue'
+} from '../../icons.js'
 
 const props = defineProps({
   action: { type: String, required: true },

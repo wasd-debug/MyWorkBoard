@@ -76,20 +76,20 @@
     <div v-else class="rec-list">
       <Empty v-if="!keys.length" description="这个月还没有打卡记录" />
       <article v-for="key in keys" :key="key" class="rec" @click="edit(key)">
-        <div class="date"><div class="d num">{{ Number(key.slice(8)) }}</div><div class="w" :class="{ off: CALC.dayType(key, store.holidays) === 'off' }">{{ CALC.holidayName(key, store.holidays) || CALC.WEEK_CN[new Date(key + 'T00:00:00').getDay()] }}</div></div>
+        <div class="date"><div class="d num">{{ Number(key.slice(8)) }}</div><div class="w" :class="{ off: CALC.dayType(key, appStore.holidays) === 'off' }">{{ CALC.holidayName(key, appStore.holidays) || CALC.WEEK_CN[new Date(key + 'T00:00:00').getDay()] }}</div></div>
         <div class="mid">
           <div class="t num">{{ recOf(key).start || '—' }} – {{ recOf(key).end || '—' }}</div>
           <div class="h num">
             {{ hours(actual(key)) }}h
             <small v-if="restOf(key) > 0" class="rest-tag">休 {{ hours(restOf(key)) }}h</small>
-            <small v-if="CALC.dayType(key, store.holidays) === 'off'" class="hol-tag">假期加班</small>
+            <small v-if="CALC.dayType(key, appStore.holidays) === 'off'" class="hol-tag">假期加班</small>
           </div>
         </div>
         <div class="right">
           <div class="r num">{{ rateOf(key) > 0 ? rateOf(key).toFixed(1) : '—' }}</div>
           <div class="o num" :class="otOf(key) >= 0 ? 'warn' : 'up'">{{ signed(otOf(key)) }}</div>
         </div>
-        <button class="del-btn" type="button" @click.stop="remove(key)">×</button>
+        <button class="del-btn" type="button" :aria-label="`删除 ${key} 的打卡记录`" @click.stop="remove(key)">×</button>
       </article>
     </div>
   </section>
@@ -97,16 +97,18 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '../services/message.js'
 import { useRouter } from 'vue-router'
 import Input from '../components/ui/Input.vue'
 import Empty from '../components/ui/Empty.vue'
 import Button from '../components/ui/Button.vue'
 import { useAppStore } from '../stores/app'
+import { useWorktimeStore } from '../stores/worktime.js'
 import { CALC } from '../utils/calc'
 
 const TABS = [{ v: 'month', l: '月度' }, { v: '2week', l: '双周' }, { v: 'week', l: '单周' }, { v: 'list', l: '列表' }]
-const store = useAppStore()
+const appStore = useAppStore()
+const store = useWorktimeStore()
 const router = useRouter()
 const viewMode = ref('month')
 const cursor = ref(new Date(store.recMonth + '-01T00:00:00'))
@@ -123,7 +125,7 @@ const navLabel = computed(() => {
   return `${format(start)} – ${format(end)}`
 })
 const recMonth = computed(() => `${cursor.value.getFullYear()}-${String(cursor.value.getMonth() + 1).padStart(2, '0')}`)
-watch(recMonth, month => { store.recMonth = month; store.ensureHolidays(Number(month.slice(0, 4))); if (viewMode.value !== 'month') store.ensureHolidays(Number(month.slice(0, 4)) + 1) }, { immediate: true })
+watch(recMonth, month => { store.recMonth = month; appStore.ensureHolidays(Number(month.slice(0, 4))); if (viewMode.value !== 'month') appStore.ensureHolidays(Number(month.slice(0, 4)) + 1) }, { immediate: true })
 const ctx = computed(() => CALC.monthCtx(store.settings.salaries, store.settings, recMonth.value))
 const monthKeys = computed(() => Object.keys(store.records).filter(key => key.startsWith(recMonth.value) && CALC.actualMin(store.records[key], ctx.value) > 0).sort().reverse())
 const periodDateKeys = computed(() => {
@@ -134,20 +136,20 @@ const periodDateKeys = computed(() => {
 })
 const periodKeys = computed(() => periodDateKeys.value.filter(key => CALC.actualMin(store.records[key], ctx.value) > 0))
 const keys = computed(() => viewMode.value === 'list' ? monthKeys.value : periodKeys.value)
-const effDays = computed(() => CALC.effDaysPerMonth(ctx.value, recMonth.value, store.holidays, store.records))
-const statutory = computed(() => periodDateKeys.value.filter(key => CALC.dayType(key, store.holidays) === 'work').length)
-const offWorked = computed(() => periodDateKeys.value.filter(key => CALC.dayType(key, store.holidays) === 'off' && CALC.actualMin(store.records[key], ctx.value) > 0).length)
+const effDays = computed(() => CALC.effDaysPerMonth(ctx.value, recMonth.value, appStore.holidays, store.records))
+const statutory = computed(() => periodDateKeys.value.filter(key => CALC.dayType(key, appStore.holidays) === 'work').length)
+const offWorked = computed(() => periodDateKeys.value.filter(key => CALC.dayType(key, appStore.holidays) === 'off' && CALC.actualMin(store.records[key], ctx.value) > 0).length)
 const periodEffDays = computed(() => statutory.value + offWorked.value)
 const periodLabel = computed(() => viewMode.value === 'month' || viewMode.value === 'list' ? '本月' : viewMode.value === 'week' ? '本周' : '本周期')
-const st = computed(() => CALC.periodStats(periodKeys.value, store.records, ctx.value, store.settings.basis, periodEffDays.value, store.holidays,
+const st = computed(() => CALC.periodStats(periodKeys.value, store.records, ctx.value, store.settings.basis, periodEffDays.value, appStore.holidays,
   ym => CALC.monthSalary(store.settings.salaries, store.settings, store.settings.basis, ym)))
 
 function cellData(key, date) {
   const record = store.records[key]
   const min = CALC.actualMin(record, ctx.value)
-  const off = CALC.dayType(key, store.holidays) === 'off'
-  const ot = off ? min : min - CALC.stdWorkMin(ctx.value)
-  return { k: key, date, min, ot, off, holName: CALC.holidayName(key, store.holidays) }
+  const off = CALC.dayType(key, appStore.holidays) === 'off'
+  const ot = record?.id ? Number(record.overtimeMin || 0) : (off ? min : min - CALC.stdWorkMin(ctx.value))
+  return { k: key, date, min, ot, off, holName: CALC.holidayName(key, appStore.holidays) }
 }
 const monthCells = computed(() => {
   const total = CALC.daysInMonth(recMonth.value)
@@ -182,8 +184,8 @@ function shift(amount) {
 const hours = CALC.fmtHours
 const signed = CALC.fmtSigned
 const actual = key => CALC.actualMin(store.records[key], ctx.value)
-const otOf = key => { const minutes = actual(key); return CALC.dayType(key, store.holidays) === 'off' ? minutes : minutes - CALC.stdWorkMin(ctx.value) }
-const rateOf = key => CALC.dayRate(store.records[key], ctx.value, store.settings.basis, effDays.value)
+const otOf = key => store.records[key]?.id ? Number(store.records[key].overtimeMin || 0) : (CALC.dayType(key, appStore.holidays) === 'off' ? actual(key) : actual(key) - CALC.stdWorkMin(ctx.value))
+const rateOf = key => store.records[key]?.id ? Number(store.records[key].realHourlyWage || 0) : CALC.dayRate(store.records[key], ctx.value, store.settings.basis, effDays.value)
 
 const monthPre = ref(0)
 const monthPost = ref(0)
@@ -198,12 +200,12 @@ function updateMonthSalary(key, value) {
   else monthPost.value = Number(value) || 0
   saveMonthSalary()
 }
-function saveMonthSalary() {
-  store.settings.salaries[recMonth.value] = {
+async function saveMonthSalary() {
+  const salaries = { ...(store.settings.salaries || {}), [recMonth.value]: {
     pre: Number(monthPre.value) > 0 ? Number(monthPre.value) : 0,
     post: Number(monthPost.value) > 0 ? Number(monthPost.value) : 0
-  }
-  store.saveAll()
+  } }
+  await store.saveSettings({ salaries })
   ElMessage.success('本月工资已保存')
 }
 function edit(key) { store.punchDate = key; router.push('/punch'); window.scrollTo(0, 0) }
@@ -215,10 +217,9 @@ function handleMonthDayDoubleClick(key) {
   clearTimeout(monthClickTimer)
   edit(key)
 }
-function remove(key) {
+async function remove(key) {
   if (!window.confirm('确定删除这条打卡记录？')) return
-  delete store.records[key]
-  store.saveAll()
+  await store.deleteRecord(key)
   ElMessage.success('已删除')
 }
 </script>

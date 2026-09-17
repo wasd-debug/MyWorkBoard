@@ -4,6 +4,16 @@ import { accountScopeFor, currentLedgerBookStorageKey, ledgerDatabaseName, setAc
 import { createClientId } from '../utils/clientId.js'
 import {
   apiCreateLedgerBook,
+  apiCreateLedgerMember,
+  apiCreateLedgerRole,
+  apiCreateLedgerScheduledTask,
+  apiDeleteLedgerBook,
+  apiDeleteLedgerMember,
+  apiDeleteLedgerRole,
+  apiDeleteLedgerScheduledTask,
+  apiImportLedgerConfirm,
+  apiImportLedgerPreview,
+  apiLedgerAiConfirm,
   apiListLedgerAccounts,
   apiListLedgerBooks,
   apiListLedgerBudgets,
@@ -12,8 +22,15 @@ import {
   apiListLedgerNamed,
   apiListLedgerRoles,
   apiListLedgerTransactions,
+  apiPurgeLedgerRecycle,
   apiPullLedgerSync,
-  apiPushLedgerSync
+  apiPushLedgerSync,
+  apiRestoreLedgerRecycle,
+  apiRunLedgerScheduledTask,
+  apiUpdateLedgerBook,
+  apiUpdateLedgerMember,
+  apiUpdateLedgerRole,
+  apiUpdateLedgerScheduledTask
 } from '../api/index.js'
 
 const syncTransport = {
@@ -27,6 +44,13 @@ let listenersInstalled = false
 let syncTimer
 let activeSyncPromise
 let sessionEpoch = 0
+const OFFLINE_RESOURCE_TYPES = new Set(['account', 'category', 'merchant', 'project', 'budget'])
+
+function onlineRequired(message) {
+  const error = new Error(message)
+  error.code = 'ONLINE_REQUIRED'
+  return error
+}
 
 function clearLedgerState(store) {
   Object.assign(store, {
@@ -205,7 +229,7 @@ export const useLedgerStore = defineStore('ledger', {
           if (storageKey) localStorage.setItem(storageKey, this.currentBookId)
           await this.hydrate()
         }
-        if (bookChanged) await this.refreshResources()
+        await this.refreshResources()
         await this.syncNow()
         if (bookChanged && epoch === sessionEpoch && typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('ledger-book-changed'))
@@ -347,6 +371,136 @@ export const useLedgerStore = defineStore('ledger', {
         this.scheduleSync()
       }
       return record
+    },
+
+    async saveTransaction(payload) {
+      if (!this.currentBookId) throw new Error('请先选择账本')
+      return this.put('transaction', payload)
+    },
+
+    async deleteTransaction(transaction) {
+      if (!this.currentBookId) throw new Error('请先选择账本')
+      return this.remove('transaction', transaction)
+    },
+
+    async saveResource(type, payload) {
+      if (!OFFLINE_RESOURCE_TYPES.has(type)) {
+        throw onlineRequired(`${type} 需要联网操作`)
+      }
+      if (!this.currentBookId) throw new Error('请先选择账本')
+      return this.put(type, payload)
+    },
+
+    async deleteResource(type, resource) {
+      if (!OFFLINE_RESOURCE_TYPES.has(type)) {
+        throw onlineRequired(`${type} 需要联网操作`)
+      }
+      if (!this.currentBookId) throw new Error('请先选择账本')
+      return this.remove(type, resource)
+    },
+
+    requireOnline(message = '此操作需要联网') {
+      if (!this.online) throw onlineRequired(message)
+    },
+
+    async saveMember(payload) {
+      this.requireOnline('成员管理需要联网')
+      const result = payload.id
+        ? await apiUpdateLedgerMember(this.currentBookId, payload.id, payload, payload.revision, createClientId())
+        : await apiCreateLedgerMember(this.currentBookId, payload, createClientId())
+      await this.refreshResources()
+      return result
+    },
+
+    async deleteMember(member) {
+      this.requireOnline('成员管理需要联网')
+      const result = await apiDeleteLedgerMember(this.currentBookId, member.id, member.revision, createClientId())
+      await this.refreshResources()
+      return result
+    },
+
+    async saveRole(payload) {
+      this.requireOnline('角色管理需要联网')
+      const result = payload.id
+        ? await apiUpdateLedgerRole(this.currentBookId, payload.id, payload, payload.revision, createClientId())
+        : await apiCreateLedgerRole(this.currentBookId, payload, createClientId())
+      await this.refreshResources()
+      return result
+    },
+
+    async deleteRole(role) {
+      this.requireOnline('角色管理需要联网')
+      const result = await apiDeleteLedgerRole(this.currentBookId, role.id, role.revision, createClientId())
+      await this.refreshResources()
+      return result
+    },
+
+    async updateBook(book, payload) {
+      this.requireOnline('账本管理需要联网')
+      const result = await apiUpdateLedgerBook(book.id, payload, book.revision)
+      await this.refreshBooks()
+      return result
+    },
+
+    async deleteBook(book) {
+      this.requireOnline('删除账本需要联网')
+      const result = await apiDeleteLedgerBook(book.id, book.revision)
+      await this.refreshServer()
+      return result
+    },
+
+    async restoreRecycle(item) {
+      this.requireOnline('恢复资源需要联网')
+      const result = await apiRestoreLedgerRecycle(this.currentBookId, item.type, item.id, createClientId())
+      await this.refreshCurrentBook()
+      return result
+    },
+
+    async purgeRecycle(item) {
+      this.requireOnline('永久删除需要联网')
+      const result = await apiPurgeLedgerRecycle(this.currentBookId, item.type, item.id)
+      await this.refreshCurrentBook()
+      return result
+    },
+
+    async createScheduledTask(payload) {
+      this.requireOnline('定时任务管理需要联网')
+      return apiCreateLedgerScheduledTask(this.currentBookId, payload)
+    },
+
+    async updateScheduledTask(task, payload) {
+      this.requireOnline('定时任务管理需要联网')
+      return apiUpdateLedgerScheduledTask(this.currentBookId, task.id, payload, task.revision)
+    },
+
+    async deleteScheduledTask(task) {
+      this.requireOnline('定时任务管理需要联网')
+      return apiDeleteLedgerScheduledTask(this.currentBookId, task.id)
+    },
+
+    async runScheduledTask(task) {
+      this.requireOnline('执行定时任务需要联网')
+      const result = await apiRunLedgerScheduledTask(this.currentBookId, task.id)
+      await this.refreshCurrentBook()
+      return result
+    },
+
+    async confirmAi(draftId, transactions) {
+      this.requireOnline('AI 记账确认需要联网')
+      const result = await apiLedgerAiConfirm(this.currentBookId, draftId, transactions, createClientId())
+      await this.refreshCurrentBook()
+      return result
+    },
+
+    async importFile(file, progress = {}) {
+      this.requireOnline('导入账单需要联网')
+      progress.onStage?.('upload')
+      const preview = await apiImportLedgerPreview(this.currentBookId, file, 'AUTO', progress.onUploadProgress)
+      progress.onPreview?.(preview)
+      progress.onStage?.('confirm')
+      const result = await apiImportLedgerConfirm(this.currentBookId, preview.batchId)
+      await this.refreshCurrentBook()
+      return result
     },
 
     scheduleSync() {

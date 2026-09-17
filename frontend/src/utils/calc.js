@@ -64,7 +64,10 @@ export const CALC = (() => {
       const m = actualMin(records[k], s);
       if (m > 0) {
         daysWorked++; totalMin += m;
-        otMin += (holidays && dayType(k, holidays) === "off") ? m : m - std;
+        const record = records[k];
+        otMin += record?.id
+          ? Number(record.overtimeMin || 0)
+          : ((holidays && dayType(k, holidays) === "off") ? m : m - std);
       }
     }
     let earned = 0, baseAcc = 0, baseN = 0;

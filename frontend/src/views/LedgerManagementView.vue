@@ -395,21 +395,15 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { ArrowDown, ArrowRight, Delete, DeleteFilled, Lock, Management, Plus, Refresh } from '@element-plus/icons-vue'
+import { ElMessage } from '../services/message.js'
+import { ArrowDown, ArrowRight, Delete, DeleteFilled, Lock, Management, Plus, Refresh } from '../icons.js'
 import {
   apiDownloadLedgerExport,
-  apiCreateLedgerMember,
-  apiDeleteLedgerBook,
   apiListLedgerAuditLogs,
   apiListLedgerBooks,
-  apiListLedgerRecycle,
-  apiPurgeLedgerRecycle,
-  apiRestoreLedgerRecycle,
-  apiUpdateLedgerBook
+  apiListLedgerRecycle
 } from '../api'
 import { useLedgerStore } from '../stores/ledger'
-import { createClientId } from '../utils/clientId.js'
 import LedgerIconPicker from '../components/ledger/LedgerIconPicker.vue'
 import LedgerResourceIcon from '../components/ledger/LedgerResourceIcon.vue'
 import LedgerActionIcon from '../components/ledger/LedgerActionIcon.vue'
@@ -664,21 +658,14 @@ async function submitForm() {
   try {
     const base = editingItem.value ? { id: editingItem.value.id, revision: editingItem.value.revision } : {}
     const resource = formResource.value
-    if (resource === 'account') await ledger.put('account', { ...base, ...forms.account, hidden: editingItem.value?.hidden || false })
-    if (resource === 'category') await ledger.put('category', { ...base, ...forms.category, hidden: editingItem.value?.hidden || false })
-    if (resource === 'merchant' || resource === 'project') await ledger.put(resource, { ...base, ...forms.named, hidden: editingItem.value?.hidden || false })
-    if (resource === 'member') {
-      if (editingItem.value) await ledger.put('member', { ...base, ...forms.member })
-      else {
-        if (!ledger.online) throw new Error('添加成员需要联网，以核验已注册用户名')
-        await apiCreateLedgerMember(ledger.currentBookId, { ...forms.member }, createClientId())
-        await ledger.refreshResources()
-      }
-    }
-    if (resource === 'role') await ledger.put('role', { ...base, name: forms.role.name, permissions: [...forms.role.permissions] })
+    if (resource === 'account') await ledger.saveResource('account', { ...base, ...forms.account, hidden: editingItem.value?.hidden || false })
+    if (resource === 'category') await ledger.saveResource('category', { ...base, ...forms.category, hidden: editingItem.value?.hidden || false })
+    if (resource === 'merchant' || resource === 'project') await ledger.saveResource(resource, { ...base, ...forms.named, hidden: editingItem.value?.hidden || false })
+    if (resource === 'member') await ledger.saveMember({ ...base, ...forms.member })
+    if (resource === 'role') await ledger.saveRole({ ...base, name: forms.role.name, permissions: [...forms.role.permissions] })
     if (resource === 'book') {
       if (!ledger.online) throw new Error('账本管理需要联网')
-      if (editingItem.value) await apiUpdateLedgerBook(editingItem.value.id, { name: forms.book.name, currency: forms.book.currency }, editingItem.value.revision)
+      if (editingItem.value) await ledger.updateBook(editingItem.value, { name: forms.book.name, currency: forms.book.currency })
       else await ledger.createBook({ name: forms.book.name, currency: forms.book.currency, mode: forms.book.mode, sourceBookId: forms.book.mode === 'COPY' ? forms.book.sourceBookId : undefined })
       await ledger.refreshServer()
     }
@@ -694,7 +681,7 @@ async function toggleHidden(type, item) {
   if (saving.value) return
   saving.value = true
   try {
-    await ledger.put(type, resourcePayload(type, item, { hidden: !item.hidden }))
+    await ledger.saveResource(type, resourcePayload(type, item, { hidden: !item.hidden }))
     ElMessage.success(item.hidden ? '已恢复显示' : '已隐藏')
   } catch (error) {
     ElMessage.error(error?.response?.data?.detail || error?.message || '操作失败')
@@ -732,15 +719,16 @@ async function confirmAction() {
   saving.value = true
   try {
     if (confirmState.mode === 'purge') {
-      await apiPurgeLedgerRecycle(ledger.currentBookId, confirmState.item.type, confirmState.item.id)
+      await ledger.purgeRecycle(confirmState.item)
       await loadSecondary()
       ElMessage.success('已永久删除')
     } else if (confirmState.mode === 'delete-book') {
-      await apiDeleteLedgerBook(confirmState.item.id, confirmState.item.revision)
-      await ledger.refreshServer()
+      await ledger.deleteBook(confirmState.item)
       ElMessage.success('账本已删除')
     } else {
-      await ledger.remove(confirmState.type, resourcePayload(confirmState.type, confirmState.item))
+      if (confirmState.type === 'member') await ledger.deleteMember(confirmState.item)
+      else if (confirmState.type === 'role') await ledger.deleteRole(confirmState.item)
+      else await ledger.deleteResource(confirmState.type, resourcePayload(confirmState.type, confirmState.item))
       ElMessage.success('已移入回收站')
     }
     confirmOpen.value = false
@@ -754,9 +742,8 @@ async function restore(item) {
   if (saving.value) return
   saving.value = true
   try {
-    await apiRestoreLedgerRecycle(ledger.currentBookId, item.type, item.id)
+    await ledger.restoreRecycle(item)
     if (recycle.value.items.length === 1 && recycle.value.page > 1) recycle.value.page--
-    await ledger.refreshCurrentBook()
     await loadSecondary()
     ElMessage.success('已恢复')
   } catch (error) {

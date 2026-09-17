@@ -22,7 +22,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowRight, Calendar, Close, CreditCard, DataAnalysis, DeleteFilled, Document, List, Management, MoreFilled, Notebook, Setting, Tickets, Timer, UserFilled, Wallet } from '@element-plus/icons-vue'
+import { ArrowRight, Calendar, Close, CreditCard, DataAnalysis, DeleteFilled, Document, List, Management, MoreFilled, Notebook, Setting, Tickets, Timer, UserFilled, Wallet } from '../icons.js'
 
 const route = useRoute()
 const router = useRouter()

@@ -26,7 +26,7 @@ import {
   Service,
   Tickets,
   Trophy
-} from '@element-plus/icons-vue'
+} from '../../icons.js'
 
 function bankMark(character, tone) {
   return defineComponent({

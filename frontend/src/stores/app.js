@@ -1,21 +1,40 @@
 import { defineStore } from 'pinia'
-import { ElMessage } from 'element-plus'
-import { apiGetWorktimeSnapshot, apiPutWorktimeSnapshot, apiGetHolidays, apiLogout, apiRefresh, clearAccessToken } from '../api'
-import { CALC } from '../utils/calc'
-import { accountScopeFor, scopedStorageKey } from '../utils/accountScope.js'
+import { apiGetHolidays, apiLogout, apiRefresh, clearAccessToken } from '../api/index.js'
+import { accountScopeFor } from '../utils/accountScope.js'
 import { useLedgerStore } from './ledger.js'
+import { useWorktimeStore } from './worktime.js'
 
-export const DEFAULTS = {
-  workStart: '09:00', workEnd: '18:00', lunchMin: 90,
-  daysPerMonth: 21.75, autoDays: true, salaryPre: 0, salaryPost: 0, basis: 'post',
-  salaries: {}                      // 按月工资 { "YYYY-MM": {pre, post} }，每月工资可浮动
-}
-
-const LS_SET = 'st_settings'
-const LS_REC = 'st_records'
 const LS_THEME = 'st_theme'
 const LS_ACCENT = 'st_accent'
+const LS_OFFLINE_USER = 'st_offline_user_v1'
 let appSessionEpoch = 0
+
+function cacheOfflineUser(user) {
+  if (typeof localStorage === 'undefined') return
+  const scope = accountScopeFor(user)
+  if (!scope) return
+  localStorage.setItem(LS_OFFLINE_USER, JSON.stringify({
+    id: user.id,
+    username: user.username,
+    nickname: user.nickname || '',
+    authorities: Array.isArray(user.authorities) ? user.authorities : []
+  }))
+}
+
+function readOfflineUser() {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    const user = JSON.parse(localStorage.getItem(LS_OFFLINE_USER) || 'null')
+    return accountScopeFor(user) ? user : null
+  } catch {
+    localStorage.removeItem(LS_OFFLINE_USER)
+    return null
+  }
+}
+
+function clearOfflineUser() {
+  if (typeof localStorage !== 'undefined') localStorage.removeItem(LS_OFFLINE_USER)
+}
 
 export const ACCENTS = {
   green: { light: '#0f5132', dark: '#7bd3a6', soft: '#e6efe8', darkSoft: '#203a2b' },
@@ -26,21 +45,17 @@ export const ACCENTS = {
 
 export const useAppStore = defineStore('app', {
   state: () => ({
-    settings: { ...DEFAULTS },
-    records: {},                     // { "YYYY-MM-DD": {start, end, rest?} }
     holidays: {},                    // { "YYYY-MM-DD": {name, off} } 法定节假日/调休
     _holYears: {},                   // 已加载年份 -> 数据来源
     _holReq: {},                     // 进行中的年份请求（防重复）
     dbMode: false,                   // 本地服务（数据库）可用
     theme: 'light',
     accent: 'green',
-    punchDate: '',
-    recMonth: '',
     ready: false,                    // 初始化完成
     authUser: null,
     accountScope: '',
     authRequired: false,
-    _putChain: Promise.resolve()
+    offlineSession: false
   }),
 
   actions: {
@@ -81,52 +96,6 @@ export const useAppStore = defineStore('app', {
       this.applyTheme()
     },
 
-    /* ---------- 本地缓存 ---------- */
-    loadLocal() {
-      const settingsKey = scopedStorageKey(LS_SET, this.accountScope)
-      const recordsKey = scopedStorageKey(LS_REC, this.accountScope)
-      this.settings = { ...DEFAULTS }
-      this.records = {}
-      if (settingsKey) {
-        try { this.settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(settingsKey) || '{}') } } catch (e) { /* ignore */ }
-      }
-      if (recordsKey) {
-        try { this.records = JSON.parse(localStorage.getItem(recordsKey) || '{}') || {} } catch (e) { this.records = {} }
-      }
-      const t = CALC.dateKey(new Date())
-      this.punchDate = t
-      this.recMonth = t.slice(0, 7)
-    },
-    saveLocal() {
-      const settingsKey = scopedStorageKey(LS_SET, this.accountScope)
-      const recordsKey = scopedStorageKey(LS_REC, this.accountScope)
-      if (!settingsKey || !recordsKey) return
-      localStorage.setItem(settingsKey, JSON.stringify(this.settings))
-      localStorage.setItem(recordsKey, JSON.stringify(this.records))
-    },
-
-    /* ---------- 数据库同步 ---------- */
-    async saveAll() {
-      this.saveLocal()
-      if (!this.dbMode) return
-      const epoch = appSessionEpoch
-      const scope = this.accountScope
-      const payload = { settings: this.settings, records: this.records }
-      // 保存请求串行队列，避免并发快照乱序
-      this._putChain = this._putChain
-        .then(() => {
-          if (epoch !== appSessionEpoch || scope !== this.accountScope) return
-          return apiPutWorktimeSnapshot(payload)
-        })
-        .catch(error => {
-          if (epoch !== appSessionEpoch || scope !== this.accountScope) return
-          if (error.response?.status === 401) this.authRequired = true
-          this.dbMode = false
-          ElMessage.warning(error.response?.status === 401 ? '登录已过期，请重新登录' : '数据库不可用，已切换本地模式')
-        })
-      return this._putChain
-    },
-
     async connectDb() {
       if (!this.authUser || !this.accountScope) {
         this.authRequired = true
@@ -136,19 +105,8 @@ export const useAppStore = defineStore('app', {
       const epoch = appSessionEpoch
       const scope = this.accountScope
       try {
-        const data = await apiGetWorktimeSnapshot()
+        await useWorktimeStore().fetch()
         if (epoch !== appSessionEpoch || scope !== this.accountScope) return
-        const dbEmpty = !Object.keys(data.records || {}).length && Number(data.settings?.revision || 0) === 0
-        const settingsKey = scopedStorageKey(LS_SET, this.accountScope)
-        const localHas = Object.keys(this.records).length > 0 || !!localStorage.getItem(settingsKey)
-        if (dbEmpty && localHas) {
-          await apiPutWorktimeSnapshot({ settings: this.settings, records: this.records })
-          if (epoch !== appSessionEpoch || scope !== this.accountScope) return
-        } else if (!dbEmpty) {
-          this.settings = { ...DEFAULTS, ...(data.settings || {}) }
-          this.records = data.records || {}
-          this.saveLocal()                                                       // 服务端为准，本地留缓存
-        }
         this.dbMode = true
         this.authRequired = false
       } catch (e) {
@@ -162,14 +120,30 @@ export const useAppStore = defineStore('app', {
       const scope = accountScopeFor(user)
       if (!scope) throw new Error('登录响应缺少用户身份信息')
       if (scope !== this.accountScope) appSessionEpoch += 1
+      cacheOfflineUser(user)
       this.authUser = user || null
       this.accountScope = scope
       this.authRequired = false
+      this.offlineSession = false
       this.dbMode = false
-      this._putChain = Promise.resolve()
-      this.loadLocal()
+      useWorktimeStore().reset()
       await useLedgerStore().switchUser(user)
       await this.connectDb()
+    },
+
+    async restoreOfflineSession() {
+      const user = readOfflineUser()
+      if (!user) return false
+      const scope = accountScopeFor(user)
+      if (scope !== this.accountScope) appSessionEpoch += 1
+      this.authUser = user
+      this.accountScope = scope
+      this.authRequired = false
+      this.offlineSession = true
+      this.dbMode = false
+      useWorktimeStore().reset()
+      await useLedgerStore().switchUser(user)
+      return true
     },
 
     async logout() {
@@ -180,13 +154,14 @@ export const useAppStore = defineStore('app', {
         // 服务端退出失败也必须清理本地认证态和用户数据。
       } finally {
         clearAccessToken()
+        clearOfflineUser()
         await useLedgerStore().clearSession()
+        useWorktimeStore().reset()
         this.authUser = null
         this.accountScope = ''
         this.authRequired = true
+        this.offlineSession = false
         this.dbMode = false
-        this._putChain = Promise.resolve()
-        this.loadLocal()
       }
     },
 
@@ -212,13 +187,20 @@ export const useAppStore = defineStore('app', {
         const session = await apiRefresh()
         await this.completeLogin(session.user)
       } catch (e) {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false && await this.restoreOfflineSession()) {
+          this.ensureHolidays(new Date().getFullYear())
+          this.ready = true
+          return
+        }
         clearAccessToken()
+        clearOfflineUser()
         await useLedgerStore().clearSession()
+        useWorktimeStore().reset()
         this.authUser = null
         this.accountScope = ''
         this.authRequired = true
+        this.offlineSession = false
         this.dbMode = false
-        this.loadLocal()
       }
       // 节假日数据失败不阻塞主流程
       this.ensureHolidays(new Date().getFullYear())

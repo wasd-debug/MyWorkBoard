@@ -1,0 +1,37 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: SalaryE2ERoot@2026
+      MYSQL_DATABASE: salary_e2e
+      MYSQL_USER: salary_e2e
+      MYSQL_PASSWORD: SalaryE2EApp@2026
+      TZ: Asia/Shanghai
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+      start_period: 15s
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    environment:
+      PORT: 8080
+      DB_URL: jdbc:mysql://mysql:3306/salary_e2e?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      DB_USER: salary_e2e
+      DB_PASSWORD: SalaryE2EApp@2026
+      JWT_SECRET: salary-sync-e2e-secret-at-least-32-bytes
+      COOKIE_SECURE: "false"
+      LLM_ENDPOINT: ""
+      DEEPSEEK_API_KEY: ""
+    ports:
+      - "18080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy

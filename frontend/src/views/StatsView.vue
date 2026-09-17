@@ -92,15 +92,17 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '../services/message.js'
 import * as echarts from 'echarts'
 import Button from '../components/ui/Button.vue'
 import Input from '../components/ui/Input.vue'
 import Dialog from '../components/ui/Dialog.vue'
 import { useAppStore } from '../stores/app'
+import { useWorktimeStore } from '../stores/worktime.js'
 import { CALC } from '../utils/calc'
 
-const store = useAppStore()
+const appStore = useAppStore()
+const store = useWorktimeStore()
 const now = new Date()
 const todayKey = CALC.dateKey(now)
 const startDate = ref(CALC.dateKey(CALC.monday(now)))
@@ -186,7 +188,7 @@ const stats = computed(() => CALC.periodStats(
   store.settings,
   store.settings.basis,
   0,
-  store.holidays,
+  appStore.holidays,
   ym => CALC.monthSalary(store.settings.salaries, store.settings, store.settings.basis, ym)
 ))
 
@@ -195,9 +197,10 @@ const chartData = computed(() => {
     const months = {}
     for (const key of rangeDates.value) {
       const ym = key.slice(0, 7)
-      const minutes = CALC.actualMin(store.records[key], store.settings)
-      const off = store.holidays && CALC.dayType(key, store.holidays) === 'off'
-      const ot = minutes > 0 ? (off ? minutes : Math.max(0, minutes - CALC.stdWorkMin(store.settings))) : 0
+      const rec = store.records[key] || {}
+      const minutes = CALC.actualMin(rec, store.settings)
+      const off = appStore.holidays && CALC.dayType(key, appStore.holidays) === 'off'
+      const ot = rec.id ? Number(rec.overtimeMin || 0) : (minutes > 0 ? (off ? minutes : Math.max(0, minutes - CALC.stdWorkMin(store.settings))) : 0)
       if (!months[ym]) months[ym] = { key: ym, label: annualRange.value ? `${Number(ym.slice(5))}月` : ym.replace('-', '/'), total: 0, ot: 0, start: '', end: '' }
       months[ym].total += minutes / 60
       months[ym].ot += ot / 60
@@ -206,9 +209,9 @@ const chartData = computed(() => {
   }
   return rangeDates.value.map(key => {
     const minutes = CALC.actualMin(store.records[key], store.settings)
-    const off = store.holidays && CALC.dayType(key, store.holidays) === 'off'
-    const ot = minutes > 0 ? (off ? minutes : Math.max(0, minutes - CALC.stdWorkMin(store.settings))) : 0
     const rec = store.records[key] || {}
+    const off = appStore.holidays && CALC.dayType(key, appStore.holidays) === 'off'
+    const ot = rec.id ? Number(rec.overtimeMin || 0) : (minutes > 0 ? (off ? minutes : Math.max(0, minutes - CALC.stdWorkMin(store.settings))) : 0)
     const day = Number(key.slice(8))
     return { key, label: annualRange.value ? (day === 1 ? `${Number(key.slice(5, 7))}月` : '') : key.slice(5), total: minutes / 60, ot: ot / 60, start: rec.start || '', end: rec.end || '' }
   })

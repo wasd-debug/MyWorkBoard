@@ -70,8 +70,8 @@ import { BarChart, LineChart, PieChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
 import * as echarts from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { ElMessage } from 'element-plus'
-import { Upload } from '@element-plus/icons-vue'
+import { ElMessage } from '../services/message.js'
+import { Upload } from '../icons.js'
 import { useRouter } from 'vue-router'
 import Card from '../components/ui/Card.vue'; import Table from '../components/ui/Table.vue'; import Sheet from '../components/ui/Sheet.vue'; import Drawer from '../components/ui/Drawer.vue'; import Dialog from '../components/ui/Dialog.vue'
 import LedgerTransactionEditor from '../components/ledger/LedgerTransactionEditor.vue'
@@ -84,7 +84,7 @@ import { totalLedgerAssets } from '../components/ledger/ledgerAccounting'
 import { currentMemberName, ledgerTransactionDraft, rankLedgerOptions, recentLedgerTransactions } from '../components/ledger/ledgerPreferences'
 import { useAppStore } from '../stores/app'
 import { useLedgerStore } from '../stores/ledger'
-import { apiCreateLedgerAccount, apiCreateLedgerBudget, apiCreateLedgerCategory, apiCreateLedgerTransaction, apiDeleteLedgerAccount, apiDeleteLedgerBudget, apiDeleteLedgerCategory, apiDeleteLedgerTransaction, apiImportLedgerCsv, apiImportLedgerExcel, apiLedgerAiConfirm, apiLedgerAiPreview, apiListLedgerBudgets, apiUpdateLedgerTransaction } from '../api'
+import { apiLedgerAiPreview, apiListLedgerBudgets } from '../api'
 
 echarts.use([
   BarChart,
@@ -263,25 +263,28 @@ function openCreatePreferred(){
     project:'',note:''})
   editorOpen.value=true
 }
-function openCreate(){editing.value=null;Object.assign(form,{kind:'EXPENSE',amount:'',occurredOn:today,accountId:accounts.value[0]?String(accounts.value[0].id):'',targetAccountId:'',categoryId:'',payee:'',member:'',project:'',note:''});editorOpen.value=true} function editTransaction(x){editing.value=x;Object.assign(form,{kind:x.kind,amount:x.amount,occurredOn:x.occurredOn,accountId:String(x.accountId),targetAccountId:x.targetAccountId?String(x.targetAccountId):'',categoryId:x.categoryId?String(x.categoryId):'',payee:x.payee||'',member:x.member||'',project:x.project||'',note:x.note||''});editorOpen.value=true} async function saveTransaction(){if(!form.categoryId){ElMessage.error('请选择二级分类');return}const p={...form,amount:+form.amount,accountId:+form.accountId,targetAccountId:form.kind==='TRANSFER'?+form.targetAccountId:null,categoryId:Number(form.categoryId),clientOpId:`web-${Date.now()}`};try{if(editing.value)await apiUpdateLedgerTransaction(editing.value.id,p,editing.value.revision);else await apiCreateLedgerTransaction(p,p.clientOpId);editorOpen.value=false;ElMessage.success('交易已保存');await loadData()}catch(e){ElMessage.error(e.response?.data?.detail||'保存失败')}} async function removeTransaction(){if(!deleteTarget.value)return;deleting.value=true;try{await apiDeleteLedgerTransaction(deleteTarget.value.id,deleteTarget.value.revision);deleteTarget.value=null;ElMessage.success('流水已删除');await loadData()}catch(e){ElMessage.error(e.response?.data?.detail||'删除失败')}finally{deleting.value=false}} function openManager(){managerOpen.value=true} async function saveAccount(){try{await apiCreateLedgerAccount({...accountForm,openingBalance:+(accountForm.openingBalance||0)});Object.assign(accountForm,{name:'',accountType:'cash',openingBalance:''});await loadData()}catch(e){ElMessage.error('账户保存失败')}} async function removeAccount(x){try{await apiDeleteLedgerAccount(x.id,x.revision);await loadData()}catch(e){ElMessage.error('账户删除失败')}} async function saveCategory(){try{await apiCreateLedgerCategory({...categoryForm,parentId:categoryForm.parentId?+categoryForm.parentId:null});Object.assign(categoryForm,{name:'',kind:'EXPENSE',parentId:''});await loadData()}catch(e){ElMessage.error('分类保存失败')}} async function removeCategory(x){try{await apiDeleteLedgerCategory(x.id,x.revision);await loadData()}catch(e){ElMessage.error('分类删除失败')}} function openBudget(){Object.assign(budgetForm,{monthKey:selectedMonth.value,categoryId:'',amount:''});budgetCategoryQuery.value='';budgetOpen.value=true} async function saveBudgetLegacy(){throw new Error('legacy budget API is disabled')} async function deleteBudget(x){try{await apiDeleteLedgerBudget(x.id);await loadData()}catch(e){ElMessage.error('预算删除失败')}} async function importFile(e){const f=e.target.files?.[0];if(!f)return;try{const result=/\.xlsx?$/i.test(f.name)?await apiImportLedgerExcel(f):await apiImportLedgerCsv(f);const rows=Array.isArray(result)?result:result.transactions||[];const skippedTransfers=Array.isArray(result)?0:Number(result.skippedTransfers||0);ElMessage.success(`已导入 ${rows.length} 笔交易${skippedTransfers?`，已跳过 ${skippedTransfers} 笔转账`:''}`);await loadData()}catch(x){ElMessage.error(x.response?.data?.detail||'导入失败')}finally{e.target.value=''}} function exportCsv(){const header='交易类型,日期,一级分类,二级分类,收入账户,金额,成员,商家,项目,备注';const rows=transactions.value.map(x=>{const c=categories.value.find(y=>String(y.id)===String(x.categoryId)),p=c&&categories.value.find(y=>String(y.id)===String(c.parentId));return[x.kind==='INCOME'?'收入':'支出',x.occurredOn,p?.name||x.categoryName||'',p?x.categoryName||'':'',x.accountName||'',x.amount,'',x.payee||'','',x.note||''].map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')});const u=URL.createObjectURL(new Blob([`\ufeff${[header,...rows].join('\n')}`],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=u;a.download=`ledger-${selectedMonth.value}.csv`;a.click();URL.revokeObjectURL(u)}
-async function aiPreviewRequest(){if(!aiText.value.trim())return;aiLoading.value=true;try{aiPreview.value=await apiLedgerAiPreview(aiText.value)}catch(e){ElMessage.error('暂时无法识别')}finally{aiLoading.value=false}} async function confirmAi(){try{await apiLedgerAiConfirm(aiPreview.value);aiOpen.value=false;await loadData();ElMessage.success('AI 记账完成')}catch(e){ElMessage.error('记账失败')}}
+function openCreate(){openCreatePreferred()}
+function editTransaction(x){editing.value=x;Object.assign(form,{kind:x.kind,amount:x.amount,occurredOn:x.occurredOn,accountId:String(x.accountId),targetAccountId:x.targetAccountId?String(x.targetAccountId):'',categoryId:x.categoryId?String(x.categoryId):'',payee:x.payee||'',member:x.member||'',project:x.project||'',note:x.note||''});editorOpen.value=true}
+let saveTransaction,removeTransaction,saveAccount,removeAccount,saveCategory,removeCategory,importFile,aiPreviewRequest,confirmAi
+function openManager(){managerOpen.value=true}
+function openBudget(){Object.assign(budgetForm,{monthKey:selectedMonth.value,categoryId:'',amount:''});budgetCategoryQuery.value='';budgetOpen.value=true}
+function exportCsv(){const header='交易类型,日期,一级分类,二级分类,收入账户,金额,成员,商家,项目,备注';const rows=transactions.value.map(x=>{const c=categories.value.find(y=>String(y.id)===String(x.categoryId)),p=c&&categories.value.find(y=>String(y.id)===String(c.parentId));return[x.kind==='INCOME'?'收入':'支出',x.occurredOn,p?.name||x.categoryName||'',p?x.categoryName||'':'',x.accountName||'',x.amount,'',x.payee||'','',x.note||''].map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')});const u=URL.createObjectURL(new Blob([`\ufeff${[header,...rows].join('\n')}`],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=u;a.download=`ledger-${selectedMonth.value}.csv`;a.click();URL.revokeObjectURL(u)}
  async function saveTransactionFixed(){
    if(form.kind==='TRANSFER' && !form.targetAccountId){ElMessage.error('请选择转入账户');return}
    try{
-     const p={...ledgerTransactionDraft(form,{categories:categories.value,merchants:ledgerStore.visibleMerchants,
-       members:ledgerStore.activeMembers,projects:ledgerStore.visibleProjects}),clientOpId:`web-${Date.now()}`}
+     const p=ledgerTransactionDraft(form,{categories:categories.value,merchants:ledgerStore.visibleMerchants,
+       members:ledgerStore.activeMembers,projects:ledgerStore.visibleProjects})
      pageLoading.value=true
-     if(editing.value)await apiUpdateLedgerTransaction(ledgerStore.currentBookId,editing.value.id,p,editing.value.revision,p.clientOpId)
-     else await apiCreateLedgerTransaction(ledgerStore.currentBookId,p,p.clientOpId)
-     await ledgerStore.refreshAccounts()
+     await ledgerStore.saveTransaction(editing.value?{...p,id:editing.value.id,revision:editing.value.revision}:p)
+     applyLedgerProjection()
      editorOpen.value=false
-     ElMessage.success('交易已保存')
-     await loadData()
+     ElMessage.success(ledgerStore.online?'交易已保存':'已离线保存，联网后自动同步')
+     if(ledgerStore.online){await ledgerStore.syncNow();if(!ledgerStore.syncError)await ledgerStore.refreshAccounts();applyLedgerProjection()}
    }catch(e){ElMessage.error(e.response?.data?.detail||e.message||'保存失败')}
    finally{pageLoading.value=false}
  }
- async function removeTransactionFixed(){if(!deleteTarget.value)return;deleting.value=true;try{await apiDeleteLedgerTransaction(ledgerStore.currentBookId,deleteTarget.value.id,deleteTarget.value.revision,`web-delete-${Date.now()}`);await ledgerStore.refreshAccounts();deleteTarget.value=null;ElMessage.success('流水已删除');await loadData()}catch(e){ElMessage.error(e.response?.data?.detail||'删除失败')}finally{deleting.value=false}}
- async function saveCategoryFixed(){pageLoading.value=true;try{await apiCreateLedgerCategory({...categoryForm,parentId:categoryForm.parentId?String(categoryForm.parentId):null});Object.assign(categoryForm,{name:'',kind:'EXPENSE',parentId:''});await loadData()}catch(e){ElMessage.error(e.response?.data?.detail||'分类保存失败')}finally{pageLoading.value=false}}
+ async function removeTransactionFixed(){if(!deleteTarget.value)return;deleting.value=true;try{await ledgerStore.deleteTransaction(deleteTarget.value);applyLedgerProjection();deleteTarget.value=null;ElMessage.success(ledgerStore.online?'流水已删除':'已离线删除，联网后自动同步');if(ledgerStore.online){await ledgerStore.syncNow();if(!ledgerStore.syncError)await ledgerStore.refreshAccounts();applyLedgerProjection()}}catch(e){ElMessage.error(e.response?.data?.detail||e.message||'删除失败')}finally{deleting.value=false}}
+ async function saveCategoryFixed(){pageLoading.value=true;try{await ledgerStore.saveResource('category',{...categoryForm,parentId:categoryForm.parentId?String(categoryForm.parentId):null});Object.assign(categoryForm,{name:'',kind:'EXPENSE',parentId:''});applyLedgerProjection();ElMessage.success(ledgerStore.online?'分类已保存':'分类已离线保存')}catch(e){ElMessage.error(e.response?.data?.detail||e.message||'分类保存失败')}finally{pageLoading.value=false}}
  async function saveBudget(){
    const bookId=ledgerStore.currentBookId
    const monthKey=String(budgetForm.monthKey||'').trim()
@@ -297,10 +300,11 @@ async function aiPreviewRequest(){if(!aiText.value.trim())return;aiLoading.value
    try{
      const payload={monthKey,amount}
      if(matched)payload.categoryId=String(matched.id)
-     await apiCreateLedgerBudget(bookId,payload,`web-budget-${Date.now()}`)
-     await ledgerStore.refreshResources(monthKey)
-     await loadBudgets()
-     ElMessage.success('预算已保存')
+     const existing=budgets.value.find(item=>String(item.monthKey||item.month||'')===monthKey&&String(item.categoryId||'')===String(payload.categoryId||''))
+     await ledgerStore.saveResource('budget',existing?{...payload,id:existing.id,revision:existing.revision}:payload)
+     applyStoreBudgets()
+     ElMessage.success(ledgerStore.online?'预算已保存':'预算已离线保存')
+     if(ledgerStore.online){await ledgerStore.syncNow();if(!ledgerStore.syncError)await ledgerStore.refreshResources(monthKey);applyStoreBudgets()}
    }catch(e){ElMessage.error(e.response?.data?.detail||'预算保存失败')}
    finally{pageLoading.value=false}
  }
@@ -309,12 +313,30 @@ async function aiPreviewRequest(){if(!aiText.value.trim())return;aiLoading.value
    if(!bookId||!budget?.id){ElMessage.error('预算信息不完整，请刷新后重试');return}
    pageLoading.value=true
    try{
-     await apiDeleteLedgerBudget(bookId,String(budget.id),budget.revision,`web-budget-delete-${Date.now()}`)
-     await ledgerStore.refreshResources(selectedMonth.value)
-     await loadBudgets()
-     ElMessage.success('预算已删除')
+     await ledgerStore.deleteResource('budget',budget)
+     applyStoreBudgets()
+     ElMessage.success(ledgerStore.online?'预算已删除':'预算已离线删除')
+     if(ledgerStore.online){await ledgerStore.syncNow();if(!ledgerStore.syncError)await ledgerStore.refreshResources(selectedMonth.value);applyStoreBudgets()}
    }catch(e){ElMessage.error(e.response?.data?.detail||'预算删除失败')}
    finally{pageLoading.value=false}
+ }
+ async function saveAccountCommand(){
+   pageLoading.value=true
+   try{
+     await ledgerStore.saveResource('account',{...accountForm,openingBalance:Number(accountForm.openingBalance||0)})
+     Object.assign(accountForm,{name:'',accountType:'cash',openingBalance:''})
+     applyLedgerProjection()
+     ElMessage.success(ledgerStore.online?'账户已保存':'账户已离线保存')
+   }catch(error){ElMessage.error(error.response?.data?.detail||error.message||'账户保存失败')}
+   finally{pageLoading.value=false}
+ }
+ async function removeAccountCommand(account){
+   try{await ledgerStore.deleteResource('account',account);applyLedgerProjection();ElMessage.success(ledgerStore.online?'账户已删除':'账户已离线删除')}
+   catch(error){ElMessage.error(error.response?.data?.detail||error.message||'账户删除失败')}
+ }
+ async function removeCategoryCommand(category){
+   try{await ledgerStore.deleteResource('category',category);applyLedgerProjection();ElMessage.success(ledgerStore.online?'分类已删除':'分类已离线删除')}
+   catch(error){ElMessage.error(error.response?.data?.detail||error.message||'分类删除失败')}
  }
  async function aiPreviewRequestFixed(){
    if(!aiText.value.trim())return
@@ -397,7 +419,7 @@ async function aiPreviewRequest(){if(!aiText.value.trim())return;aiLoading.value
    else if(!categoryWarning)draft.warnings=[...(draft.warnings||[]),'请选择二级分类']
    aiPreview.value={...draft,_draftId:aiPreview.value._draftId,_allDrafts:drafts,localFallback:aiPreview.value.localFallback}
  }
- async function confirmAiFixed(){pageLoading.value=true;try{if(!aiPreview.value?._draftId)throw new Error('请先识别交易');if(!aiCanConfirm.value)throw new Error('请先补全账户、成员和二级分类，并处理未匹配项');await apiLedgerAiConfirm(ledgerStore.currentBookId,aiPreview.value._draftId,aiDrafts.value,`ai-web-${Date.now()}`);aiOpen.value=false;aiPreview.value=null;await loadData();ElMessage.success('AI 记账完成')}catch(e){ElMessage.error(e.response?.data?.detail||e.message||'记账失败')}finally{pageLoading.value=false}}
+ async function confirmAiFixed(){pageLoading.value=true;try{if(!aiPreview.value?._draftId)throw new Error('请先识别交易');if(!aiCanConfirm.value)throw new Error('请先补全账户、成员和二级分类，并处理未匹配项');await ledgerStore.confirmAi(aiPreview.value._draftId,aiDrafts.value);aiOpen.value=false;aiPreview.value=null;applyLedgerProjection();ElMessage.success('AI 记账完成')}catch(e){ElMessage.error(e.response?.data?.detail||e.message||'记账失败')}finally{pageLoading.value=false}}
  async function importFileWithProgress(event){
    const file=event.target.files?.[0]
    if(!file||importState.active)return
@@ -411,10 +433,10 @@ async function aiPreviewRequest(){if(!aiText.value.trim())return;aiLoading.value
        onUploadProgress:value=>{importState.progress=Math.max(importState.progress,Math.min(50,Math.round(value*.5)))},
        onPreview:preview=>Object.assign(importState,{progress:65,phase:'解析完成',detail:`有效 ${preview.validCount||0} 笔，重复 ${preview.duplicateCount||0} 笔，错误 ${preview.errorCount||0} 笔`,processing:false})
      }
-     const result=/\.xlsx?$/i.test(file.name)?await apiImportLedgerExcel(file,progress):await apiImportLedgerCsv(file,progress)
+     const result=await ledgerStore.importFile(file,progress)
      const count=Number(result.createdCount??result.created?.length??result.transactions?.length??0)
      Object.assign(importState,{progress:95,phase:'刷新账本',detail:`已写入 ${count} 笔，正在更新本地数据`,processing:true})
-     await loadData()
+     applyLedgerProjection()
      Object.assign(importState,{progress:100,phase:'导入完成',detail:`成功导入 ${count} 笔流水`,processing:false})
      ElMessage.success(`已导入 ${count} 笔交易`)
    }catch(error){
@@ -426,7 +448,7 @@ async function aiPreviewRequest(){if(!aiText.value.trim())return;aiLoading.value
      event.target.value=''
    }
  }
- aiPreviewRequest = aiPreviewRequestFixed; confirmAi = confirmAiFixed; openCreate = openCreatePreferred; saveTransaction = saveTransactionFixed; removeTransaction = removeTransactionFixed; saveCategory = saveCategoryFixed; importFile = importFileWithProgress
+ aiPreviewRequest = aiPreviewRequestFixed; confirmAi = confirmAiFixed; openCreate = openCreatePreferred; saveTransaction = saveTransactionFixed; removeTransaction = removeTransactionFixed; saveAccount = saveAccountCommand; removeAccount = removeAccountCommand; saveCategory = saveCategoryFixed; removeCategory = removeCategoryCommand; importFile = importFileWithProgress
 
 function handleResize(){chartMap.forEach(chart=>chart.resize())}
 function handleBookChanged(){

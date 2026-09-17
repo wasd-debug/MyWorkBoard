@@ -10,6 +10,26 @@
       </div>
     </div>
 
+    <section v-if="showSyncStatus" class="flow-sync-status" aria-label="账本同步状态">
+      <div class="flow-sync-summary" role="status">
+        <span :class="{ warning: !ledgerStore.online }">{{ ledgerStore.online ? '网络已连接' : '当前离线' }}</span>
+        <span v-if="ledgerStore.pending">{{ ledgerStore.pending }} 项待同步</span>
+        <span v-if="currentConflicts.length" class="danger">{{ currentConflicts.length }} 个冲突</span>
+        <span v-if="currentRejected.length" class="danger">{{ currentRejected.length }} 个拒绝</span>
+        <button v-if="currentRejected.length" type="button" class="flow-sync-export" @click="exportRejectedOperations">导出拒绝记录</button>
+      </div>
+      <div v-for="conflict in currentConflicts" :key="conflict.id" class="flow-sync-issue">
+        <p><strong>同步冲突</strong><span>{{ syncEntityLabel(conflict.operation?.entityType) }} {{ shortId(conflict.operation?.entityId) }}</span><small>{{ conflict.result?.message || '服务端数据已更新，请选择保留版本' }}</small></p>
+        <div>
+          <button type="button" :disabled="resolvingConflictId === conflict.id" @click="resolveConflict(conflict, 'server')">采用服务端版本</button>
+          <button type="button" :disabled="resolvingConflictId === conflict.id" @click="resolveConflict(conflict, 'local')">保留本地并重试</button>
+        </div>
+      </div>
+      <div v-for="rejection in currentRejected" :key="rejection.id" class="flow-sync-issue rejected">
+        <p><strong>同步被拒绝</strong><span>{{ syncEntityLabel(rejection.operation?.entityType) }} {{ shortId(rejection.operation?.entityId) }}</span><small>{{ rejection.result?.message || '服务端未接受此操作，请导出后检查' }}</small></p>
+      </div>
+    </section>
+
     <div class="flow-workspace">
       <aside class="flow-sidebar">
         <Card class="flow-summary-card">
@@ -119,9 +139,9 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Lock, Rank, SortDown, SortUp, Unlock } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { apiCreateLedgerTransaction, apiDeleteLedgerTransaction, apiListLedgerTransactions, apiUpdateLedgerTransaction } from '../api'
+import { Lock, Rank, SortDown, SortUp, Unlock } from '../icons.js'
+import { ElMessage } from '../services/message.js'
+import { apiListLedgerTransactions } from '../api'
 import LedgerTransactionEditor from '../components/ledger/LedgerTransactionEditor.vue'
 import LedgerTransactionFilters from '../components/ledger/LedgerTransactionFilters.vue'
 import LedgerResourceIcon from '../components/ledger/LedgerResourceIcon.vue'
@@ -141,6 +161,7 @@ import Toggle from '../components/ui/Toggle.vue'
 const today = new Date().toISOString().slice(0, 10)
 const monthStart = `${today.slice(0, 7)}-01`
 const route = useRoute()
+const resolvingConflictId = ref('')
 const allRange = queryValue(route.query.range) === 'all'
 const kindOptions = [
   { value: 'EXPENSE', label: '支出', tone: 'out' }, { value: 'INCOME', label: '收入', tone: 'in' },
@@ -342,8 +363,89 @@ function blankForm() {
 function openCreate() { editing.value = null; blankForm(); editorOpen.value = true }
 function openEdit(item) { editing.value = item; Object.assign(form, { kind: item.kind, amount: item.amount, occurredOn: item.occurredOn, accountId: String(item.accountId), targetAccountId: item.targetAccountId ? String(item.targetAccountId) : '', categoryId: item.categoryId ? String(item.categoryId) : '', payee: item.payee || '', member: item.member || '', project: item.project || '', note: item.note || '' }); editorOpen.value = true }
 function openCopy(item) { editing.value = null; Object.assign(form, { kind: item.kind, amount: item.amount, occurredOn: today, accountId: String(item.accountId), targetAccountId: item.targetAccountId ? String(item.targetAccountId) : '', categoryId: item.categoryId ? String(item.categoryId) : '', payee: item.payee || '', member: item.member || '', project: item.project || '', note: item.note || '' }); editorOpen.value = true }
-async function saveTransaction() { saving.value = true; try { const category = categories.value.find(item => String(item.id) === String(form.categoryId || '')); const requiresCategory = ['INCOME', 'EXPENSE'].includes(form.kind); if (requiresCategory && (!category?.parentId || category.kind !== form.kind)) throw new Error('请选择对应流水类型的二级分类'); const payload = { ...form, amount: Number(form.amount), accountId: String(form.accountId), targetAccountId: form.targetAccountId ? String(form.targetAccountId) : null, categoryId: requiresCategory ? String(category.id) : null, clientOpId: `web-flow-${Date.now()}` }; if (editing.value) await apiUpdateLedgerTransaction(ledgerStore.currentBookId, editing.value.id, payload, editing.value.revision, payload.clientOpId); else await apiCreateLedgerTransaction(ledgerStore.currentBookId, payload, payload.clientOpId); editorOpen.value = false; ElMessage.success(editing.value ? '流水已更新' : '流水已添加'); await loadData() } catch (error) { ElMessage.error(error.response?.data?.detail || error.message || '流水保存失败') } finally { saving.value = false } }
-async function removeTransaction() { if (!deleteTarget.value) return; deleting.value = true; try { await apiDeleteLedgerTransaction(ledgerStore.currentBookId, deleteTarget.value.id, deleteTarget.value.revision, `web-flow-delete-${Date.now()}`); await ledgerStore.refreshAccounts(); deleteTarget.value = null; ElMessage.success('流水已删除'); await loadData() } catch (error) { ElMessage.error(error.response?.data?.detail || '流水删除失败') } finally { deleting.value = false } }
+const belongsToCurrentBook = item => String(item?.bookId) === String(ledgerStore.currentBookId)
+const currentConflicts = computed(() => ledgerStore.conflicts.filter(belongsToCurrentBook))
+const currentRejected = computed(() => ledgerStore.rejected.filter(belongsToCurrentBook))
+const showSyncStatus = computed(() => !ledgerStore.online || ledgerStore.pending > 0 || currentConflicts.value.length > 0 || currentRejected.value.length > 0)
+function syncEntityLabel(type) { return ({ transaction: '流水', account: '账户', category: '分类', merchant: '商家', project: '项目', budget: '预算' })[type] || '资源' }
+function shortId(value) { const id = String(value || ''); return id.length > 12 ? `${id.slice(0, 8)}…` : id }
+async function resolveConflict(conflict, strategy) {
+  resolvingConflictId.value = conflict.id
+  try {
+    await ledgerStore.resolveConflict(conflict.id, strategy)
+    await ledgerStore.syncNow()
+    applyCachedData()
+    if (ledgerStore.online && ledgerStore.pending === 0) await loadPage()
+    ElMessage.success(strategy === 'server' ? '已采用服务端版本' : '已按服务端最新版本重试本地修改')
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || error.message || '冲突处理失败')
+  } finally {
+    resolvingConflictId.value = ''
+  }
+}
+async function exportRejectedOperations() {
+  try {
+    const content = await ledgerStore.exportRejected()
+    const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `ledger-rejected-${ledgerStore.currentBookId || 'unknown'}.json`
+    link.click()
+    window.setTimeout(() => URL.revokeObjectURL(url), 0)
+    ElMessage.success('拒绝记录已导出')
+  } catch (error) {
+    ElMessage.error(error.message || '拒绝记录导出失败')
+  }
+}
+async function saveTransaction() {
+  saving.value = true
+  try {
+    const payload = ledgerTransactionDraft(form, {
+      categories: categories.value,
+      merchants: ledgerStore.visibleMerchants,
+      members: ledgerStore.activeMembers,
+      projects: ledgerStore.visibleProjects
+    })
+    await ledgerStore.saveTransaction(editing.value
+      ? { ...payload, id: editing.value.id, revision: editing.value.revision }
+      : payload)
+    editorOpen.value = false
+    applyCachedData()
+    ElMessage.success(ledgerStore.online ? (editing.value ? '流水已更新' : '流水已添加') : '已离线保存，联网后自动同步')
+    if (ledgerStore.online) {
+      await ledgerStore.syncNow()
+      if (!ledgerStore.syncError) {
+        await ledgerStore.refreshAccounts()
+        await loadPage()
+      }
+    }
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || error.message || '流水保存失败')
+  } finally {
+    saving.value = false
+  }
+}
+async function removeTransaction() {
+  if (!deleteTarget.value) return
+  deleting.value = true
+  try {
+    await ledgerStore.deleteTransaction(deleteTarget.value)
+    deleteTarget.value = null
+    applyCachedData()
+    ElMessage.success(ledgerStore.online ? '流水已删除' : '已离线删除，联网后自动同步')
+    if (ledgerStore.online) {
+      await ledgerStore.syncNow()
+      if (!ledgerStore.syncError) {
+        await ledgerStore.refreshAccounts()
+        await loadPage()
+      }
+    }
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || error.message || '流水删除失败')
+  } finally {
+    deleting.value = false
+  }
+}
 function applyCachedData() {
   applyCachedResources()
   transactions.value = ledgerStore.transactions.filter(item => !item.deleted)
@@ -401,25 +503,6 @@ async function loadData() {
   }
 }
 
-async function saveTransactionFixed() {
-  try {
-    const payload = {
-      ...ledgerTransactionDraft(form, { categories: categories.value, merchants: ledgerStore.visibleMerchants,
-        members: ledgerStore.activeMembers, projects: ledgerStore.visibleProjects }),
-      clientOpId: `web-flow-${Date.now()}`
-    }
-    saving.value = true
-    if (editing.value) await apiUpdateLedgerTransaction(ledgerStore.currentBookId, editing.value.id, payload, editing.value.revision, payload.clientOpId)
-    else await apiCreateLedgerTransaction(ledgerStore.currentBookId, payload, payload.clientOpId)
-    await ledgerStore.refreshAccounts()
-    editorOpen.value = false
-    ElMessage.success(editing.value ? '流水已更新' : '流水已添加')
-    await loadData()
-  } catch (error) {
-    ElMessage.error(error.response?.data?.detail || error.message || '流水保存失败')
-  } finally { saving.value = false }
-}
-saveTransaction = saveTransactionFixed
 watch(totalPages, pages => { if (currentPage.value > pages) currentPage.value = pages })
 watch(displayMode, value => localStorage.setItem('ledger-transactions-display-mode', value))
 watch([columns, columnWidths], () => {
@@ -432,9 +515,9 @@ watch([
   () => ledgerStore.members,
   () => ledgerStore.projects
 ], applyCachedResources, { deep: true })
-watch(() => ledgerStore.online, online => {
-  if (online) loadPage()
-  else applyCachedData()
+watch([() => ledgerStore.online, () => ledgerStore.pending], ([online, pending]) => {
+  if (!online) applyCachedData()
+  else if (pending === 0) loadPage()
 })
 let filterTimer
 watch([filters, searchText], () => {
@@ -457,6 +540,18 @@ onBeforeUnmount(() => {
 .flow-heading { align-items: center; margin-bottom: 22px }
 .flow-heading-actions { display: flex; align-items: center; gap: 8px }
 .flow-heading-actions svg { width: 15px; height: 15px }
+.flow-sync-status { margin: -8px 0 18px; border: 1px solid color-mix(in srgb,var(--accent) 28%,var(--line)); border-radius: 6px; background: color-mix(in srgb,var(--accent-soft) 46%,var(--card)); overflow: hidden }
+.flow-sync-summary { display: flex; min-height: 40px; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 7px 12px; color: var(--ink2); font-size: 11px }
+.flow-sync-summary span { display: inline-flex; align-items: center; gap: 5px; font-weight: 650 }
+.flow-sync-summary span::before { width: 6px; height: 6px; border-radius: 50%; background: var(--down); content: '' }
+.flow-sync-summary span.warning::before { background: var(--accent) }.flow-sync-summary span.danger::before { background: var(--up) }
+.flow-sync-export,.flow-sync-issue button { min-height: 28px; padding: 4px 9px; border: 1px solid var(--line2); border-radius: 4px; background: var(--card); color: var(--ink2); font-size: 11px; font-weight: 650 }
+.flow-sync-export { margin-left: auto }
+.flow-sync-export:hover,.flow-sync-issue button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent) }
+.flow-sync-issue { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--card) }
+.flow-sync-issue p { display: grid; min-width: 0; grid-template-columns: auto auto; gap: 2px 8px; margin: 0 }
+.flow-sync-issue strong { color: var(--up); font-size: 11px }.flow-sync-issue span { color: var(--ink2); font-size: 11px }.flow-sync-issue small { grid-column: 1/-1; color: var(--muted); font-size: 10px }
+.flow-sync-issue>div { display: flex; flex: 0 0 auto; gap: 6px }.flow-sync-issue button:disabled { opacity: .48 }
 .flow-workspace { display: grid; grid-template-columns: 252px minmax(0,1fr); gap: 18px; align-items: start }
 .flow-sidebar { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 22px }
 .flow-sidebar :deep(.card) { padding: 18px }
@@ -563,7 +658,7 @@ onBeforeUnmount(() => {
 .flow-column-drag svg,.flow-column-pin svg { width: 15px; height: 15px }
 .flow-column-setting :deep(.ui-toggle) { flex: 0 0 auto }
 @media(max-width:1023px){.flow-workspace{grid-template-columns:220px minmax(0,1fr)}.flow-sidebar{position:static}.flow-desktop-table :deep(.ui-table-wrap){max-height:none}}
-@media(max-width:767px){.ledger-flow-page,.flow-main,.flow-table-card{min-width:0;max-width:100%}.flow-heading{align-items:flex-start}.flow-heading-actions{width:100%;min-width:0}.flow-heading-actions .ui-button{min-width:0;flex:1;padding:0 7px}.flow-workspace{display:block;min-width:0}.flow-sidebar{display:none}.flow-table-card{width:100%;margin:0 auto;box-sizing:border-box}.flow-table-card :deep(> header){padding:13px 16px}.flow-table-head{min-width:0;align-items:flex-start;flex-direction:column;gap:10px}.flow-table-tools{width:100%;justify-content:stretch;flex-direction:column;align-items:stretch;gap:8px}.flow-view-switch{align-self:flex-start}.flow-search{width:100%;max-width:100%}.flow-desktop-table{display:none}.flow-mobile-list{display:flex;min-width:0;flex-direction:column}.flow-mobile-item{min-width:0;max-width:100%;padding:11px 12px;border-bottom:1px solid var(--line);background:var(--card)}.flow-mobile-item:last-child{border-bottom:0}.flow-mobile-top,.flow-mobile-title,.flow-mobile-actions{display:flex;min-width:0;max-width:100%;align-items:center;justify-content:space-between;gap:8px}.flow-mobile-top>b{min-width:0;font-size:14px}.flow-mobile-title{margin-top:8px}.flow-mobile-title strong{min-width:0;overflow:hidden;color:var(--ink);font-size:13px;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-title span{flex:0 0 auto;color:var(--muted);font-size:10px}.flow-mobile-meta{display:flex;min-width:0;max-width:100%;flex-wrap:wrap;gap:3px 9px;margin-top:5px;color:var(--ink2);font-size:10px}.flow-mobile-meta span{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-resource{display:inline-flex;align-items:center;gap:4px}.flow-mobile-resource i{flex:0 0 6px;width:6px;height:6px;border-radius:50%}.flow-mobile-note{display:block;max-width:100%;margin:6px 0 0;overflow:hidden;color:var(--muted);font-size:10px;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-actions{justify-content:flex-end;margin-top:7px}.flow-mobile-actions button{display:inline-flex;min-width:0;align-items:center;gap:3px;padding:3px 5px;border:0;background:transparent;color:var(--ink2);font-size:10px}.flow-mobile-actions button.danger{color:var(--down)}.flow-mobile-actions svg{width:12px;height:12px}.flow-table-footer{min-height:42px;padding:8px 12px;align-items:flex-start;flex-direction:column;font-size:10px}.flow-table-totals,.flow-pagination{width:100%;justify-content:space-between;gap:6px}.flow-pagination label{gap:4px}.flow-pagination button{min-width:46px;padding:0 5px}.flow-pagination>b{display:none}}
+@media(max-width:767px){.ledger-flow-page,.flow-main,.flow-table-card{min-width:0;max-width:100%}.flow-heading{align-items:flex-start}.flow-heading-actions{width:100%;min-width:0}.flow-heading-actions .ui-button{min-width:0;flex:1;padding:0 7px}.flow-sync-status{margin-top:-9px}.flow-sync-summary{gap:7px 10px}.flow-sync-export{margin-left:0}.flow-sync-issue{align-items:stretch;flex-direction:column;gap:8px}.flow-sync-issue>div{width:100%}.flow-sync-issue button{flex:1;min-width:0;white-space:normal}.flow-workspace{display:block;min-width:0}.flow-sidebar{display:none}.flow-table-card{width:100%;margin:0 auto;box-sizing:border-box}.flow-table-card :deep(> header){padding:13px 16px}.flow-table-head{min-width:0;align-items:flex-start;flex-direction:column;gap:10px}.flow-table-tools{width:100%;justify-content:stretch;flex-direction:column;align-items:stretch;gap:8px}.flow-view-switch{align-self:flex-start}.flow-search{width:100%;max-width:100%}.flow-desktop-table{display:none}.flow-mobile-list{display:flex;min-width:0;flex-direction:column}.flow-mobile-item{min-width:0;max-width:100%;padding:11px 12px;border-bottom:1px solid var(--line);background:var(--card)}.flow-mobile-item:last-child{border-bottom:0}.flow-mobile-top,.flow-mobile-title,.flow-mobile-actions{display:flex;min-width:0;max-width:100%;align-items:center;justify-content:space-between;gap:8px}.flow-mobile-top>b{min-width:0;font-size:14px}.flow-mobile-title{margin-top:8px}.flow-mobile-title strong{min-width:0;overflow:hidden;color:var(--ink);font-size:13px;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-title span{flex:0 0 auto;color:var(--muted);font-size:10px}.flow-mobile-meta{display:flex;min-width:0;max-width:100%;flex-wrap:wrap;gap:3px 9px;margin-top:5px;color:var(--ink2);font-size:10px}.flow-mobile-meta span{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-resource{display:inline-flex;align-items:center;gap:4px}.flow-mobile-resource i{flex:0 0 6px;width:6px;height:6px;border-radius:50%}.flow-mobile-note{display:block;max-width:100%;margin:6px 0 0;overflow:hidden;color:var(--muted);font-size:10px;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-actions{justify-content:flex-end;margin-top:7px}.flow-mobile-actions button{display:inline-flex;min-width:0;align-items:center;gap:3px;padding:3px 5px;border:0;background:transparent;color:var(--ink2);font-size:10px}.flow-mobile-actions button.danger{color:var(--down)}.flow-mobile-actions svg{width:12px;height:12px}.flow-table-footer{min-height:42px;padding:8px 12px;align-items:flex-start;flex-direction:column;font-size:10px}.flow-table-totals,.flow-pagination{width:100%;justify-content:space-between;gap:6px}.flow-pagination label{gap:4px}.flow-pagination button{min-width:46px;padding:0 5px}.flow-pagination>b{display:none}}
 .flow-filter-action{position:relative;display:inline-flex}
 .flow-filter-action i{position:absolute;top:-5px;right:-5px;display:grid;place-items:center;min-width:15px;height:15px;padding:0 2px;border-radius:999px;background:var(--accent);color:var(--card);font-size:9px;font-style:normal}
 .flow-row-actions .ledger-action-icon{display:inline-grid;flex:0 0 28px;width:28px;height:28px;padding:0;border:1px solid var(--line2);background:var(--card);color:var(--ink2)}

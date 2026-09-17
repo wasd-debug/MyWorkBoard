@@ -50,8 +50,6 @@ export function apiRefresh() {
 }
 export function apiLogout() { return api.post('/v1/auth/logout', {}).then(unwrap).finally(clearAccessToken) }
 
-export function apiGetWorktimeSnapshot() { return api.get('/v1/worktime/snapshot').then(unwrap) }
-export function apiPutWorktimeSnapshot(payload) { return api.put('/v1/worktime/snapshot', payload, { timeout: 15000 }).then(unwrap) }
 export function apiGetWorktimeSettings() { return api.get('/v1/worktime/settings').then(unwrap) }
 export function apiPutWorktimeSettings(payload, revision) {
   return api.put('/v1/worktime/settings', payload, { headers: revision ? { 'If-Match': String(revision) } : undefined }).then(unwrap)
@@ -228,6 +226,3 @@ export function apiDownloadLedgerExport(bookId, format = 'xlsx', params = {}) {
     timeout: 600000
   }).then(response => response.data)
 }
-
-export function apiGetData() { return apiGetWorktimeSnapshot() }
-export function apiPutAll(payload) { return apiPutWorktimeSnapshot(payload) }
