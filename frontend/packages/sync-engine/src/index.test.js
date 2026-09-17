@@ -36,6 +36,15 @@ test('不同账本使用独立游标和存储范围', async () => {
   assert.equal((await engine.list('account', { bookId: 'book-b' }))[0].name, 'B')
 })
 
+test('工厂允许为不同用户指定独立数据库名', async () => {
+  const { createLedgerSyncEngine } = await import('./index.js')
+  const alice = createLedgerSyncEngine({ dbName: 'ledger:id-1', transport: {} })
+  const bob = createLedgerSyncEngine({ dbName: 'ledger:id-2', transport: {} })
+  assert.equal(alice.dbName, 'ledger:id-1')
+  assert.equal(bob.dbName, 'ledger:id-2')
+  assert.notEqual(alice.dbName, bob.dbName)
+})
+
 test('写入前清理嵌套展示对象中的不可克隆值', async () => {
   const engine = new SyncEngine()
   const row = await engine.put('category', {

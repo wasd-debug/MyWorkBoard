@@ -37,6 +37,12 @@ export class SyncEngine {
     return this.dbPromise
   }
 
+  async close() {
+    const db = await this.dbPromise
+    db?.close?.()
+    this.dbPromise = null
+  }
+
   async put(entityType, value, options = {}) {
     const safeValue = cloneSerializable(value)
     const entityStore = this.storeName(entityType)
@@ -416,6 +422,7 @@ function randomId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-export function createLedgerSyncEngine(transport) {
-  return new SyncEngine({ transport })
+export function createLedgerSyncEngine(options = {}) {
+  if ('transport' in options || 'dbName' in options || 'stores' in options) return new SyncEngine(options)
+  return new SyncEngine({ transport: options })
 }

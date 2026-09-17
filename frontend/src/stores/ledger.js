@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 import { createLedgerSyncEngine } from '../../packages/sync-engine/src/index.js'
+import { accountScopeFor, currentLedgerBookStorageKey, ledgerDatabaseName, setActiveAccountScope } from '../utils/accountScope.js'
+import { createClientId } from '../utils/clientId.js'
 import {
   apiCreateLedgerBook,
   apiListLedgerAccounts,
@@ -12,20 +14,46 @@ import {
   apiListLedgerTransactions,
   apiPullLedgerSync,
   apiPushLedgerSync
-} from '../api'
+} from '../api/index.js'
 
-const engine = createLedgerSyncEngine({
+const syncTransport = {
   push: (bookId, operations) => apiPushLedgerSync(bookId, operations),
   pull: (bookId, cursor) => apiPullLedgerSync(bookId, cursor)
-})
+}
+
+let engine = createLedgerSyncEngine({ dbName: ledgerDatabaseName(''), transport: syncTransport })
 
 let listenersInstalled = false
 let syncTimer
 let activeSyncPromise
+let sessionEpoch = 0
+
+function clearLedgerState(store) {
+  Object.assign(store, {
+    ready: false,
+    loading: false,
+    syncing: false,
+    books: [],
+    currentBookId: '',
+    accounts: [],
+    categories: [],
+    merchants: [],
+    members: [],
+    projects: [],
+    roles: [],
+    budgets: [],
+    transactions: [],
+    conflicts: [],
+    rejected: [],
+    pending: 0,
+    syncError: ''
+  })
+}
 
 export const useLedgerStore = defineStore('ledger', {
   state: () => ({
     ready: false,
+    accountScope: '',
     loading: false,
     syncing: false,
     online: typeof navigator === 'undefined' ? true : navigator.onLine,
@@ -63,21 +91,53 @@ export const useLedgerStore = defineStore('ledger', {
     })
   },
   actions: {
+    async switchUser(user) {
+      const nextScope = accountScopeFor(user)
+      if (nextScope && nextScope === this.accountScope) return
+      const previousEngine = engine
+      sessionEpoch += 1
+      clearTimeout(syncTimer)
+      syncTimer = undefined
+      activeSyncPromise = null
+      clearLedgerState(this)
+      this.accountScope = nextScope
+      setActiveAccountScope(nextScope)
+      if (typeof localStorage !== 'undefined') localStorage.removeItem('ledger-current-book')
+      engine = createLedgerSyncEngine({ dbName: ledgerDatabaseName(nextScope), transport: syncTransport })
+      await previousEngine.close()
+    },
+
+    async clearSession() {
+      await this.switchUser(null)
+    },
+
     async init({ waitForRemote = true } = {}) {
       if (this.ready) return
+      if (!this.accountScope) {
+        clearLedgerState(this)
+        this.ready = true
+        return
+      }
+      const epoch = sessionEpoch
+      const scopedEngine = engine
       this.loading = true
       this.installListeners()
       try {
-        this.books = await engine.list('book')
-        this.currentBookId = localStorage.getItem('ledger-current-book') || this.books[0]?.id || ''
+        const books = await scopedEngine.list('book')
+        if (epoch !== sessionEpoch || scopedEngine !== engine) return
+        this.books = books
+        const storageKey = currentLedgerBookStorageKey(this.accountScope)
+        this.currentBookId = (storageKey && localStorage.getItem(storageKey)) || this.books[0]?.id || ''
         if (this.currentBookId) await this.hydrate()
         if (this.online) {
           const refresh = this.refreshServer()
           if (waitForRemote) await refresh
         }
       } finally {
-        this.loading = false
-        this.ready = true
+        if (epoch === sessionEpoch && scopedEngine === engine) {
+          this.loading = false
+          this.ready = true
+        }
       }
     },
 
@@ -97,7 +157,8 @@ export const useLedgerStore = defineStore('ledger', {
     async selectBook(bookId) {
       if (!bookId || String(bookId) === String(this.currentBookId)) return
       this.currentBookId = String(bookId)
-      localStorage.setItem('ledger-current-book', this.currentBookId)
+      const storageKey = currentLedgerBookStorageKey(this.accountScope)
+      if (storageKey) localStorage.setItem(storageKey, this.currentBookId)
       await this.hydrate()
       if (this.online) {
         await this.refreshResources()
@@ -107,38 +168,50 @@ export const useLedgerStore = defineStore('ledger', {
 
     async createBook(payload) {
       if (!this.online) throw new Error('创建账本需要联网')
+      const epoch = sessionEpoch
+      const scopedEngine = engine
       const book = await apiCreateLedgerBook(payload)
-      await engine.put('book', book, { bookId: book.id, recordOp: false })
-      this.books = await engine.list('book')
+      if (epoch !== sessionEpoch || scopedEngine !== engine) return book
+      await scopedEngine.put('book', book, { bookId: book.id, recordOp: false })
+      this.books = await scopedEngine.list('book')
       await this.selectBook(book.id)
       return book
     },
 
     async refreshServer() {
+      const epoch = sessionEpoch
       try {
         await this.refreshBooks()
+        if (epoch !== sessionEpoch) return
         if (!this.books.length) return
         if (!this.books.some(book => String(book.id) === String(this.currentBookId))) {
           this.currentBookId = String(this.books[0].id)
-          localStorage.setItem('ledger-current-book', this.currentBookId)
+          const storageKey = currentLedgerBookStorageKey(this.accountScope)
+          if (storageKey) localStorage.setItem(storageKey, this.currentBookId)
         }
         await this.refreshResources()
         await this.syncNow()
       } catch (error) {
-        this.syncError = error?.response?.data?.detail || error?.message || '账本加载失败'
+        if (epoch === sessionEpoch) this.syncError = error?.response?.data?.detail || error?.message || '账本加载失败'
       }
     },
 
     async refreshBooks() {
       if (!this.online) return
+      const epoch = sessionEpoch
+      const scopedEngine = engine
       const remoteBooks = await apiListLedgerBooks()
-      await engine.replace('book', remoteBooks)
-      this.books = await engine.list('book')
+      if (epoch !== sessionEpoch || scopedEngine !== engine) return
+      await scopedEngine.replace('book', remoteBooks)
+      if (epoch !== sessionEpoch || scopedEngine !== engine) return
+      this.books = await scopedEngine.list('book')
     },
 
     async refreshResources(month = new Date().toISOString().slice(0, 7)) {
       const bookId = this.currentBookId
       if (!bookId || !this.online) return
+      const epoch = sessionEpoch
+      const scopedEngine = engine
       const [accounts, categories, merchants, members, projects, roles, budgets] = await Promise.all([
         apiListLedgerAccounts(bookId, true),
         apiListLedgerCategories(bookId, true),
@@ -148,40 +221,47 @@ export const useLedgerStore = defineStore('ledger', {
         apiListLedgerRoles(bookId),
         apiListLedgerBudgets(bookId, month)
       ])
+      if (epoch !== sessionEpoch || scopedEngine !== engine || String(bookId) !== String(this.currentBookId)) return
       await Promise.all([
-        engine.replace('account', accounts, { bookId }),
-        engine.replace('category', categories, { bookId }),
-        engine.replace('merchant', merchants, { bookId }),
-        engine.replace('member', members, { bookId }),
-        engine.replace('project', projects, { bookId }),
-        engine.replace('role', roles, { bookId }),
-        engine.replace('budget', budgets, { bookId })
+        scopedEngine.replace('account', accounts, { bookId }),
+        scopedEngine.replace('category', categories, { bookId }),
+        scopedEngine.replace('merchant', merchants, { bookId }),
+        scopedEngine.replace('member', members, { bookId }),
+        scopedEngine.replace('project', projects, { bookId }),
+        scopedEngine.replace('role', roles, { bookId }),
+        scopedEngine.replace('budget', budgets, { bookId })
       ])
-      await this.hydrate()
+      if (epoch === sessionEpoch && scopedEngine === engine) await this.hydrate()
     },
 
     async refreshAccounts() {
       const bookId = this.currentBookId
       if (!bookId || !this.online) return
+      const epoch = sessionEpoch
+      const scopedEngine = engine
       const accounts = await apiListLedgerAccounts(bookId, true)
-      if (String(bookId) !== String(this.currentBookId)) return
-      await engine.replace('account', accounts, { bookId })
-      this.accounts = await engine.list('account', { bookId })
+      if (epoch !== sessionEpoch || scopedEngine !== engine || String(bookId) !== String(this.currentBookId)) return
+      await scopedEngine.replace('account', accounts, { bookId })
+      if (epoch === sessionEpoch && scopedEngine === engine) this.accounts = await scopedEngine.list('account', { bookId })
     },
 
     async refreshCurrentBook(month = new Date().toISOString().slice(0, 7), { sync = true } = {}) {
       const bookId = this.currentBookId
       if (!bookId || !this.online) return
+      const epoch = sessionEpoch
+      const scopedEngine = engine
       await this.refreshResources(month)
+      if (epoch !== sessionEpoch || scopedEngine !== engine || String(bookId) !== String(this.currentBookId)) return
       const transactions = []
       let page = 1
       while (true) {
         const response = await apiListLedgerTransactions(bookId, { page, pageSize: 100 })
+        if (epoch !== sessionEpoch || scopedEngine !== engine || String(bookId) !== String(this.currentBookId)) return
         transactions.push(...(response.items || []))
         if (transactions.length >= Number(response.total || 0)) break
         page++
       }
-      await engine.replace('transaction', transactions, { bookId })
+      await scopedEngine.replace('transaction', transactions, { bookId })
       await this.hydrate()
       await this.refreshBooks()
       if (sync) await this.syncNow()
@@ -190,19 +270,22 @@ export const useLedgerStore = defineStore('ledger', {
     async hydrate() {
       const bookId = this.currentBookId
       if (!bookId) return
+      const epoch = sessionEpoch
+      const scopedEngine = engine
       const [accounts, categories, merchants, members, projects, roles, budgets, transactions, conflicts, rejected, pending] = await Promise.all([
-        engine.list('account', { bookId }),
-        engine.list('category', { bookId }),
-        engine.list('merchant', { bookId }),
-        engine.list('member', { bookId }),
-        engine.list('project', { bookId }),
-        engine.list('role', { bookId }),
-        engine.list('budget', { bookId }),
-        engine.list('transaction', { bookId }),
-        engine.conflicts(bookId),
-        engine.rejected(bookId),
-        engine.pendingOperations(bookId)
+        scopedEngine.list('account', { bookId }),
+        scopedEngine.list('category', { bookId }),
+        scopedEngine.list('merchant', { bookId }),
+        scopedEngine.list('member', { bookId }),
+        scopedEngine.list('project', { bookId }),
+        scopedEngine.list('role', { bookId }),
+        scopedEngine.list('budget', { bookId }),
+        scopedEngine.list('transaction', { bookId }),
+        scopedEngine.conflicts(bookId),
+        scopedEngine.rejected(bookId),
+        scopedEngine.pendingOperations(bookId)
       ])
+      if (epoch !== sessionEpoch || scopedEngine !== engine || String(bookId) !== String(this.currentBookId)) return
       Object.assign(this, {
         accounts,
         categories,
@@ -219,56 +302,78 @@ export const useLedgerStore = defineStore('ledger', {
     },
 
     async put(type, value) {
-      const id = value.id || crypto.randomUUID()
-      const record = await engine.put(type, { ...value, id }, {
+      const epoch = sessionEpoch
+      const scopedEngine = engine
+      const id = value.id || createClientId()
+      const record = await scopedEngine.put(type, { ...value, id }, {
         bookId: this.currentBookId,
         baseRevision: value.revision || 0
       })
-      await this.hydrate()
-      this.scheduleSync()
+      if (epoch === sessionEpoch && scopedEngine === engine) {
+        await this.hydrate()
+        this.scheduleSync()
+      }
       return record
     },
 
     async remove(type, value) {
-      const record = await engine.remove(type, value.id, {
+      const epoch = sessionEpoch
+      const scopedEngine = engine
+      const record = await scopedEngine.remove(type, value.id, {
         bookId: this.currentBookId,
         baseRevision: value.revision || 0
       })
-      await this.hydrate()
-      this.scheduleSync()
+      if (epoch === sessionEpoch && scopedEngine === engine) {
+        await this.hydrate()
+        this.scheduleSync()
+      }
       return record
     },
 
     scheduleSync() {
       clearTimeout(syncTimer)
-      syncTimer = setTimeout(() => this.syncNow(), 250)
+      const epoch = sessionEpoch
+      syncTimer = setTimeout(() => {
+        if (epoch === sessionEpoch) this.syncNow()
+      }, 250)
     },
 
     async syncNow() {
       if (!this.online || !this.currentBookId) return
-      if (activeSyncPromise) return activeSyncPromise
+      const epoch = sessionEpoch
+      const scopedEngine = engine
+      const bookId = this.currentBookId
+      if (activeSyncPromise?.epoch === epoch) return activeSyncPromise.promise
       this.syncing = true
       this.syncError = ''
-      activeSyncPromise = (async () => {
+      const promise = (async () => {
         try {
-          const result = await engine.sync(this.currentBookId)
+          const result = await scopedEngine.sync(bookId)
+          if (epoch !== sessionEpoch || scopedEngine !== engine || String(bookId) !== String(this.currentBookId)) return result
           if (result.resetRequired) await this.refreshCurrentBook(undefined, { sync: false })
           else await this.hydrate()
           return result
         } catch (error) {
-          this.syncError = error?.response?.data?.detail || error?.message || '同步失败'
+          if (epoch === sessionEpoch) this.syncError = error?.response?.data?.detail || error?.message || '同步失败'
         } finally {
-          this.syncing = false
-          activeSyncPromise = null
+          if (epoch === sessionEpoch && activeSyncPromise?.promise === promise) {
+            this.syncing = false
+            activeSyncPromise = null
+          }
         }
       })()
-      return activeSyncPromise
+      activeSyncPromise = { epoch, promise }
+      return promise
     },
 
     async resolveConflict(opId, strategy, mergedPayload) {
-      await engine.resolveConflict(opId, strategy, mergedPayload)
-      await this.hydrate()
-      this.scheduleSync()
+      const epoch = sessionEpoch
+      const scopedEngine = engine
+      await scopedEngine.resolveConflict(opId, strategy, mergedPayload)
+      if (epoch === sessionEpoch && scopedEngine === engine) {
+        await this.hydrate()
+        this.scheduleSync()
+      }
     },
 
     async exportRejected() {

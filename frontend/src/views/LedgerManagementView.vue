@@ -409,6 +409,7 @@ import {
   apiUpdateLedgerBook
 } from '../api'
 import { useLedgerStore } from '../stores/ledger'
+import { createClientId } from '../utils/clientId.js'
 import LedgerIconPicker from '../components/ledger/LedgerIconPicker.vue'
 import LedgerResourceIcon from '../components/ledger/LedgerResourceIcon.vue'
 import LedgerActionIcon from '../components/ledger/LedgerActionIcon.vue'
@@ -667,7 +668,7 @@ async function submitForm() {
       if (editingItem.value) await ledger.put('member', { ...base, ...forms.member })
       else {
         if (!ledger.online) throw new Error('添加成员需要联网，以核验已注册用户名')
-        await apiCreateLedgerMember(ledger.currentBookId, { ...forms.member }, crypto.randomUUID())
+        await apiCreateLedgerMember(ledger.currentBookId, { ...forms.member }, createClientId())
         await ledger.refreshResources()
       }
     }

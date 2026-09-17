@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { readCurrentLedgerBookId } from '../utils/accountScope.js'
 
 let accessToken = ''
 
@@ -68,7 +69,7 @@ export function apiDeleteWorktimeRecord(id, revision) {
 export function apiListAuditLogs(limit = 50) { return api.get('/v1/audit/logs', { params: { limit } }).then(unwrap) }
 export function apiGetHolidays(year) { return api.get('/holidays', { params: { year }, timeout: 20000 }).then(response => response.data) }
 
-const activeBookId = () => (typeof localStorage !== 'undefined' && localStorage.getItem('ledger-current-book')) || 'default'
+const activeBookId = () => readCurrentLedgerBookId() || 'default'
 const bookPath = (bookId, suffix = '') => `/v1/ledger/books/${bookId || activeBookId()}${suffix}`
 const revisionHeaders = (revision, opId) => ({
   ...(revision !== undefined && revision !== null && revision !== '' ? { 'If-Match': String(revision) } : {}),
