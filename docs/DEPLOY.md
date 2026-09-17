@@ -205,6 +205,14 @@ unset VERIFY_DB_PASSWORD
 
 2026-09-17 本地验收记录：在独立 tmpfs MySQL 8 容器中完成一次演练，`app_user`、`work_record`、`ledger_book`、`ledger_transaction` 恢复前后数量一致，Flyway 当前版本为 v11，临时后端健康检查通过，临时恢复库和容器均已清理。备份文件仅保留在 `/private/tmp`，不进入仓库。
 
+## 2026-09-17 生产发布记录
+
+- 应用提交：`0fcd6d1`，发布目录：`/home/ubuntu/salary-tracker/releases/0fcd6d1`。
+- 发布前备份：`backups/salary-before-6184e20-20260917-1830.sql.gz`，已通过 gzip 完整性检查；发布前镜像保留为 `salary-backend:pre-6184e20` 和 `salary-frontend:pre-6184e20`。
+- 使用 Compose 项目名 `salary-tracker` 原位更新；MySQL 容器重建后继续挂载 `salary-tracker_mysql-data`，未删除或新建数据卷。
+- Flyway v11 校验成功，13 个迁移全部有效且无需执行新迁移；四张核心表发布后记录数与发布前备份源一致。
+- 内网与公网 `GET /api/health` 均返回 `{"ok":true}`，公网首页返回 HTTP 200，新后端与前端容器运行正常。
+
 ## 健康检查与配置
 
 - 健康检查：`GET /api/health`，成功响应包含 `{"ok": true}`。
