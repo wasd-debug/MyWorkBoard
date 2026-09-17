@@ -16,14 +16,14 @@
       </div>
       <div class="manager-heading-actions">
         <LedgerActionIcon
-          v-if="tab === 'members' && memberSection === 'roles'"
+          v-if="tab === 'members' && memberSection === 'roles' && can('ROLE_MANAGE')"
           action="add"
           label="新增角色"
           class="manager-create"
           @click="openCreate('role')"
         />
         <LedgerActionIcon
-          v-if="activeTab.action && (tab !== 'members' || memberSection === 'members')"
+          v-if="activeTab.action && (tab !== 'members' || memberSection === 'members') && (tab === 'books' || can(tab === 'members' ? 'MEMBER_MANAGE' : 'RESOURCE_MANAGE'))"
           action="add"
           :label="activeTab.action"
           class="manager-create"
@@ -118,9 +118,9 @@
               <span>{{ item.currency }}</span>
               <span><i class="status-dot" :class="{ muted: item.hidden }" />{{ item.hidden ? '已隐藏' : '正常' }}</span>
               <span class="row-actions">
-                <LedgerActionIcon action="edit" label="编辑账户" @click="openEdit(item)" />
-                <LedgerActionIcon :action="item.hidden ? 'show' : 'hide'" :label="item.hidden ? '显示账户' : '隐藏账户'" @click="toggleHidden('account', item)" />
-                <LedgerActionIcon action="delete" label="删除账户" @click="askDelete('account', item)" />
+                <LedgerActionIcon v-if="can('RESOURCE_MANAGE')" action="edit" label="编辑账户" @click="openEdit(item)" />
+                <LedgerActionIcon v-if="can('RESOURCE_MANAGE')" :action="item.hidden ? 'show' : 'hide'" :label="item.hidden ? '显示账户' : '隐藏账户'" @click="toggleHidden('account', item)" />
+                <LedgerActionIcon v-if="can('RESOURCE_MANAGE')" action="delete" label="删除账户" @click="askDelete('account', item)" />
               </span>
             </div>
           </template>
@@ -147,9 +147,9 @@
               <strong class="num">{{ money(categoryAmount(group)) }}</strong>
               <span>{{ group.hidden ? '已隐藏' : `${group.children.length} 个二级分类` }}</span>
               <span class="row-actions">
-                <LedgerActionIcon action="edit" label="编辑一级分类" @click="openEdit(group)" />
-                <LedgerActionIcon :action="group.hidden ? 'show' : 'hide'" :label="group.hidden ? '显示分类' : '隐藏分类'" @click="toggleHidden('category', group)" />
-                <LedgerActionIcon action="delete" label="删除一级分类" @click="askDelete('category', group)" />
+                <LedgerActionIcon v-if="can('RESOURCE_MANAGE')" action="edit" label="编辑一级分类" @click="openEdit(group)" />
+                <LedgerActionIcon v-if="can('RESOURCE_MANAGE')" :action="group.hidden ? 'show' : 'hide'" :label="group.hidden ? '显示分类' : '隐藏分类'" @click="toggleHidden('category', group)" />
+                <LedgerActionIcon v-if="can('RESOURCE_MANAGE')" action="delete" label="删除一级分类" @click="askDelete('category', group)" />
               </span>
             </div>
             <div
@@ -167,9 +167,9 @@
               <strong class="num">{{ money(categoryAmount(item)) }}</strong>
               <span>{{ item.hidden ? '已隐藏' : '可用' }}</span>
               <span class="row-actions">
-                <LedgerActionIcon action="edit" label="编辑二级分类" @click="openEdit(item)" />
-                <LedgerActionIcon :action="item.hidden ? 'show' : 'hide'" :label="item.hidden ? '显示分类' : '隐藏分类'" @click="toggleHidden('category', item)" />
-                <LedgerActionIcon action="delete" label="删除二级分类" @click="askDelete('category', item)" />
+                <LedgerActionIcon v-if="can('RESOURCE_MANAGE')" action="edit" label="编辑二级分类" @click="openEdit(item)" />
+                <LedgerActionIcon v-if="can('RESOURCE_MANAGE')" :action="item.hidden ? 'show' : 'hide'" :label="item.hidden ? '显示分类' : '隐藏分类'" @click="toggleHidden('category', item)" />
+                <LedgerActionIcon v-if="can('RESOURCE_MANAGE')" action="delete" label="删除二级分类" @click="askDelete('category', item)" />
               </span>
             </div>
           </template>
@@ -197,9 +197,9 @@
             <strong class="num" :class="resourceFlow(item) >= 0 ? 'down' : 'up'">{{ signedMoney(resourceFlow(item)) }}</strong>
             <span class="truncate-note" :title="item.note">{{ item.note || '—' }}</span>
             <span class="row-actions">
-              <LedgerActionIcon action="edit" :label="`编辑${activeTab.unit}`" @click="openEdit(item)" />
-              <LedgerActionIcon :action="item.hidden ? 'show' : 'hide'" :label="item.hidden ? '显示条目' : '隐藏条目'" @click="toggleHidden(namedType, item)" />
-              <LedgerActionIcon action="delete" :label="`删除${activeTab.unit}`" @click="askDelete(namedType, item)" />
+              <LedgerActionIcon v-if="can('RESOURCE_MANAGE')" action="edit" :label="`编辑${activeTab.unit}`" @click="openEdit(item)" />
+              <LedgerActionIcon v-if="can('RESOURCE_MANAGE')" :action="item.hidden ? 'show' : 'hide'" :label="item.hidden ? '显示条目' : '隐藏条目'" @click="toggleHidden(namedType, item)" />
+              <LedgerActionIcon v-if="can('RESOURCE_MANAGE')" action="delete" :label="`删除${activeTab.unit}`" @click="askDelete(namedType, item)" />
             </span>
           </div>
         </div>
@@ -217,8 +217,8 @@
             <span><em class="role-badge">{{ item.roleName }}</em></span>
             <strong class="num" :class="resourceFlow(item) >= 0 ? 'down' : 'up'">{{ signedMoney(resourceFlow(item)) }}</strong>
             <span class="row-actions">
-              <LedgerActionIcon action="edit" :label="item.roleCode === 'OWNER' ? '编辑主人图标' : '编辑成员'" @click="openEdit(item, 'member')" />
-              <LedgerActionIcon v-if="item.roleCode !== 'OWNER'" action="delete" label="移除成员" @click="askDelete('member', item)" />
+              <LedgerActionIcon v-if="can('MEMBER_MANAGE')" action="edit" :label="item.roleCode === 'OWNER' ? '编辑主人图标' : '编辑成员'" @click="openEdit(item, 'member')" />
+              <LedgerActionIcon v-if="can('MEMBER_MANAGE') && item.roleCode !== 'OWNER'" action="delete" label="移除成员" @click="askDelete('member', item)" />
             </span>
           </div>
         </div>
@@ -235,8 +235,8 @@
               <small v-if="!item.permissions.length">暂无权限</small>
             </span>
             <span class="row-actions">
-              <LedgerActionIcon v-if="!item.systemRole" action="edit" label="编辑角色" @click="openEdit(item, 'role')" />
-              <LedgerActionIcon v-if="!item.systemRole" action="delete" label="删除角色" @click="askDelete('role', item)" />
+              <LedgerActionIcon v-if="can('ROLE_MANAGE') && !item.systemRole" action="edit" label="编辑角色" @click="openEdit(item, 'role')" />
+              <LedgerActionIcon v-if="can('ROLE_MANAGE') && !item.systemRole" action="delete" label="删除角色" @click="askDelete('role', item)" />
               <span v-else class="protected-label">系统保护</span>
             </span>
           </div>
@@ -298,8 +298,8 @@
             <span>{{ item.roleName }}</span>
             <span class="row-actions">
               <LedgerActionIcon v-if="String(item.id) !== String(ledger.currentBookId)" action="switch" label="切换到账本" @click="selectBook(item)" />
-              <LedgerActionIcon action="download" label="导出账本流水" :disabled="exportingBookId === item.id" @click="exportBook(item)" />
-              <LedgerActionIcon action="edit" label="编辑账本" @click="openEdit(item, 'book')" />
+              <LedgerActionIcon v-if="item.roleCode === 'OWNER' || item.permissions?.includes('IMPORT_EXPORT')" action="download" label="导出账本流水" :disabled="exportingBookId === item.id" @click="exportBook(item)" />
+              <LedgerActionIcon v-if="item.roleCode === 'OWNER' || item.permissions?.includes('RESOURCE_MANAGE')" action="edit" label="编辑账本" @click="openEdit(item, 'book')" />
               <LedgerActionIcon v-if="item.roleCode === 'OWNER' && ledger.books.length > 1" action="delete" label="删除账本" @click="askDelete('book', item)" />
             </span>
           </div>
@@ -494,7 +494,10 @@ const totalAssets = computed(() => totalLedgerAssets(ledger.accounts.filter(item
 const totalLiabilities = computed(() => Math.abs(ledger.accounts.filter(item => liabilityTypes.has(item.accountType)).reduce((sum, item) => sum + Number(item.balance || 0), 0)))
 const netAssets = computed(() => totalAssets.value - totalLiabilities.value)
 const formParents = computed(() => ledger.categories.filter(item => !item.parentId && item.kind === forms.category.kind && item.id !== editingItem.value?.id && !item.deleted))
-const canPurge = computed(() => ['OWNER', 'ADMIN'].includes(ledger.currentBook?.roleCode))
+const canPurge = computed(() => can('RECYCLE_ALL'))
+function can(permission) {
+  return ledger.currentBook?.roleCode === 'OWNER' || ledger.currentBook?.permissions?.includes(permission)
+}
 const dialogTitle = computed(() => `${editingItem.value ? '编辑' : '新增'}${resourceTypeLabel(formResource.value)}`)
 
 const accountGroups = computed(() => {

@@ -27,7 +27,7 @@ public class LedgerBookAccess {
         long userId = currentUser.id();
         List<Map<String, Object>> existing = jdbc.queryForList(
                 "SELECT b.public_id FROM ledger_book b JOIN ledger_book_member m ON m.book_id=b.id " +
-                        "WHERE m.user_id=? AND m.deleted=FALSE AND b.deleted=FALSE ORDER BY b.created_at,b.id LIMIT 1",
+                        "WHERE m.user_id=? AND b.owner_user_id=m.user_id AND m.deleted=FALSE AND b.deleted=FALSE ORDER BY b.created_at,b.id LIMIT 1",
                 userId);
         if (!existing.isEmpty()) return String.valueOf(existing.get(0).get("public_id"));
 

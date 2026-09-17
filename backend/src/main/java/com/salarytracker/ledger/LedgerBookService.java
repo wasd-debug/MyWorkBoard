@@ -75,12 +75,13 @@ public class LedgerBookService {
         return jdbc.queryForList(
                 "SELECT b.id,b.public_id,b.name,b.currency,b.owner_user_id,b.revision,b.archived,b.created_at," +
                         "r.code role_code,r.name role_name," +
+                        "(SELECT GROUP_CONCAT(permission_code ORDER BY permission_code) FROM ledger_role_permission WHERE role_id=r.id) role_permissions," +
                         "(SELECT COUNT(*) FROM ledger_book_member all_members WHERE all_members.book_id=b.id AND all_members.deleted=FALSE) member_count," +
                         "(SELECT COUNT(*) FROM ledger_transaction all_transactions WHERE all_transactions.book_id=b.id " +
                         "AND all_transactions.deleted=FALSE AND all_transactions.kind<>'TRANSFER_IN') transaction_count " +
                         "FROM ledger_book b JOIN ledger_book_member m ON m.book_id=b.id " +
                         "JOIN ledger_role r ON r.id=m.role_id " +
-                        "WHERE m.user_id=? AND m.deleted=FALSE AND b.deleted=FALSE ORDER BY b.created_at,b.id",
+                        "WHERE m.user_id=? AND m.deleted=FALSE AND b.deleted=FALSE AND r.deleted=FALSE ORDER BY b.created_at,b.id",
                 userId).stream().map(this::bookView).toList();
     }
 
@@ -940,12 +941,13 @@ public class LedgerBookService {
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT b.public_id,b.name,b.currency,b.owner_user_id,b.revision,b.archived,b.created_at," +
                         "r.code role_code,r.name role_name," +
+                        "(SELECT GROUP_CONCAT(permission_code ORDER BY permission_code) FROM ledger_role_permission WHERE role_id=r.id) role_permissions," +
                         "(SELECT COUNT(*) FROM ledger_book_member all_members WHERE all_members.book_id=b.id AND all_members.deleted=FALSE) member_count," +
                         "(SELECT COUNT(*) FROM ledger_transaction all_transactions WHERE all_transactions.book_id=b.id " +
                         "AND all_transactions.deleted=FALSE AND all_transactions.kind<>'TRANSFER_IN') transaction_count " +
                         "FROM ledger_book b JOIN ledger_book_member m ON m.book_id=b.id " +
                         "JOIN ledger_role r ON r.id=m.role_id " +
-                        "WHERE b.public_id=? AND m.user_id=? AND m.deleted=FALSE AND b.deleted=FALSE",
+                        "WHERE b.public_id=? AND m.user_id=? AND m.deleted=FALSE AND b.deleted=FALSE AND r.deleted=FALSE",
                 publicId, userId);
         if (rows.isEmpty()) throw new IllegalArgumentException("账本不存在");
         return bookView(rows.get(0));
@@ -1210,6 +1212,8 @@ public class LedgerBookService {
         result.put("archived", Boolean.TRUE.equals(row.get("archived")));
         result.put("roleCode", row.get("role_code"));
         result.put("roleName", row.get("role_name"));
+        result.put("permissions", row.get("role_permissions") == null ? List.of()
+                : List.of(String.valueOf(row.get("role_permissions")).split(",")));
         result.put("memberCount", number(row.get("member_count")));
         result.put("transactionCount", number(row.get("transaction_count")));
         result.put("createdAt", row.get("created_at"));

@@ -6,7 +6,7 @@
       <div class="flow-heading-actions">
         <span class="flow-filter-action"><LedgerActionIcon action="filter" label="筛选流水" @click="openFilters" /><i v-if="activeFilterCount" :aria-label="`已设置 ${activeFilterCount} 项筛选`">{{ activeFilterCount }}</i></span>
         <LedgerActionIcon action="layout" label="设置显示列" @click="columnsOpen=true" />
-        <LedgerActionIcon action="add" label="记一笔" @click="openCreate" />
+        <LedgerActionIcon v-if="canWriteOwn" action="add" label="记一笔" @click="openCreate" />
       </div>
     </div>
 
@@ -60,7 +60,7 @@
                     <template v-else-if="column.key==='note'"><span class="flow-note" :title="item.note||''">{{ item.note||'—' }}</span></template>
                     <template v-else-if="column.key==='amount'"><b :class="amountClass(item)">{{ amountPrefix(item) }}¥{{ money(item.amount) }}</b></template>
                   </td>
-                  <td class="flow-row-actions fixed-actions"><LedgerActionIcon action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon action="delete" label="删除流水" @click="deleteTarget=item" /></td>
+                  <td class="flow-row-actions fixed-actions"><LedgerActionIcon v-if="canWriteOwn" action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon v-if="canWrite(item)" action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon v-if="canWrite(item)" action="delete" label="删除流水" @click="deleteTarget=item" /></td>
                 </tr></tbody>
                 <tbody v-else><template v-for="group in transactionGroups" :key="group.date"><tr class="flow-day-divider"><td :colspan="visibleColumns.length + 1"><b>{{ formatDate(group.date) }}</b><span>收入 ¥{{ money(group.income) }} · 支出 ¥{{ money(group.expense) }} · {{ group.items.length }} 笔</span></td></tr><tr v-for="item in group.items" :key="item.id">
                   <td v-for="column in visibleColumns" :key="column.key" :class="columnClass(column)" :style="columnStickyStyle(column)">
@@ -68,7 +68,7 @@
                     <template v-else-if="column.key==='kind'"><span class="flow-kind" :class="`tone-${kindMeta(item.kind).tone}`">{{ kindMeta(item.kind).label }}</span></template>
                     <template v-else-if="column.key==='category'"><span class="flow-resource"><LedgerResourceIcon :icon="item.categoryIcon || item.parentCategoryIcon" type="category" :color="item.categoryColor || item.parentCategoryColor" compact /><span><b class="flow-category">{{ item.categoryName|| (item.kind==='TRANSFER'?'账户互转':'未分类') }}</b><small v-if="item.parentCategoryName">{{ item.parentCategoryName }}</small></span></span></template>
                     <template v-else-if="column.key==='account'"><span>{{ item.accountName }}</span></template><template v-else-if="column.key==='targetAccount'"><span>{{ item.targetAccountName||'—' }}</span></template><template v-else-if="column.key==='payee'"><span>{{ item.payee||'—' }}</span></template><template v-else-if="column.key==='member'"><span>{{ item.member||'—' }}</span></template><template v-else-if="column.key==='project'"><span v-if="item.project" class="flow-resource"><LedgerResourceIcon :icon="item.projectIcon" type="project" :color="item.projectColor" compact /><span>{{ item.project }}</span></span><span v-else>—</span></template><template v-else-if="column.key==='note'"><span class="flow-note" :title="item.note||''">{{ item.note||'—' }}</span></template><template v-else-if="column.key==='amount'"><b :class="amountClass(item)">{{ amountPrefix(item) }}¥{{ money(item.amount) }}</b></template>
-                  </td><td class="flow-row-actions fixed-actions"><LedgerActionIcon action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon action="delete" label="删除流水" @click="deleteTarget=item" /></td>
+                  </td><td class="flow-row-actions fixed-actions"><LedgerActionIcon v-if="canWriteOwn" action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon v-if="canWrite(item)" action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon v-if="canWrite(item)" action="delete" label="删除流水" @click="deleteTarget=item" /></td>
                 </tr></template></tbody>
               </Table>
             </div>
@@ -79,11 +79,11 @@
                 <div class="flow-mobile-title"><strong>{{ item.payee||item.categoryName||(item.kind==='TRANSFER'?'账户互转':'未命名流水') }}</strong><span>{{ formatDate(item.occurredOn) }}</span></div>
                 <div class="flow-mobile-meta"><span>{{ item.accountName }}<template v-if="item.targetAccountName"> → {{ item.targetAccountName }}</template></span><span class="flow-mobile-resource"><i :style="{ background: item.categoryColor || item.parentCategoryColor || 'var(--muted)' }" />{{ item.categoryName||'未分类' }}</span><span v-if="item.member">{{ item.member }}</span><span v-if="item.project" class="flow-mobile-resource"><i :style="{ background: item.projectColor || 'var(--muted)' }" />{{ item.project }}</span></div>
                 <p v-if="item.note" class="flow-mobile-note" :title="item.note">{{ item.note }}</p>
-                <div class="flow-mobile-actions"><LedgerActionIcon action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon action="delete" label="删除流水" @click="deleteTarget=item" /></div>
+                <div class="flow-mobile-actions"><LedgerActionIcon v-if="canWriteOwn" action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon v-if="canWrite(item)" action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon v-if="canWrite(item)" action="delete" label="删除流水" @click="deleteTarget=item" /></div>
               </article>
             </div>
             <div v-else class="flow-mobile-list flow-mobile-day-list"><template v-for="group in transactionGroups" :key="group.date"><div class="flow-day-heading"><b>{{ formatDate(group.date) }}</b><span>收入 ¥{{ money(group.income) }} · 支出 ¥{{ money(group.expense) }}</span></div><article v-for="item in group.items" :key="item.id" class="flow-mobile-item">
-              <div class="flow-mobile-top"><span class="flow-kind" :class="`tone-${kindMeta(item.kind).tone}`">{{ kindMeta(item.kind).label }}</span><b :class="amountClass(item)">{{ amountPrefix(item) }}¥{{ money(item.amount) }}</b></div><div class="flow-mobile-title"><strong>{{ item.payee||item.categoryName||(item.kind==='TRANSFER'?'账户互转':'未命名流水') }}</strong><span>{{ formatDate(item.occurredOn) }}</span></div><div class="flow-mobile-meta"><span>{{ item.accountName }}<template v-if="item.targetAccountName"> → {{ item.targetAccountName }}</template></span><span class="flow-mobile-resource"><i :style="{ background: item.categoryColor || item.parentCategoryColor || 'var(--muted)' }" />{{ item.categoryName||'未分类' }}</span><span v-if="item.member">{{ item.member }}</span><span v-if="item.project" class="flow-mobile-resource"><i :style="{ background: item.projectColor || 'var(--muted)' }" />{{ item.project }}</span></div><p v-if="item.note" class="flow-mobile-note" :title="item.note">{{ item.note }}</p><div class="flow-mobile-actions"><LedgerActionIcon action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon action="delete" label="删除流水" @click="deleteTarget=item" /></div>
+              <div class="flow-mobile-top"><span class="flow-kind" :class="`tone-${kindMeta(item.kind).tone}`">{{ kindMeta(item.kind).label }}</span><b :class="amountClass(item)">{{ amountPrefix(item) }}¥{{ money(item.amount) }}</b></div><div class="flow-mobile-title"><strong>{{ item.payee||item.categoryName||(item.kind==='TRANSFER'?'账户互转':'未命名流水') }}</strong><span>{{ formatDate(item.occurredOn) }}</span></div><div class="flow-mobile-meta"><span>{{ item.accountName }}<template v-if="item.targetAccountName"> → {{ item.targetAccountName }}</template></span><span class="flow-mobile-resource"><i :style="{ background: item.categoryColor || item.parentCategoryColor || 'var(--muted)' }" />{{ item.categoryName||'未分类' }}</span><span v-if="item.member">{{ item.member }}</span><span v-if="item.project" class="flow-mobile-resource"><i :style="{ background: item.projectColor || 'var(--muted)' }" />{{ item.project }}</span></div><p v-if="item.note" class="flow-mobile-note" :title="item.note">{{ item.note }}</p><div class="flow-mobile-actions"><LedgerActionIcon v-if="canWriteOwn" action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon v-if="canWrite(item)" action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon v-if="canWrite(item)" action="delete" label="删除流水" @click="deleteTarget=item" /></div>
             </article></template></div>
           </template>
           <template #footer>
@@ -213,6 +213,11 @@ const draggingColumnKey = ref('')
 const dragOverColumnKey = ref('')
 const ledgerStore = useLedgerStore()
 const appStore = useAppStore()
+const canWriteOwn = computed(() => ledgerStore.currentBook?.roleCode === 'OWNER' || ledgerStore.currentBook?.permissions?.some(permission => ['TRANSACTION_OWN_WRITE', 'TRANSACTION_ANY_WRITE'].includes(permission)))
+function canWrite(item) {
+  return ledgerStore.currentBook?.roleCode === 'OWNER' || ledgerStore.currentBook?.permissions?.includes('TRANSACTION_ANY_WRITE') ||
+    (ledgerStore.currentBook?.permissions?.includes('TRANSACTION_OWN_WRITE') && String(item.createdBy) === String(appStore.authUser?.id))
+}
 const serverMode = computed(() => ledgerStore.online && Boolean(ledgerStore.currentBookId))
 const merchantOptions = computed(() => ledgerStore.visibleMerchants.map(item => item.name))
 const memberOptions = computed(() => ledgerStore.activeMembers.map(item => item.displayName || item.username))

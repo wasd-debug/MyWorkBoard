@@ -146,23 +146,32 @@ export const useLedgerStore = defineStore('ledger', {
       listenersInstalled = true
       window.addEventListener('online', () => {
         this.online = true
-        this.syncNow()
+        this.refreshServer()
       })
       window.addEventListener('offline', () => { this.online = false })
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && navigator.onLine) this.syncNow()
+        if (document.visibilityState === 'visible' && navigator.onLine) this.refreshServer()
       })
     },
 
     async selectBook(bookId) {
       if (!bookId || String(bookId) === String(this.currentBookId)) return
+      if (!this.books.some(book => String(book.id) === String(bookId))) throw new Error('该账本已不可访问，请刷新列表')
+      const previousBookId = this.currentBookId
       this.currentBookId = String(bookId)
       const storageKey = currentLedgerBookStorageKey(this.accountScope)
       if (storageKey) localStorage.setItem(storageKey, this.currentBookId)
-      await this.hydrate()
-      if (this.online) {
-        await this.refreshResources()
-        await this.syncNow()
+      try {
+        await this.hydrate()
+        if (this.online) {
+          await this.refreshResources()
+          await this.syncNow()
+        }
+      } catch (error) {
+        this.currentBookId = previousBookId
+        if (storageKey) localStorage.setItem(storageKey, previousBookId)
+        await this.hydrate()
+        throw error
       }
     },
 
@@ -179,18 +188,28 @@ export const useLedgerStore = defineStore('ledger', {
     },
 
     async refreshServer() {
+      if (!this.accountScope || !this.online) return
       const epoch = sessionEpoch
       try {
         await this.refreshBooks()
         if (epoch !== sessionEpoch) return
-        if (!this.books.length) return
+        if (!this.books.length) {
+          this.currentBookId = ''
+          return
+        }
+        let bookChanged = false
         if (!this.books.some(book => String(book.id) === String(this.currentBookId))) {
           this.currentBookId = String(this.books[0].id)
+          bookChanged = true
           const storageKey = currentLedgerBookStorageKey(this.accountScope)
           if (storageKey) localStorage.setItem(storageKey, this.currentBookId)
+          await this.hydrate()
         }
-        await this.refreshResources()
+        if (bookChanged) await this.refreshResources()
         await this.syncNow()
+        if (bookChanged && epoch === sessionEpoch && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('ledger-book-changed'))
+        }
       } catch (error) {
         if (epoch === sessionEpoch) this.syncError = error?.response?.data?.detail || error?.message || '账本加载失败'
       }
@@ -343,7 +362,7 @@ export const useLedgerStore = defineStore('ledger', {
       const epoch = sessionEpoch
       const scopedEngine = engine
       const bookId = this.currentBookId
-      if (activeSyncPromise?.epoch === epoch) return activeSyncPromise.promise
+      if (activeSyncPromise?.epoch === epoch && activeSyncPromise.bookId === bookId) return activeSyncPromise.promise
       this.syncing = true
       this.syncError = ''
       const promise = (async () => {
@@ -362,7 +381,7 @@ export const useLedgerStore = defineStore('ledger', {
           }
         }
       })()
-      activeSyncPromise = { epoch, promise }
+      activeSyncPromise = { epoch, bookId, promise }
       return promise
     },
 
