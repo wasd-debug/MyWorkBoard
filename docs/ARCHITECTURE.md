@@ -1,22 +1,22 @@
 # 个人效率中枢 · 整体架构设计与长期发展规划
 
-> 版本：v1.3（2026-09-17）
+> 版本：v1.4（2026-09-18）
 > 范围：基于现有 salary-sync（加班时长与时薪计算）系统，规划"工时 + 账本 + 任务 + AI"一体化个人效率平台的整体架构与演进路线。
 
-> 实施状态：当前处于 Phase 0/Phase 1 收口阶段。本文同时包含目标架构与实施计划；除明确标注“当前实现”的内容外，其余技术组件和阶段能力均为目标状态，不代表已经上线。
+> 实施状态：Phase 0/Phase 1 自动化收口已完成，真机验收和周期生产运维按发布记录持续执行。本文同时包含目标架构与实施计划；除明确标注“当前实现”的内容外，其余技术组件和阶段能力均为目标状态，不代表已经上线。
 
-## 0. 当前实施快照（2026-09-17）
+## 0. 当前实施快照（2026-09-18）
 
 | 阶段 | 状态 | 结论 |
 |---|---|---|
-| Phase 0 地基 | 工程收口完成、发布门禁未完成 | Flyway、JWT、工时资源前端、服务端计算、物理模块与 MySQL/迁移/E2E/恢复自动化已落地；OpenAPI 生成客户端、视觉/真机与周期运维记录仍待完成 |
-| Phase 1 账本 | local-first 主链完成、发布门禁未完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝及隔离 E2E 已通过；真实导入金额对账、WebKit/真机和视觉/无障碍仍待完成 |
+| Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
+| Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
 | Phase 2 任务 | 未启动 | 只有禁用导航占位，无领域模块、数据表和页面 |
 | Phase 3 RAG/Agent | 未启动主体 | 只有 OpenAI 兼容 LLM 网关及账本 AI 能力，无文件域、RAG、知识库和 Agent 编排 |
 | Phase 4 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
-| Phase 5 打磨 | 零散提前实现 | 已有响应式布局、主题和共享账本；PWA、搜索、可观测及自动恢复演练未实现 |
+| Phase 5 打磨 | 部分提前实现 | 已有响应式布局、主题、共享账本、自动视觉/无障碍和恢复演练；PWA、搜索及完整可观测体系未实现 |
 
-当前自动化结果为 Maven 58 个测试中 57 通过、1 个可选真实 Excel 用例跳过，前端 Node 41/41，Playwright 6/6，Vite 生产构建成功；Testcontainers MySQL/Flyway 与 tmpfs MySQL 恢复演练均实际执行。该结果不代表第 12.6 节中的 WebKit、视觉、无障碍和真机门禁已经满足。
+当前自动化结果为 Maven 默认套件 57 项通过、1 项真实 Excel fixture 按设计跳过，指定真实工作簿后 ledger 37/37；前端 Node/契约 44/44，OpenAPI 生成幂等与 TypeScript 严格编译通过；Docker 源码构建后的 Playwright 32 passed、4 项按项目设计 skipped，覆盖 Chromium/WebKit、320/375/768/1024/1440px、主题、键盘、axe 和旧路径 404。Flyway v11 与旧 schema 恢复演练均实际执行。第 12.6 节中的 Android Chrome 与 iOS Safari 真机验收仍需在实际设备上留档。
 
 ---
 
@@ -39,11 +39,11 @@
 
 ## 1. 现状评估与架构债务
 
-### 1.1 现有资产盘点（2026-09-17）
+### 1.1 现有资产盘点（2026-09-18）
 
 | 层 | 现状 | 评价 |
 |---|---|---|
-| 前端 | Vue 3 + Vite + Pinia + Vue Router + ECharts + Tailwind/token + Lucide；Element Plus 已移除 | 工时使用资源 API；账本六类资源使用 IndexedDB/oplog local-first，在线命令由 store facade 统一管理 |
+| 前端 | Vue 3 + Vite + Pinia + Vue Router + ECharts + Tailwind/token + Reka UI + Lucide；Element Plus 已移除 | 工时使用生成客户端访问资源 API；账本六类资源使用 IndexedDB/oplog local-first，在线命令由 store facade 统一管理 |
 | 后端 | Java 17 + Spring Boot 3.2；platform/identity/worktime/ledger/app 五个 Maven 模块 | 业务源码和单测已物理归属对应模块，app 仅装配应用、迁移资源和跨模块测试 |
 | 数据库 | MySQL 8 + Flyway V1-V11；用户、工时、账本、同步、定时任务、审计和 AI 草稿表 | 多用户和账本数据模型已落地；事件、任务、文件、RAG 和洞察读模型仍未落地 |
 | 鉴权 | Spring Security + JWT access token + HttpOnly refresh cookie；用户、角色和权限表 | 已替换静态 AccessCode；仍需限流、安全集成测试和更完整的会话运维能力 |
@@ -51,10 +51,10 @@
 
 ### 1.2 当前剩余架构债务
 
-1. **生成式 API 客户端仍未落地**：资源契约已通过 MockMvc 和 E2E 固定，但 `api-client` 仍以手写封装为主，尚未从 OpenAPI 自动生成。
+1. **真机发布记录仍需人工执行**：自动化已覆盖 WebKit 与移动视口，但 Android Chrome 和 iOS Safari 仍需在实际设备上各留一次结果。
 2. **前端聚合口径仍需继续收敛**：已保存工时使用服务端字段，`utils/calc.js` 保留未保存预览和页面周期聚合；后续跨域报表必须只使用服务端事实。
 3. **local-first 尚未扩展到后续领域**：账本已验证该模型，任务等未来领域仍需复用并重新验证同步契约。
-4. **发布质量门禁仍有缺口**：已有 MySQL/Flyway、契约、Chromium E2E 和恢复脚本，但缺 WebKit、视觉/无障碍、真机与生产周期演练记录。
+4. **生产运维需要持续证据**：恢复脚本已通过本地旧 schema 演练，仍需按季度在生产备份副本上执行并保存记录。
 5. **大型文件积累维护成本**：账本报表页面和账本服务已明显超出单文件易维护规模，需要在不改变业务契约的前提下按职责拆分。
 
 ---
@@ -343,7 +343,7 @@ salary_monthly  (id, user_id, month, salary_pre, salary_post)
 holiday         (id, year, date, name, is_off)          -- 从 resources JSON 迁入库表
 ```
 
-迁移要点：现有 `records` 表数据一次性脚本迁入 `work_record`（补 user_id=管理员）；`GET/PUT /api/data` 保留 6 个月兼容期后下线。
+迁移结果：现有 `records` 表数据已由版本化迁移写入 `work_record`（补 user_id=管理员）；`GET/PUT /api/data` 的过渡期已结束，控制器和运行时路径均已删除。
 
 ### 6.4 账本域（ledger）
 
@@ -565,10 +565,10 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 - [x] Flyway 接管表结构；`work_record` 迁移（含 user_id/revision），旧数据通过 V2 回填
 - [x] identity：注册/登录/JWT 双令牌/Spring Security；静态 AccessCode 已下线
 - [~] RBAC 表、审计 AOP/表/查询 API 已实现；全局 `@PreAuthorize` 策略与安全集成测试仍需补齐
-- [x] `/api/v1/worktime` 资源 CRUD 已实现并由工时前端使用；snapshot 与旧 `/api/data` 只保留后端兼容
+- [x] `/api/v1/worktime` 资源 CRUD 已实现并由工时前端使用；snapshot 与旧 `/api/data` 已删除
 - [x] 已保存记录的加班/时薪由后端持久化并有黄金样例，前端 `calc.js` 只用于表单预览和页面聚合
-- [~] 统一响应、异常和 springdoc 已实现；`api-client` 仍主要转导手写 API，未由 OpenAPI 生成
-- [~] Tailwind、`components.json`、语义 token、基础组件和响应式应用壳已建立；组件集仍不完整
+- [x] 统一 `ApiResponse<T>`、RFC 7807 `ApiProblem`、springdoc 与固定 operationId 已实现；`api-client` 由 OpenAPI Generator 生成
+- [x] Tailwind、语义 token、Reka UI 基础组件、响应式应用壳、focus-visible 和主题对比度门禁已建立
 - [x] 页面具备响应式布局，Element Plus 与图标包已清零，消息和图标使用本地服务/组件及 Lucide
 - **验收**：老数据无损迁移；登录后所有旧功能可用；ArchUnit 边界测试进 CI；操作日志可查；核心页面在手机、平板、电脑视口无横向溢出且交互可用。
 
@@ -578,10 +578,10 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 - [x] 账本首页、流水、报表、定时任务和管理响应式页面；桌面/移动布局已实现
 - [x] ECharts 账本报表、时间范围、报表库、图片导出和浏览器打印 PDF
 - [~] CSV/Excel 和随手记多 Sheet 导入导出已实现；MoneyWiz 映射无明确实现证据
-- [x] **离线同步引擎 v1** 覆盖 IndexedDB、oplog、游标、冲突/拒绝和用户/账本隔离；六类离线资源页面写路径已统一接入并通过 Chromium E2E
+- [x] **离线同步引擎 v1** 覆盖 IndexedDB、oplog、游标、冲突/拒绝和用户/账本隔离；六类离线资源页面写路径已统一接入并通过 Chromium/WebKit E2E
 - [x] 周期流水 + ShedLock 到期任务，支持固定日期和间隔规则
 - [x] OpenAI 兼容 LLM 网关、自然语言记账预览/确认、图片识别和月度分析（无 RAG）
-- **当前验收状态**：断网写入、刷新恢复、联网重放、冲突/拒绝及隔离的 desktop/mobile Chromium E2E 已建立；真实导入金额对账、WebKit/真机、视觉和无障碍仍未完成，因此本阶段仍未通过完整退出门禁。
+- **当前验收状态**：断网写入、刷新恢复、联网重放、冲突/拒绝、隔离、真实导入金额、Chromium/WebKit、多视口、视觉、键盘和无障碍自动化均已通过；真机结果单独留档。
 
 首页：可（增删）组件
 - 本月收支、结余数据总览（支出 收入 结余）（主组件）
@@ -688,7 +688,7 @@ Phase 0 地基 ──→ Phase 1 账本 ──→ Phase 2 任务 ──→ Phase
 
 ### 12.1.1 当前验证记录
 
-2026-09-17 收口结果：Maven 58 个测试中 57 通过、1 个可选真实 Excel 用例跳过；前端 Node 41/41；Vite 构建通过；Playwright 6/6。Testcontainers 实际执行 MySQL 权限/同步、Flyway 空库与旧 fixture 重放、工资口径；tmpfs MySQL 恢复演练完成核心数据对账、Flyway v11 validate 和健康检查。仍未执行完整 OpenAPI 生成客户端、WebKit、视觉回归、真机及生产周期恢复演练，因此 Phase 0/1 仍不得标记为通过全部退出门禁。
+2026-09-18 收口结果：Maven 默认套件 57 项通过、1 项真实 Excel fixture 按设计跳过，指定真实工作簿后 ledger 37/37；前端 Node/契约 44/44；OpenAPI 49 paths、70 operations、120 schemas，生成幂等和 TypeScript 严格编译通过；Vite 构建通过；Docker 源码构建后的 Playwright 32 passed、4 项按项目设计 skipped。Testcontainers 实际执行 MySQL 权限/同步、Flyway 空库与旧 fixture 重放、工资口径；旧 schema 恢复演练完成核心数据对账、Flyway v11 migrate/validate 和健康检查。Phase 0/1 自动化退出门禁已通过，真机和季度生产恢复演练按发布流程持续记录。
 
 ### 12.2 Phase 0 原始任务包与验收参考
 
@@ -700,13 +700,13 @@ Phase 0 地基 ──→ Phase 1 账本 ──→ Phase 2 任务 ──→ Phase
 | 0B 数据地基（1～1.5 周） | 引入 Flyway；创建 `app_user`、权限、审计和 `work_*` 新表；补唯一键、索引、时区字段；保留旧表 | 0A | V1～V3 迁移可重复执行；空库和带旧数据的库均能启动 |
 | 0C 身份与安全（1 周） | Spring Security；注册/登录/刷新/退出；短时 access token；刷新令牌吊销；租户上下文；统一 401/403 | 0B | 未认证不能访问业务 API；用户 A 无法读取用户 B；安全测试通过 |
 | 0D 工时资源化（1～1.5 周） | records/settings 迁移到 worktime；记录/设置 CRUD、分页和 `If-Match`；服务端权威计算；节假日版本化 | 0B、0C | 新旧接口结果对账；并发更新返回 409；计算黄金样例 100% 一致 |
-| 0E 兼容适配（3～5 天） | 旧 `/api/data` 变为兼容适配器；增加灰度开关、请求指标和弃用响应头；禁止新代码调用旧接口 | 0D | 旧前端仍可用；新前端可按开关切换；可一键退回旧读路径 |
+| 0E 兼容适配（已退出） | 迁移期间曾以旧 `/api/data` 兼容适配器完成行为对账；当前已删除适配器、灰度分支和旧前端调用 | 0D | 对账完成后只保留唯一 v1 资源路径 |
 | 0F 前端迁移（1.5～2 周） | `api-client` 按 OpenAPI 生成；Pinia 按域拆分；初始化 Tailwind CSS + shadcn-vue；建立 `components.json`、CSS tokens、`packages/ui` 和响应式应用壳；按页面顺序迁移；localStorage 一次性迁移；错误/登录过期状态统一处理 | 0D、0E | 新旧页面关键流程回归通过；目标页面不再引用 Element Plus；320/375/768/1024/1440px 视口无横向溢出；刷新/登出不会泄露凭据 |
 | 0G 地基验收（2～3 天） | Testcontainers 集成测试、契约测试、迁移重放、备份恢复演练、安全检查、视觉回归和键盘/触控可用性检查 | 0A～0F | 满足 12.5 的退出清单；形成发布说明和回滚步骤；核心页面通过桌面、Android Chrome、iOS Safari/PWA 验收 |
 
 ### 12.3 API v1 最小契约
 
-所有新接口统一挂在 `/api/v1`，旧接口只作为兼容层。响应使用 RFC 9457 Problem Details 风格的错误体，并携带 `trace_id`。
+所有业务接口统一挂在 `/api/v1`，不保留旧接口兼容层。成功响应使用 `ApiResponse<T>`，错误使用 RFC 7807 Problem Details，并携带 `code`、`traceId`、`path` 和 `timestamp`。
 
 ```text
 POST   /api/v1/auth/register
@@ -839,7 +839,7 @@ frontend/
 |---|---|
 | `frontend/src/utils/calc.js` | **主链已完成**：已保存记录使用后端计算字段；该文件仅服务未保存预览和页面聚合 |
 | `frontend/src/stores/app.js`（旧 localStorage 快照） | **已完成迁移**：工时拆到资源 store，账本拆到独立 store/sync-engine；app 只负责会话、主题和节假日 |
-| `backend/.../DataController`（GET/PUT /api/data） | **兼容层保留**：新前端只调用 `/api/v1/worktime/settings|records`，旧 `/api/data` 和 snapshot 仅供旧客户端 |
+| `backend/.../DataController`（GET/PUT /api/data） | **已删除**：前端只调用 `/api/v1/worktime/settings|records`，不再保留 `/api/data` 或 snapshot |
 | `schema.sql` 三表 | **已完成启动迁移**：Flyway V1-V3 建表/回填，`spring.sql.init.mode=never`；旧表仍按兼容策略保留 |
 | 静态 AccessCode 鉴权 | **已完成**：由 Spring Security + JWT 双令牌取代 |
 | `holidays/*.json` | **部分完成**：holiday 表已存在并优先查询，资源 JSON 仍作为回退/导入来源 |

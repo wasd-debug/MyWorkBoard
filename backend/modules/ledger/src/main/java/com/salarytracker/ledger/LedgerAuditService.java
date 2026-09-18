@@ -1,5 +1,6 @@
 package com.salarytracker.ledger;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -7,9 +8,12 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.LinkedHashMap;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
+
+import static com.salarytracker.ledger.LedgerModels.*;
 
 @Service
 public class LedgerAuditService {
@@ -23,61 +27,54 @@ public class LedgerAuditService {
         this.access = access;
     }
 
-    public void record(LedgerBookAccess.Context context,
-                       String action,
-                       String targetType,
-                       String targetPublicId,
-                       Object before,
-                       Object after) {
+    public void record(LedgerBookAccess.Context context, String action, String targetType,
+                       String targetPublicId, Object before, Object after) {
         jdbc.update(
                 "INSERT INTO ledger_audit_log(book_id,actor_user_id,action,target_type,target_public_id,before_json,after_json) " +
                         "VALUES(?,?,?,?,?,?,?)",
                 context.bookId(), context.userId(), action, targetType,
-                targetPublicId == null ? "" : targetPublicId,
-                jsonOrNull(before), jsonOrNull(after));
+                targetPublicId == null ? "" : targetPublicId, jsonOrNull(before), jsonOrNull(after));
     }
 
-    public Map<String, Object> list(String bookPublicId, int page, int pageSize) {
+    public AuditPage list(String bookPublicId, int page, int pageSize) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         boolean all = context.isAdmin() || context.permissions().contains("AUDIT_ALL_READ");
         if (!all) access.require(context, "AUDIT_SELF_READ");
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, pageSize), 100);
         String scope = all ? "" : " AND l.actor_user_id=?";
-        List<Object> args = new java.util.ArrayList<>();
+        List<Object> args = new ArrayList<>();
         args.add(context.bookId());
         if (!all) args.add(context.userId());
-        long total = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM ledger_audit_log l WHERE l.book_id=?" + scope,
+        long total = jdbc.queryForObject("SELECT COUNT(*) FROM ledger_audit_log l WHERE l.book_id=?" + scope,
                 Long.class, args.toArray());
         args.add((safePage - 1) * safeSize);
         args.add(safeSize);
-        List<Map<String, Object>> items = jdbc.queryForList(
+        List<AuditLog> items = DbRow.query(jdbc,
                 "SELECT l.id,l.action,l.target_type,l.target_public_id,l.before_json,l.after_json,l.created_at," +
-                        "u.id actor_user_id,u.username,u.nickname " +
-                        "FROM ledger_audit_log l JOIN app_user u ON u.id=l.actor_user_id " +
-                        "WHERE l.book_id=?" + scope + " ORDER BY l.id DESC LIMIT ?,?",
-                args.toArray()).stream().map(this::view).toList();
-        return page(items, total, safePage, safeSize);
+                        "u.id actor_user_id,u.username,u.nickname FROM ledger_audit_log l " +
+                        "JOIN app_user u ON u.id=l.actor_user_id WHERE l.book_id=?" + scope +
+                        " ORDER BY l.id DESC LIMIT ?,?", args.toArray()).stream().map(this::view).toList();
+        return new AuditPage(items, safePage, safeSize, total,
+                Math.max(1, (total + safeSize - 1) / safeSize));
     }
 
     @Transactional
-    public Map<String, Object> clear(String bookPublicId, List<Long> ids) {
+    public DeleteCount clear(String bookPublicId, List<Long> ids) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         if (!context.isAdmin()) access.require(context, "AUDIT_ALL_CLEAR");
         int deleted;
         if (ids == null || ids.isEmpty()) {
             deleted = jdbc.update("DELETE FROM ledger_audit_log WHERE book_id=?", context.bookId());
         } else {
-            String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
-            List<Object> args = new java.util.ArrayList<>();
+            String placeholders = String.join(",", Collections.nCopies(ids.size(), "?"));
+            List<Object> args = new ArrayList<>();
             args.add(context.bookId());
             args.addAll(ids);
-            deleted = jdbc.update(
-                    "DELETE FROM ledger_audit_log WHERE book_id=? AND id IN (" + placeholders + ")",
+            deleted = jdbc.update("DELETE FROM ledger_audit_log WHERE book_id=? AND id IN (" + placeholders + ")",
                     args.toArray());
         }
-        return Map.of("deleted", deleted);
+        return new DeleteCount(deleted);
     }
 
     @Scheduled(cron = "0 20 3 * * *", zone = "Asia/Shanghai")
@@ -87,71 +84,62 @@ public class LedgerAuditService {
         jdbc.update("DELETE FROM ledger_import_batch WHERE expires_at < CURRENT_TIMESTAMP");
     }
 
-    private Map<String, Object> view(Map<String, Object> row) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        Object before = parse(row.get("before_json"));
-        Object after = parse(row.get("after_json"));
-        result.put("id", number(row.get("id")));
-        result.put("action", row.get("action"));
-        result.put("targetType", row.get("target_type"));
-        result.put("targetId", row.get("target_public_id"));
-        result.put("targetName", targetName(String.valueOf(row.get("target_type")), after, before));
-        result.put("before", before);
-        result.put("after", after);
-        result.put("actor", Map.of(
-                "id", number(row.get("actor_user_id")),
-                "username", String.valueOf(row.get("username")),
-                "nickname", String.valueOf(row.get("nickname"))));
-        result.put("createdAt", row.get("created_at"));
-        return result;
+    private AuditLog view(DbRow row) {
+        ResourceType type = ResourceType.valueOf(text(row.get("target_type")));
+        EntitySnapshot before = snapshot(type, parse(row.get("before_json")));
+        EntitySnapshot after = snapshot(type, parse(row.get("after_json")));
+        return new AuditLog(number(row.get("id")), text(row.get("action")), type,
+                text(row.get("target_public_id")), targetName(type, after, before), before, after,
+                new Actor(number(row.get("actor_user_id")), text(row.get("username")), text(row.get("nickname"))),
+                text(row.get("created_at")));
     }
 
-    private String targetName(String type, Object after, Object before) {
-        List<Map<?, ?>> sources = new java.util.ArrayList<>();
-        if (after instanceof Map<?, ?> map && !map.isEmpty()) sources.add(map);
-        if (before instanceof Map<?, ?> map && !map.isEmpty()) sources.add(map);
-        for (Map<?, ?> source : sources) {
-            for (String key : List.of("name", "displayName", "category", "username", "label")) {
-                String value = text(source.get(key));
-                if (!value.isBlank()) return value;
+    private EntitySnapshot snapshot(ResourceType type, JsonNode node) {
+        if (node == null || node.isNull() || !node.isObject()) return null;
+        return new EntitySnapshot(type, string(node, "id"), string(node, "name"), string(node, "code"),
+                string(node, "username"), string(node, "displayName"), string(node, "category"),
+                string(node, "categoryId"), string(node, "monthKey"), string(node, "accountId"),
+                string(node, "occurredOn"), string(node, "payee"), decimal(node.get("amount")),
+                longValue(node.get("revision")), booleanValue(node.get("deleted")));
+    }
+
+    private String targetName(ResourceType type, EntitySnapshot after, EntitySnapshot before) {
+        for (EntitySnapshot source : new EntitySnapshot[] {after, before}) {
+            if (source == null) continue;
+            for (String value : new String[] {
+                    source.name(), source.displayName(), source.category(), source.username()
+            }) {
+                if (value != null && !value.isBlank()) return value;
             }
         }
-        if ("transaction".equals(type)) {
-            for (Map<?, ?> source : sources) {
-                String date = text(source.get("occurredOn"));
-                String payee = text(source.get("payee"));
-                String amount = text(source.get("amount"));
-                String label = String.join(" ", List.of(date, payee,
-                        amount.isBlank() ? "" : "¥" + amount)).trim().replaceAll("\\s+", " ");
-                if (!label.isBlank()) return label;
-            }
+        EntitySnapshot source = after != null ? after : before;
+        if (type == ResourceType.transaction && source != null) {
+            String amount = source.amount() == null ? "" : " ¥" + source.amount();
+            return String.join(" ", blank(source.occurredOn()), blank(source.payee())).trim() + amount;
         }
-        if ("budget".equals(type)) {
-            for (Map<?, ?> source : sources) {
-                String month = text(source.get("monthKey"));
-                if (!month.isBlank()) return month + " 预算";
-            }
+        if (type == ResourceType.budget && source != null && source.monthKey() != null) {
+            return source.monthKey() + " 预算";
         }
         return switch (type) {
-            case "account" -> "已删除账户";
-            case "category" -> "已删除分类";
-            case "merchant" -> "已删除商家";
-            case "member" -> "已删除成员";
-            case "project" -> "已删除项目";
-            case "role" -> "已删除角色";
-            case "book" -> "已删除账本";
-            case "transaction" -> "已删除流水";
-            default -> "已删除对象";
+            case account -> "已删除账户";
+            case category -> "已删除分类";
+            case merchant -> "已删除商家";
+            case member -> "已删除成员";
+            case project -> "已删除项目";
+            case role -> "已删除角色";
+            case book -> "已删除账本";
+            case transaction -> "已删除流水";
+            case budget -> "已删除预算";
         };
     }
 
-    private Map<String, Object> page(List<Map<String, Object>> items, long total, int page, int pageSize) {
-        return Map.of(
-                "items", items,
-                "page", page,
-                "pageSize", pageSize,
-                "total", total,
-                "totalPages", Math.max(1, (total + pageSize - 1) / pageSize));
+    private JsonNode parse(Object value) {
+        if (value == null) return null;
+        try {
+            return mapper.readTree(String.valueOf(value));
+        } catch (Exception exception) {
+            return null;
+        }
     }
 
     private String jsonOrNull(Object value) {
@@ -159,17 +147,25 @@ public class LedgerAuditService {
         try {
             return mapper.writeValueAsString(value);
         } catch (Exception exception) {
-            return "{}";
+            throw new IllegalStateException("无法记录账本审计日志", exception);
         }
     }
 
-    private Object parse(Object value) {
-        if (value == null) return null;
-        try {
-            return mapper.readValue(String.valueOf(value), Object.class);
-        } catch (Exception exception) {
-            return Map.of();
-        }
+    private String string(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        return value == null || value.isNull() ? null : value.asText();
+    }
+
+    private BigDecimal decimal(JsonNode value) {
+        return value == null || value.isNull() ? null : value.decimalValue();
+    }
+
+    private Long longValue(JsonNode value) {
+        return value == null || value.isNull() ? null : value.asLong();
+    }
+
+    private Boolean booleanValue(JsonNode value) {
+        return value == null || value.isNull() ? null : value.asBoolean();
     }
 
     private long number(Object value) {
@@ -178,5 +174,9 @@ public class LedgerAuditService {
 
     private String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
+    }
+
+    private String blank(String value) {
+        return value == null ? "" : value;
     }
 }

@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.salarytracker.ledger.LedgerModels.BudgetCommand;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -64,12 +66,12 @@ class LedgerBudgetValidationTest {
 
     @Test
     void requiresValidMonthAndPositiveAmount() {
-        assertEquals("2026-09", books.budgetMonth(Map.of("monthKey", "2026-09")));
+        assertEquals("2026-09", books.budgetMonth(new BudgetCommand(null, null, null, "2026-09", null)));
         assertEquals(new BigDecimal("1200.50"), books.positiveBudgetAmount("1200.5"));
         assertEquals("monthKey 必填", assertThrows(IllegalArgumentException.class,
-                () -> books.budgetMonth(Map.of())).getMessage());
+                () -> books.budgetMonth(new BudgetCommand(null, null, null, null, null))).getMessage());
         assertEquals("monthKey 格式不正确，应为 YYYY-MM", assertThrows(IllegalArgumentException.class,
-                () -> books.budgetMonth(Map.of("monthKey", "2026-13"))).getMessage());
+                () -> books.budgetMonth(new BudgetCommand(null, null, null, "2026-13", null))).getMessage());
         assertEquals("amount 必填", assertThrows(IllegalArgumentException.class,
                 () -> books.positiveBudgetAmount(null)).getMessage());
         assertEquals("预算金额必须大于 0", assertThrows(IllegalArgumentException.class,

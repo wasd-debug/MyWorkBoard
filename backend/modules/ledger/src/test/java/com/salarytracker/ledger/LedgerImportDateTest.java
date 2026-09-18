@@ -2,7 +2,12 @@ package com.salarytracker.ledger;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.Map;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+
+import com.salarytracker.ledger.LedgerModels.ImportRow;
+import com.salarytracker.ledger.LedgerModels.TransactionKind;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -13,8 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class LedgerImportDateTest {
     @Test
     void normalizesTemplateDateTimeToLedgerDate() {
-        assertEquals("2012-09-14", LedgerService.normalizeImportDate("2012-09-14 03:00:09"));
-        assertEquals("2026-09-01", LedgerService.normalizeImportDate("2026/9/1"));
+        assertEquals("2012-09-14", LedgerRules.normalizeImportDate("2012-09-14 03:00:09"));
+        assertEquals("2026-09-01", LedgerRules.normalizeImportDate("2026/9/1"));
         assertEquals("2026-09-08", LedgerImportService.normalizeImportDate("2026-09-08 11:00:45"));
         assertEquals("2026-09-08", LedgerImportService.normalizeImportDate("2026/9/8 11:00:45"));
         assertEquals("2019-08-01", LedgerImportService.normalizeImportDate("2019-08-01 09:12:00"));
@@ -22,13 +27,13 @@ class LedgerImportDateTest {
 
     @Test
     void rejectsInvalidImportDate() {
-        assertThrows(IllegalArgumentException.class, () -> LedgerService.normalizeImportDate("not-a-date"));
+        assertThrows(IllegalArgumentException.class, () -> LedgerRules.normalizeImportDate("not-a-date"));
     }
 
     @Test
     void treatsNullExcelCellAsBlank() {
-        assertEquals("", LedgerService.normalizeImportCell(null));
-        assertEquals("支付宝", LedgerService.normalizeImportCell("  支付宝  "));
+        assertEquals("", LedgerRules.normalizeImportCell(null));
+        assertEquals("支付宝", LedgerRules.normalizeImportCell("  支付宝  "));
     }
 
     @Test
@@ -63,21 +68,12 @@ class LedgerImportDateTest {
 
     @Test
     void fingerprintCanonicalizesMissingPrimaryCategoryToOther() {
-        Map<String, Object> source = Map.of(
-                "kind", "EXPENSE",
-                "occurredOn", "2026-09-08",
-                "amount", "12.00",
-                "account", "现金",
-                "category", "早餐",
-                "source", "import-suishouji");
-        Map<String, Object> stored = Map.of(
-                "kind", "EXPENSE",
-                "occurredOn", "2026-09-08",
-                "amount", "12.00",
-                "account", "现金",
-                "parentCategory", "其他",
-                "category", "早餐",
-                "source", "import-suishouji");
+        ImportRow source = new ImportRow("支出", 2, "VALID", List.of(), TransactionKind.EXPENSE,
+                LocalDate.of(2026, 9, 8), null, "早餐", "现金", null,
+                new BigDecimal("12.00"), null, null, null, null, "import-suishouji");
+        ImportRow stored = new ImportRow("支出", 2, "VALID", List.of(), TransactionKind.EXPENSE,
+                LocalDate.of(2026, 9, 8), "其他", "早餐", "现金", null,
+                new BigDecimal("12.00"), null, null, null, null, "import-suishouji");
         assertEquals(LedgerImportService.fingerprint(source), LedgerImportService.fingerprint(stored));
     }
 

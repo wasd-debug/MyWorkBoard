@@ -175,10 +175,18 @@ current_version="$(root_sql "SELECT version FROM \`${TARGET_DATABASE}\`.flyway_s
 for table in "${CORE_TABLES[@]}"; do
   source_count="$(<"$TMP_DIR/source-$table.count")"
   target_count="$(database_count "$TARGET_DATABASE" "$table")"
-  [[ "$source_count" == "$target_count" ]] || {
-    echo "迁移后数据对账失败：$table source=$source_count target=$target_count" >&2
-    exit 1
-  }
+  if [[ "$source_count" == "MISSING" ]]; then
+    [[ "$target_count" != "MISSING" ]] || {
+      echo "迁移后核心表仍缺失：$table" >&2
+      exit 1
+    }
+    echo "  $table=CREATED($target_count)"
+  else
+    [[ "$source_count" == "$target_count" ]] || {
+      echo "迁移后数据对账失败：$table source=$source_count target=$target_count" >&2
+      exit 1
+    }
+  fi
 done
 
 echo "恢复演练通过：backup=$BACKUP_OUTPUT flyway=$current_version health=http://127.0.0.1:${HEALTH_PORT}/api/health"

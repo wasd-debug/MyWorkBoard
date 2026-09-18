@@ -16,18 +16,18 @@
             </button>
             <Transition name="nav-collapse">
             <div v-show="isGroupOpen(group)" class="nav-group-items">
-              <router-link
+              <component
+                :is="item.disabled ? 'span' : 'router-link'"
                 v-for="item in group.items"
                 :key="item.key"
-                :to="item.to"
+                :to="item.disabled ? undefined : item.to"
                 :class="{ 'nav-item-disabled': item.disabled, 'nav-item-current': isNavItemActive(item) }"
                 :aria-disabled="item.disabled || undefined"
-                @click="item.disabled && $event.preventDefault()"
               >
                 <component :is="item.icon" class="nav-item-icon" aria-hidden="true" />
                 <span>{{ item.label }}</span>
                 <span v-if="item.disabled" class="nav-item-soon">即将开放</span>
-              </router-link>
+              </component>
             </div>
             </Transition>
           </section>
@@ -72,7 +72,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElMessage } from './services/message.js'
+import { message } from './services/message.js'
 import { useAppStore } from './stores/app'
 import { useWorktimeStore } from './stores/worktime.js'
 import { useRoute } from 'vue-router'
@@ -169,8 +169,8 @@ async function setBasis(value) {
 }
 
 function onSyncClick() {
-  if (store.dbMode) ElMessage.success('数据已安全同步到数据库')
-  else store.connectDb().then(() => store.dbMode ? ElMessage.success('已连接数据库') : ElMessage.warning(store.authRequired ? '请先登录' : '数据库仍不可用'))
+  if (store.dbMode) message.success('数据已安全同步到数据库')
+  else store.connectDb().then(() => store.dbMode ? message.success('已连接数据库') : message.warning(store.authRequired ? '请先登录' : '数据库仍不可用'))
 }
 
 onMounted(() => { store.init() })

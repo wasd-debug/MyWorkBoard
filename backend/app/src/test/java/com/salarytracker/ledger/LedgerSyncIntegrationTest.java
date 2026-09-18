@@ -9,12 +9,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+
+import static com.salarytracker.ledger.LedgerModels.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -35,7 +35,7 @@ class LedgerSyncIntegrationTest extends MySqlIntegrationTestSupport {
         String projectId = uuid();
         String budgetId = uuid();
         String transactionId = uuid();
-        List<Map<String, Object>> operations = List.of(
+        List<SyncOperationRequest> operations = List.of(
                 op("op-account", "account", accountId, Map.of(
                         "id", accountId, "name", "现金", "accountType", "cash", "currency", "CNY")),
                 op("op-category-primary", "category", primaryCategoryId, Map.of(
@@ -47,25 +47,26 @@ class LedgerSyncIntegrationTest extends MySqlIntegrationTestSupport {
                 op("op-project", "project", projectId, Map.of(
                         "id", projectId, "name", "日常", "color", "#0f5132")),
                 op("op-budget", "budget", budgetId, Map.of(
-                        "id", budgetId, "monthKey", "2026-09", "amount", "1200.00", "categoryId", primaryCategoryId)),
+                        "id", budgetId, "monthKey", "2026-09", "budget", "1200.00", "categoryId", primaryCategoryId)),
                 op("op-transaction", "transaction", transactionId, Map.ofEntries(
                         Map.entry("id", transactionId), Map.entry("kind", "EXPENSE"),
                         Map.entry("amount", "28.50"), Map.entry("occurredOn", "2026-09-17"),
                         Map.entry("accountId", accountId), Map.entry("categoryId", categoryId),
                         Map.entry("merchantId", merchantId), Map.entry("projectId", projectId))));
 
-        Map<String, Object> first = fixture.sync.push(fixture.bookId, operations);
-        assertEquals(7L, first.get("applied"));
-        assertTrue(results(first).stream().allMatch(item -> "APPLIED".equals(item.get("status"))));
+        SyncPushResponse first = fixture.sync.push(fixture.bookId, operations);
+        assertEquals(7L, first.applied());
+        assertTrue(first.results().stream().allMatch(item -> item.status() == SyncStatus.APPLIED));
 
-        Map<String, Object> pulled = fixture.sync.pull(fixture.bookId, 0, 500);
-        Set<String> types = operations(pulled).stream()
-                .map(item -> String.valueOf(item.get("entityType"))).collect(java.util.stream.Collectors.toSet());
-        assertTrue(types.containsAll(Set.of("account", "category", "merchant", "project", "budget", "transaction")));
+        SyncPullResponse pulled = fixture.sync.pull(fixture.bookId, 0, 500);
+        Set<ResourceType> types = pulled.operations().stream()
+                .map(SyncChange::entityType).collect(java.util.stream.Collectors.toSet());
+        assertTrue(types.containsAll(Set.of(ResourceType.account, ResourceType.category,
+                ResourceType.merchant, ResourceType.project, ResourceType.budget, ResourceType.transaction)));
 
-        Map<String, Object> replay = fixture.sync.push(fixture.bookId, operations);
-        assertEquals(7L, replay.get("duplicates"));
-        assertTrue(results(replay).stream().allMatch(item -> "DUPLICATE".equals(item.get("status"))));
+        SyncPushResponse replay = fixture.sync.push(fixture.bookId, operations);
+        assertEquals(7L, replay.duplicates());
+        assertTrue(replay.results().stream().allMatch(item -> item.status() == SyncStatus.DUPLICATE));
         assertEquals(1L, count("ledger_account", accountId));
         assertEquals(1L, count("ledger_transaction", transactionId));
     }
@@ -77,17 +78,17 @@ class LedgerSyncIntegrationTest extends MySqlIntegrationTestSupport {
         fixture.sync.push(fixture.bookId, List.of(op("create-account", "account", accountId,
                 Map.of("id", accountId, "name", "现金", "accountType", "cash"))));
 
-        Map<String, Object> response = fixture.sync.push(fixture.bookId, List.of(
+        SyncPushResponse response = fixture.sync.push(fixture.bookId, List.of(
                 op("stale-account", "account", accountId, "0", Map.of("id", accountId, "name", "旧名称")),
                 op("invalid-budget", "budget", uuid(), Map.of(
-                        "id", uuid(), "monthKey", "2026-09", "amount", 0))));
+                        "id", uuid(), "monthKey", "2026-09", "budget", 0))));
 
-        List<Map<String, Object>> results = results(response);
-        assertEquals("stale-account", results.get(0).get("opId"));
-        assertEquals("CONFLICT", results.get(0).get("status"));
-        assertEquals(1L, results.get(0).get("serverRevision"));
-        assertEquals("invalid-budget", results.get(1).get("opId"));
-        assertEquals("REJECTED", results.get(1).get("status"));
+        List<SyncOperationResult> results = response.results();
+        assertEquals("stale-account", results.get(0).opId());
+        assertEquals(SyncStatus.CONFLICT, results.get(0).status());
+        assertEquals(1L, results.get(0).serverRevision());
+        assertEquals("invalid-budget", results.get(1).opId());
+        assertEquals(SyncStatus.REJECTED, results.get(1).status());
     }
 
     private Fixture fixture(String prefix) {
@@ -106,30 +107,15 @@ class LedgerSyncIntegrationTest extends MySqlIntegrationTestSupport {
         return new Fixture(bookId, new LedgerSyncService(jdbc, mapper, access, books, transactions));
     }
 
-    private Map<String, Object> op(String opId, String type, String entityId, Map<String, Object> payload) {
+    private SyncOperationRequest op(String opId, String type, String entityId, Map<String, Object> payload) {
         return op(opId, type, entityId, null, payload);
     }
 
-    private Map<String, Object> op(String opId, String type, String entityId,
-                                   String baseRevision, Map<String, Object> payload) {
-        Map<String, Object> operation = new LinkedHashMap<>();
-        operation.put("opId", opId);
-        operation.put("entityType", type);
-        operation.put("entityId", entityId);
-        operation.put("operation", "UPSERT");
-        operation.put("payload", payload);
-        if (baseRevision != null) operation.put("baseRevision", baseRevision);
-        return operation;
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> results(Map<String, Object> response) {
-        return (List<Map<String, Object>>) response.get("results");
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> operations(Map<String, Object> response) {
-        return (List<Map<String, Object>>) response.get("operations");
+    private SyncOperationRequest op(String opId, String type, String entityId,
+                                    String baseRevision, Map<String, Object> payload) {
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        return new SyncOperationRequest(opId, ResourceType.valueOf(type), entityId, SyncAction.UPSERT,
+                baseRevision == null ? null : Long.valueOf(baseRevision), mapper.convertValue(payload, SyncPayload.class));
     }
 
     private long count(String table, String publicId) {

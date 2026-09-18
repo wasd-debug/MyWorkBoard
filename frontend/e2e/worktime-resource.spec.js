@@ -1,6 +1,13 @@
 import { test, expect } from '@playwright/test'
 import { registerUser } from './helpers.js'
 
+test('removed API aliases return 404 without authentication', async ({ request }) => {
+  for (const path of ['/api/data', '/api/auth/login', '/api/worktime/snapshot', '/api/ledger/books', '/api/holidays']) {
+    const response = await request.get(path)
+    expect(response.status(), `${path} should stay removed`).toBe(404)
+  }
+})
+
 test('worktime UI reads and writes resources without snapshot requests', async ({ page }) => {
   const auth = await registerUser(page.request, 'worktime-resource-e2e')
   const requests = []
@@ -61,4 +68,20 @@ test('worktime UI reads and writes resources without snapshot requests', async (
   })
   expect(recordsResponse.ok(), await recordsResponse.text()).toBeTruthy()
   expect((await recordsResponse.json()).data).toEqual([])
+
+  const removedRoutes = [
+    { method: 'post', path: '/api/auth/login', data: {} },
+    { method: 'get', path: '/api/worktime/settings' },
+    { method: 'get', path: '/api/ledger/books' },
+    { method: 'get', path: '/api/data' },
+    { method: 'get', path: '/api/v1/worktime/snapshot' }
+  ]
+  for (const route of removedRoutes) {
+    const response = await page.request.fetch(route.path, {
+      method: route.method,
+      headers: { Authorization: `Bearer ${auth.accessToken}` },
+      data: route.data
+    })
+    expect(response.status(), `${route.method.toUpperCase()} ${route.path} must not remain routable`).toBe(404)
+  }
 })

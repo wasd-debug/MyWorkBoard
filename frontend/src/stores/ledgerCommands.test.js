@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createPinia, setActivePinia } from 'pinia'
-import { api } from '../api/index.js'
+import { api } from '../../packages/api-client/src/index.js'
 import { useLedgerStore } from './ledger.js'
 
 function response(config, data) {
@@ -55,7 +55,7 @@ test('all offline ledger resources write projections and oplog entries', async t
     ['category', { name: '餐饮', kind: 'EXPENSE' }, 'categories'],
     ['merchant', { name: '街角餐厅' }, 'merchants'],
     ['project', { name: '日常' }, 'projects'],
-    ['budget', { monthKey: '2026-09', amount: 1200 }, 'budgets']
+    ['budget', { monthKey: '2026-09', budget: 1200 }, 'budgets']
   ]
 
   for (const [type, payload, stateKey] of resources) {
@@ -102,19 +102,19 @@ test('refreshServer hydrates resources when a persisted current book is still va
   const originalAdapter = api.defaults.adapter
   store.online = true
   api.defaults.adapter = async config => {
-    if (config.url === '/v1/ledger/books') {
+    if (config.url === '/api/v1/ledger/books') {
       return response(config, [{ id: 'book-offline', name: 'Offline', roleCode: 'OWNER' }])
     }
-    if (config.url.endsWith('/accounts')) {
+    if (config.url.includes('/accounts')) {
       return response(config, [{ id: 'account-1', name: '现金', accountType: 'cash', revision: 1 }])
     }
-    if (config.url.endsWith('/categories') || config.url.endsWith('/merchants') ||
-        config.url.endsWith('/members') || config.url.endsWith('/projects') ||
-        config.url.endsWith('/roles') || config.url.endsWith('/budgets')) {
+    if (config.url.includes('/categories') || config.url.includes('/merchants') ||
+        config.url.includes('/members') || config.url.includes('/projects') ||
+        config.url.includes('/roles') || config.url.includes('/budgets')) {
       return response(config, [])
     }
     if (config.url.endsWith('/sync/push')) return response(config, { results: [] })
-    if (config.url.endsWith('/sync/pull')) return response(config, { operations: [], cursor: 0, hasMore: false })
+    if (config.url.includes('/sync/pull')) return response(config, { operations: [], cursor: 0, hasMore: false })
     throw new Error(`unexpected request: ${config.method} ${config.url}`)
   }
   t.after(() => { api.defaults.adapter = originalAdapter })

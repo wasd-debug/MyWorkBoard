@@ -4,9 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.salarytracker.identity.CurrentUserResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 
 import java.util.List;
 import java.util.Map;
+
+import com.salarytracker.worktime.WorktimeModels.SettingsUpdate;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -21,13 +24,13 @@ class WorktimeSettingsTest {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         CurrentUserResolver currentUser = mock(CurrentUserResolver.class);
         when(currentUser.id()).thenReturn(7L);
-        when(jdbcTemplate.queryForList(anyString(), any(Object[].class))).thenReturn(List.of());
-        when(jdbcTemplate.queryForList(
-                eq("SELECT revision FROM work_setting WHERE user_id = ?"), eq(7L)))
-                .thenReturn(List.of(Map.of("revision", 4L)));
+        when(jdbcTemplate.query(anyString(), any(RowMapper.class), any(Object[].class))).thenReturn(List.of());
+        when(jdbcTemplate.query(
+                eq("SELECT revision FROM work_setting WHERE user_id = ?"), any(RowMapper.class), eq(7L)))
+                .thenReturn(List.of(4L));
         WorktimeService service = new WorktimeService(jdbcTemplate, new ObjectMapper(), currentUser);
 
-        service.writeSettings(Map.of("salaries", Map.of()), "4");
+        service.writeSettings(new SettingsUpdate(null, null, null, null, null, null, null, null, Map.of()), "4");
 
         verify(jdbcTemplate).update("DELETE FROM salary_monthly WHERE user_id = ?", 7L);
     }

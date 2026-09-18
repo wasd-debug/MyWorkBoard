@@ -50,7 +50,7 @@
           <template #header>
             <div class="flow-table-head">
               <div><div class="flow-card-kicker">TRANSACTION LEDGER</div><h2>流水明细</h2></div>
-              <div class="flow-table-tools"><div class="flow-view-switch" role="group" aria-label="流水展示方式"><button type="button" :class="{active:displayMode==='flat'}" @click="displayMode='flat'">平铺</button><button type="button" :class="{active:displayMode==='day'}" @click="displayMode='day'">按天</button></div><div class="flow-search"><input v-model="searchText" class="ui-input" placeholder="搜索商家、项目、成员或备注"><button v-if="searchText" type="button" aria-label="清空搜索" @click="searchText=''">×</button></div></div>
+              <div class="flow-table-tools"><div class="flow-view-switch" role="group" aria-label="流水展示方式"><button type="button" :class="{active:displayMode==='flat'}" @click="displayMode='flat'">平铺</button><button type="button" :class="{active:displayMode==='day'}" @click="displayMode='day'">按天</button></div><div class="flow-search"><input v-model="searchText" class="ui-input" aria-label="搜索流水" placeholder="搜索商家、项目、成员或备注"><button v-if="searchText" type="button" aria-label="清空搜索" @click="searchText=''">×</button></div></div>
             </div>
           </template>
 
@@ -140,8 +140,8 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Lock, Rank, SortDown, SortUp, Unlock } from '../icons.js'
-import { ElMessage } from '../services/message.js'
-import { apiListLedgerTransactions } from '../api'
+import { message } from '../services/message.js'
+import { apiListLedgerTransactions } from '../../packages/api-client/src/index.js'
 import LedgerTransactionEditor from '../components/ledger/LedgerTransactionEditor.vue'
 import LedgerTransactionFilters from '../components/ledger/LedgerTransactionFilters.vue'
 import LedgerResourceIcon from '../components/ledger/LedgerResourceIcon.vue'
@@ -376,9 +376,9 @@ async function resolveConflict(conflict, strategy) {
     await ledgerStore.syncNow()
     applyCachedData()
     if (ledgerStore.online && ledgerStore.pending === 0) await loadPage()
-    ElMessage.success(strategy === 'server' ? '已采用服务端版本' : '已按服务端最新版本重试本地修改')
+    message.success(strategy === 'server' ? '已采用服务端版本' : '已按服务端最新版本重试本地修改')
   } catch (error) {
-    ElMessage.error(error.response?.data?.detail || error.message || '冲突处理失败')
+    message.error(error.response?.data?.detail || error.message || '冲突处理失败')
   } finally {
     resolvingConflictId.value = ''
   }
@@ -392,9 +392,9 @@ async function exportRejectedOperations() {
     link.download = `ledger-rejected-${ledgerStore.currentBookId || 'unknown'}.json`
     link.click()
     window.setTimeout(() => URL.revokeObjectURL(url), 0)
-    ElMessage.success('拒绝记录已导出')
+    message.success('拒绝记录已导出')
   } catch (error) {
-    ElMessage.error(error.message || '拒绝记录导出失败')
+    message.error(error.message || '拒绝记录导出失败')
   }
 }
 async function saveTransaction() {
@@ -411,7 +411,7 @@ async function saveTransaction() {
       : payload)
     editorOpen.value = false
     applyCachedData()
-    ElMessage.success(ledgerStore.online ? (editing.value ? '流水已更新' : '流水已添加') : '已离线保存，联网后自动同步')
+    message.success(ledgerStore.online ? (editing.value ? '流水已更新' : '流水已添加') : '已离线保存，联网后自动同步')
     if (ledgerStore.online) {
       await ledgerStore.syncNow()
       if (!ledgerStore.syncError) {
@@ -420,7 +420,7 @@ async function saveTransaction() {
       }
     }
   } catch (error) {
-    ElMessage.error(error.response?.data?.detail || error.message || '流水保存失败')
+    message.error(error.response?.data?.detail || error.message || '流水保存失败')
   } finally {
     saving.value = false
   }
@@ -432,7 +432,7 @@ async function removeTransaction() {
     await ledgerStore.deleteTransaction(deleteTarget.value)
     deleteTarget.value = null
     applyCachedData()
-    ElMessage.success(ledgerStore.online ? '流水已删除' : '已离线删除，联网后自动同步')
+    message.success(ledgerStore.online ? '流水已删除' : '已离线删除，联网后自动同步')
     if (ledgerStore.online) {
       await ledgerStore.syncNow()
       if (!ledgerStore.syncError) {
@@ -441,7 +441,7 @@ async function removeTransaction() {
       }
     }
   } catch (error) {
-    ElMessage.error(error.response?.data?.detail || error.message || '流水删除失败')
+    message.error(error.response?.data?.detail || error.message || '流水删除失败')
   } finally {
     deleting.value = false
   }
@@ -482,7 +482,7 @@ async function loadPage() {
     applyCachedData()
     serverTotal.value = filteredTransactions.value.length
     serverSummary.value = null
-    ElMessage.error(error.response?.data?.detail || '流水读取失败')
+    message.error(error.response?.data?.detail || '流水读取失败')
   } finally {
     if (requestId === requestSequence) loading.value = false
   }
@@ -497,7 +497,7 @@ async function loadData() {
     loading.value = false
     if (serverMode.value) await loadPage()
   } catch (error) {
-    ElMessage.error(error.response?.data?.detail || '流水读取失败')
+    message.error(error.response?.data?.detail || '流水读取失败')
   } finally {
     loading.value = false
   }
@@ -541,38 +541,38 @@ onBeforeUnmount(() => {
 .flow-heading-actions { display: flex; align-items: center; gap: 8px }
 .flow-heading-actions svg { width: 15px; height: 15px }
 .flow-sync-status { margin: -8px 0 18px; border: 1px solid color-mix(in srgb,var(--accent) 28%,var(--line)); border-radius: 6px; background: color-mix(in srgb,var(--accent-soft) 46%,var(--card)); overflow: hidden }
-.flow-sync-summary { display: flex; min-height: 40px; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 7px 12px; color: var(--ink2); font-size: 11px }
+.flow-sync-summary { display: flex; min-height: 40px; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 7px 12px; color: var(--ink2); font-size:12px }
 .flow-sync-summary span { display: inline-flex; align-items: center; gap: 5px; font-weight: 650 }
 .flow-sync-summary span::before { width: 6px; height: 6px; border-radius: 50%; background: var(--down); content: '' }
 .flow-sync-summary span.warning::before { background: var(--accent) }.flow-sync-summary span.danger::before { background: var(--up) }
-.flow-sync-export,.flow-sync-issue button { min-height: 28px; padding: 4px 9px; border: 1px solid var(--line2); border-radius: 4px; background: var(--card); color: var(--ink2); font-size: 11px; font-weight: 650 }
+.flow-sync-export,.flow-sync-issue button { min-height: 28px; padding: 4px 9px; border: 1px solid var(--line2); border-radius: 4px; background: var(--card); color: var(--ink2); font-size:12px; font-weight: 650 }
 .flow-sync-export { margin-left: auto }
 .flow-sync-export:hover,.flow-sync-issue button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent) }
 .flow-sync-issue { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--card) }
 .flow-sync-issue p { display: grid; min-width: 0; grid-template-columns: auto auto; gap: 2px 8px; margin: 0 }
-.flow-sync-issue strong { color: var(--up); font-size: 11px }.flow-sync-issue span { color: var(--ink2); font-size: 11px }.flow-sync-issue small { grid-column: 1/-1; color: var(--muted); font-size: 10px }
+.flow-sync-issue strong { color: var(--up); font-size:12px }.flow-sync-issue span { color: var(--ink2); font-size:12px }.flow-sync-issue small { grid-column: 1/-1; color: var(--muted); font-size:12px }
 .flow-sync-issue>div { display: flex; flex: 0 0 auto; gap: 6px }.flow-sync-issue button:disabled { opacity: .48 }
 .flow-workspace { display: grid; grid-template-columns: 252px minmax(0,1fr); gap: 18px; align-items: start }
 .flow-sidebar { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 22px }
 .flow-sidebar :deep(.card) { padding: 18px }
-.flow-card-kicker { color: var(--muted); font-size: 10px; font-weight: 650; letter-spacing: .16em }
+.flow-card-kicker { color: var(--muted); font-size:12px; font-weight: 650; letter-spacing: .16em }
 .flow-result-count { display: flex; align-items: baseline; gap: 7px; margin: 7px 0 17px }
 .flow-result-count strong { color: var(--ink); font: 700 34px Georgia,serif }
-.flow-result-count span { color: var(--muted); font-size: 11px }
+.flow-result-count span { color: var(--muted); font-size:12px }
 .flow-summary-list { display: flex; flex-direction: column; gap: 10px; padding: 14px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line) }
-.flow-summary-list div { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 11px }
+.flow-summary-list div { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size:12px }
 .flow-summary-list b { font-size: 13px; font-variant-numeric: tabular-nums }
 .flow-income { color: var(--down) !important }
 .flow-expense { color: var(--up) !important }
 .flow-transfer { color: var(--ink2) !important }
 .flow-kind-summary { display: flex; flex-direction: column; padding-top: 12px }
-.flow-kind-summary button { display: flex; align-items: center; justify-content: space-between; min-height: 31px; padding: 0 6px; border: 0; border-radius: 3px; background: transparent; color: var(--ink2); font-size: 11px }
+.flow-kind-summary button { display: flex; align-items: center; justify-content: space-between; min-height: 31px; padding: 0 6px; border: 0; border-radius: 3px; background: transparent; color: var(--ink2); font-size:12px }
 .flow-kind-summary button:hover,.flow-kind-summary button.active { background: var(--accent-soft); color: var(--ink) }
 .flow-kind-summary button span { display: inline-flex; align-items: center; gap: 8px }
 .flow-kind-summary i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted) }
 .flow-kind-summary i.tone-in { background: var(--down) }.flow-kind-summary i.tone-out { background: var(--up) }.flow-kind-summary i.tone-transfer { background: var(--ink2) }
 .flow-card-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 17px; color: var(--ink); font-size: 13px; font-weight: 700 }
-.flow-card-title small { color: var(--muted); font-size: 10px; font-weight: 500 }
+.flow-card-title small { color: var(--muted); font-size:12px; font-weight: 500 }
 .flow-main { min-width: 0 }
 .flow-table-card { padding: 0; overflow: hidden }
 .flow-table-card :deep(> header) { padding: 19px 20px 16px; border-bottom: 1px solid var(--line) }
@@ -581,7 +581,7 @@ onBeforeUnmount(() => {
 .flow-table-head { display: flex; align-items: center; justify-content: space-between; gap: 20px }
 .flow-table-tools { display:flex; align-items:center; justify-content:flex-end; gap:10px; min-width:0 }
 .flow-view-switch { display:flex; flex:0 0 auto; align-items:center; gap:2px; padding:2px; border:1px solid var(--line2); border-radius:4px; background:var(--paper) }
-.flow-view-switch button { height:27px; padding:0 9px; border:0; border-radius:3px; background:transparent; color:var(--muted); font-size:10px }
+.flow-view-switch button { height:27px; padding:0 9px; border:0; border-radius:3px; background:transparent; color:var(--muted); font-size:12px }
 .flow-view-switch button.active { background:var(--card); color:var(--accent); box-shadow:0 1px 3px #00000012; font-weight:650 }
 .flow-table-head h2 { margin: 3px 0 0; color: var(--ink); font: 700 21px Georgia,serif }
 .flow-search { position: relative; width: min(330px,42vw) }
@@ -593,12 +593,12 @@ onBeforeUnmount(() => {
 .flow-desktop-table :deep(.ui-table) { width: max-content; min-width: 100%; table-layout: fixed }
 .flow-desktop-table :deep(th) { position: sticky; top: 0; z-index: 4; height: 42px; padding: 0 12px; background: var(--paper); white-space: nowrap }
 .flow-desktop-table :deep(td) { height: 50px; padding: 8px 12px; overflow: hidden; background: var(--card); text-overflow: ellipsis; white-space: nowrap }
-.flow-desktop-table :deep(td small) { display: block; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis }
+.flow-desktop-table :deep(td small) { display: block; overflow: hidden; color: var(--muted); font-size:12px; text-overflow: ellipsis }
 .flow-desktop-table :deep(tr:hover td) { background: var(--accent-soft) }
-.flow-sort-button { display: inline-flex; align-items: center; gap: 4px; width: 100%; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 10px; font-weight: 650; letter-spacing: .08em; text-align: left }
+.flow-sort-button { display: inline-flex; align-items: center; gap: 4px; width: 100%; padding: 0; border: 0; background: transparent; color: var(--muted); font-size:12px; font-weight: 650; letter-spacing: .08em; text-align: left }
 .flow-sort-button svg { width: 12px; height: 12px; color: var(--accent) }
-.flow-day-divider td { height:36px!important; padding:7px 12px!important; background:var(--paper)!important; border-bottom:1px solid var(--line); color:var(--ink2); font-size:11px }
-.flow-day-divider td span { margin-left:12px; color:var(--muted); font-size:10px }
+.flow-day-divider td { height:36px!important; padding:7px 12px!important; background:var(--paper)!important; border-bottom:1px solid var(--line); color:var(--ink2); font-size:12px }
+.flow-day-divider td span { margin-left:12px; color:var(--muted); font-size:12px }
 .flow-resize-handle { position: absolute; top: 8px; right: -2px; width: 5px; height: 26px; cursor: col-resize; z-index: 7 }
 .flow-resize-handle::after { content: ''; position: absolute; left: 2px; top: 5px; width: 1px; height: 16px; background: var(--line2) }
 .flow-desktop-table :deep(.fixed-category) { position: sticky; left: 0; z-index: 3; box-shadow: 1px 0 0 var(--line) }
@@ -613,7 +613,7 @@ onBeforeUnmount(() => {
 .flow-category { color: var(--ink); font-weight: 650 }
 .flow-resource { display: inline-flex; min-width: 0; align-items: center; gap: 7px; vertical-align: middle }
 .flow-resource>span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
-.flow-kind { display: inline-flex; align-items: center; min-height: 22px; padding: 2px 7px; border: 1px solid var(--line); border-radius: 3px; color: var(--ink2); background: var(--paper); font-size: 10px; font-weight: 650 }
+.flow-kind { display: inline-flex; align-items: center; min-height: 22px; padding: 2px 7px; border: 1px solid var(--line); border-radius: 3px; color: var(--ink2); background: var(--paper); font-size:12px; font-weight: 650 }
 .flow-kind.tone-in { color: var(--down); border-color: color-mix(in srgb,var(--down) 28%,var(--line)); background: color-mix(in srgb,var(--down) 6%,var(--card)) }
 .flow-kind.tone-out { color: var(--up); border-color: color-mix(in srgb,var(--up) 28%,var(--line)); background: color-mix(in srgb,var(--up) 6%,var(--card)) }
 .flow-kind.tone-transfer { color: var(--ink2) }
@@ -625,7 +625,7 @@ onBeforeUnmount(() => {
 .flow-row-actions button { display: inline-flex; align-items: center; justify-content: center; width: 27px; height: 27px; padding: 0; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--muted) }
 .flow-row-actions button:hover { border-color: var(--line2); color: var(--ink) }.flow-row-actions button.danger:hover { color: var(--down); border-color: color-mix(in srgb,var(--down) 35%,var(--line)) }
 .flow-row-actions svg { width: 14px; height: 14px }
-.flow-table-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 48px; padding: 8px 20px; color: var(--muted); font-size: 11px }
+.flow-table-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 48px; padding: 8px 20px; color: var(--muted); font-size:12px }
 .flow-table-totals,.flow-pagination { display: flex; align-items: center; gap: 12px }
 .flow-pagination { justify-content: flex-end; font-variant-numeric: tabular-nums }
 .flow-pagination label { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap }
@@ -636,14 +636,14 @@ onBeforeUnmount(() => {
 .flow-pagination button:disabled { opacity: .38; cursor: not-allowed }
 .flow-pagination b { min-width: 42px; color: var(--ink2); text-align: center; white-space: nowrap }
 .flow-mobile-list { display: none }
-.flow-day-heading { display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:9px 12px 5px; border-bottom:1px solid var(--line); background:var(--paper); color:var(--ink2); font-size:11px }
-.flow-day-heading span { color:var(--muted); font-size:10px }
+.flow-day-heading { display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:9px 12px 5px; border-bottom:1px solid var(--line); background:var(--paper); color:var(--ink2); font-size:12px }
+.flow-day-heading span { color:var(--muted); font-size:12px }
 .flow-editor { display: flex; flex-direction: column; gap: 15px }
 .flow-editor-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px }
 .flow-delete-copy { margin: 0; color: var(--ink2); font-size: 13px; line-height: 1.7 }
 .flow-delete-confirm { border-color: var(--down) !important; background: var(--down) !important; color: #fff !important }
 .flow-column-settings { display: flex; flex-direction: column }
-.flow-column-hint { margin: 0 0 4px; color: var(--muted); font-size: 11px; line-height: 1.5 }
+.flow-column-hint { margin: 0 0 4px; color: var(--muted); font-size:12px; line-height: 1.5 }
 .flow-column-setting { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 58px; border-bottom: 1px solid var(--line); transition: background .16s ease, opacity .16s ease }
 .flow-column-setting:last-child { border-bottom: 0 }
 .flow-column-setting.dragging { opacity: .45 }
@@ -651,16 +651,16 @@ onBeforeUnmount(() => {
 .flow-column-setting>span { flex: 1; min-width: 0 }
 .flow-column-setting b,.flow-column-setting small { display: block }
 .flow-column-setting b { color: var(--ink); font-size: 13px }
-.flow-column-setting small { margin-top: 2px; color: var(--muted); font-size: 11px }
+.flow-column-setting small { margin-top: 2px; color: var(--muted); font-size:12px }
 .flow-column-drag,.flow-column-pin { display: inline-grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--muted); cursor: grab }
 .flow-column-drag:active { cursor: grabbing }
 .flow-column-drag:hover,.flow-column-pin:hover,.flow-column-pin.active { border-color: var(--line2); background: var(--card); color: var(--accent) }
 .flow-column-drag svg,.flow-column-pin svg { width: 15px; height: 15px }
 .flow-column-setting :deep(.ui-toggle) { flex: 0 0 auto }
 @media(max-width:1023px){.flow-workspace{grid-template-columns:220px minmax(0,1fr)}.flow-sidebar{position:static}.flow-desktop-table :deep(.ui-table-wrap){max-height:none}}
-@media(max-width:767px){.ledger-flow-page,.flow-main,.flow-table-card{min-width:0;max-width:100%}.flow-heading{align-items:flex-start}.flow-heading-actions{width:100%;min-width:0}.flow-heading-actions .ui-button{min-width:0;flex:1;padding:0 7px}.flow-sync-status{margin-top:-9px}.flow-sync-summary{gap:7px 10px}.flow-sync-export{margin-left:0}.flow-sync-issue{align-items:stretch;flex-direction:column;gap:8px}.flow-sync-issue>div{width:100%}.flow-sync-issue button{flex:1;min-width:0;white-space:normal}.flow-workspace{display:block;min-width:0}.flow-sidebar{display:none}.flow-table-card{width:100%;margin:0 auto;box-sizing:border-box}.flow-table-card :deep(> header){padding:13px 16px}.flow-table-head{min-width:0;align-items:flex-start;flex-direction:column;gap:10px}.flow-table-tools{width:100%;justify-content:stretch;flex-direction:column;align-items:stretch;gap:8px}.flow-view-switch{align-self:flex-start}.flow-search{width:100%;max-width:100%}.flow-desktop-table{display:none}.flow-mobile-list{display:flex;min-width:0;flex-direction:column}.flow-mobile-item{min-width:0;max-width:100%;padding:11px 12px;border-bottom:1px solid var(--line);background:var(--card)}.flow-mobile-item:last-child{border-bottom:0}.flow-mobile-top,.flow-mobile-title,.flow-mobile-actions{display:flex;min-width:0;max-width:100%;align-items:center;justify-content:space-between;gap:8px}.flow-mobile-top>b{min-width:0;font-size:14px}.flow-mobile-title{margin-top:8px}.flow-mobile-title strong{min-width:0;overflow:hidden;color:var(--ink);font-size:13px;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-title span{flex:0 0 auto;color:var(--muted);font-size:10px}.flow-mobile-meta{display:flex;min-width:0;max-width:100%;flex-wrap:wrap;gap:3px 9px;margin-top:5px;color:var(--ink2);font-size:10px}.flow-mobile-meta span{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-resource{display:inline-flex;align-items:center;gap:4px}.flow-mobile-resource i{flex:0 0 6px;width:6px;height:6px;border-radius:50%}.flow-mobile-note{display:block;max-width:100%;margin:6px 0 0;overflow:hidden;color:var(--muted);font-size:10px;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-actions{justify-content:flex-end;margin-top:7px}.flow-mobile-actions button{display:inline-flex;min-width:0;align-items:center;gap:3px;padding:3px 5px;border:0;background:transparent;color:var(--ink2);font-size:10px}.flow-mobile-actions button.danger{color:var(--down)}.flow-mobile-actions svg{width:12px;height:12px}.flow-table-footer{min-height:42px;padding:8px 12px;align-items:flex-start;flex-direction:column;font-size:10px}.flow-table-totals,.flow-pagination{width:100%;justify-content:space-between;gap:6px}.flow-pagination label{gap:4px}.flow-pagination button{min-width:46px;padding:0 5px}.flow-pagination>b{display:none}}
+@media(max-width:767px){.ledger-flow-page,.flow-main,.flow-table-card{min-width:0;max-width:100%}.flow-heading{align-items:flex-start}.flow-heading-actions{width:100%;min-width:0}.flow-heading-actions .ui-button{min-width:0;flex:1;padding:0 7px}.flow-sync-status{margin-top:-9px}.flow-sync-summary{gap:7px 10px}.flow-sync-export{margin-left:0}.flow-sync-issue{align-items:stretch;flex-direction:column;gap:8px}.flow-sync-issue>div{width:100%}.flow-sync-issue button{flex:1;min-width:0;white-space:normal}.flow-workspace{display:block;min-width:0}.flow-sidebar{display:none}.flow-table-card{width:100%;margin:0 auto;box-sizing:border-box}.flow-table-card :deep(> header){padding:13px 16px}.flow-table-head{min-width:0;align-items:flex-start;flex-direction:column;gap:10px}.flow-table-tools{width:100%;justify-content:stretch;flex-direction:column;align-items:stretch;gap:8px}.flow-view-switch{align-self:flex-start}.flow-search{width:100%;max-width:100%}.flow-desktop-table{display:none}.flow-mobile-list{display:flex;min-width:0;flex-direction:column}.flow-mobile-item{min-width:0;max-width:100%;padding:11px 12px;border-bottom:1px solid var(--line);background:var(--card)}.flow-mobile-item:last-child{border-bottom:0}.flow-mobile-top,.flow-mobile-title,.flow-mobile-actions{display:flex;min-width:0;max-width:100%;align-items:center;justify-content:space-between;gap:8px}.flow-mobile-top>b{min-width:0;font-size:14px}.flow-mobile-title{margin-top:8px}.flow-mobile-title strong{min-width:0;overflow:hidden;color:var(--ink);font-size:13px;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-title span{flex:0 0 auto;color:var(--muted);font-size:12px}.flow-mobile-meta{display:flex;min-width:0;max-width:100%;flex-wrap:wrap;gap:3px 9px;margin-top:5px;color:var(--ink2);font-size:12px}.flow-mobile-meta span{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-resource{display:inline-flex;align-items:center;gap:4px}.flow-mobile-resource i{flex:0 0 6px;width:6px;height:6px;border-radius:50%}.flow-mobile-note{display:block;max-width:100%;margin:6px 0 0;overflow:hidden;color:var(--muted);font-size:12px;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-actions{justify-content:flex-end;margin-top:7px}.flow-mobile-actions button{display:inline-flex;min-width:0;align-items:center;gap:3px;padding:3px 5px;border:0;background:transparent;color:var(--ink2);font-size:12px}.flow-mobile-actions button.danger{color:var(--down)}.flow-mobile-actions svg{width:12px;height:12px}.flow-table-footer{min-height:42px;padding:8px 12px;align-items:flex-start;flex-direction:column;font-size:12px}.flow-table-totals,.flow-pagination{width:100%;justify-content:space-between;gap:6px}.flow-pagination label{gap:4px}.flow-pagination button{min-width:46px;padding:0 5px}.flow-pagination>b{display:none}}
 .flow-filter-action{position:relative;display:inline-flex}
-.flow-filter-action i{position:absolute;top:-5px;right:-5px;display:grid;place-items:center;min-width:15px;height:15px;padding:0 2px;border-radius:999px;background:var(--accent);color:var(--card);font-size:9px;font-style:normal}
+.flow-filter-action i{position:absolute;top:-5px;right:-5px;display:grid;place-items:center;min-width:15px;height:15px;padding:0 2px;border-radius:999px;background:var(--accent);color:var(--card);font-size:12px;font-style:normal}
 .flow-row-actions .ledger-action-icon{display:inline-grid;flex:0 0 28px;width:28px;height:28px;padding:0;border:1px solid var(--line2);background:var(--card);color:var(--ink2)}
 .flow-row-actions .ledger-action-icon:hover{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
 .flow-mobile-actions .ledger-action-icon{display:inline-grid;flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid var(--line2);background:var(--card);color:var(--ink2)}

@@ -1,6 +1,6 @@
 # 部署说明
 
-> 状态日期：2026-09-17
+> 状态日期：2026-09-18
 > SSH 规则：所有连接必须使用仓库根目录的 `workboard.pem`，禁止密码认证。
 
 本项目通过 Docker Compose 运行三个服务：MySQL、Spring Boot 后端和 Nginx 前端。前端对外提供 80 端口，并将 `/api` 请求转发到后端。
@@ -119,7 +119,7 @@ bash deploy/dev-backend.sh --sync-production
 
 脚本会启动独立的 `salary-mysql-dev`（MySQL 8，宿主机端口 `3307`），通过 SSH 只读导出生产数据库并覆盖本地开发库，然后打包并启动后端。数据库快照保存在 `.local/db/`，该目录已被 Git 忽略。
 
-当前 `deploy/sync-prod-db.sh` 尚未显式传入 `-i ./workboard.pem`，其终端提示仍是旧的密码认证说明。按照仓库安全规则，在脚本修复前不要执行 `--sync-production` 或直接运行该同步脚本；不得通过输入密码绕过此限制。本地已有数据库的普通 `bash deploy/dev-backend.sh` 不受影响。
+`deploy/sync-prod-db.sh` 强制使用仓库根目录的 `workboard.pem`，以 batch 模式连接并明确禁用密码认证；密钥缺失或认证失败时立即停止，不会降级到密码登录。
 
 后续不需要重新同步生产数据时：
 
@@ -129,7 +129,7 @@ bash deploy/dev-backend.sh
 
 已有最新 JAR 时可以附加 `--skip-build`。
 
-只刷新本地数据库的 `deploy/sync-prod-db.sh` 当前同样暂停使用，直到脚本显式加入 `ssh -i "$PROJECT_DIR/workboard.pem"` 并删除密码交互提示。不要直接运行该脚本。
+只刷新本地数据库时可直接运行 `bash deploy/sync-prod-db.sh`；该操作会覆盖本地 `salary` 开发库，执行前应确认本地数据不需要保留。
 
 生产快照包含真实用户数据，只能留在受控的本地开发机；不要复制到仓库、聊天记录或共享目录。同步脚本只读取生产库，但会删除并重建本地 `salary` 数据库。
 
@@ -197,13 +197,15 @@ unset VERIFY_DB_PASSWORD
 通过标准：
 
 - gzip 完整性检查通过，备份文件非空。
-- `app_user`、`work_record`、`ledger_book`、`ledger_transaction` 在源库、恢复后、应用迁移后三次数量一致。
+- 源库已存在的 `app_user`、`work_record`、`ledger_book`、`ledger_transaction` 在恢复前后和应用迁移后数量一致；旧 schema 中缺失的核心表必须由 Flyway 创建成功。
 - `flyway_schema_history` 没有失败记录，并输出当前 migration 版本。
 - 临时后端的 `GET /api/health` 返回 `ok: true`。
 
 脚本默认在退出时停止临时后端并删除 `salary_restore_verify_*` 临时库，备份文件保留供人工校验。需要检查恢复库时可加 `--keep-database`；检查结束后只删除命令输出中确认过的临时库，禁止对源库执行清理。演练失败时先保留终端输出和备份文件，修复原因后换一个新的临时库名重跑；生产系统与源库不需要回滚，因为整个流程对源库只有一致性只读导出。
 
 2026-09-17 本地验收记录：在独立 tmpfs MySQL 8 容器中完成一次演练，`app_user`、`work_record`、`ledger_book`、`ledger_transaction` 恢复前后数量一致，Flyway 当前版本为 v11，临时后端健康检查通过，临时恢复库和容器均已清理。备份文件仅保留在 `/private/tmp`，不进入仓库。
+
+2026-09-18 本地验收记录：对实际旧 schema 开发快照执行只读导出与隔离恢复；`app_user=3`、`work_record=32`、`ledger_transaction=89` 在迁移前后保持一致，原快照缺失的 `ledger_book` 由 Flyway v11 创建并回填 3 条，临时后端健康检查通过，`salary_restore_verify_*` 临时库已自动删除。脚本据此区分“已有表数量漂移”和“旧 schema 缺表待迁移”两类结果。
 
 ## 2026-09-17 生产发布记录
 

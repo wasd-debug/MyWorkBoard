@@ -31,7 +31,7 @@ import {
   apiUpdateLedgerMember,
   apiUpdateLedgerRole,
   apiUpdateLedgerScheduledTask
-} from '../api/index.js'
+} from '../../packages/api-client/src/index.js'
 
 const syncTransport = {
   push: (bookId, operations) => apiPushLedgerSync(bookId, operations),

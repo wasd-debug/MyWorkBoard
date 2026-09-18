@@ -1,29 +1,33 @@
 package com.salarytracker.ai;
 
-import com.salarytracker.ledger.LedgerService;
 import com.salarytracker.platform.ApiResponse;
 import com.salarytracker.platform.ai.LlmGateway;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
-
 @RestController
-@RequestMapping("/api/v1/ai")
+@RequestMapping(value = "/api/v1/ai", produces = MediaType.APPLICATION_JSON_VALUE)
+@Tag(name = "AI")
 public class AiController {
     private final LlmGateway gateway;
-    private final LedgerService ledger;
 
-    public AiController(LlmGateway gateway, LedgerService ledger) { this.gateway = gateway; this.ledger = ledger; }
+    public AiController(LlmGateway gateway) {
+        this.gateway = gateway;
+    }
 
-    @PostMapping("/chat")
+    @PostMapping(value = "/chat", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("isAuthenticated()")
-    public ApiResponse<Map<String, Object>> chat(@RequestBody Map<String, Object> body) { return ApiResponse.ok(gateway.chat(String.valueOf(body.getOrDefault("message", "")))); }
+    @Operation(operationId = "chatWithAssistant")
+    public ApiResponse<LlmGateway.ChatResponse> chat(@RequestBody ChatRequest body) {
+        return ApiResponse.ok(gateway.chat(body == null ? "" : body.message()));
+    }
 
-    @PostMapping("/ledger/preview")
-    @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> ledgerPreview(@RequestBody Map<String, Object> body) { return ApiResponse.ok(ledger.aiPreview(String.valueOf(body.getOrDefault("text", "")))); }
+    public record ChatRequest(String message) {
+    }
 }

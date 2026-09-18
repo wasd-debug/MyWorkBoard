@@ -97,7 +97,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { ElMessage } from '../services/message.js'
+import { message } from '../services/message.js'
 import { useRouter } from 'vue-router'
 import Input from '../components/ui/Input.vue'
 import Empty from '../components/ui/Empty.vue'
@@ -206,7 +206,7 @@ async function saveMonthSalary() {
     post: Number(monthPost.value) > 0 ? Number(monthPost.value) : 0
   } }
   await store.saveSettings({ salaries })
-  ElMessage.success('本月工资已保存')
+  message.success('本月工资已保存')
 }
 function edit(key) { store.punchDate = key; router.push('/punch'); window.scrollTo(0, 0) }
 function handleMonthDayClick(key) {
@@ -220,6 +220,6 @@ function handleMonthDayDoubleClick(key) {
 async function remove(key) {
   if (!window.confirm('确定删除这条打卡记录？')) return
   await store.deleteRecord(key)
-  ElMessage.success('已删除')
+  message.success('已删除')
 }
 </script>

@@ -11,8 +11,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -34,14 +32,10 @@ public class JwtService {
 
     public String createAccessToken(CurrentUser user) {
         long now = Instant.now().getEpochSecond();
-        Map<String, Object> claims = new LinkedHashMap<>();
-        claims.put("sub", user.id());
-        claims.put("username", user.username());
-        claims.put("nickname", user.nickname());
-        claims.put("authorities", user.authorities());
-        claims.put("iat", now);
-        claims.put("exp", now + accessTtlSeconds);
-        String header = Base64.getUrlEncoder().withoutPadding().encodeToString(json(Map.of("alg", "HS256", "typ", "JWT")).getBytes(StandardCharsets.UTF_8));
+        JwtClaims claims = new JwtClaims(user.id(), user.username(), user.nickname(), user.authorities(),
+                now, now + accessTtlSeconds);
+        String header = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                json(new JwtHeader("HS256", "JWT")).getBytes(StandardCharsets.UTF_8));
         String payload = Base64.getUrlEncoder().withoutPadding().encodeToString(json(claims).getBytes(StandardCharsets.UTF_8));
         return header + "." + payload + "." + signature(header, payload);
     }
@@ -79,5 +73,12 @@ public class JwtService {
         } catch (Exception exception) {
             throw new IllegalStateException("无法编码 token", exception);
         }
+    }
+
+    private record JwtHeader(String alg, String typ) {
+    }
+
+    private record JwtClaims(long sub, String username, String nickname, Set<String> authorities,
+                             long iat, long exp) {
     }
 }

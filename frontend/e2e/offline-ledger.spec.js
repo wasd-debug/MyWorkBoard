@@ -115,7 +115,7 @@ test('sync errors are actionable and stay isolated by book and user', async ({ p
   const { book, accounts, headers } = await bootstrapTemplateLedger(page.request, auth)
   const isolatedBookResponse = await page.request.post('/api/v1/ledger/books', {
     headers,
-    data: { name: 'E2E 隔离账本', currency: 'CNY', mode: 'BLANK' }
+    data: { name: 'E2E 隔离账本', currency: 'CNY', mode: 'EMPTY' }
   })
   expect(isolatedBookResponse.ok(), await isolatedBookResponse.text()).toBeTruthy()
   const isolatedBook = (await isolatedBookResponse.json()).data
@@ -186,8 +186,9 @@ test('sync errors are actionable and stay isolated by book and user', async ({ p
   await page.goto('/ledger/manage?view=books')
   const isolatedBookRow = page.locator('.book-table .data-row').filter({ hasText: isolatedBook.name })
   await isolatedBookRow.getByRole('button', { name: '切换到账本' }).click()
+  await expect(page.getByLabel('正在保存更改…')).toBeVisible()
   await expect(isolatedBookRow).toContainText('当前')
-  await expect(page.getByText('正在保存更改…')).toBeHidden()
+  await expect(page.getByLabel('正在保存更改…')).toBeHidden()
   await expect.poll(() => ledgerSyncState(page, auth.user.id, isolatedBook.id))
     .toEqual({ pending: 0, conflicts: 0, rejected: 0 })
   await page.goto('/ledger/transactions')

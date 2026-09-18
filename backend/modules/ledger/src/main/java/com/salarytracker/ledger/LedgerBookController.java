@@ -1,6 +1,10 @@
 package com.salarytracker.ledger;
 
 import com.salarytracker.platform.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -23,13 +27,14 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.charset.StandardCharsets;
 import java.time.YearMonth;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
+
+import static com.salarytracker.ledger.LedgerModels.*;
 
 @RestController
-@RequestMapping("/api/v1/ledger")
+@RequestMapping(value = "/api/v1/ledger", produces = MediaType.APPLICATION_JSON_VALUE)
 @PreAuthorize("hasAuthority('ledger:read')")
+@Tag(name = "Ledger")
 public class LedgerBookController {
     private final LedgerBookService books;
     private final LedgerTransactionService transactions;
@@ -40,12 +45,9 @@ public class LedgerBookController {
     private final LedgerReportAiService reportAi;
     private final LedgerScheduledTaskService scheduledTasks;
 
-    public LedgerBookController(LedgerBookService books,
-                                LedgerTransactionService transactions,
-                                LedgerAuditService audit,
-                                LedgerImportService imports,
-                                LedgerSyncService sync,
-                                LedgerAiService ai,
+    public LedgerBookController(LedgerBookService books, LedgerTransactionService transactions,
+                                LedgerAuditService audit, LedgerImportService imports,
+                                LedgerSyncService sync, LedgerAiService ai,
                                 LedgerReportAiService reportAi,
                                 LedgerScheduledTaskService scheduledTasks) {
         this.books = books;
@@ -59,389 +61,400 @@ public class LedgerBookController {
     }
 
     @GetMapping("/books")
-    public ApiResponse<List<Map<String, Object>>> books() {
-        return ApiResponse.ok(books.books());
-    }
+    @Operation(operationId = "listLedgerBooks")
+    public ApiResponse<List<Book>> books() { return ApiResponse.ok(books.books()); }
 
-    @PostMapping("/books")
+    @PostMapping(value = "/books", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> createBook(@RequestBody Map<String, Object> body) {
+    @Operation(operationId = "createLedgerBook")
+    public ApiResponse<Book> createBook(@RequestBody BookCommand body) {
         return ApiResponse.ok(books.createBook(body));
     }
 
-    @PatchMapping("/books/{bookId}")
+    @PatchMapping(value = "/books/{bookId}", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> updateBook(@PathVariable String bookId,
-                                                       @RequestBody Map<String, Object> body,
-                                                       @RequestHeader(value = "If-Match", required = false) String revision) {
+    @Operation(operationId = "updateLedgerBook")
+    public ApiResponse<Book> updateBook(@PathVariable String bookId, @RequestBody BookCommand body,
+                                        @RequestHeader(value = "If-Match", required = false) String revision) {
         return ApiResponse.ok(books.updateBook(bookId, body, revision));
     }
 
     @DeleteMapping("/books/{bookId}")
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> deleteBook(@PathVariable String bookId,
-                                                       @RequestHeader(value = "If-Match", required = false) String revision) {
+    @Operation(operationId = "deleteLedgerBook")
+    public ApiResponse<DeletedResource> deleteBook(@PathVariable String bookId,
+                                                    @RequestHeader(value = "If-Match", required = false) String revision) {
         return ApiResponse.ok(books.deleteBook(bookId, revision));
     }
 
     @GetMapping("/books/{bookId}/accounts")
-    public ApiResponse<List<Map<String, Object>>> accounts(@PathVariable String bookId,
-                                                           @RequestParam(defaultValue = "false") boolean includeHidden) {
+    @Operation(operationId = "listLedgerAccounts")
+    public ApiResponse<List<Account>> accounts(@PathVariable String bookId,
+                                                @RequestParam(defaultValue = "false") boolean includeHidden) {
         return ApiResponse.ok(books.accounts(bookId, includeHidden));
     }
 
-    @PostMapping("/books/{bookId}/accounts")
+    @PostMapping(value = "/books/{bookId}/accounts", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> createAccount(@PathVariable String bookId,
-                                                          @RequestBody Map<String, Object> body,
-                                                          @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "createLedgerAccount")
+    public ApiResponse<Account> createAccount(@PathVariable String bookId, @RequestBody AccountCommand body,
+                                               @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.createAccount(bookId, body, opId));
     }
 
-    @PatchMapping("/books/{bookId}/accounts/{id}")
+    @PatchMapping(value = "/books/{bookId}/accounts/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> updateAccount(@PathVariable String bookId,
-                                                          @PathVariable String id,
-                                                          @RequestBody Map<String, Object> body,
-                                                          @RequestHeader(value = "If-Match", required = false) String revision,
-                                                          @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "updateLedgerAccount")
+    public ApiResponse<Account> updateAccount(@PathVariable String bookId, @PathVariable String id,
+                                               @RequestBody AccountCommand body,
+                                               @RequestHeader(value = "If-Match", required = false) String revision,
+                                               @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.updateAccount(bookId, id, body, revision, opId));
     }
 
     @DeleteMapping("/books/{bookId}/accounts/{id}")
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> deleteAccount(@PathVariable String bookId,
-                                                          @PathVariable String id,
-                                                          @RequestHeader(value = "If-Match", required = false) String revision,
-                                                          @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "deleteLedgerAccount")
+    public ApiResponse<DeletedResource> deleteAccount(@PathVariable String bookId, @PathVariable String id,
+                                                       @RequestHeader(value = "If-Match", required = false) String revision,
+                                                       @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.deleteAccount(bookId, id, revision, opId));
     }
 
     @GetMapping("/books/{bookId}/categories")
-    public ApiResponse<List<Map<String, Object>>> categories(@PathVariable String bookId,
-                                                             @RequestParam(defaultValue = "false") boolean includeHidden) {
+    @Operation(operationId = "listLedgerCategories")
+    public ApiResponse<List<Category>> categories(@PathVariable String bookId,
+                                                   @RequestParam(defaultValue = "false") boolean includeHidden) {
         return ApiResponse.ok(books.categories(bookId, includeHidden));
     }
 
-    @PostMapping("/books/{bookId}/categories")
+    @PostMapping(value = "/books/{bookId}/categories", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> createCategory(@PathVariable String bookId,
-                                                           @RequestBody Map<String, Object> body,
-                                                           @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "createLedgerCategory")
+    public ApiResponse<Category> createCategory(@PathVariable String bookId, @RequestBody CategoryCommand body,
+                                                 @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.createCategory(bookId, body, opId));
     }
 
-    @PatchMapping("/books/{bookId}/categories/{id}")
+    @PatchMapping(value = "/books/{bookId}/categories/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> updateCategory(@PathVariable String bookId,
-                                                           @PathVariable String id,
-                                                           @RequestBody Map<String, Object> body,
-                                                           @RequestHeader(value = "If-Match", required = false) String revision,
-                                                           @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "updateLedgerCategory")
+    public ApiResponse<Category> updateCategory(@PathVariable String bookId, @PathVariable String id,
+                                                 @RequestBody CategoryCommand body,
+                                                 @RequestHeader(value = "If-Match", required = false) String revision,
+                                                 @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.updateCategory(bookId, id, body, revision, opId));
     }
 
     @DeleteMapping("/books/{bookId}/categories/{id}")
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> deleteCategory(@PathVariable String bookId,
-                                                           @PathVariable String id,
-                                                           @RequestHeader(value = "If-Match", required = false) String revision,
-                                                           @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "deleteLedgerCategory")
+    public ApiResponse<DeletedResource> deleteCategory(@PathVariable String bookId, @PathVariable String id,
+                                                        @RequestHeader(value = "If-Match", required = false) String revision,
+                                                        @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.deleteCategory(bookId, id, revision, opId));
     }
 
     @GetMapping("/books/{bookId}/{type:merchants|projects}")
-    public ApiResponse<List<Map<String, Object>>> namedResources(@PathVariable String bookId,
-                                                                 @PathVariable String type,
-                                                                 @RequestParam(defaultValue = "false") boolean includeHidden) {
+    @Operation(operationId = "listLedgerNamedResources")
+    public ApiResponse<List<NamedResource>> namedResources(@PathVariable String bookId, @PathVariable String type,
+                                                            @RequestParam(defaultValue = "false") boolean includeHidden) {
         return ApiResponse.ok("merchants".equals(type)
-                ? books.merchants(bookId, includeHidden)
-                : books.projects(bookId, includeHidden));
+                ? books.merchants(bookId, includeHidden) : books.projects(bookId, includeHidden));
     }
 
-    @PostMapping("/books/{bookId}/{type:merchants|projects}")
+    @PostMapping(value = "/books/{bookId}/{type:merchants|projects}", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> createNamedResource(@PathVariable String bookId,
-                                                                @PathVariable String type,
-                                                                @RequestBody Map<String, Object> body,
-                                                                @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "createLedgerNamedResource")
+    public ApiResponse<NamedResource> createNamedResource(@PathVariable String bookId, @PathVariable String type,
+                                                           @RequestBody NamedResourceCommand body,
+                                                           @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.createNamedResource(bookId, singular(type), body, opId));
     }
 
-    @PatchMapping("/books/{bookId}/{type:merchants|projects}/{id}")
+    @PatchMapping(value = "/books/{bookId}/{type:merchants|projects}/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> updateNamedResource(@PathVariable String bookId,
-                                                                @PathVariable String type,
-                                                                @PathVariable String id,
-                                                                @RequestBody Map<String, Object> body,
-                                                                @RequestHeader(value = "If-Match", required = false) String revision,
-                                                                @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "updateLedgerNamedResource")
+    public ApiResponse<NamedResource> updateNamedResource(@PathVariable String bookId, @PathVariable String type,
+                                                           @PathVariable String id, @RequestBody NamedResourceCommand body,
+                                                           @RequestHeader(value = "If-Match", required = false) String revision,
+                                                           @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.updateNamedResource(bookId, singular(type), id, body, revision, opId));
     }
 
     @DeleteMapping("/books/{bookId}/{type:merchants|projects}/{id}")
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> deleteNamedResource(@PathVariable String bookId,
-                                                                @PathVariable String type,
-                                                                @PathVariable String id,
-                                                                @RequestHeader(value = "If-Match", required = false) String revision,
-                                                                @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "deleteLedgerNamedResource")
+    public ApiResponse<DeletedResource> deleteNamedResource(@PathVariable String bookId, @PathVariable String type,
+                                                             @PathVariable String id,
+                                                             @RequestHeader(value = "If-Match", required = false) String revision,
+                                                             @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.deleteNamedResource(bookId, singular(type), id, revision, opId));
     }
 
     @GetMapping("/books/{bookId}/members")
-    public ApiResponse<List<Map<String, Object>>> members(@PathVariable String bookId) {
-        return ApiResponse.ok(books.members(bookId));
-    }
+    @Operation(operationId = "listLedgerMembers")
+    public ApiResponse<List<Member>> members(@PathVariable String bookId) { return ApiResponse.ok(books.members(bookId)); }
 
-    @PostMapping("/books/{bookId}/members")
+    @PostMapping(value = "/books/{bookId}/members", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> addMember(@PathVariable String bookId,
-                                                      @RequestBody Map<String, Object> body,
-                                                      @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "createLedgerMember")
+    public ApiResponse<Member> addMember(@PathVariable String bookId, @RequestBody MemberCommand body,
+                                         @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.addMember(bookId, body, opId));
     }
 
-    @PatchMapping("/books/{bookId}/members/{id}")
+    @PatchMapping(value = "/books/{bookId}/members/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> updateMember(@PathVariable String bookId,
-                                                         @PathVariable String id,
-                                                         @RequestBody Map<String, Object> body,
-                                                         @RequestHeader(value = "If-Match", required = false) String revision,
-                                                         @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "updateLedgerMember")
+    public ApiResponse<Member> updateMember(@PathVariable String bookId, @PathVariable String id,
+                                             @RequestBody MemberCommand body,
+                                             @RequestHeader(value = "If-Match", required = false) String revision,
+                                             @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.updateMember(bookId, id, body, revision, opId));
     }
 
     @DeleteMapping("/books/{bookId}/members/{id}")
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> deleteMember(@PathVariable String bookId,
-                                                         @PathVariable String id,
-                                                         @RequestHeader(value = "If-Match", required = false) String revision,
-                                                         @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "deleteLedgerMember")
+    public ApiResponse<DeletedResource> deleteMember(@PathVariable String bookId, @PathVariable String id,
+                                                      @RequestHeader(value = "If-Match", required = false) String revision,
+                                                      @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.deleteMember(bookId, id, revision, opId));
     }
 
     @GetMapping("/books/{bookId}/roles")
-    public ApiResponse<List<Map<String, Object>>> roles(@PathVariable String bookId) {
-        return ApiResponse.ok(books.roles(bookId));
-    }
+    @Operation(operationId = "listLedgerRoles")
+    public ApiResponse<List<Role>> roles(@PathVariable String bookId) { return ApiResponse.ok(books.roles(bookId)); }
 
-    @PostMapping("/books/{bookId}/roles")
+    @PostMapping(value = "/books/{bookId}/roles", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> createRole(@PathVariable String bookId,
-                                                       @RequestBody Map<String, Object> body,
-                                                       @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "createLedgerRole")
+    public ApiResponse<Role> createRole(@PathVariable String bookId, @RequestBody RoleCommand body,
+                                        @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.createRole(bookId, body, opId));
     }
 
-    @PatchMapping("/books/{bookId}/roles/{id}")
+    @PatchMapping(value = "/books/{bookId}/roles/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> updateRole(@PathVariable String bookId,
-                                                       @PathVariable String id,
-                                                       @RequestBody Map<String, Object> body,
-                                                       @RequestHeader(value = "If-Match", required = false) String revision,
-                                                       @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "updateLedgerRole")
+    public ApiResponse<Role> updateRole(@PathVariable String bookId, @PathVariable String id,
+                                        @RequestBody RoleCommand body,
+                                        @RequestHeader(value = "If-Match", required = false) String revision,
+                                        @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.updateRole(bookId, id, body, revision, opId));
     }
 
     @DeleteMapping("/books/{bookId}/roles/{id}")
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> deleteRole(@PathVariable String bookId,
-                                                       @PathVariable String id,
-                                                       @RequestHeader(value = "If-Match", required = false) String revision,
-                                                       @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "deleteLedgerRole")
+    public ApiResponse<DeletedResource> deleteRole(@PathVariable String bookId, @PathVariable String id,
+                                                    @RequestHeader(value = "If-Match", required = false) String revision,
+                                                    @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.deleteRole(bookId, id, revision, opId));
     }
 
     @GetMapping("/books/{bookId}/budgets")
-    public ApiResponse<List<Map<String, Object>>> budgets(@PathVariable String bookId,
-                                                          @RequestParam(required = false) String month) {
+    @Operation(operationId = "listLedgerBudgets")
+    public ApiResponse<List<Budget>> budgets(@PathVariable String bookId,
+                                              @RequestParam(required = false) String month) {
         return ApiResponse.ok(books.budgets(bookId, month));
     }
 
-    @PutMapping("/books/{bookId}/budgets")
+    @PutMapping(value = "/books/{bookId}/budgets", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> upsertBudget(@PathVariable String bookId,
-                                                         @RequestBody Map<String, Object> body,
-                                                         @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "upsertLedgerBudget")
+    public ApiResponse<Budget> upsertBudget(@PathVariable String bookId, @RequestBody BudgetCommand body,
+                                            @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.upsertBudget(bookId, body, opId));
     }
 
     @DeleteMapping("/books/{bookId}/budgets/{id}")
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> deleteBudget(@PathVariable String bookId,
-                                                         @PathVariable String id,
-                                                         @RequestHeader(value = "If-Match", required = false) String revision,
-                                                         @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "deleteLedgerBudget")
+    public ApiResponse<DeletedResource> deleteBudget(@PathVariable String bookId, @PathVariable String id,
+                                                      @RequestHeader(value = "If-Match", required = false) String revision,
+                                                      @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(books.deleteBudget(bookId, id, revision, opId));
     }
 
     @GetMapping("/books/{bookId}/scheduled-tasks")
-    public ApiResponse<List<Map<String, Object>>> scheduledTasks(@PathVariable String bookId,
-                                                                  @RequestParam(defaultValue = "false") boolean includeDeleted) {
-        return ApiResponse.ok(scheduledTasks.list(bookId, includeDeleted).stream().map(this::safe).toList());
+    @Operation(operationId = "listLedgerScheduledTasks")
+    public ApiResponse<List<ScheduledTask>> scheduledTasks(@PathVariable String bookId,
+                                                            @RequestParam(defaultValue = "false") boolean includeDeleted) {
+        return ApiResponse.ok(scheduledTasks.list(bookId, includeDeleted));
     }
 
-    @PostMapping("/books/{bookId}/scheduled-tasks")
+    @PostMapping(value = "/books/{bookId}/scheduled-tasks", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> createScheduledTask(@PathVariable String bookId,
-                                                                @RequestBody Map<String, Object> body) {
-        return ApiResponse.ok(safe(scheduledTasks.create(bookId, body)));
+    @Operation(operationId = "createLedgerScheduledTask")
+    public ApiResponse<ScheduledTask> createScheduledTask(@PathVariable String bookId,
+                                                           @RequestBody ScheduledTaskCommand body) {
+        return ApiResponse.ok(scheduledTasks.create(bookId, body));
     }
 
-    @PatchMapping("/books/{bookId}/scheduled-tasks/{id}")
+    @PatchMapping(value = "/books/{bookId}/scheduled-tasks/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> updateScheduledTask(@PathVariable String bookId,
-                                                                @PathVariable String id,
-                                                                @RequestBody Map<String, Object> body,
-                                                                @RequestHeader(value = "If-Match", required = false) String revision) {
-        return ApiResponse.ok(safe(scheduledTasks.update(bookId, id, body, revision)));
+    @Operation(operationId = "updateLedgerScheduledTask")
+    public ApiResponse<ScheduledTask> updateScheduledTask(@PathVariable String bookId, @PathVariable String id,
+                                                           @RequestBody ScheduledTaskCommand body,
+                                                           @RequestHeader(value = "If-Match", required = false) String revision) {
+        return ApiResponse.ok(scheduledTasks.update(bookId, id, body, revision));
     }
 
     @DeleteMapping("/books/{bookId}/scheduled-tasks/{id}")
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> deleteScheduledTask(@PathVariable String bookId,
-                                                                @PathVariable String id) {
+    @Operation(operationId = "deleteLedgerScheduledTask")
+    public ApiResponse<DeletedResource> deleteScheduledTask(@PathVariable String bookId, @PathVariable String id) {
         return ApiResponse.ok(scheduledTasks.delete(bookId, id));
     }
 
     @PostMapping("/books/{bookId}/scheduled-tasks/{id}/run")
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> runScheduledTask(@PathVariable String bookId,
-                                                             @PathVariable String id) {
-        return ApiResponse.ok(safe(scheduledTasks.run(bookId, id)));
+    @Operation(operationId = "runLedgerScheduledTask")
+    public ApiResponse<ScheduledTaskRun> runScheduledTask(@PathVariable String bookId, @PathVariable String id) {
+        return ApiResponse.ok(scheduledTasks.run(bookId, id));
     }
 
     @GetMapping("/books/{bookId}/transactions")
-    public ApiResponse<Map<String, Object>> transactionList(@PathVariable String bookId,
-                                                            @RequestParam Map<String, String> filters) {
-        return ApiResponse.ok(safe(transactions.list(bookId, filters)));
+    @Operation(operationId = "listLedgerTransactions")
+    public ApiResponse<TransactionPage> transactionList(@PathVariable String bookId,
+                                                         @ParameterObject TransactionQuery filters) {
+        return ApiResponse.ok(transactions.list(bookId, filters));
     }
 
     @GetMapping("/books/{bookId}/transactions/recent")
-    public ApiResponse<List<Map<String, Object>>> recent(@PathVariable String bookId,
-                                                         @RequestParam(defaultValue = "10") int limit) {
-        return ApiResponse.ok(safeList(transactions.recent(bookId, limit)));
+    @Operation(operationId = "listRecentLedgerTransactions")
+    public ApiResponse<List<Transaction>> recent(@PathVariable String bookId,
+                                                  @RequestParam(defaultValue = "10") int limit) {
+        return ApiResponse.ok(transactions.recent(bookId, limit));
     }
 
     @GetMapping("/books/{bookId}/overview")
-    public ApiResponse<Map<String, Object>> overview(@PathVariable String bookId,
-                                                     @RequestParam(required = false) String from,
-                                                     @RequestParam(required = false) String to) {
+    @Operation(operationId = "getLedgerOverview")
+    public ApiResponse<Overview> overview(@PathVariable String bookId,
+                                          @RequestParam(required = false) String from,
+                                          @RequestParam(required = false) String to) {
         return ApiResponse.ok(transactions.overview(bookId, from, to));
     }
 
-    @PostMapping("/books/{bookId}/transactions")
+    @PostMapping(value = "/books/{bookId}/transactions", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> createTransaction(@PathVariable String bookId,
-                                                              @RequestBody Map<String, Object> body,
-                                                              @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
-        return ApiResponse.ok(safe(transactions.create(bookId, body, opId)));
+    @Operation(operationId = "createLedgerTransaction")
+    public ApiResponse<Transaction> createTransaction(@PathVariable String bookId,
+                                                       @RequestBody TransactionCommand body,
+                                                       @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+        return ApiResponse.ok(transactions.create(bookId, body, opId));
     }
 
-    @PatchMapping("/books/{bookId}/transactions/{id}")
+    @PatchMapping(value = "/books/{bookId}/transactions/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> updateTransaction(@PathVariable String bookId,
-                                                              @PathVariable String id,
-                                                              @RequestBody Map<String, Object> body,
-                                                              @RequestHeader(value = "If-Match", required = false) String revision,
-                                                              @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
-        return ApiResponse.ok(safe(transactions.update(bookId, id, body, revision, opId)));
+    @Operation(operationId = "updateLedgerTransaction")
+    public ApiResponse<Transaction> updateTransaction(@PathVariable String bookId, @PathVariable String id,
+                                                       @RequestBody TransactionCommand body,
+                                                       @RequestHeader(value = "If-Match", required = false) String revision,
+                                                       @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+        return ApiResponse.ok(transactions.update(bookId, id, body, revision, opId));
     }
 
     @DeleteMapping("/books/{bookId}/transactions/{id}")
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> deleteTransaction(@PathVariable String bookId,
-                                                              @PathVariable String id,
-                                                              @RequestHeader(value = "If-Match", required = false) String revision,
-                                                              @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "deleteLedgerTransaction")
+    public ApiResponse<DeletedResource> deleteTransaction(@PathVariable String bookId, @PathVariable String id,
+                                                           @RequestHeader(value = "If-Match", required = false) String revision,
+                                                           @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(transactions.delete(bookId, id, revision, opId));
     }
 
     @GetMapping("/books/{bookId}/transactions/{id}/history")
-    public ApiResponse<List<Map<String, Object>>> history(@PathVariable String bookId,
-                                                          @PathVariable String id) {
-        return ApiResponse.ok(safeList(transactions.history(bookId, id)));
+    @Operation(operationId = "getLedgerTransactionHistory")
+    public ApiResponse<List<TransactionVersion>> history(@PathVariable String bookId, @PathVariable String id) {
+        return ApiResponse.ok(transactions.history(bookId, id));
     }
 
-    @PostMapping("/books/{bookId}/transactions/{id}/copy")
+    @PostMapping(value = "/books/{bookId}/transactions/{id}/copy", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> copy(@PathVariable String bookId,
-                                                 @PathVariable String id,
-                                                 @RequestBody(required = false) Map<String, Object> body) {
-        return ApiResponse.ok(safe(transactions.copy(bookId, id, body == null ? Map.of() : body)));
+    @Operation(operationId = "copyLedgerTransaction")
+    public ApiResponse<Transaction> copy(@PathVariable String bookId, @PathVariable String id,
+                                         @RequestBody(required = false) CopyTransactionCommand body) {
+        return ApiResponse.ok(transactions.copy(bookId, id, body));
     }
 
     @GetMapping("/books/{bookId}/recycle")
-    public ApiResponse<Map<String, Object>> recycle(@PathVariable String bookId,
-                                                    @RequestParam(defaultValue = "1") int page,
-                                                    @RequestParam(defaultValue = "20") int pageSize) {
+    @Operation(operationId = "listLedgerRecycle")
+    public ApiResponse<RecyclePage> recycle(@PathVariable String bookId,
+                                            @RequestParam(defaultValue = "1") int page,
+                                            @RequestParam(defaultValue = "20") int pageSize) {
         return ApiResponse.ok(books.recycle(bookId, page, pageSize));
     }
 
     @PostMapping("/books/{bookId}/recycle/{type}/{id}/restore")
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> restore(@PathVariable String bookId,
-                                                    @PathVariable String type,
-                                                    @PathVariable String id,
-                                                    @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "restoreLedgerRecycleItem")
+    public ApiResponse<RestoreView> restore(@PathVariable String bookId, @PathVariable String type,
+                                            @PathVariable String id,
+                                            @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok("transaction".equals(type)
-                ? safe(transactions.restore(bookId, id, opId))
-                : books.restoreResource(bookId, type, id, opId));
+                ? transactions.restore(bookId, id, opId) : books.restoreResource(bookId, type, id, opId));
     }
 
     @DeleteMapping("/books/{bookId}/recycle/{type}/{id}")
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> purge(@PathVariable String bookId,
-                                                  @PathVariable String type,
-                                                  @PathVariable String id) {
+    @Operation(operationId = "purgeLedgerRecycleItem")
+    public ApiResponse<DeletedResource> purge(@PathVariable String bookId, @PathVariable String type,
+                                              @PathVariable String id) {
         return ApiResponse.ok("transaction".equals(type)
-                ? transactions.purge(bookId, id)
-                : books.purgeResource(bookId, type, id));
+                ? transactions.purge(bookId, id) : books.purgeResource(bookId, type, id));
     }
 
     @GetMapping("/books/{bookId}/audit-logs")
-    public ApiResponse<Map<String, Object>> auditLogs(@PathVariable String bookId,
-                                                      @RequestParam(defaultValue = "1") int page,
-                                                      @RequestParam(defaultValue = "20") int pageSize) {
+    @Operation(operationId = "listLedgerAuditLogs")
+    public ApiResponse<AuditPage> auditLogs(@PathVariable String bookId,
+                                            @RequestParam(defaultValue = "1") int page,
+                                            @RequestParam(defaultValue = "20") int pageSize) {
         return ApiResponse.ok(audit.list(bookId, page, pageSize));
     }
 
-    @DeleteMapping("/books/{bookId}/audit-logs")
+    @DeleteMapping(value = "/books/{bookId}/audit-logs", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> clearAuditLogs(@PathVariable String bookId,
-                                                           @RequestBody(required = false) Map<String, List<Long>> body) {
-        return ApiResponse.ok(audit.clear(bookId, body == null ? List.of() : body.get("ids")));
+    @Operation(operationId = "clearLedgerAuditLogs")
+    public ApiResponse<DeleteCount> clearAuditLogs(@PathVariable String bookId,
+                                                    @RequestBody(required = false) AuditClearCommand body) {
+        return ApiResponse.ok(audit.clear(bookId, body == null ? List.of() : body.ids()));
     }
 
     @PostMapping("/books/{bookId}/materialize")
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> materialize(@PathVariable String bookId,
-                                                        @RequestParam(required = false) String month) {
+    @Operation(operationId = "materializeLedgerBalances")
+    public ApiResponse<MaterializeResult> materialize(@PathVariable String bookId,
+                                                       @RequestParam(required = false) String month) {
         String target = month == null || month.isBlank() ? YearMonth.now().minusMonths(1).toString() : month;
-        return ApiResponse.ok(Map.of("month", target, "accounts", transactions.materialize(bookId, target)));
+        return ApiResponse.ok(new MaterializeResult(target, transactions.materialize(bookId, target)));
     }
 
     @PostMapping(value = "/books/{bookId}/imports/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAuthority('ledger:import')")
-    public ApiResponse<Map<String, Object>> importPreview(@PathVariable String bookId,
-                                                          @RequestPart("file") MultipartFile file,
-                                                          @RequestParam(required = false) String template) throws Exception {
+    @Operation(operationId = "previewLedgerImport")
+    public ApiResponse<ImportPreview> importPreview(@PathVariable String bookId,
+                                                     @RequestPart("file") MultipartFile file,
+                                                     @RequestParam(required = false) String template) throws Exception {
         return ApiResponse.ok(imports.preview(bookId, file, template));
     }
 
     @PostMapping("/books/{bookId}/imports/{batchId}/confirm")
     @PreAuthorize("hasAuthority('ledger:import')")
-    public ApiResponse<Map<String, Object>> importConfirm(@PathVariable String bookId,
-                                                          @PathVariable String batchId) {
+    @Operation(operationId = "confirmLedgerImport")
+    public ApiResponse<ImportConfirm> importConfirm(@PathVariable String bookId, @PathVariable String batchId) {
         return ApiResponse.ok(imports.confirm(bookId, batchId));
     }
 
-    @GetMapping("/books/{bookId}/export")
+    @GetMapping(value = "/books/{bookId}/export", produces = {
+            "text/csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"})
+    @Operation(operationId = "exportLedgerTransactions")
     public ResponseEntity<ByteArrayResource> export(@PathVariable String bookId,
-                                                    @RequestParam(defaultValue = "csv") String format,
-                                                    @RequestParam(required = false) String from,
-                                                    @RequestParam(required = false) String to) {
+                                                     @RequestParam(defaultValue = "csv") String format,
+                                                     @RequestParam(required = false) String from,
+                                                     @RequestParam(required = false) String to) {
         byte[] data = imports.export(bookId, format, from, to);
         boolean excel = "xlsx".equalsIgnoreCase(format) || "excel".equalsIgnoreCase(format);
         String filename = excel ? "ledger.xlsx" : "ledger.csv";
@@ -454,71 +467,52 @@ public class LedgerBookController {
         return ResponseEntity.ok().headers(headers).contentLength(data.length).body(new ByteArrayResource(data));
     }
 
-    @PostMapping("/books/{bookId}/sync/push")
+    @PostMapping(value = "/books/{bookId}/sync/push", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> syncPush(@PathVariable String bookId,
-                                                     @RequestBody List<Map<String, Object>> operations) {
+    @Operation(operationId = "pushLedgerSync")
+    public ApiResponse<SyncPushResponse> syncPush(@PathVariable String bookId,
+                                                   @RequestBody List<SyncOperationRequest> operations) {
         return ApiResponse.ok(sync.push(bookId, operations));
     }
 
     @GetMapping("/books/{bookId}/sync/pull")
-    public ApiResponse<Map<String, Object>> syncPull(@PathVariable String bookId,
-                                                     @RequestParam(defaultValue = "0") long cursor,
-                                                     @RequestParam(defaultValue = "200") int limit) {
+    @Operation(operationId = "pullLedgerSync")
+    public ApiResponse<SyncPullResponse> syncPull(@PathVariable String bookId,
+                                                   @RequestParam(defaultValue = "0") long cursor,
+                                                   @RequestParam(defaultValue = "200") int limit) {
         return ApiResponse.ok(sync.pull(bookId, cursor, limit));
     }
 
-    @PostMapping("/books/{bookId}/ai/preview")
+    @PostMapping(value = "/books/{bookId}/ai/preview", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> aiPreview(@PathVariable String bookId,
-                                                      @RequestBody Map<String, Object> body) {
-        return ApiResponse.ok(ai.previewText(bookId, String.valueOf(body.getOrDefault("text", ""))));
+    @Operation(operationId = "previewLedgerAiText")
+    public ApiResponse<AiPreview> aiPreview(@PathVariable String bookId, @RequestBody AiPreviewCommand body) {
+        return ApiResponse.ok(ai.previewText(bookId, body.text()));
     }
 
-    @PostMapping("/books/{bookId}/ai/monthly-analysis")
-    public ApiResponse<Map<String, Object>> aiMonthlyAnalysis(@PathVariable String bookId,
-                                                              @RequestBody Map<String, Object> body) {
+    @PostMapping(value = "/books/{bookId}/ai/monthly-analysis", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(operationId = "analyzeLedgerMonth")
+    public ApiResponse<MonthlyAnalysis> aiMonthlyAnalysis(@PathVariable String bookId,
+                                                           @RequestBody MonthlyAnalysisCommand body) {
         return ApiResponse.ok(reportAi.analyzeMonth(bookId, body));
     }
 
     @PostMapping(value = "/books/{bookId}/ai/image-preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> aiImagePreview(@PathVariable String bookId,
-                                                           @RequestPart("file") MultipartFile file) throws Exception {
+    @Operation(operationId = "previewLedgerAiImage")
+    public ApiResponse<AiPreview> aiImagePreview(@PathVariable String bookId,
+                                                  @RequestPart("file") MultipartFile file) throws Exception {
         return ApiResponse.ok(ai.previewImage(bookId, file));
     }
 
-    @PostMapping("/books/{bookId}/ai/{draftId}/confirm")
+    @PostMapping(value = "/books/{bookId}/ai/{draftId}/confirm", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ledger:write')")
-    public ApiResponse<Map<String, Object>> aiConfirm(@PathVariable String bookId,
-                                                      @PathVariable String draftId,
-                                                      @RequestBody Map<String, Object> body,
-                                                      @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
+    @Operation(operationId = "confirmLedgerAiDraft")
+    public ApiResponse<AiConfirm> aiConfirm(@PathVariable String bookId, @PathVariable String draftId,
+                                            @RequestBody AiConfirmCommand body,
+                                            @RequestHeader(value = "Idempotency-Key", required = false) String opId) {
         return ApiResponse.ok(ai.confirm(bookId, draftId, body, opId));
     }
 
-    private String singular(String type) {
-        return "merchants".equals(type) ? "merchant" : "project";
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> safe(Map<String, Object> source) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        source.forEach((key, value) -> {
-            if ("internalId".equals(key)) return;
-            if (value instanceof Map<?, ?> map) {
-                result.put(key, safe((Map<String, Object>) map));
-            } else if (value instanceof List<?> list) {
-                result.put(key, list.stream().map(item -> item instanceof Map<?, ?> map
-                        ? safe((Map<String, Object>) map) : item).toList());
-            } else {
-                result.put(key, value);
-            }
-        });
-        return result;
-    }
-
-    private List<Map<String, Object>> safeList(List<Map<String, Object>> source) {
-        return source.stream().map(this::safe).toList();
-    }
+    private String singular(String type) { return "merchants".equals(type) ? "merchant" : "project"; }
 }

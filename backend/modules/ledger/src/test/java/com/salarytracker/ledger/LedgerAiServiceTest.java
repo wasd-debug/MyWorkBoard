@@ -6,8 +6,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
+
+import static com.salarytracker.ledger.LedgerModels.*;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -30,7 +31,6 @@ class LedgerAiServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void defaultsAiDraftMemberToCurrentUser() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         LlmGateway gateway = mock(LlmGateway.class);
@@ -44,15 +44,16 @@ class LedgerAiServiceTest {
         when(books.categories("book-id", false)).thenReturn(List.of());
         when(books.merchants("book-id", false)).thenReturn(List.of());
         when(books.projects("book-id", false)).thenReturn(List.of());
-        when(books.members("book-id")).thenReturn(List.of(Map.of(
-                "id", "member-id", "userId", 3L, "username", "tester", "displayName", "当前用户")));
-        LedgerAiService service = new LedgerAiService(jdbc, new ObjectMapper(), gateway, access,
+        when(books.members("book-id")).thenReturn(List.of(new Member(
+                "member-id", 3L, null, "tester", null, "当前用户", null,
+                "OWNER", "账本主人", "user", 1L, null)));
+        LedgerAiService service = new LedgerAiService(jdbc, new ObjectMapper().findAndRegisterModules(), gateway, access,
                 books, mock(LedgerTransactionService.class));
 
-        Map<String, Object> preview = service.previewText("book-id", "今天买冰淇淋花了26元");
-        Map<String, Object> draft = ((List<Map<String, Object>>) preview.get("drafts")).get(0);
+        AiPreview preview = service.previewText("book-id", "今天买冰淇淋花了26元");
+        AiDraft draft = preview.drafts().get(0);
 
-        assertEquals("member-id", draft.get("memberId"));
-        assertEquals("当前用户", draft.get("member"));
+        assertEquals("member-id", draft.memberId());
+        assertEquals("当前用户", draft.member());
     }
 }

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { apiGetHolidays, apiLogout, apiRefresh, clearAccessToken } from '../api/index.js'
+import { apiLogout, apiRefresh, clearAccessToken, getHolidays } from '../../packages/api-client/src/index.js'
 import { accountScopeFor } from '../utils/accountScope.js'
 import { useLedgerStore } from './ledger.js'
 import { useWorktimeStore } from './worktime.js'
@@ -169,7 +169,7 @@ export const useAppStore = defineStore('app', {
     async ensureHolidays(year) {
       if (!year || this._holYears[year]) return
       if (!this._holReq[year]) {
-        this._holReq[year] = apiGetHolidays(year)
+        this._holReq[year] = getHolidays(year)
           .then(res => {
             Object.assign(this.holidays, res.days || {})
             this._holYears[year] = res.source || 'ok'

@@ -40,7 +40,8 @@ export async function createServerBorrowing(request, { bookId, accountId, header
 
 export async function selectLedgerBeforeLoad(page, userId, bookId) {
   await page.addInitScript(({ userId: id, bookId: selectedBook }) => {
-    localStorage.setItem(`ledger-current-book:id-${id}`, selectedBook)
+    const storageKey = `ledger-current-book:id-${id}`
+    if (!localStorage.getItem(storageKey)) localStorage.setItem(storageKey, selectedBook)
   }, { userId, bookId })
 }
 

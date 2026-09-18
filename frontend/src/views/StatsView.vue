@@ -10,7 +10,7 @@
     <div class="card stats-filter">
       <div class="stats-filter-head">
         <div>
-          <h3 style="margin:0 0 3px;font-size:15px">自定义统计</h3>
+          <h2 style="margin:0 0 3px;font-size:15px">自定义统计</h2>
           <p class="muted">按任意时间段查看工时、加班、工资与时薪</p>
         </div>
         <div class="stats-filter-controls">
@@ -66,7 +66,7 @@
     <div class="card chart-card">
       <div class="chart-title">
         <div>
-          <h3>时长趋势</h3>
+          <h2>时长趋势</h2>
           <p class="muted">{{ chartGranularity === 'month' ? '每月' : '每日' }}总工时与加班时长</p>
         </div>
         <div class="chart-legend">
@@ -74,7 +74,11 @@
           <span><span class="dot ot"></span>加班</span>
         </div>
       </div>
-      <div class="chart-scroll"><div ref="chartRef" class="echart" aria-label="工时趋势图"></div></div>
+      <div class="chart-scroll"><div ref="chartRef" class="echart" role="img" :aria-label="`工时趋势图，共 ${chartData.length} 个数据点`"></div></div>
+      <details class="chart-data-table">
+        <summary>查看工时趋势数据</summary>
+        <div class="chart-data-scroll"><table><caption>工时趋势结构化数据</caption><thead><tr><th>日期</th><th>总工时</th><th>加班</th></tr></thead><tbody><tr v-for="item in chartData" :key="item.key"><td>{{ item.key }}</td><td>{{ item.total.toFixed(1) }} 小时</td><td>{{ item.ot.toFixed(1) }} 小时</td></tr></tbody></table></div>
+      </details>
       <div v-if="selected" class="selected-detail">
         <div class="d-head">SELECTED // {{ selected.label }}</div>
         <div class="d-grid">
@@ -92,7 +96,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ElMessage } from '../services/message.js'
+import { message } from '../services/message.js'
 import * as echarts from 'echarts'
 import Button from '../components/ui/Button.vue'
 import Input from '../components/ui/Input.vue'
@@ -111,6 +115,7 @@ const activeQuick = ref('week')
 const granularity = ref('day')
 const chartRef = ref(null)
 let chart
+let resizeObserver
 const selected = ref(null)
 
 const hours = CALC.fmtHours
@@ -167,7 +172,7 @@ function openCustom() {
 
 function applyCustom() {
   if (!customStart.value || !customEnd.value || customStart.value > customEnd.value) {
-    ElMessage.warning('请选择有效的日期范围')
+    message.warning('请选择有效的日期范围')
     return
   }
   startDate.value = customStart.value
@@ -223,8 +228,7 @@ const periodTip = computed(() => stats.value.days === 0
 
 function renderChart() {
   if (!chartRef.value) return
-  const minWidth = annualRange.value ? (chartGranularity.value === 'month' ? 760 : 1500) : null
-  chartRef.value.style.width = minWidth ? `${minWidth}px` : '100%'
+  chartRef.value.style.width = '100%'
   if (!chart) {
     chart = echarts.init(chartRef.value)
     chart.on('click', params => {
@@ -311,6 +315,10 @@ function varColor(name) {
 
 watch([rangeDates, chartGranularity, () => store.records], async () => { await nextTick(); renderChart() }, { deep: true })
 watch(selected, () => { renderChart() })
-onMounted(() => { renderChart(); window.addEventListener('resize', renderChart) })
-onBeforeUnmount(() => { window.removeEventListener('resize', renderChart); chart?.dispose() })
+onMounted(() => {
+  resizeObserver = new ResizeObserver(() => chart?.resize())
+  resizeObserver.observe(chartRef.value)
+  renderChart()
+})
+onBeforeUnmount(() => { resizeObserver?.disconnect(); chart?.dispose() })
 </script>

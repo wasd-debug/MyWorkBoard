@@ -1,4 +1,23 @@
 <template>
-  <Teleport to="body"><Transition name="modal-fade"><div v-if="open" class="ui-drawer-backdrop" @click.self="$emit('update:open', false)"><section class="ui-drawer" role="dialog" aria-modal="true" :aria-label="title"><div class="ui-drawer-handle" aria-hidden="true"></div><header class="ui-drawer-head"><h2>{{ title }}</h2><button class="ui-sheet-close" type="button" aria-label="关闭" @click="$emit('update:open', false)">×</button></header><div class="ui-drawer-body"><slot /></div><footer v-if="$slots.footer" class="ui-sheet-foot"><slot name="footer" /></footer></section></div></Transition></Teleport>
-  </template>
-<script setup>defineProps({ open: Boolean, title: { type: String, default: '' } }); defineEmits(['update:open'])</script>
+  <DialogRoot :open="open" @update:open="$emit('update:open', $event)">
+    <DialogPortal>
+      <DialogOverlay class="ui-drawer-backdrop" />
+      <DialogContent class="ui-drawer" :aria-describedby="undefined">
+        <div class="ui-drawer-handle" aria-hidden="true" />
+        <header class="ui-drawer-head">
+          <DialogTitle as="h2">{{ title }}</DialogTitle>
+          <DialogClose class="ui-sheet-close" aria-label="关闭">×</DialogClose>
+        </header>
+        <div class="ui-drawer-body"><slot /></div>
+        <footer v-if="$slots.footer" class="ui-sheet-foot"><slot name="footer" /></footer>
+      </DialogContent>
+    </DialogPortal>
+  </DialogRoot>
+</template>
+
+<script setup>
+import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
+
+defineProps({ open: Boolean, title: { type: String, default: '' } })
+defineEmits(['update:open'])
+</script>

@@ -31,7 +31,7 @@
 
 <script setup>
 import { reactive, ref } from 'vue'
-import { apiLogin, apiRegister } from '../api/auth'
+import { apiLogin, apiRegister } from '../../packages/api-client/src/index.js'
 import { useAppStore } from '../stores/app'
 import Button from '../components/ui/Button.vue'
 

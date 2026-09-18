@@ -1,9 +1,15 @@
 <template>
-  <div ref="chartRef" class="ledger-report-chart" :style="{ height }" :aria-label="ariaLabel" role="img"></div>
+  <div class="ledger-report-chart-wrap">
+    <div ref="chartRef" class="ledger-report-chart" :style="{ height }" :aria-label="ariaLabel" role="img"></div>
+    <details v-if="tableRows.length" class="chart-data-table">
+      <summary>查看图表数据</summary>
+      <div class="chart-data-scroll"><table><caption>{{ ariaLabel }}</caption><thead><tr><th>项目</th><th v-for="name in seriesNames" :key="name">{{ name }}</th></tr></thead><tbody><tr v-for="row in tableRows" :key="row.label"><td>{{ row.label }}</td><td v-for="(value, index) in row.values" :key="index">{{ value }}</td></tr></tbody></table></div>
+    </details>
+  </div>
 </template>
 
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { BarChart, LineChart, PieChart } from 'echarts/charts'
 import {
   GridComponent,
@@ -34,6 +40,22 @@ const chartRef = ref(null)
 let chart
 let resizeObserver
 let themeObserver
+
+const seriesList = computed(() => Array.isArray(props.option?.series) ? props.option.series : [])
+const seriesNames = computed(() => seriesList.value.map((series, index) => series.name || `系列 ${index + 1}`))
+const tableRows = computed(() => {
+  const axis = Array.isArray(props.option?.xAxis) ? props.option.xAxis[0] : props.option?.xAxis
+  const labels = Array.isArray(axis?.data) ? axis.data : []
+  if (!labels.length || !seriesList.value.length) return []
+  return labels.map((label, index) => ({
+    label,
+    values: seriesList.value.map(series => {
+      const raw = Array.isArray(series.data) ? series.data[index] : null
+      const value = raw && typeof raw === 'object' ? raw.value : raw
+      return Array.isArray(value) ? value.join(' / ') : (value ?? '—')
+    })
+  }))
+})
 
 function semanticColors() {
   const style = getComputedStyle(document.documentElement)
@@ -99,4 +121,5 @@ onBeforeUnmount(() => {
   width: 100%;
   min-width: 0;
 }
+.ledger-report-chart-wrap { min-width: 0 }
 </style>

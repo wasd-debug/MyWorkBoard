@@ -8,7 +8,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -25,7 +24,7 @@ public class LedgerBookAccess {
     @Transactional
     public String ensureDefaultBook() {
         long userId = currentUser.id();
-        List<Map<String, Object>> existing = jdbc.queryForList(
+        List<DbRow> existing = DbRow.query(jdbc,
                 "SELECT b.public_id FROM ledger_book b JOIN ledger_book_member m ON m.book_id=b.id " +
                         "WHERE m.user_id=? AND b.owner_user_id=m.user_id AND m.deleted=FALSE AND b.deleted=FALSE ORDER BY b.created_at,b.id LIMIT 1",
                 userId);
@@ -43,16 +42,16 @@ public class LedgerBookAccess {
         if (selected == null || selected.isBlank() || "default".equalsIgnoreCase(selected)) {
             selected = ensureDefaultBook();
         }
-        List<Map<String, Object>> rows = jdbc.queryForList(
+        List<DbRow> rows = DbRow.query(jdbc,
                 "SELECT b.id book_id,b.public_id,b.owner_user_id,m.id member_id,m.role_id,r.code role_code " +
                         "FROM ledger_book b JOIN ledger_book_member m ON m.book_id=b.id " +
                         "JOIN ledger_role r ON r.id=m.role_id " +
                         "WHERE b.public_id=? AND b.deleted=FALSE AND m.user_id=? AND m.deleted=FALSE AND r.deleted=FALSE",
                 selected, currentUser.id());
         if (rows.isEmpty()) throw new ForbiddenException("无权访问该账本");
-        Map<String, Object> row = rows.get(0);
+        DbRow row = rows.get(0);
         long roleId = number(row.get("role_id"));
-        Set<String> permissions = new LinkedHashSet<>(jdbc.queryForList(
+        Set<String> permissions = new LinkedHashSet<>(DbRow.query(jdbc,
                 "SELECT permission_code FROM ledger_role_permission WHERE role_id=?", String.class, roleId));
         return new Context(
                 number(row.get("book_id")),
@@ -67,16 +66,16 @@ public class LedgerBookAccess {
 
     /** Resolve a book for background jobs without an HTTP-authenticated user. */
     public Context resolveForSystem(long bookId) {
-        List<Map<String, Object>> rows = jdbc.queryForList(
+        List<DbRow> rows = DbRow.query(jdbc,
                 "SELECT b.id book_id,b.public_id,b.owner_user_id,m.id member_id,m.role_id,r.code role_code " +
                         "FROM ledger_book b JOIN ledger_book_member m ON m.book_id=b.id " +
                         "JOIN ledger_role r ON r.id=m.role_id " +
                         "WHERE b.id=? AND b.deleted=FALSE AND m.user_id=b.owner_user_id AND m.deleted=FALSE AND r.deleted=FALSE",
                 bookId);
         if (rows.isEmpty()) throw new ForbiddenException("账本不存在");
-        Map<String,Object> row = rows.get(0);
+        DbRow row = rows.get(0);
         long roleId = number(row.get("role_id"));
-        Set<String> permissions = new LinkedHashSet<>(jdbc.queryForList(
+        Set<String> permissions = new LinkedHashSet<>(DbRow.query(jdbc,
                 "SELECT permission_code FROM ledger_role_permission WHERE role_id=?", String.class, roleId));
         return new Context(number(row.get("book_id")), String.valueOf(row.get("public_id")),
                 number(row.get("owner_user_id")), number(row.get("owner_user_id")), number(row.get("member_id")),

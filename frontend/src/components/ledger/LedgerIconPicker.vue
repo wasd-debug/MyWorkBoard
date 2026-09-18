@@ -40,7 +40,7 @@ defineEmits(['update:modelValue'])
 .ledger-icon-picker legend {
   margin-bottom: 7px;
   color: var(--ink2);
-  font-size: 11px;
+  font-size:12px;
   font-weight: 600;
 }
 .ledger-icon-picker > div {
@@ -59,7 +59,7 @@ defineEmits(['update:modelValue'])
   border-radius: 4px;
   background: var(--paper);
   color: var(--muted);
-  font-size: 11px;
+  font-size:12px;
 }
 .ledger-icon-picker button:hover,
 .ledger-icon-picker button.active {

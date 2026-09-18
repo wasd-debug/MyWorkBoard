@@ -5,24 +5,21 @@
         <component :is="item.icon" class="bottom-nav-icon" aria-hidden="true" /><span>{{ item.label }}</span>
       </button>
     </div>
-    <div v-if="openItem" class="mobile-nav-menu" role="dialog" aria-label="二级导航">
-      <button class="mobile-nav-backdrop" type="button" aria-label="关闭菜单" @click="openItem = null"></button>
-      <div class="mobile-nav-sheet">
-        <div class="mobile-nav-sheet-head"><div><span class="label">WORKSPACE MODULE</span><strong>{{ openItem.label }}</strong></div><button class="mobile-nav-close" type="button" aria-label="关闭菜单" @click="openItem = null"><Close aria-hidden="true" /></button></div>
-        <div class="mobile-nav-options">
+    <Drawer :open="Boolean(openItem)" :title="openItem?.label || ''" @update:open="!$event && (openItem = null)">
+        <div v-if="openItem" class="mobile-nav-options">
           <button v-for="child in openItem.children" :key="child.key" class="mobile-nav-option" :class="{ active: isChildActive(child), disabled: child.disabled }" type="button" :disabled="child.disabled" @click="go(child)">
             <component :is="child.icon" class="mobile-nav-option-icon" aria-hidden="true" /><span>{{ child.label }}</span><small v-if="child.disabled">即将开放</small><ArrowRight v-else class="mobile-nav-arrow" aria-hidden="true" />
           </button>
         </div>
-      </div>
-    </div>
+    </Drawer>
   </nav>
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowRight, Calendar, Close, CreditCard, DataAnalysis, DeleteFilled, Document, List, Management, MoreFilled, Notebook, Setting, Tickets, Timer, UserFilled, Wallet } from '../icons.js'
+import { ArrowRight, Calendar, CreditCard, DataAnalysis, DeleteFilled, Document, List, Management, MoreFilled, Notebook, Setting, Tickets, Timer, UserFilled, Wallet } from '../icons.js'
+import Drawer from './ui/Drawer.vue'
 
 const route = useRoute()
 const router = useRouter()

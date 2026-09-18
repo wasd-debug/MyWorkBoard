@@ -3,7 +3,6 @@ package com.salarytracker.ledger;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelReader;
 import com.alibaba.excel.read.metadata.ReadSheet;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.DataFormatter;
@@ -40,6 +39,8 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.salarytracker.ledger.LedgerModels.*;
+
 @Service
 public class LedgerImportService {
     private static final Pattern DATE_PREFIX = Pattern.compile("^(\\d{4})-(\\d{1,2})-(\\d{1,2})");
@@ -63,7 +64,7 @@ public class LedgerImportService {
     }
 
     @Transactional
-    public Map<String, Object> preview(String bookPublicId,
+    public ImportPreview preview(String bookPublicId,
                                        MultipartFile file,
                                        String templateHint) throws Exception {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
@@ -80,7 +81,7 @@ public class LedgerImportService {
         if (rawRows.isEmpty()) throw new IllegalArgumentException("文件中没有可导入的数据");
 
         String template = recognizeTemplate(rawRows, templateHint);
-        List<Map<String, Object>> rows = new ArrayList<>();
+        List<ImportRow> rows = new ArrayList<>();
         Map<String, Long> existingCounts = existingTransactionCounts(context);
         Map<String, Integer> sourceOccurrences = new HashMap<>();
         ImportResources resources = importResources(context);
@@ -92,7 +93,7 @@ public class LedgerImportService {
         int errors = 0;
         int duplicates = 0;
         for (RawRow raw : rawRows) {
-            Map<String, Object> normalized = normalize(raw, template);
+            ImportRow normalized = normalize(raw, template);
             List<String> rowErrors = validate(context, normalized);
             String fingerprint = fingerprint(normalized);
             int occurrence = fingerprint.isBlank()
@@ -112,83 +113,62 @@ public class LedgerImportService {
                 valid++;
                 collectCreates(normalized, resources, createAccounts, createCategories, createMerchants, createProjects);
             }
-            normalized.put("sheet", raw.sheet());
-            normalized.put("rowNumber", raw.rowNumber());
-            normalized.put("status", status);
-            normalized.put("errors", rowErrors);
-            rows.add(normalized);
+            rows.add(withValidation(normalized, status, rowErrors));
         }
 
         String batchId = UUID.randomUUID().toString();
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("filename", filename);
-        payload.put("template", template);
-        payload.put("rows", rows);
-        payload.put("toCreate", Map.of(
-                "accounts", createAccounts,
-                "categories", createCategories,
-                "merchants", createMerchants,
-                "projects", createProjects));
+        ResourceCreates toCreate = new ResourceCreates(List.copyOf(createAccounts), List.copyOf(createCategories),
+                List.copyOf(createMerchants), List.copyOf(createProjects));
+        ImportBatchPayload payload = new ImportBatchPayload(filename, template, rows, toCreate, null);
         jdbc.update(
                 "INSERT INTO ledger_import_batch(id,book_id,user_id,template_type,payload_json,valid_count,error_count," +
                         "duplicate_count,expires_at) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP+INTERVAL 24 HOUR)",
                 batchId, context.bookId(), context.userId(), template, json(payload), valid, errors, duplicates);
-        return Map.of(
-                "batchId", batchId,
-                "filename", filename,
-                "template", template,
-                "validCount", valid,
-                "errorCount", errors,
-                "duplicateCount", duplicates,
-                "rows", rows,
-                "toCreate", payload.get("toCreate"));
+        return new ImportPreview(batchId, filename, template, valid, errors, duplicates, rows, toCreate);
     }
 
     @Transactional
-    public Map<String, Object> confirm(String bookPublicId, String batchId) {
+    public ImportConfirm confirm(String bookPublicId, String batchId) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         access.require(context, "IMPORT_EXPORT");
-        List<Map<String, Object>> batches = jdbc.queryForList(
+        List<DbRow> batches = DbRow.query(jdbc,
                 "SELECT payload_json,status FROM ledger_import_batch WHERE id=? AND book_id=? AND user_id=? " +
                         "AND expires_at>CURRENT_TIMESTAMP",
                 batchId, context.bookId(), context.userId());
         if (batches.isEmpty()) throw new IllegalArgumentException("导入批次不存在或已过期");
-        Map<String, Object> payload = parseMap(batches.get(0).get("payload_json"));
+        ImportBatchPayload payload = parseBatch(batches.get(0).get("payload_json"));
         if ("COMMITTED".equals(batches.get(0).get("status"))) {
-            return Map.of("batchId", batchId, "status", "COMMITTED",
-                    "createdCount", number(payload.getOrDefault("createdCount", 0)));
+            return new ImportConfirm(batchId, "COMMITTED", payload.createdCount() == null ? 0 : payload.createdCount());
         }
         long createdCount = 0;
-        for (Map<String, Object> row : maps(payload.get("rows"))) {
-            if (!"VALID".equals(row.get("status"))) continue;
-            Map<String, Object> draft = resolveDraft(context, row);
+        for (ImportRow row : payload.rows()) {
+            if (!"VALID".equals(row.status())) continue;
+            TransactionCommand draft = resolveDraft(context, row);
             transactions.create(
-                    bookPublicId, draft, "import-" + batchId + "-" + row.get("rowNumber") + "-" + row.get("sheet"));
+                    bookPublicId, draft, "import-" + batchId + "-" + row.rowNumber() + "-" + row.sheet());
             createdCount++;
         }
-        payload.remove("rows");
-        payload.put("createdCount", createdCount);
+        ImportBatchPayload committed = new ImportBatchPayload(payload.filename(), payload.template(),
+                List.of(), payload.toCreate(), createdCount);
         jdbc.update(
                 "UPDATE ledger_import_batch SET status='COMMITTED',payload_json=?,committed_at=CURRENT_TIMESTAMP " +
                         "WHERE id=? AND status='PREVIEW'",
-                json(payload), batchId);
-        return Map.of("batchId", batchId, "status", "COMMITTED", "createdCount", createdCount);
+                json(committed), batchId);
+        return new ImportConfirm(batchId, "COMMITTED", createdCount);
     }
 
     public byte[] export(String bookPublicId, String format, String from, String to) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         access.require(context, "IMPORT_EXPORT");
-        Map<String, String> filters = new LinkedHashMap<>();
-        filters.put("page", "1");
-        filters.put("pageSize", "100");
-        if (from != null) filters.put("from", from);
-        if (to != null) filters.put("to", to);
-        List<Map<String, Object>> all = new ArrayList<>();
+        int pageNumber = 1;
+        List<Transaction> all = new ArrayList<>();
         while (true) {
-            Map<String, Object> page = transactions.list(bookPublicId, filters);
-            all.addAll(maps(page.get("items")));
-            if (all.size() >= number(page.get("total"))) break;
-            filters.put("page", String.valueOf(Integer.parseInt(filters.get("page")) + 1));
+            TransactionPage page = transactions.list(bookPublicId, new TransactionQuery(
+                    String.valueOf(pageNumber), "100", from, to, null, null, null, null,
+                    null, null, null, null, null, null, null, null, null, null, null, null));
+            all.addAll(page.items());
+            if (all.size() >= page.total()) break;
+            pageNumber++;
         }
         List<List<String>> rows = all.stream().map(this::exportRow).toList();
         if ("xlsx".equalsIgnoreCase(format) || "excel".equalsIgnoreCase(format)) {
@@ -291,7 +271,7 @@ public class LedgerImportService {
         return "STANDARD";
     }
 
-    private Map<String, Object> normalize(RawRow raw, String template) {
+    private ImportRow normalize(RawRow raw, String template) {
         Map<String, String> row = raw.values();
         String direction = first(row, "收/支", "收支", "类型", "交易类型", "Type");
         String kind = normalizeKind(direction, raw.sheet(), first(row, "金额", "金额(元)", "金额（元）", "Amount"));
@@ -305,57 +285,42 @@ public class LedgerImportService {
             parent = parts[0].trim();
             category = parts[1].trim();
         }
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("kind", kind);
-        result.put("occurredOn", normalizeDate(first(row, "日期", "交易时间", "交易创建时间", "付款时间", "Date")));
-        result.put("parentCategory", parent);
-        result.put("category", category);
-        result.put("account", account);
-        result.put("targetAccount", targetAccount);
-        result.put("amount", amount);
-        result.put("member", first(row, "成员", "Member"));
-        result.put("merchant", first(row, "商家", "交易对方", "商户", "Payee"));
-        result.put("project", first(row, "项目", "Project"));
-        result.put("note", first(row, "备注", "商品", "商品名称", "说明", "Description", "Memo"));
-        result.put("source", "import-" + template.toLowerCase(Locale.ROOT));
-        return result;
+        return new ImportRow(raw.sheet(), raw.rowNumber(), null, List.of(), enumKind(kind),
+                parseDate(normalizeDate(first(row, "日期", "交易时间", "交易创建时间", "付款时间", "Date"))),
+                parent, category, account, targetAccount, parseAmount(amount), first(row, "成员", "Member"),
+                first(row, "商家", "交易对方", "商户", "Payee"), first(row, "项目", "Project"),
+                first(row, "备注", "商品", "商品名称", "说明", "Description", "Memo"),
+                "import-" + template.toLowerCase(Locale.ROOT));
     }
 
-    private List<String> validate(LedgerBookAccess.Context context, Map<String, Object> row) {
+    private List<String> validate(LedgerBookAccess.Context context, ImportRow row) {
         List<String> errors = new ArrayList<>();
-        if (text(row.get("kind")).isBlank()) errors.add("无法识别交易类型");
-        try {
-            LocalDate.parse(text(row.get("occurredOn")));
-        } catch (Exception exception) {
-            errors.add("日期格式不正确");
-        }
-        try {
-            if (new BigDecimal(text(row.get("amount"))).signum() <= 0) errors.add("金额必须大于 0");
-        } catch (Exception exception) {
-            errors.add("金额格式不正确");
-        }
-        if (text(row.get("account")).isBlank()) errors.add("账户必填");
-        if ("TRANSFER".equals(row.get("kind")) && text(row.get("targetAccount")).isBlank()) errors.add("转入账户必填");
-        if (requiresCategory(row.get("kind")) && text(row.get("category")).isBlank()) {
+        if (row.kind() == null) errors.add("无法识别交易类型");
+        if (row.occurredOn() == null) errors.add("日期格式不正确");
+        if (row.amount() == null) errors.add("金额格式不正确");
+        else if (row.amount().signum() <= 0) errors.add("金额必须大于 0");
+        if (text(row.account()).isBlank()) errors.add("账户必填");
+        if (row.kind() == TransactionKind.TRANSFER && text(row.targetAccount()).isBlank()) errors.add("转入账户必填");
+        if (requiresCategory(row.kind()) && text(row.category()).isBlank()) {
             errors.add("收入和支出必须填写二级分类");
         }
         return errors;
     }
 
-    private void collectCreates(Map<String, Object> row,
+    private void collectCreates(ImportRow row,
                                 ImportResources resources,
                                 Set<String> accounts,
                                 Set<String> categories,
                                 Set<String> merchants,
                                 Set<String> projects) {
-        addIfMissing(resources.accounts(), text(row.get("account")), accounts);
-        if ("TRANSFER".equals(row.get("kind"))) {
-            addIfMissing(resources.accounts(), text(row.get("targetAccount")), accounts);
+        addIfMissing(resources.accounts(), text(row.account()), accounts);
+        if (row.kind() == TransactionKind.TRANSFER) {
+            addIfMissing(resources.accounts(), text(row.targetAccount()), accounts);
         }
-        if (requiresCategory(row.get("kind"))) {
-            String category = text(row.get("category"));
-            String parent = text(row.get("parentCategory"));
-            String categoryKind = "INCOME".equals(row.get("kind")) ? "INCOME" : "EXPENSE";
+        if (requiresCategory(row.kind())) {
+            String category = text(row.category());
+            String parent = text(row.parentCategory());
+            String categoryKind = row.kind() == TransactionKind.INCOME ? "INCOME" : "EXPENSE";
             String resolvedParent = parent.isBlank() ? "其他" : parent;
             String key = resourceKey(categoryKind, resolvedParent, category);
             if (!resources.categories().contains(key)) {
@@ -363,8 +328,8 @@ public class LedgerImportService {
                 resources.categories().add(key);
             }
         }
-        addIfMissing(resources.merchants(), text(row.get("merchant")), merchants);
-        addIfMissing(resources.projects(), text(row.get("project")), projects);
+        addIfMissing(resources.merchants(), text(row.merchant()), merchants);
+        addIfMissing(resources.projects(), text(row.project()), projects);
     }
 
     private void addIfMissing(Set<String> existing, String name, Set<String> target) {
@@ -373,17 +338,17 @@ public class LedgerImportService {
     }
 
     private ImportResources importResources(LedgerBookAccess.Context context) {
-        Set<String> accounts = new LinkedHashSet<>(jdbc.queryForList(
+        Set<String> accounts = new LinkedHashSet<>(DbRow.query(jdbc,
                 "SELECT name FROM ledger_account WHERE book_id=? AND deleted=FALSE",
                 String.class, context.bookId()));
-        Set<String> merchants = new LinkedHashSet<>(jdbc.queryForList(
+        Set<String> merchants = new LinkedHashSet<>(DbRow.query(jdbc,
                 "SELECT name FROM ledger_merchant WHERE book_id=? AND deleted=FALSE",
                 String.class, context.bookId()));
-        Set<String> projects = new LinkedHashSet<>(jdbc.queryForList(
+        Set<String> projects = new LinkedHashSet<>(DbRow.query(jdbc,
                 "SELECT name FROM ledger_project WHERE book_id=? AND deleted=FALSE",
                 String.class, context.bookId()));
         Set<String> categories = new LinkedHashSet<>();
-        for (Map<String, Object> row : jdbc.queryForList(
+        for (DbRow row : DbRow.query(jdbc,
                 "SELECT c.kind,c.name category_name,COALESCE(p.name,'其他') parent_name " +
                         "FROM ledger_category c LEFT JOIN ledger_category p ON p.id=c.parent_id " +
                         "WHERE c.book_id=? AND c.deleted=FALSE AND c.parent_id IS NOT NULL",
@@ -402,7 +367,7 @@ public class LedgerImportService {
 
     private Map<String, Long> existingTransactionCounts(LedgerBookAccess.Context context) {
         Map<String, Long> result = new HashMap<>();
-        for (Map<String, Object> row : jdbc.queryForList(
+        for (DbRow row : DbRow.query(jdbc,
                 "SELECT CASE WHEN t.kind='TRANSFER_OUT' THEN 'TRANSFER' ELSE t.kind END kind," +
                         "DATE_FORMAT(t.occurred_on,'%Y-%m-%d') occurredOn,t.amount," +
                         "a.name account,target.name targetAccount,parent.name parentCategory,c.name category," +
@@ -420,54 +385,40 @@ public class LedgerImportService {
         return result;
     }
 
-    private Map<String, Object> resolveDraft(LedgerBookAccess.Context context, Map<String, Object> row) {
-        Map<String, Object> draft = new LinkedHashMap<>();
-        draft.put("id", UUID.randomUUID().toString());
-        draft.put("kind", row.get("kind"));
-        draft.put("occurredOn", row.get("occurredOn"));
-        draft.put("amount", row.get("amount"));
-        draft.put("source", row.get("source"));
-        draft.put("note", row.get("note"));
-        draft.put("accountId", transactions.matchAccount(context, text(row.get("account"))));
-        if ("TRANSFER".equals(row.get("kind"))) {
-            draft.put("targetAccountId", transactions.matchAccount(context, text(row.get("targetAccount"))));
-        }
-        if (requiresCategory(row.get("kind"))) {
-            draft.put("categoryId", transactions.matchCategory(context,
-                    text(row.get("parentCategory")), text(row.get("category")), text(row.get("kind"))));
-        }
-        String merchant = text(row.get("merchant"));
-        if (!merchant.isBlank()) draft.put("merchantId", transactions.matchNamed(context, "merchant", merchant));
-        String project = text(row.get("project"));
-        if (!project.isBlank()) draft.put("projectId", transactions.matchNamed(context, "project", project));
-        draft.put("memberId", jdbc.queryForObject(
+    private TransactionCommand resolveDraft(LedgerBookAccess.Context context, ImportRow row) {
+        String accountId = transactions.matchAccount(context, row.account());
+        String targetAccountId = row.kind() == TransactionKind.TRANSFER
+                ? transactions.matchAccount(context, row.targetAccount()) : null;
+        String categoryId = requiresCategory(row.kind()) ? transactions.matchCategory(context,
+                row.parentCategory(), row.category(), row.kind().name()) : null;
+        String merchantId = text(row.merchant()).isBlank() ? null
+                : transactions.matchNamed(context, "merchant", row.merchant());
+        String projectId = text(row.project()).isBlank() ? null
+                : transactions.matchNamed(context, "project", row.project());
+        String memberId = jdbc.queryForObject(
                 "SELECT public_id FROM ledger_book_member WHERE id=? AND book_id=? AND deleted=FALSE",
-                String.class, context.memberId(), context.bookId()));
-        return draft;
+                String.class, context.memberId(), context.bookId());
+        return new TransactionCommand(UUID.randomUUID().toString(), accountId, targetAccountId, categoryId,
+                merchantId, memberId, projectId, row.kind(), row.amount(), null, row.occurredOn(),
+                row.merchant(), row.member(), row.project(), row.note(), row.source(), null, null, null);
     }
 
     static boolean requiresCategory(Object kind) {
-        return "EXPENSE".equals(kind) || "INCOME".equals(kind);
+        String value = kind instanceof TransactionKind type ? type.name() : text(kind).toUpperCase(Locale.ROOT);
+        return "EXPENSE".equals(value) || "INCOME".equals(value);
     }
 
     static boolean isExistingOccurrence(int sourceOccurrence, long existingCount) {
         return sourceOccurrence > 0 && sourceOccurrence <= existingCount;
     }
 
-    private List<String> exportRow(Map<String, Object> row) {
-        String account = text(row.get("accountName"));
-        if ("TRANSFER".equals(row.get("kind"))) account += " → " + text(row.get("targetAccountName"));
+    private List<String> exportRow(Transaction row) {
+        String account = text(row.accountName());
+        if (row.kind() == TransactionKind.TRANSFER) account += " → " + text(row.targetAccountName());
         return List.of(
-                kindLabel(text(row.get("kind"))),
-                text(row.get("occurredOn")),
-                text(row.get("parentCategoryName")),
-                text(row.get("categoryName")),
+                kindLabel(row.kind().name()), text(row.occurredOn()), text(row.parentCategoryName()), text(row.categoryName()),
                 account,
-                text(row.get("amount")),
-                text(row.get("member")),
-                text(row.get("merchantName")),
-                text(row.get("projectName")),
-                text(row.get("note")));
+                text(row.amount()), text(row.member()), text(row.merchantName()), text(row.projectName()), text(row.note()));
     }
 
     private String normalizeKind(String raw, String sheet, String amount) {
@@ -547,26 +498,39 @@ public class LedgerImportService {
         }
     }
 
-    static String fingerprint(Map<String, Object> row) {
-        if (text(row.get("occurredOn")).isBlank() || text(row.get("amount")).isBlank()) return "";
-        String parentCategory = text(row.get("parentCategory"));
-        if (requiresCategory(row.get("kind"))
+    static String fingerprint(ImportRow row) {
+        return fingerprint(row.kind(), row.occurredOn(), row.amount(), row.account(), row.targetAccount(),
+                row.parentCategory(), row.category(), row.merchant(), row.project(), row.note(), row.source());
+    }
+
+    private static String fingerprint(DbRow row) {
+        return fingerprint(row.get("kind"), row.get("occurredOn"), row.get("amount"), row.get("account"),
+                row.get("targetAccount"), row.get("parentCategory"), row.get("category"), row.get("merchant"),
+                row.get("project"), row.get("note"), row.get("source"));
+    }
+
+    private static String fingerprint(Object kind, Object occurredOn, Object amount, Object account,
+                                      Object targetAccount, Object parentCategoryValue, Object category,
+                                      Object merchant, Object project, Object note, Object source) {
+        if (text(occurredOn).isBlank() || text(amount).isBlank()) return "";
+        String parentCategory = text(parentCategoryValue);
+        if (requiresCategory(kind)
                 && parentCategory.isBlank()
-                && !text(row.get("category")).isBlank()) {
+                && !text(category).isBlank()) {
             parentCategory = "其他";
         }
         return String.join("|",
-                text(row.get("kind")),
-                text(row.get("occurredOn")),
-                text(row.get("amount")),
-                text(row.get("account")),
-                text(row.get("targetAccount")),
+                text(kind),
+                text(occurredOn),
+                text(amount),
+                text(account),
+                text(targetAccount),
                 parentCategory,
-                text(row.get("category")),
-                text(row.get("merchant")),
-                text(row.get("project")),
-                text(row.get("note")),
-                text(row.get("source")));
+                text(category),
+                text(merchant),
+                text(project),
+                text(note),
+                text(source));
     }
 
     private String first(Map<String, String> row, String... names) {
@@ -655,25 +619,42 @@ public class LedgerImportService {
         }
     }
 
-    private Map<String, Object> parseMap(Object value) {
+    private ImportBatchPayload parseBatch(Object value) {
         try {
-            return mapper.readValue(String.valueOf(value), new TypeReference<>() {});
+            return mapper.readValue(String.valueOf(value), ImportBatchPayload.class);
         } catch (Exception exception) {
             throw new IllegalStateException("导入预览数据损坏", exception);
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> maps(Object value) {
-        if (!(value instanceof List<?> list)) return List.of();
-        return list.stream().filter(Map.class::isInstance)
-                .map(item -> (Map<String, Object>) item).toList();
+    private ImportRow withValidation(ImportRow row, String status, List<String> errors) {
+        return new ImportRow(row.sheet(), row.rowNumber(), status, errors, row.kind(), row.occurredOn(),
+                row.parentCategory(), row.category(), row.account(), row.targetAccount(), row.amount(),
+                row.member(), row.merchant(), row.project(), row.note(), row.source());
     }
 
-    private Map<String, Object> publicTransaction(Map<String, Object> source) {
-        Map<String, Object> result = new LinkedHashMap<>(source);
-        result.remove("internalId");
-        return result;
+    private TransactionKind enumKind(String value) {
+        try {
+            return value == null || value.isBlank() ? null : TransactionKind.valueOf(value);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private LocalDate parseDate(String value) {
+        try {
+            return value == null || value.isBlank() ? null : LocalDate.parse(value);
+        } catch (Exception exception) {
+            return null;
+        }
+    }
+
+    private BigDecimal parseAmount(String value) {
+        try {
+            return value == null || value.isBlank() ? null : new BigDecimal(value);
+        } catch (Exception exception) {
+            return null;
+        }
     }
 
     private long number(Object value) {

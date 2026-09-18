@@ -1,6 +1,5 @@
 package com.salarytracker.ledger;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.salarytracker.platform.ConflictException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -14,12 +13,12 @@ import java.sql.Statement;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+
+import static com.salarytracker.ledger.LedgerModels.*;
 
 @Service
 public class LedgerTransactionService {
@@ -64,10 +63,10 @@ public class LedgerTransactionService {
         this.audit = audit;
     }
 
-    public Map<String, Object> list(String bookPublicId, Map<String, String> filters) {
+    public TransactionPage list(String bookPublicId, TransactionQuery filters) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
-        int page = positiveInt(filters.get("page"), 1, 1, Integer.MAX_VALUE);
-        int pageSize = positiveInt(filters.get("pageSize"), 20, 1, 100);
+        int page = positiveInt(filters.page(), 1, 1, Integer.MAX_VALUE);
+        int pageSize = positiveInt(filters.pageSize(), 20, 1, 100);
         List<Object> args = new ArrayList<>();
         String where = where(context, filters, args, false);
         long total = jdbc.queryForObject(
@@ -78,42 +77,35 @@ public class LedgerTransactionService {
                         "LEFT JOIN ledger_project p ON p.id=t.project_id " +
                         "WHERE " + where,
                 Long.class, args.toArray());
-        String sort = sortColumn(filters.get("sort"));
-        String direction = "asc".equalsIgnoreCase(filters.get("direction")) ? "ASC" : "DESC";
+        String sort = sortColumn(filters.sort());
+        String direction = "asc".equalsIgnoreCase(filters.direction()) ? "ASC" : "DESC";
         List<Object> pageArgs = new ArrayList<>(args);
         pageArgs.add((page - 1) * pageSize);
         pageArgs.add(pageSize);
-        List<Map<String, Object>> items = jdbc.queryForList(
+        List<Transaction> items = DbRow.query(jdbc,
                 SELECT + "WHERE " + where + " ORDER BY " + sort + " " + direction + ",t.id " + direction +
                         " LIMIT ?,?",
                 pageArgs.toArray()).stream().map(this::view).toList();
-        Map<String, Object> summary = summary(context, filters);
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("items", items);
-        result.put("page", page);
-        result.put("pageSize", pageSize);
-        result.put("total", total);
-        result.put("totalPages", Math.max(1, (total + pageSize - 1) / pageSize));
-        result.put("summary", summary);
-        return result;
+        return new TransactionPage(items, page, pageSize, total,
+                Math.max(1, (total + pageSize - 1) / pageSize), summary(context, filters));
     }
 
-    public List<Map<String, Object>> recent(String bookPublicId, int limit) {
+    public List<Transaction> recent(String bookPublicId, int limit) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
-        return jdbc.queryForList(
+        return DbRow.query(jdbc,
                 SELECT + "WHERE t.book_id=? AND t.deleted=FALSE AND t.kind<>'TRANSFER_IN' " +
                         "ORDER BY t.occurred_on DESC,t.id DESC LIMIT ?",
                 context.bookId(), Math.min(Math.max(1, limit), 100)).stream().map(this::view).toList();
     }
 
-    public Map<String, Object> overview(String bookPublicId, String from, String to) {
+    public Overview overview(String bookPublicId, String from, String to) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         LocalDate start = from == null || from.isBlank()
                 ? YearMonth.now().atDay(1) : LocalDate.parse(from);
         LocalDate end = to == null || to.isBlank()
                 ? YearMonth.now().atEndOfMonth() : LocalDate.parse(to);
         if (end.isBefore(start)) throw new IllegalArgumentException("结束日期不能早于开始日期");
-        Map<String, Object> totals = jdbc.queryForMap(
+        DbRow totals = DbRow.one(jdbc,
                 "SELECT COALESCE(SUM(CASE WHEN kind IN ('INCOME','BORROW_IN','COLLECT_DEBT') THEN amount ELSE 0 END),0) income," +
                         "COALESCE(SUM(CASE WHEN kind IN ('EXPENSE','LEND_OUT','REPAY_DEBT') THEN amount ELSE 0 END),0) expense," +
                         "COUNT(CASE WHEN kind<>'TRANSFER_IN' THEN 1 END) count " +
@@ -121,38 +113,33 @@ public class LedgerTransactionService {
                 context.bookId(), start, end);
         BigDecimal income = decimal(totals.get("income"));
         BigDecimal expense = decimal(totals.get("expense"));
-        List<Map<String, Object>> daily = jdbc.queryForList(
+        List<DailyTotal> daily = DbRow.query(jdbc,
                 "SELECT occurred_on date," +
                         "COALESCE(SUM(CASE WHEN kind IN ('INCOME','BORROW_IN','COLLECT_DEBT') THEN amount ELSE 0 END),0) income," +
                         "COALESCE(SUM(CASE WHEN kind IN ('EXPENSE','LEND_OUT','REPAY_DEBT') THEN amount ELSE 0 END),0) expense " +
                         "FROM ledger_transaction WHERE book_id=? AND deleted=FALSE AND occurred_on BETWEEN ? AND ? " +
                         "GROUP BY occurred_on ORDER BY occurred_on",
-                context.bookId(), start, end);
-        List<Map<String, Object>> categories = jdbc.queryForList(
-                "SELECT parent.public_id parent_id,parent.name parent,c.public_id category_id,c.name category,SUM(t.amount) amount " +
+                context.bookId(), start, end).stream().map(row -> new DailyTotal(
+                        LocalDate.parse(text(row.get("date"))), decimal(row.get("income")), decimal(row.get("expense")))).toList();
+        List<CategoryTotal> categories = DbRow.query(jdbc,
+                "SELECT COALESCE(parent.public_id,c.public_id) id,COALESCE(parent.name,c.name) name," +
+                        "COALESCE(parent.color,c.color) color,SUM(t.amount) amount,COUNT(*) count " +
                         "FROM ledger_transaction t JOIN ledger_category c ON c.id=t.category_id " +
                         "LEFT JOIN ledger_category parent ON parent.id=c.parent_id " +
                         "WHERE t.book_id=? AND t.deleted=FALSE AND t.kind IN ('EXPENSE','LEND_OUT','REPAY_DEBT') " +
                         "AND t.occurred_on BETWEEN ? AND ? GROUP BY parent.id,c.id ORDER BY amount DESC",
-                context.bookId(), start, end);
+                context.bookId(), start, end).stream().map(row -> new CategoryTotal(text(row.get("id")),
+                        text(row.get("name")), text(row.get("color")), decimal(row.get("amount")),
+                        number(row.get("count")))).toList();
         String month = YearMonth.from(start).equals(YearMonth.from(end))
                 ? YearMonth.from(start).toString() : YearMonth.now().toString();
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("from", start.toString());
-        result.put("to", end.toString());
-        result.put("income", income);
-        result.put("expense", expense);
-        result.put("balance", income.subtract(expense));
-        result.put("count", number(totals.get("count")));
-        result.put("daily", daily);
-        result.put("categories", categories);
-        result.put("budgets", resources.budgets(bookPublicId, month));
-        return result;
+        return new Overview(start.toString(), end.toString(), income, expense, income.subtract(expense),
+                daily, categories, resources.budgets(bookPublicId, month));
     }
 
     @Transactional
-    public Map<String, Object> create(String bookPublicId,
-                                      Map<String, Object> input,
+    public Transaction create(String bookPublicId,
+                                      TransactionCommand input,
                                       String idempotencyKey) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         return createWithContext(context, input, idempotencyKey);
@@ -160,14 +147,14 @@ public class LedgerTransactionService {
 
     /** Used by ShedLock background jobs after the job has resolved the book owner context. */
     @Transactional
-    Map<String, Object> createForSystem(LedgerBookAccess.Context context,
-                                        Map<String, Object> input,
+    Transaction createForSystem(LedgerBookAccess.Context context,
+                                        TransactionCommand input,
                                         String idempotencyKey) {
         return createWithContext(context, input, idempotencyKey);
     }
 
-    private Map<String, Object> createWithContext(LedgerBookAccess.Context context,
-                                                  Map<String, Object> input,
+    private Transaction createWithContext(LedgerBookAccess.Context context,
+                                                  TransactionCommand input,
                                                   String idempotencyKey) {
         if (!context.permissions().contains("TRANSACTION_OWN_WRITE")
                 && !context.permissions().contains("TRANSACTION_ANY_WRITE")
@@ -175,7 +162,7 @@ public class LedgerTransactionService {
             access.require(context, "TRANSACTION_OWN_WRITE");
         }
         String opId = opId(input, idempotencyKey);
-        List<Map<String, Object>> previous = jdbc.queryForList(
+        List<DbRow> previous = DbRow.query(jdbc,
                 "SELECT public_id FROM ledger_transaction WHERE book_id=? AND client_op_id=?",
                 context.bookId(), opId);
         if (!previous.isEmpty()) return get(context, String.valueOf(previous.get(0).get("public_id")), true);
@@ -183,30 +170,30 @@ public class LedgerTransactionService {
         Draft draft = draft(context, input, null);
         if ("TRANSFER".equals(draft.kind())) return createTransfer(context, draft, opId);
         long internalId = insert(context, requestedPublicId(input), draft, draft.kind(), null, opId);
-        Map<String, Object> result = getByInternalId(context, internalId, true);
+        Transaction result = getByInternalId(context, internalId, true);
         appendVersion(context, internalId, 1, "CREATE", result);
-        resources.appendSync(context, opId, "transaction", String.valueOf(result.get("id")), "UPSERT", result);
-        audit.record(context, "transaction.create", "transaction", String.valueOf(result.get("id")), null, result);
+        resources.appendSync(context, opId, "transaction", result.id(), "UPSERT", result);
+        audit.record(context, "transaction.create", "transaction", result.id(), null, result);
         return result;
     }
 
     @Transactional
-    public Map<String, Object> update(String bookPublicId,
+    public Transaction update(String bookPublicId,
                                       String transactionPublicId,
-                                      Map<String, Object> input,
+                                      TransactionCommand input,
                                       String ifMatch,
                                       String opId) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
-        Map<String, Object> before = get(context, transactionPublicId, true);
-        access.requireTransactionWrite(context, number(before.get("createdBy")));
-        long revision = number(before.get("revision"));
+        Transaction before = get(context, transactionPublicId, true);
+        access.requireTransactionWrite(context, before.createdBy());
+        long revision = before.revision();
         requireRevision(ifMatch, revision);
         Draft draft = draft(context, input, before);
-        boolean existingTransfer = "TRANSFER".equals(before.get("kind"));
+        boolean existingTransfer = before.kind() == TransactionKind.TRANSFER;
         if (existingTransfer != "TRANSFER".equals(draft.kind())) {
             throw new IllegalArgumentException("转账与其他流水类型不能互相转换");
         }
-        long internalId = number(before.get("internalId"));
+        long internalId = before.internalId();
         if (existingTransfer) {
             updateTransfer(context, internalId, before, draft);
         } else {
@@ -219,8 +206,8 @@ public class LedgerTransactionService {
                     draft.merchantName(), draft.memberName(), draft.projectName(), draft.note(),
                     internalId, context.bookId());
         }
-        Map<String, Object> result = get(context, transactionPublicId, true);
-        appendVersion(context, internalId, number(result.get("revision")), "UPDATE", result);
+        Transaction result = get(context, transactionPublicId, true);
+        appendVersion(context, internalId, result.revision(), "UPDATE", result);
         String operationId = blankTo(opId, UUID.randomUUID().toString());
         resources.appendSync(context, operationId, "transaction", transactionPublicId, "UPSERT", result);
         audit.record(context, "transaction.update", "transaction", transactionPublicId, before, result);
@@ -228,78 +215,74 @@ public class LedgerTransactionService {
     }
 
     @Transactional
-    public Map<String, Object> delete(String bookPublicId,
+    public DeletedResource delete(String bookPublicId,
                                       String transactionPublicId,
                                       String ifMatch,
                                       String opId) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
-        Map<String, Object> before = get(context, transactionPublicId, true);
-        access.requireTransactionWrite(context, number(before.get("createdBy")));
-        long revision = number(before.get("revision"));
+        Transaction before = get(context, transactionPublicId, true);
+        access.requireTransactionWrite(context, before.createdBy());
+        long revision = before.revision();
         requireRevision(ifMatch, revision);
         List<Long> ids = transactionGroupIds(context, before);
         jdbc.update(
                 "UPDATE ledger_transaction SET deleted=TRUE,deleted_at=CURRENT_TIMESTAMP,revision=revision+1 " +
-                        ("TRANSFER".equals(before.get("kind"))
+                        (before.kind() == TransactionKind.TRANSFER
                                 ? "WHERE transfer_group_id=? AND book_id=? AND deleted=FALSE"
                                 : "WHERE public_id=? AND book_id=? AND deleted=FALSE"),
-                "TRANSFER".equals(before.get("kind")) ? before.get("transferGroupId") : transactionPublicId,
+                before.kind() == TransactionKind.TRANSFER ? before.transferGroupId() : transactionPublicId,
                 context.bookId());
         for (long id : ids) {
-            Map<String, Object> deleted = getByInternalId(context, id, false);
-            appendVersion(context, id, number(deleted.get("revision")), "DELETE", deleted);
+            Transaction deleted = getByInternalId(context, id, false);
+            appendVersion(context, id, deleted.revision(), "DELETE", deleted);
         }
-        Map<String, Object> result = tombstone(transactionPublicId, revision + 1);
+        DeletedResource result = tombstone(transactionPublicId, revision + 1, before.createdBy());
         String operationId = blankTo(opId, UUID.randomUUID().toString());
         resources.appendSync(context, operationId, "transaction", transactionPublicId, "DELETE", result);
         audit.record(context, "transaction.delete", "transaction", transactionPublicId, before, result);
         return result;
     }
 
-    public List<Map<String, Object>> history(String bookPublicId, String transactionPublicId) {
+    public List<TransactionVersion> history(String bookPublicId, String transactionPublicId) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
-        Map<String, Object> transaction = get(context, transactionPublicId, false);
-        access.requireTransactionWrite(context, number(transaction.get("createdBy")));
-        long internalId = number(transaction.get("internalId"));
-        return jdbc.queryForList(
+        Transaction transaction = get(context, transactionPublicId, false);
+        access.requireTransactionWrite(context, transaction.createdBy());
+        long internalId = transaction.internalId();
+        return DbRow.query(jdbc,
                 "SELECT v.revision,v.operation,v.payload_json,v.created_at,u.username,u.nickname " +
                         "FROM ledger_transaction_version v JOIN app_user u ON u.id=v.actor_user_id " +
                         "WHERE v.transaction_id=? AND v.book_id=? ORDER BY v.revision DESC",
                 internalId, context.bookId()).stream().map(row -> {
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("revision", number(row.get("revision")));
-            result.put("operation", row.get("operation"));
-            result.put("payload", parse(row.get("payload_json")));
-            result.put("actor", text(row.get("nickname")).isBlank() ? row.get("username") : row.get("nickname"));
-            result.put("createdAt", row.get("created_at"));
-            return result;
+            return new TransactionVersion(number(row.get("revision")), text(row.get("operation")),
+                    parseTransaction(row.get("payload_json")), text(row.get("nickname")).isBlank()
+                    ? text(row.get("username")) : text(row.get("nickname")), text(row.get("created_at")));
         }).toList();
     }
 
     @Transactional
-    public Map<String, Object> restore(String bookPublicId,
+    public Transaction restore(String bookPublicId,
                                        String transactionPublicId,
                                        String opId) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
-        Map<String, Object> before = get(context, transactionPublicId, false);
-        if (!Boolean.TRUE.equals(before.get("deleted"))) throw new IllegalArgumentException("流水未在回收站");
-        access.requireTransactionWrite(context, number(before.get("createdBy")));
+        Transaction before = get(context, transactionPublicId, false);
+        if (!before.deleted()) throw new IllegalArgumentException("流水未在回收站");
+        access.requireTransactionWrite(context, before.createdBy());
         List<Long> ids = transactionGroupIds(context, before);
-        if ("TRANSFER".equals(before.get("kind"))) {
+        if (before.kind() == TransactionKind.TRANSFER) {
             jdbc.update(
                     "UPDATE ledger_transaction SET deleted=FALSE,deleted_at=NULL,revision=revision+1 " +
                             "WHERE transfer_group_id=? AND book_id=?",
-                    before.get("transferGroupId"), context.bookId());
+                    before.transferGroupId(), context.bookId());
         } else {
             jdbc.update(
                     "UPDATE ledger_transaction SET deleted=FALSE,deleted_at=NULL,revision=revision+1 WHERE public_id=? AND book_id=?",
                     transactionPublicId, context.bookId());
         }
         for (long id : ids) {
-            Map<String, Object> restored = getByInternalId(context, id, true);
-            appendVersion(context, id, number(restored.get("revision")), "RESTORE", restored);
+            Transaction restored = getByInternalId(context, id, true);
+            appendVersion(context, id, restored.revision(), "RESTORE", restored);
         }
-        Map<String, Object> result = get(context, transactionPublicId, true);
+        Transaction result = get(context, transactionPublicId, true);
         resources.appendSync(context, blankTo(opId, UUID.randomUUID().toString()),
                 "transaction", transactionPublicId, "UPSERT", result);
         audit.record(context, "transaction.restore", "transaction", transactionPublicId, before, result);
@@ -307,63 +290,55 @@ public class LedgerTransactionService {
     }
 
     @Transactional
-    public Map<String, Object> purge(String bookPublicId, String transactionPublicId) {
+    public DeletedResource purge(String bookPublicId, String transactionPublicId) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         if (!context.isAdmin()) throw new com.salarytracker.platform.ForbiddenException("只有主人或管理员可以永久删除");
-        Map<String, Object> before = get(context, transactionPublicId, false);
-        if (!Boolean.TRUE.equals(before.get("deleted"))) throw new IllegalArgumentException("请先将流水移入回收站");
+        Transaction before = get(context, transactionPublicId, false);
+        if (!before.deleted()) throw new IllegalArgumentException("请先将流水移入回收站");
         List<Long> ids = transactionGroupIds(context, before);
         String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
         jdbc.update("DELETE FROM ledger_transaction_version WHERE transaction_id IN (" + placeholders + ")", ids.toArray());
         jdbc.update("DELETE FROM ledger_transaction_history WHERE transaction_id IN (" + placeholders + ")", ids.toArray());
         jdbc.update("DELETE FROM ledger_transaction WHERE id IN (" + placeholders + ")", ids.toArray());
         audit.record(context, "transaction.purge", "transaction", transactionPublicId, before, null);
-        return Map.of("id", transactionPublicId, "purged", true);
+        return new DeletedResource(transactionPublicId, before.revision(), true,
+                before.deletedAt(), before.createdBy(), null, true);
     }
 
     @Transactional
-    public Map<String, Object> copy(String sourceBookPublicId,
+    public Transaction copy(String sourceBookPublicId,
                                     String transactionPublicId,
-                                    Map<String, Object> input) {
+                                    CopyTransactionCommand input) {
         LedgerBookAccess.Context source = access.resolve(sourceBookPublicId);
-        Map<String, Object> transaction = get(source, transactionPublicId, true);
-        String targetBookPublicId = textOr(input == null ? null : input.get("targetBookId"), sourceBookPublicId);
+        Transaction transaction = get(source, transactionPublicId, true);
+        String targetBookPublicId = input == null || input.targetBookId() == null
+                ? sourceBookPublicId : input.targetBookId();
         LedgerBookAccess.Context target = access.resolve(targetBookPublicId);
         if (!target.permissions().contains("TRANSACTION_OWN_WRITE")
                 && !target.permissions().contains("TRANSACTION_ANY_WRITE")
                 && !target.isOwner()) {
             access.require(target, "TRANSACTION_OWN_WRITE");
         }
-        Map<String, Object> draft = new LinkedHashMap<>();
-        draft.put("id", UUID.randomUUID().toString());
-        draft.put("kind", transaction.get("kind"));
-        draft.put("amount", transaction.get("amount"));
-        draft.put("occurredOn", input != null && input.get("occurredOn") != null
-                ? input.get("occurredOn") : LocalDate.now().toString());
-        draft.put("currency", transaction.get("currency"));
-        draft.put("note", transaction.get("note"));
-        draft.put("accountId", matchAccount(target, String.valueOf(transaction.get("accountName"))));
-        if ("TRANSFER".equals(transaction.get("kind"))) {
-            draft.put("targetAccountId", matchAccount(target, String.valueOf(transaction.get("targetAccountName"))));
-        }
-        draft.put("categoryId", matchCategory(target,
-                text(transaction.get("parentCategoryName")), text(transaction.get("categoryName")),
-                String.valueOf(transaction.get("kind"))));
-        if (!text(transaction.get("merchantName")).isBlank()) {
-            draft.put("merchantId", matchNamed(target, "merchant", text(transaction.get("merchantName"))));
-        }
-        if (!text(transaction.get("projectName")).isBlank()) {
-            draft.put("projectId", matchNamed(target, "project", text(transaction.get("projectName"))));
-        }
-        String memberUsername = text(transaction.get("memberUsername"));
+        String accountId = matchAccount(target, transaction.accountName());
+        String targetAccountId = transaction.kind() == TransactionKind.TRANSFER
+                ? matchAccount(target, transaction.targetAccountName()) : null;
+        String categoryId = matchCategory(target, transaction.parentCategoryName(), transaction.categoryName(), transaction.kind().name());
+        String merchantId = transaction.merchantName() == null ? null : matchNamed(target, "merchant", transaction.merchantName());
+        String projectId = transaction.projectName() == null ? null : matchNamed(target, "project", transaction.projectName());
+        String memberId = null;
+        String memberUsername = text(transaction.memberUsername());
         if (!memberUsername.isBlank()) {
-            List<String> members = jdbc.queryForList(
+            List<String> members = DbRow.query(jdbc,
                     "SELECT m.public_id FROM ledger_book_member m JOIN app_user u ON u.id=m.user_id " +
                             "WHERE m.book_id=? AND m.deleted=FALSE AND u.username=?",
                     String.class, target.bookId(), memberUsername);
-            if (!members.isEmpty()) draft.put("memberId", members.get(0));
+            if (!members.isEmpty()) memberId = members.get(0);
         }
-        return create(target.bookPublicId(), draft, "copy-" + UUID.randomUUID());
+        return create(target.bookPublicId(), new TransactionCommand(UUID.randomUUID().toString(), accountId,
+                targetAccountId, categoryId, merchantId, memberId, projectId, transaction.kind(), transaction.amount(),
+                transaction.currency(), input != null && input.occurredOn() != null ? input.occurredOn() : LocalDate.now(),
+                transaction.payee(), transaction.member(), transaction.project(), transaction.note(),
+                transaction.source(), null, null, null), "copy-" + UUID.randomUUID());
     }
 
     @Transactional
@@ -379,7 +354,7 @@ public class LedgerTransactionService {
         Long cursor = jdbc.queryForObject(
                 "SELECT COALESCE(MAX(id),0) FROM ledger_sync_oplog WHERE book_id=?", Long.class, bookId);
         int count = 0;
-        for (Map<String, Object> account : jdbc.queryForList(
+        for (DbRow account : DbRow.query(jdbc,
                 "SELECT id,user_id,opening_balance FROM ledger_account WHERE book_id=? AND deleted=FALSE",
                 bookId)) {
             long accountId = number(account.get("id"));
@@ -404,7 +379,7 @@ public class LedgerTransactionService {
     @Transactional
     public int materializeAll(YearMonth month) {
         int count = 0;
-        for (Long bookId : jdbc.queryForList(
+        for (Long bookId : DbRow.query(jdbc,
                 "SELECT id FROM ledger_book WHERE deleted=FALSE", Long.class)) {
             count += materializeBook(bookId, month);
         }
@@ -413,7 +388,7 @@ public class LedgerTransactionService {
 
     @Transactional
     public int purgeExpiredRecycle() {
-        List<Long> transactionIds = jdbc.queryForList(
+        List<Long> transactionIds = DbRow.query(jdbc,
                 "SELECT id FROM ledger_transaction WHERE deleted=TRUE AND deleted_at<CURRENT_TIMESTAMP-INTERVAL 90 DAY",
                 Long.class);
         if (!transactionIds.isEmpty()) {
@@ -446,7 +421,7 @@ public class LedgerTransactionService {
         removed += jdbc.update(
                 "DELETE m FROM ledger_book_member m LEFT JOIN ledger_transaction t ON t.member_id=m.id " +
                         "WHERE m.deleted=TRUE AND m.deleted_at<CURRENT_TIMESTAMP-INTERVAL 90 DAY AND t.id IS NULL");
-        List<Long> expiredRoles = jdbc.queryForList(
+        List<Long> expiredRoles = DbRow.query(jdbc,
                 "SELECT r.id FROM ledger_role r LEFT JOIN ledger_book_member m ON m.role_id=r.id AND m.deleted=FALSE " +
                         "WHERE r.deleted=TRUE AND r.deleted_at<CURRENT_TIMESTAMP-INTERVAL 90 DAY AND m.id IS NULL",
                 Long.class);
@@ -462,20 +437,20 @@ public class LedgerTransactionService {
         return removed;
     }
 
-    Map<String, Object> get(LedgerBookAccess.Context context, String publicId, boolean activeOnly) {
+    Transaction get(LedgerBookAccess.Context context, String publicId, boolean activeOnly) {
         String active = activeOnly ? " AND t.deleted=FALSE" : "";
-        List<Map<String, Object>> rows = jdbc.queryForList(
+        List<DbRow> rows = DbRow.query(jdbc,
                 SELECT + "WHERE t.public_id=? AND t.book_id=?" + active,
                 publicId, context.bookId());
         if (rows.isEmpty()) throw new IllegalArgumentException("流水不存在");
         return view(rows.get(0));
     }
 
-    private Map<String, Object> getByInternalId(LedgerBookAccess.Context context,
+    private Transaction getByInternalId(LedgerBookAccess.Context context,
                                                 long internalId,
                                                 boolean activeOnly) {
         String active = activeOnly ? " AND t.deleted=FALSE" : "";
-        List<Map<String, Object>> rows = jdbc.queryForList(
+        List<DbRow> rows = DbRow.query(jdbc,
                 SELECT + "WHERE t.id=? AND t.book_id=?" + active,
                 internalId, context.bookId());
         if (rows.isEmpty()) throw new IllegalArgumentException("流水不存在");
@@ -483,54 +458,54 @@ public class LedgerTransactionService {
     }
 
     private String where(LedgerBookAccess.Context context,
-                         Map<String, String> filters,
+                         TransactionQuery filters,
                          List<Object> args,
                          boolean deleted) {
         StringBuilder where = new StringBuilder("t.book_id=? AND t.deleted=? AND t.kind<>'TRANSFER_IN'");
         args.add(context.bookId());
         args.add(deleted);
-        addDate(where, args, "t.occurred_on>=?", filters.get("from"));
-        addDate(where, args, "t.occurred_on<=?", filters.get("to"));
-        String filterKind = normalizedFilterKind(filters.get("kind"));
+        addDate(where, args, "t.occurred_on>=?", filters.from());
+        addDate(where, args, "t.occurred_on<=?", filters.to());
+        String filterKind = normalizedFilterKind(filters.kind());
         if ("TRANSFER".equals(filterKind)) {
             where.append(" AND t.kind='TRANSFER_OUT'");
         } else {
             addEquals(where, args, "t.kind=?", filterKind);
         }
-        addAccountPublicId(where, args, filters.get("accountId"), context.bookId());
+        addAccountPublicId(where, args, filters.accountId(), context.bookId());
         addPublicId(where, args, "t.category_id", "ledger_category",
-                text(filters.get("categoryId")).isBlank() ? filters.get("secondaryCategoryId") : filters.get("categoryId"),
+                text(filters.categoryId()).isBlank() ? filters.secondaryCategoryId() : filters.categoryId(),
                 context.bookId());
-        addPublicId(where, args, "c.parent_id", "ledger_category", filters.get("primaryCategoryId"), context.bookId());
-        addPublicId(where, args, "t.merchant_id", "ledger_merchant", filters.get("merchantId"), context.bookId());
-        addPublicId(where, args, "t.member_id", "ledger_book_member", filters.get("memberId"), context.bookId());
-        addPublicId(where, args, "t.project_id", "ledger_project", filters.get("projectId"), context.bookId());
-        String note = text(filters.get("note"));
+        addPublicId(where, args, "c.parent_id", "ledger_category", filters.primaryCategoryId(), context.bookId());
+        addPublicId(where, args, "t.merchant_id", "ledger_merchant", filters.merchantId(), context.bookId());
+        addPublicId(where, args, "t.member_id", "ledger_book_member", filters.memberId(), context.bookId());
+        addPublicId(where, args, "t.project_id", "ledger_project", filters.projectId(), context.bookId());
+        String note = text(filters.note());
         if (!note.isBlank()) {
             where.append(" AND t.note LIKE ?");
             args.add("%" + note + "%");
         }
-        String payee = text(filters.get("payee"));
+        String payee = text(filters.payee());
         if (!payee.isBlank()) {
             where.append(" AND COALESCE(m.name,t.payee) LIKE ?");
             args.add("%" + payee + "%");
         }
-        String member = text(filters.get("member"));
+        String member = text(filters.member());
         if (!member.isBlank()) {
             where.append(" AND COALESCE(NULLIF(u.nickname,''),NULLIF(u.username,''),t.member_name) LIKE ?");
             args.add("%" + member + "%");
         }
-        String project = text(filters.get("project"));
+        String project = text(filters.project());
         if (!project.isBlank()) {
             where.append(" AND COALESCE(p.name,t.project_name) LIKE ?");
             args.add("%" + project + "%");
         }
-        String q = text(filters.get("q"));
+        String q = text(filters.q());
         if (!q.isBlank()) {
             where.append(" AND (t.payee LIKE ? OR t.note LIKE ? OR a.name LIKE ? OR c.name LIKE ? OR m.name LIKE ? OR p.name LIKE ?)");
             for (int i = 0; i < 6; i++) args.add("%" + q + "%");
         }
-        String createdBy = text(filters.get("createdBy"));
+        String createdBy = text(filters.createdBy());
         if (!createdBy.isBlank()) {
             where.append(" AND t.created_by=?");
             args.add(Long.parseLong(createdBy));
@@ -538,10 +513,10 @@ public class LedgerTransactionService {
         return where.toString();
     }
 
-    private Map<String, Object> summary(LedgerBookAccess.Context context, Map<String, String> filters) {
+    private TransactionSummary summary(LedgerBookAccess.Context context, TransactionQuery filters) {
         List<Object> args = new ArrayList<>();
         String where = where(context, filters, args, false);
-        Map<String, Object> row = jdbc.queryForMap(
+        DbRow row = DbRow.one(jdbc,
                 "SELECT COALESCE(SUM(CASE WHEN t.kind IN ('INCOME','BORROW_IN','COLLECT_DEBT') THEN t.amount ELSE 0 END),0) income," +
                         "COALESCE(SUM(CASE WHEN t.kind IN ('EXPENSE','LEND_OUT','REPAY_DEBT') THEN t.amount ELSE 0 END),0) expense," +
                         "COUNT(*) count FROM ledger_transaction t " +
@@ -552,31 +527,32 @@ public class LedgerTransactionService {
                 args.toArray());
         BigDecimal income = decimal(row.get("income"));
         BigDecimal expense = decimal(row.get("expense"));
-        return Map.of(
-                "income", income,
-                "expense", expense,
-                "balance", income.subtract(expense),
-                "count", number(row.get("count")));
+        return new TransactionSummary(income, expense, number(row.get("count")));
     }
 
     private Draft draft(LedgerBookAccess.Context context,
-                        Map<String, Object> input,
-                        Map<String, Object> fallback) {
-        Map<String, Object> value = new LinkedHashMap<>();
-        if (fallback != null) value.putAll(fallback);
-        if (input != null) value.putAll(input);
-        String kind = kind(value.get("kind"));
-        long accountId = resources.internalId(context, "ledger_account", required(value, "accountId"), true);
+                        TransactionCommand input,
+                        Transaction fallback) {
+        TransactionKind requestedKind = input != null && input.kind() != null ? input.kind()
+                : fallback == null ? null : fallback.kind();
+        String kind = kind(requestedKind);
+        String requestedAccountId = input != null && input.accountId() != null ? input.accountId()
+                : fallback == null ? null : fallback.accountId();
+        long accountId = resources.internalId(context, "ledger_account", required(requestedAccountId, "accountId"), true);
         Long targetAccountId = null;
         if ("TRANSFER".equals(kind)) {
+            String requestedTargetAccountId = input != null && input.targetAccountId() != null ? input.targetAccountId()
+                    : fallback == null ? null : fallback.targetAccountId();
             targetAccountId = resources.internalId(context, "ledger_account",
-                    required(value, "targetAccountId"), true);
+                    required(requestedTargetAccountId, "targetAccountId"), true);
             if (targetAccountId == accountId) throw new IllegalArgumentException("转出账户与转入账户不能相同");
         }
         Long categoryId = null;
         if ("INCOME".equals(kind) || "EXPENSE".equals(kind)) {
-            categoryId = resources.internalId(context, "ledger_category", required(value, "categoryId"), true);
-            Map<String, Object> category = jdbc.queryForMap(
+            String requestedCategoryId = input != null && input.categoryId() != null ? input.categoryId()
+                    : fallback == null ? null : fallback.categoryId();
+            categoryId = resources.internalId(context, "ledger_category", required(requestedCategoryId, "categoryId"), true);
+            DbRow category = DbRow.one(jdbc,
                     "SELECT kind,parent_id FROM ledger_category WHERE id=? AND book_id=? AND deleted=FALSE AND hidden=FALSE",
                     categoryId, context.bookId());
             if (category.get("parent_id") == null) throw new IllegalArgumentException("分类必须选择到二级");
@@ -584,11 +560,21 @@ public class LedgerTransactionService {
                 throw new IllegalArgumentException("分类类型与流水类型不匹配");
             }
         }
-        Long merchantId = optionalInternal(context, "ledger_merchant", value.get("merchantId"));
-        Long memberId = optionalInternal(context, "ledger_book_member", value.get("memberId"));
-        Long projectId = optionalInternal(context, "ledger_project", value.get("projectId"));
-        BigDecimal amount = positiveAmount(value.get("amount"));
-        LocalDate occurredOn = LocalDate.parse(textOr(value.get("occurredOn"), LocalDate.now().toString()));
+        String merchantPublicId = input != null && input.merchantId() != null ? input.merchantId()
+                : fallback == null ? null : fallback.merchantId();
+        String memberPublicId = input != null && input.memberId() != null ? input.memberId()
+                : fallback == null ? null : fallback.memberId();
+        String projectPublicId = input != null && input.projectId() != null ? input.projectId()
+                : fallback == null ? null : fallback.projectId();
+        Long merchantId = optionalInternal(context, "ledger_merchant", merchantPublicId);
+        Long memberId = optionalInternal(context, "ledger_book_member", memberPublicId);
+        Long projectId = optionalInternal(context, "ledger_project", projectPublicId);
+        BigDecimal requestedAmount = input != null && input.amount() != null ? input.amount()
+                : fallback == null ? null : fallback.amount();
+        BigDecimal amount = positiveAmount(requestedAmount);
+        LocalDate requestedDate = input != null && input.occurredOn() != null ? input.occurredOn()
+                : fallback == null ? null : fallback.occurredOn();
+        LocalDate occurredOn = requestedDate == null ? LocalDate.now() : requestedDate;
         String merchantName = merchantId == null ? "" : jdbc.queryForObject(
                 "SELECT name FROM ledger_merchant WHERE id=?", String.class, merchantId);
         String memberName = "";
@@ -602,9 +588,12 @@ public class LedgerTransactionService {
                 "SELECT name FROM ledger_project WHERE id=?", String.class, projectId);
         return new Draft(
                 accountId, targetAccountId, categoryId, merchantId, memberId, projectId,
-                kind, amount, currency(value.get("currency")), occurredOn,
-                merchantName, memberName, projectName, text(value.get("note")),
-                textOr(value.get("source"), "manual"));
+                kind, amount, currency(input != null && input.currency() != null ? input.currency()
+                        : fallback == null ? null : fallback.currency()), occurredOn,
+                merchantName, memberName, projectName,
+                text(input != null && input.note() != null ? input.note() : fallback == null ? null : fallback.note()),
+                textOr(input != null && input.source() != null ? input.source()
+                        : fallback == null ? null : fallback.source(), "manual"));
     }
 
     private long insert(LedgerBookAccess.Context context,
@@ -648,7 +637,7 @@ public class LedgerTransactionService {
         return holder.getKey().longValue();
     }
 
-    private Map<String, Object> createTransfer(LedgerBookAccess.Context context, Draft draft, String opId) {
+    private Transaction createTransfer(LedgerBookAccess.Context context, Draft draft, String opId) {
         String groupId = UUID.randomUUID().toString();
         String sourcePublicId = UUID.randomUUID().toString();
         String targetPublicId = UUID.randomUUID().toString();
@@ -659,8 +648,8 @@ public class LedgerTransactionService {
                 draft.occurredOn(), draft.merchantName(), draft.memberName(), draft.projectName(),
                 draft.note(), draft.source());
         long targetId = insert(context, targetPublicId, targetDraft, "TRANSFER_IN", groupId, opId + ":target");
-        Map<String, Object> source = getByInternalId(context, sourceId, true);
-        Map<String, Object> target = getByInternalId(context, targetId, true);
+        Transaction source = getByInternalId(context, sourceId, true);
+        Transaction target = getByInternalId(context, targetId, true);
         appendVersion(context, sourceId, 1, "CREATE", source);
         appendVersion(context, targetId, 1, "CREATE", target);
         resources.appendSync(context, opId, "transaction", sourcePublicId, "UPSERT", source);
@@ -671,10 +660,10 @@ public class LedgerTransactionService {
 
     private void updateTransfer(LedgerBookAccess.Context context,
                                 long sourceId,
-                                Map<String, Object> before,
+                                Transaction before,
                                 Draft draft) {
-        String groupId = String.valueOf(before.get("transferGroupId"));
-        List<Long> targetIds = jdbc.queryForList(
+        String groupId = before.transferGroupId();
+        List<Long> targetIds = DbRow.query(jdbc,
                 "SELECT id FROM ledger_transaction WHERE transfer_group_id=? AND id<>? AND book_id=? AND deleted=FALSE",
                 Long.class, groupId, sourceId, context.bookId());
         if (targetIds.isEmpty()) throw new IllegalStateException("转账对端流水缺失");
@@ -695,10 +684,10 @@ public class LedgerTransactionService {
                 nullable(draft.memberId()), nullable(draft.projectId()), draft.amount(), draft.currency(),
                 draft.occurredOn(), draft.merchantName(), draft.memberName(), draft.projectName(), draft.note(),
                 targetId, context.bookId());
-        Map<String, Object> target = getByInternalId(context, targetId, true);
-        appendVersion(context, targetId, number(target.get("revision")), "UPDATE", target);
+        Transaction target = getByInternalId(context, targetId, true);
+        appendVersion(context, targetId, target.revision(), "UPDATE", target);
         resources.appendSync(context, UUID.randomUUID().toString(),
-                "transaction", String.valueOf(target.get("id")), "UPSERT", target);
+                "transaction", target.id(), "UPSERT", target);
     }
 
     private void appendVersion(LedgerBookAccess.Context context,
@@ -712,23 +701,23 @@ public class LedgerTransactionService {
                 internalId, context.bookId(), revision, operation, json(payload), context.userId());
     }
 
-    private List<Long> transactionGroupIds(LedgerBookAccess.Context context, Map<String, Object> transaction) {
-        if ("TRANSFER".equals(transaction.get("kind")) && transaction.get("transferGroupId") != null) {
-            return jdbc.queryForList(
+    private List<Long> transactionGroupIds(LedgerBookAccess.Context context, Transaction transaction) {
+        if (transaction.kind() == TransactionKind.TRANSFER && transaction.transferGroupId() != null) {
+            return DbRow.query(jdbc,
                     "SELECT id FROM ledger_transaction WHERE transfer_group_id=? AND book_id=?",
-                    Long.class, transaction.get("transferGroupId"), context.bookId());
+                    Long.class, transaction.transferGroupId(), context.bookId());
         }
-        return List.of(number(transaction.get("internalId")));
+        return List.of(transaction.internalId());
     }
 
     String matchAccount(LedgerBookAccess.Context context, String name) {
-        List<String> ids = jdbc.queryForList(
+        List<String> ids = DbRow.query(jdbc,
                 "SELECT public_id FROM ledger_account WHERE book_id=? AND name=? AND deleted=FALSE ORDER BY id LIMIT 1",
                 String.class, context.bookId(), name);
         if (!ids.isEmpty()) return ids.get(0);
         access.require(context, "RESOURCE_MANAGE");
-        return String.valueOf(resources.createAccount(
-                context.bookPublicId(), Map.of("name", name, "accountType", "other"), null).get("id"));
+        return resources.createAccount(context.bookPublicId(),
+                new AccountCommand(null, name, null, "other", null, null, null), null).id();
     }
 
     String matchCategory(LedgerBookAccess.Context context,
@@ -736,7 +725,7 @@ public class LedgerTransactionService {
                          String childName,
                          String transactionKind) {
         String categoryKind = INCOME_KINDS.contains(kind(transactionKind)) ? "INCOME" : "EXPENSE";
-        List<String> ids = jdbc.queryForList(
+        List<String> ids = DbRow.query(jdbc,
                 "SELECT c.public_id FROM ledger_category c LEFT JOIN ledger_category p ON p.id=c.parent_id " +
                         "WHERE c.book_id=? AND c.name=? AND c.kind=? AND c.deleted=FALSE " +
                         "AND (?='' OR p.name=?) ORDER BY c.id LIMIT 1",
@@ -744,34 +733,34 @@ public class LedgerTransactionService {
         if (!ids.isEmpty()) return ids.get(0);
         access.require(context, "RESOURCE_MANAGE");
         String effectiveParent = parentName.isBlank() ? "其他" : parentName;
-        List<String> parents = jdbc.queryForList(
+        List<String> parents = DbRow.query(jdbc,
                 "SELECT public_id FROM ledger_category WHERE book_id=? AND name=? AND kind=? " +
                         "AND parent_id IS NULL AND deleted=FALSE ORDER BY id LIMIT 1",
                 String.class, context.bookId(), effectiveParent, categoryKind);
         String parentId = parents.isEmpty()
-                ? String.valueOf(resources.createCategory(context.bookPublicId(),
-                Map.of("name", effectiveParent, "kind", categoryKind), null).get("id"))
+                ? resources.createCategory(context.bookPublicId(),
+                new CategoryCommand(null, effectiveParent, null, CategoryKind.valueOf(categoryKind), null, null, null), null).id()
                 : parents.get(0);
-        return String.valueOf(resources.createCategory(context.bookPublicId(),
-                Map.of("name", childName.isBlank() ? "其他" : childName,
-                        "kind", categoryKind, "parentId", parentId), null).get("id"));
+        return resources.createCategory(context.bookPublicId(),
+                new CategoryCommand(null, childName.isBlank() ? "其他" : childName, null,
+                        CategoryKind.valueOf(categoryKind), parentId, null, null), null).id();
     }
 
     String matchNamed(LedgerBookAccess.Context context, String type, String name) {
         String table = "merchant".equals(type) ? "ledger_merchant" : "ledger_project";
-        List<String> ids = jdbc.queryForList(
+        List<String> ids = DbRow.query(jdbc,
                 "SELECT public_id FROM " + table + " WHERE book_id=? AND name=? AND deleted=FALSE ORDER BY id LIMIT 1",
                 String.class, context.bookId(), name);
         if (!ids.isEmpty()) return ids.get(0);
         access.require(context, "RESOURCE_MANAGE");
-        return String.valueOf(resources.createNamedResource(
-                context.bookPublicId(), type, Map.of("name", name), null).get("id"));
+        return resources.createNamedResource(context.bookPublicId(), type,
+                new NamedResourceCommand(null, name, null, null, null, null), null).id();
     }
 
     String matchMember(LedgerBookAccess.Context context, String usernameOrNickname) {
         String value = text(usernameOrNickname);
         if (value.isBlank()) return "";
-        List<String> ids = jdbc.queryForList(
+        List<String> ids = DbRow.query(jdbc,
                 "SELECT m.public_id FROM ledger_book_member m JOIN app_user u ON u.id=m.user_id " +
                         "WHERE m.book_id=? AND m.deleted=FALSE AND (u.username=? OR u.nickname=?) ORDER BY m.id LIMIT 1",
                 String.class, context.bookId(), value, value);
@@ -821,65 +810,35 @@ public class LedgerTransactionService {
         args.add(bookId);
     }
 
-    private Map<String, Object> view(Map<String, Object> row) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("internalId", number(row.get("internal_id")));
-        result.put("id", row.get("public_id"));
-        result.put("accountId", row.get("account_public_id"));
-        result.put("accountName", row.get("account_name"));
-        result.put("accountIcon", row.get("account_icon"));
-        result.put("targetAccountId", row.get("target_account_public_id"));
-        result.put("targetAccountName", row.get("target_account_name"));
-        result.put("targetAccountIcon", row.get("target_account_icon"));
-        result.put("transferGroupId", row.get("transfer_group_id"));
-        result.put("categoryId", row.get("category_public_id"));
-        result.put("categoryName", row.get("category_name"));
-        result.put("categoryIcon", row.get("category_icon"));
-        result.put("categoryColor", row.get("category_color"));
-        result.put("parentCategoryId", row.get("parent_category_public_id"));
-        result.put("parentCategoryName", row.get("parent_category_name"));
-        result.put("parentCategoryIcon", row.get("parent_category_icon"));
-        result.put("parentCategoryColor", row.get("parent_category_color"));
-        result.put("merchantId", row.get("merchant_public_id"));
-        result.put("merchantName", row.get("merchant_name"));
-        result.put("merchantIcon", row.get("merchant_icon"));
-        result.put("payee", row.get("merchant_name") == null ? row.get("payee") : row.get("merchant_name"));
-        result.put("memberId", row.get("member_public_id"));
-        result.put("memberIcon", row.get("member_icon"));
-        result.put("memberUsername", row.get("member_username"));
+    private Transaction view(DbRow row) {
         String memberName = text(row.get("member_nickname"));
-        result.put("member", memberName.isBlank() ? row.get("member_username") : memberName);
-        result.put("projectId", row.get("project_public_id"));
-        result.put("projectIcon", row.get("project_icon"));
-        result.put("projectColor", row.get("project_color"));
-        result.put("projectName", row.get("project_name") == null
-                ? row.get("legacy_project_name") : row.get("project_name"));
-        result.put("project", result.get("projectName"));
-        String storedKind = String.valueOf(row.get("kind"));
-        result.put("storedKind", storedKind);
-        result.put("kind", storedKind.startsWith("TRANSFER_") ? "TRANSFER" : storedKind);
-        result.put("amount", row.get("amount"));
-        result.put("currency", row.get("currency"));
-        result.put("occurredOn", String.valueOf(row.get("occurred_on")));
-        result.put("note", row.get("note"));
-        result.put("source", row.get("source"));
-        result.put("clientOpId", row.get("client_op_id"));
-        result.put("revision", number(row.get("revision")));
-        result.put("deleted", Boolean.TRUE.equals(row.get("deleted")));
-        result.put("deletedAt", row.get("deleted_at"));
-        result.put("createdBy", number(row.get("created_by")));
-        result.put("createdAt", row.get("created_at"));
-        result.put("updatedAt", row.get("updated_at"));
-        return result;
+        String projectName = text(row.get("project_name")).isBlank()
+                ? nullableText(row.get("legacy_project_name")) : text(row.get("project_name"));
+        String storedKind = text(row.get("kind"));
+        TransactionKind publicKind = TransactionKind.valueOf(storedKind.startsWith("TRANSFER_") ? "TRANSFER" : storedKind);
+        return new Transaction(number(row.get("internal_id")), text(row.get("public_id")),
+                text(row.get("account_public_id")), text(row.get("account_name")), text(row.get("account_icon")),
+                nullableText(row.get("target_account_public_id")), nullableText(row.get("target_account_name")),
+                nullableText(row.get("target_account_icon")), nullableText(row.get("transfer_group_id")),
+                nullableText(row.get("category_public_id")), nullableText(row.get("category_name")),
+                nullableText(row.get("category_icon")), nullableText(row.get("category_color")),
+                nullableText(row.get("parent_category_public_id")), nullableText(row.get("parent_category_name")),
+                nullableText(row.get("parent_category_icon")), nullableText(row.get("parent_category_color")),
+                nullableText(row.get("merchant_public_id")), nullableText(row.get("merchant_name")),
+                nullableText(row.get("merchant_icon")), row.get("merchant_name") == null ? nullableText(row.get("payee")) : text(row.get("merchant_name")),
+                nullableText(row.get("member_public_id")), nullableText(row.get("member_icon")),
+                nullableText(row.get("member_username")), memberName.isBlank() ? nullableText(row.get("member_username")) : memberName,
+                nullableText(row.get("project_public_id")), nullableText(row.get("project_icon")),
+                nullableText(row.get("project_color")), projectName, projectName, storedKind, publicKind,
+                decimal(row.get("amount")), text(row.get("currency")), LocalDate.parse(text(row.get("occurred_on"))),
+                nullableText(row.get("note")), text(row.get("source")), nullableText(row.get("client_op_id")),
+                number(row.get("revision")), bool(row.get("deleted")), nullableText(row.get("deleted_at")),
+                number(row.get("created_by")), text(row.get("created_at")), text(row.get("updated_at")));
     }
 
-    private Map<String, Object> tombstone(String publicId, long revision) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("id", publicId);
-        result.put("revision", revision);
-        result.put("deleted", true);
-        result.put("deletedAt", java.time.Instant.now().toString());
-        return result;
+    private DeletedResource tombstone(String publicId, long revision, long createdBy) {
+        return new DeletedResource(publicId, revision, true, java.time.Instant.now().toString(),
+                createdBy, null, null);
     }
 
     private Long optionalInternal(LedgerBookAccess.Context context, String table, Object value) {
@@ -901,14 +860,14 @@ public class LedgerTransactionService {
         return id;
     }
 
-    private String opId(Map<String, Object> input, String header) {
+    private String opId(TransactionCommand input, String header) {
         String value = text(header);
-        if (value.isBlank()) value = text(input == null ? null : input.get("clientOpId"));
+        if (value.isBlank()) value = text(input == null ? null : input.clientOpId());
         return value.isBlank() ? UUID.randomUUID().toString() : value;
     }
 
-    private String requestedPublicId(Map<String, Object> input) {
-        String value = text(input == null ? null : input.get("id"));
+    private String requestedPublicId(TransactionCommand input) {
+        String value = text(input == null ? null : input.id());
         if (value.isBlank()) return UUID.randomUUID().toString();
         try {
             UUID.fromString(value);
@@ -918,8 +877,8 @@ public class LedgerTransactionService {
         }
     }
 
-    private String required(Map<String, Object> input, String key) {
-        String value = text(input == null ? null : input.get(key));
+    private String required(Object input, String key) {
+        String value = text(input);
         if (value.isBlank()) throw new IllegalArgumentException(key + " 必填");
         return value;
     }
@@ -1022,12 +981,20 @@ public class LedgerTransactionService {
         else statement.setLong(index, value);
     }
 
-    private Object parse(Object value) {
+    private Transaction parseTransaction(Object value) {
         try {
-            return mapper.readValue(String.valueOf(value), new TypeReference<Map<String, Object>>() {});
+            return mapper.readValue(String.valueOf(value), Transaction.class);
         } catch (Exception exception) {
-            return Map.of();
+            throw new IllegalArgumentException("流水历史数据格式无效", exception);
         }
+    }
+
+    private String nullableText(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private boolean bool(Object value) {
+        return Boolean.TRUE.equals(value) || value instanceof Number number && number.intValue() != 0;
     }
 
     private String json(Object value) {

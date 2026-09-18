@@ -9,6 +9,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.util.List;
 import java.util.Map;
 
+import com.salarytracker.ledger.LedgerModels.Book;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -46,10 +48,10 @@ class LedgerSharedBookAccessTest {
                                 "role_permissions", "TRANSACTION_OWN_WRITE,RECYCLE_SELF",
                                 "member_count", 2L, "transaction_count", 5L)));
 
-        List<Map<String, Object>> visible = books.books();
-        assertEquals(List.of("own-book", "shared-book"), visible.stream().map(book -> book.get("id")).toList());
-        assertEquals("MEMBER", visible.get(1).get("roleCode"));
-        assertEquals(List.of("TRANSACTION_OWN_WRITE", "RECYCLE_SELF"), visible.get(1).get("permissions"));
+        List<Book> visible = books.books();
+        assertEquals(List.of("own-book", "shared-book"), visible.stream().map(Book::id).toList());
+        assertEquals("MEMBER", visible.get(1).roleCode());
+        assertEquals(List.of("TRANSACTION_OWN_WRITE", "RECYCLE_SELF"), visible.get(1).permissions());
         verify(jdbc, times(2)).queryForList(org.mockito.ArgumentMatchers.contains("b.owner_user_id=m.user_id"), eq(42L));
     }
 

@@ -1,18 +1,17 @@
 <template>
-  <button
-    type="button"
-    role="switch"
-    :aria-checked="modelValue"
+  <SwitchRoot
+    :model-value="modelValue"
     :disabled="disabled"
     class="ui-toggle"
-    :class="{ on: modelValue }"
-    @click="$emit('update:modelValue', !modelValue)"
+    @update:model-value="$emit('update:modelValue', $event)"
   >
-    <span />
-  </button>
+    <SwitchThumb />
+  </SwitchRoot>
 </template>
 
 <script setup>
+import { SwitchRoot, SwitchThumb } from 'reka-ui'
+
 defineProps({ modelValue: Boolean, disabled: Boolean })
 defineEmits(['update:modelValue'])
 </script>

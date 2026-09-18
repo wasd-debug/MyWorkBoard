@@ -2,7 +2,7 @@
 
 一个正在从“真实时薪与加班追踪”演进为“工时 + 账本 + 任务 + AI + 洞察”的个人效率平台。
 
-当前可用主线是多用户工时与个人账本。Phase 0/1 本轮已完成资源化、local-first、物理模块拆分和自动化验收收口；视觉/真机、真实导入金额对账与持续运维演练仍属于发布门禁，任务、RAG 知识库和跨域洞察属于后续阶段。
+当前可用主线是多用户工时与个人账本。Phase 0/1 已完成资源化、local-first、物理模块拆分、唯一 v1 API、OpenAPI 生成客户端、视觉/无障碍和自动化验收收口；Android Chrome 与 iOS Safari 真机记录仍需在目标设备上执行，任务、RAG 知识库和跨域洞察属于后续阶段。
 
 ## 当前能力
 
@@ -14,7 +14,7 @@
 - 读取法定节假日与调休信息，支持跨午夜和休息日打卡。
 - 按登录用户隔离本地缓存和服务端数据。
 
-工时前端已经切换到 `/api/v1/worktime/settings` 与 `/records` 资源 API，新建使用幂等键，更新和删除使用 revision。已保存记录展示服务端返回的加班分钟、实际时薪、计算版本和时区；`frontend/src/utils/calc.js` 只承担未保存表单预览与页面聚合。snapshot 后端端点仅保留旧客户端兼容，前端不再导出或调用。
+工时前端使用 `/api/v1/worktime/settings` 与 `/records` 资源 API，新建使用幂等键，更新和删除使用 revision。已保存记录展示服务端返回的加班分钟、实际时薪、计算版本和时区；`frontend/src/utils/calc.js` 只承担未保存表单预览与页面聚合。旧 snapshot 与 `/api/data` 已删除。
 
 ### 账本
 
@@ -44,7 +44,7 @@
 
 | 层 | 当前实现 | 后续目标 |
 |---|---|---|
-| 前端 | Vue 3、Vite、Pinia、Vue Router、ECharts、Tailwind CSS 4、源码 UI 组件、Lucide | PWA，并把 local-first 模式扩展到后续领域 |
+| 前端 | Vue 3、Vite、Pinia、Vue Router、ECharts、Tailwind CSS 4、Reka UI、Lucide、OpenAPI 生成客户端 | PWA，并把 local-first 模式扩展到后续领域 |
 | 后端 | Java 17、Spring Boot 3.2、Spring Security、Spring Modulith、JDBC/MyBatis-Plus、Flyway、EasyExcel、ShedLock；platform/identity/worktime/ledger/app 物理模块 | 按阶段引入文件、事件、RAG 和洞察能力 |
 | 数据库 | MySQL 8，Flyway V1-V11 | 后续按需增加 Redis、MinIO/NAS、Qdrant 和搜索服务 |
 | 部署 | Docker Compose、Nginx、Spring Boot、MySQL | 健康检查、备份恢复和可观测体系持续完善 |
@@ -68,10 +68,9 @@ salary-sync/
 │   ├── src/views/                   # 工时和账本页面
 │   ├── src/components/              # 通用与账本组件
 │   ├── src/stores/                  # Pinia 状态
-│   ├── src/api/                     # API 封装
 │   └── packages/
 │       ├── sync-engine/             # IndexedDB + oplog 同步引擎
-│       ├── api-client/              # API 客户端入口
+│       ├── api-client/              # OpenAPI 契约、生成代码、transport 与领域 facade
 │       └── ui/                      # 共享 UI 基础组件
 ├── deploy/                          # Docker、Compose、Nginx、E2E 与恢复演练脚本
 └── docs/                            # 架构、账本设计、部署说明和实施计划
@@ -104,7 +103,7 @@ mvn spring-boot:run
 
 后端由 Flyway 执行版本化迁移；`schema.sql` 不参与启动初始化。
 
-生产数据库同步脚本目前尚未显式适配仓库要求的 `workboard.pem`，在修复前不要执行 `bash deploy/dev-backend.sh --sync-production` 或 `bash deploy/sync-prod-db.sh`，也不要通过密码认证绕过。
+需要同步生产快照时执行 `bash deploy/dev-backend.sh --sync-production`。同步脚本强制使用仓库根目录的 `workboard.pem`、禁用密码认证，并把只读快照保存到已忽略的 `.local/db/`。
 
 ### 前端
 
@@ -141,7 +140,9 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down
 - Refresh token 默认有效期 30 天，通过 HttpOnly Cookie 轮换并持久化在 MySQL。
 - 除健康检查、认证和节假日接口外，API 都需要 `Authorization: Bearer <access_token>`。
 - OpenAPI/Swagger 开发入口为 `/swagger-ui.html` 和 `/v3/api-docs`。
-- 旧 `/api/data` 和工时 snapshot 接口仍处于兼容期，不应被新功能继续依赖。
+- 业务 API 只保留 `/api/v1/**`；旧认证、工时、账本、`/api/data`、snapshot 和默认账本别名已删除。
+- Java Controller/Service 使用 record/enum DTO，统一成功体为 `ApiResponse<T>`，错误体为带 `code`、`traceId`、`path`、`timestamp` 的 RFC 7807 `ApiProblem`。
+- `frontend/packages/api-client/src/generated` 由运行时 OpenAPI 使用 `typescript-axios` 生成；应用只通过集中 transport 与领域 facade 调用。
 
 主要 API 分组：
 
@@ -149,11 +150,11 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down
 |---|---|
 | `/api/health` | 健康检查 |
 | `/api/v1/auth/**` | 注册、登录、刷新、退出、修改密码 |
-| `/api/v1/worktime/**` | 工时设置、记录 CRUD 和兼容 snapshot |
+| `/api/v1/worktime/**` | 工时设置与记录 CRUD |
 | `/api/v1/ledger/books/**` | 多账本、资源、预算、流水、报表数据、导入导出、同步、定时任务和 AI |
 | `/api/v1/audit/logs` | 当前用户审计日志 |
 | `/api/v1/ai/**` | 通用 LLM 网关入口 |
-| `/api/holidays?year=2026` | 节假日与调休 |
+| `/api/v1/holidays?year=2026` | 节假日与调休 |
 
 从旧表回填的 `admin` 账户默认锁定。迁移部署时通过 `LEGACY_ADMIN_PASSWORD` 设置初始密码，登录后应立即修改或停用该账户。
 
@@ -166,12 +167,13 @@ mvn package
 
 cd ../frontend
 npm install
+npm run api:check
 npm test
 npm run build
 npm run test:e2e
 ```
 
-2026-09-17 的收口验证结果：Maven 58 个测试中 57 通过、1 个依赖本地真实 Excel 的可选用例跳过；前端 Node 41/41；Vite 生产构建成功；Playwright 6/6，覆盖 desktop Chromium 与 Pixel 7。后端 Testcontainers 实际覆盖 MySQL 权限、六类账本同步、Flyway 空库/旧 fixture 重放；恢复演练完成只读备份、临时库恢复、核心数据对账、Flyway v11 validate 和健康检查。完整阶段退出仍需视觉/无障碍、真机和真实导入金额对账记录。
+2026-09-18 收口验证结果：Maven 默认套件 57 项通过、1 项真实 Excel fixture 按设计跳过；指定仓库根目录真实工作簿后 ledger 37/37 通过并覆盖金额与重复导入对账。前端 Node/契约测试 44/44，OpenAPI 49 paths、70 operations、120 schemas，operationId 重复和自由 object schema 均为 0，客户端重新生成无差异，TypeScript 严格编译与 Vite 生产构建通过。Docker 源码构建后的 Playwright 定义 36 项，32 passed、4 项仅在非快照项目按设计 skipped，覆盖 desktop Chromium/WebKit 与 320/375/768/1024/1440px、深浅和四套主题、axe、键盘、断网账本、工时资源 API 和旧路径 404。恢复演练完成旧 schema 快照导出、临时库恢复、Flyway v11 migrate/validate、核心数据对账和健康检查。
 
 ## 服务器部署
 
@@ -194,7 +196,7 @@ sudo bash deploy/deploy.sh
 
 ## 当前优先级
 
-1. 完成随手记真实工作簿重复导入与金额对账，并确定 MoneyWiz 支持范围。
-2. 完成 WebKit、320/375/768/1024/1440px、深浅主题、键盘、无障碍和真机验收。
-3. 将恢复脚本纳入季度演练，补发布回滚记录与生产监控。
-4. Phase 0/1 通过全部退出门禁后，再进入任务管理模块。
+1. 在 Android Chrome 与 iOS Safari 各执行一次真机验收并记录设备、系统和浏览器版本。
+2. 确定 MoneyWiz 专用模板范围，并按实际需求接入支付宝、微信和银行卡账单源。
+3. 将已验证的恢复脚本纳入季度生产演练和监控告警。
+4. 启动 Phase 2 任务域时继续沿用 v1 契约、生成客户端和 local-first 门禁。

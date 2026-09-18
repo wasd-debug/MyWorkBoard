@@ -1,6 +1,6 @@
 package com.salarytracker.ledger;
 
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.salarytracker.platform.ai.LlmGateway;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -11,17 +11,19 @@ import org.springframework.web.multipart.MultipartFile;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import static com.salarytracker.ledger.LedgerModels.*;
 
 @Service
 public class LedgerAiService {
     private static final Pattern AMOUNT = Pattern.compile("(\\d+(?:\\.\\d{1,2})?)\\s*(?:元|块)?");
+
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final LlmGateway gateway;
@@ -29,11 +31,8 @@ public class LedgerAiService {
     private final LedgerBookService books;
     private final LedgerTransactionService transactions;
 
-    public LedgerAiService(JdbcTemplate jdbc,
-                           ObjectMapper mapper,
-                           LlmGateway gateway,
-                           LedgerBookAccess access,
-                           LedgerBookService books,
+    public LedgerAiService(JdbcTemplate jdbc, ObjectMapper mapper, LlmGateway gateway,
+                           LedgerBookAccess access, LedgerBookService books,
                            LedgerTransactionService transactions) {
         this.jdbc = jdbc;
         this.mapper = mapper;
@@ -43,17 +42,17 @@ public class LedgerAiService {
         this.transactions = transactions;
     }
 
-    public Map<String, Object> previewText(String bookPublicId, String text) {
+    public AiPreview previewText(String bookPublicId, String text) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         requireWrite(context);
         if (text == null || text.isBlank()) throw new IllegalArgumentException("请输入记账内容");
-        List<Map<String, Object>> drafts = gateway.configured()
+        List<GatewayDraft> drafts = gateway.configured()
                 ? parseGateway(gateway.structured(systemPrompt(context), text, null, null))
                 : localDrafts(text);
         return savePreview(context, "TEXT", enrich(context, drafts), !gateway.configured());
     }
 
-    public Map<String, Object> previewImage(String bookPublicId, MultipartFile file) throws Exception {
+    public AiPreview previewImage(String bookPublicId, MultipartFile file) throws Exception {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         requireWrite(context);
         if (!gateway.configured()) throw new IllegalArgumentException("图片记账需要先配置多模态 AI 网关");
@@ -67,111 +66,154 @@ public class LedgerAiService {
     }
 
     @Transactional
-    public Map<String, Object> confirm(String bookPublicId,
-                                       String draftId,
-                                       Map<String, Object> input,
-                                       String idempotencyKey) {
+    public AiConfirm confirm(String bookPublicId, String draftId,
+                             AiConfirmCommand input, String idempotencyKey) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         requireWrite(context);
-        List<Map<String, Object>> rows = jdbc.queryForList(
+        List<DbRow> rows = DbRow.query(jdbc,
                 "SELECT payload_json,status,idempotency_key FROM ledger_ai_draft " +
                         "WHERE id=? AND book_id=? AND user_id=? AND expires_at>CURRENT_TIMESTAMP",
                 draftId, context.bookId(), context.userId());
         if (rows.isEmpty()) throw new IllegalArgumentException("AI 草稿不存在或已过期");
-        Map<String, Object> stored = parseMap(rows.get(0).get("payload_json"));
+        AiStoredDraft stored = read(rows.get(0).get("payload_json"), AiStoredDraft.class);
         if ("CONFIRMED".equals(rows.get(0).get("status"))) {
-            return Map.of("draftId", draftId, "status", "CONFIRMED",
-                    "created", stored.getOrDefault("created", List.of()));
+            return new AiConfirm(draftId, "CONFIRMED", stored.created() == null ? List.of() : stored.created());
         }
-        List<Map<String, Object>> submitted = maps(input == null ? null : input.get("transactions"));
-        if (submitted.isEmpty()) submitted = maps(stored.get("drafts"));
+        List<TransactionCommand> submitted = input == null || input.transactions() == null
+                ? List.of() : input.transactions();
+        if (submitted.isEmpty()) submitted = stored.drafts().stream().map(this::command).toList();
         if (submitted.isEmpty()) throw new IllegalArgumentException("至少保留一笔草稿");
         String key = text(idempotencyKey);
-        if (key.isBlank()) key = text(input == null ? null : input.get("idempotencyKey"));
         if (key.isBlank()) key = "ai-" + draftId;
-        List<Map<String, Object>> created = new ArrayList<>();
+        List<Transaction> created = new ArrayList<>();
         for (int index = 0; index < submitted.size(); index++) {
-            Map<String, Object> draft = new LinkedHashMap<>(submitted.get(index));
-            draft.remove("warnings");
-            draft.remove("parentCategoryName");
-            draft.remove("categoryName");
-            draft.remove("accountName");
-            draft.put("source", "ai-confirmed");
-            created.add(publicTransaction(transactions.create(
-                    bookPublicId, draft, key + "-" + index)));
+            TransactionCommand draft = submitted.get(index);
+            TransactionCommand confirmed = new TransactionCommand(draft.id(), draft.accountId(),
+                    draft.targetAccountId(), draft.categoryId(), draft.merchantId(), draft.memberId(),
+                    draft.projectId(), draft.kind(), draft.amount(), draft.currency(), draft.occurredOn(),
+                    draft.payee(), draft.member(), draft.project(), draft.note(), "ai-confirmed",
+                    draft.clientOpId(), draft.recurringId(), draft.revision());
+            created.add(transactions.create(bookPublicId, confirmed, key + "-" + index));
         }
-        stored.put("created", created);
-        jdbc.update(
-                "UPDATE ledger_ai_draft SET status='CONFIRMED',payload_json=?,idempotency_key=?,confirmed_at=CURRENT_TIMESTAMP " +
-                        "WHERE id=? AND status='PREVIEW'",
-                json(stored), key, draftId);
-        return Map.of("draftId", draftId, "status", "CONFIRMED", "created", created);
+        AiStoredDraft confirmed = new AiStoredDraft(stored.drafts(), stored.localFallback(), created);
+        jdbc.update("UPDATE ledger_ai_draft SET status='CONFIRMED',payload_json=?,idempotency_key=?," +
+                        "confirmed_at=CURRENT_TIMESTAMP WHERE id=? AND status='PREVIEW'",
+                json(confirmed), key, draftId);
+        return new AiConfirm(draftId, "CONFIRMED", created);
     }
 
-    private Map<String, Object> savePreview(LedgerBookAccess.Context context,
-                                            String sourceType,
-                                            List<Map<String, Object>> drafts,
-                                            boolean localFallback) {
+    private AiPreview savePreview(LedgerBookAccess.Context context, String sourceType,
+                                  List<AiDraft> drafts, boolean localFallback) {
         if (drafts.isEmpty()) throw new IllegalArgumentException("没有识别到可编辑的交易草稿");
         String id = UUID.randomUUID().toString();
-        Map<String, Object> payload = Map.of("drafts", drafts, "localFallback", localFallback);
-        jdbc.update(
-                "INSERT INTO ledger_ai_draft(id,book_id,user_id,source_type,payload_json,expires_at) " +
+        jdbc.update("INSERT INTO ledger_ai_draft(id,book_id,user_id,source_type,payload_json,expires_at) " +
                         "VALUES(?,?,?,?,?,CURRENT_TIMESTAMP+INTERVAL 24 HOUR)",
-                id, context.bookId(), context.userId(), sourceType, json(payload));
-        return Map.of(
-                "draftId", id,
-                "drafts", drafts,
-                "sourceType", sourceType,
-                "requiresConfirmation", true,
-                "localFallback", localFallback);
+                id, context.bookId(), context.userId(), sourceType,
+                json(new AiStoredDraft(drafts, localFallback, List.of())));
+        return new AiPreview(id, drafts, sourceType, true, localFallback);
     }
 
-    private List<Map<String, Object>> enrich(LedgerBookAccess.Context context,
-                                             List<Map<String, Object>> source) {
-        List<Map<String, Object>> accounts = books.accounts(context.bookPublicId(), false);
-        List<Map<String, Object>> categories = books.categories(context.bookPublicId(), false);
-        List<Map<String, Object>> merchants = books.merchants(context.bookPublicId(), false);
-        List<Map<String, Object>> projects = books.projects(context.bookPublicId(), false);
-        List<Map<String, Object>> members = books.members(context.bookPublicId());
-        Map<String, Object> currentMember = members.stream()
-                .filter(item -> context.userId() == number(item.get("userId")))
-                .findFirst().orElse(null);
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (Map<String, Object> raw : source) {
-            Map<String, Object> draft = new LinkedHashMap<>(raw);
-            String kind = normalizeKind(draft.get("kind"));
-            draft.put("kind", kind);
-            draft.put("occurredOn", validDate(draft.get("occurredOn")));
-            draft.put("amount", positiveAmount(draft.get("amount")));
+    private List<AiDraft> enrich(LedgerBookAccess.Context context, List<GatewayDraft> source) {
+        List<Account> accounts = books.accounts(context.bookPublicId(), false);
+        List<Category> categories = books.categories(context.bookPublicId(), false);
+        List<NamedResource> merchants = books.merchants(context.bookPublicId(), false);
+        List<NamedResource> projects = books.projects(context.bookPublicId(), false);
+        List<Member> members = books.members(context.bookPublicId());
+        Member currentMember = members.stream().filter(item -> item.userId() == context.userId()).findFirst().orElse(null);
+        List<AiDraft> result = new ArrayList<>();
+        for (GatewayDraft raw : source) {
+            TransactionKind kind = normalizeKind(raw.kind());
+            LocalDate date = validDate(raw.occurredOn());
+            BigDecimal amount = positiveAmount(raw.amount());
             List<String> warnings = new ArrayList<>();
-            resolveByName(draft, "accountId", "accountName", accounts, warnings, "账户");
-            if ("TRANSFER".equals(kind)) {
-                resolveByName(draft, "targetAccountId", "targetAccountName", accounts, warnings, "转入账户");
-                if (text(draft.get("targetAccountId")).isBlank()) warnings.add("请选择转入账户");
+            Account account = matchAccount(raw.accountId(), raw.accountName(), accounts);
+            if (account == null && (!text(raw.accountId()).isBlank() || !text(raw.accountName()).isBlank())) {
+                warnings.add("账户“" + text(raw.accountName()) + "”未匹配");
             }
-            List<Map<String, Object>> secondaries = categories.stream()
-                    .filter(item -> item.get("parentId") != null)
-                    .filter(item -> categoryKind(kind).equals(item.get("kind"))).toList();
-            resolveCategory(draft, secondaries, categories, kind, warnings);
-            resolveByName(draft, "merchantId", "merchantName", merchants, warnings, "商家");
-            resolveByName(draft, "projectId", "projectName", projects, warnings, "项目");
-            if (text(draft.get("memberId")).isBlank() && text(draft.get("member")).isBlank()
-                    && currentMember != null) {
-                draft.put("memberId", currentMember.get("id"));
-                draft.put("member", currentMember.get("displayName"));
-            }
-            resolveMember(draft, members, warnings);
-            if (text(draft.get("accountId")).isBlank()) warnings.add("请选择账户");
-            if (text(draft.get("memberId")).isBlank()) warnings.add("请选择成员");
-            if (requiresCategory(kind) && text(draft.get("categoryId")).isBlank()) warnings.add("请选择二级分类");
-            draft.put("warnings", warnings.stream().distinct().toList());
-            result.add(draft);
+            Account target = kind == TransactionKind.TRANSFER
+                    ? matchAccount(raw.targetAccountId(), raw.targetAccountName(), accounts) : null;
+            if (kind == TransactionKind.TRANSFER && target == null) warnings.add("请选择转入账户");
+            CategoryMatch category = matchCategory(raw, kind, categories, warnings);
+            NamedResource merchant = matchNamed(raw.merchantId(), raw.merchantName(), merchants, warnings, "商家");
+            NamedResource project = matchNamed(raw.projectId(), raw.projectName(), projects, warnings, "项目");
+            Member member = matchMember(raw.memberId(), raw.member(), members);
+            if (member == null) member = currentMember;
+            if (member == null) warnings.add("请选择成员");
+            if (account == null) warnings.add("请选择账户");
+            result.add(new AiDraft(UUID.randomUUID().toString(), kind, amount, date,
+                    account == null ? null : account.id(), account == null ? raw.accountName() : account.name(),
+                    target == null ? null : target.id(), target == null ? raw.targetAccountName() : target.name(),
+                    category.categoryId(), category.categoryName(), category.parentName(), category.status(),
+                    merchant == null ? null : merchant.id(), merchant == null ? raw.merchantName() : merchant.name(),
+                    member == null ? null : member.id(), member == null ? raw.member() : member.displayName(),
+                    project == null ? null : project.id(), project == null ? raw.projectName() : project.name(),
+                    raw.note(), warnings.stream().filter(value -> !value.isBlank()).distinct().toList()));
         }
         return result;
     }
 
+    private CategoryMatch matchCategory(GatewayDraft raw, TransactionKind kind,
+                                        List<Category> categories, List<String> warnings) {
+        if (kind != TransactionKind.INCOME && kind != TransactionKind.EXPENSE) {
+            return new CategoryMatch(null, raw.categoryName(), raw.parentCategoryName(), "not_required");
+        }
+        CategoryKind required = kind == TransactionKind.INCOME ? CategoryKind.INCOME : CategoryKind.EXPENSE;
+        List<Category> secondaries = categories.stream()
+                .filter(item -> item.parentId() != null && item.kind() == required).toList();
+        Category byId = secondaries.stream().filter(item -> item.id().equals(raw.categoryId())).findFirst().orElse(null);
+        if (byId != null) return categoryMatch(byId, categories, "matched");
+        String[] reference = categoryReference(raw.categoryName(), raw.parentCategoryName());
+        String parentName = reference[0];
+        String childName = reference[1];
+        if (childName.isBlank()) {
+            warnings.add(parentName.isBlank() ? "缺少二级分类，请补充分类" : "分类“" + parentName + "”只有一级分类，请补充二级分类");
+            return new CategoryMatch(null, childName, parentName, parentName.isBlank() ? "missing" : "primary_only");
+        }
+        List<Category> matches = secondaries.stream().filter(item -> item.name().equalsIgnoreCase(childName))
+                .filter(item -> parentName.isBlank() || categories.stream()
+                        .anyMatch(parent -> parent.id().equals(item.parentId()) && parent.name().equalsIgnoreCase(parentName)))
+                .toList();
+        if (matches.size() == 1) return categoryMatch(matches.get(0), categories, "matched");
+        String status = matches.isEmpty() ? "unmatched" : "ambiguous";
+        warnings.add(matches.isEmpty() ? "二级分类“" + childName + "”未匹配当前账本"
+                : "二级分类“" + childName + "”存在多个匹配，请选择一级分类");
+        return new CategoryMatch(null, childName, parentName, status);
+    }
+
+    private CategoryMatch categoryMatch(Category category, List<Category> all, String status) {
+        String parent = all.stream().filter(item -> item.id().equals(category.parentId()))
+                .map(Category::name).findFirst().orElse(null);
+        return new CategoryMatch(category.id(), category.name(), parent, status);
+    }
+
+    private Account matchAccount(String id, String name, List<Account> options) {
+        Account byId = options.stream().filter(item -> item.id().equals(id)).findFirst().orElse(null);
+        if (byId != null) return byId;
+        List<Account> matches = options.stream().filter(item -> item.name().equalsIgnoreCase(text(name))).toList();
+        return matches.size() == 1 ? matches.get(0) : null;
+    }
+
+    private NamedResource matchNamed(String id, String name, List<NamedResource> options,
+                                     List<String> warnings, String label) {
+        NamedResource byId = options.stream().filter(item -> item.id().equals(id)).findFirst().orElse(null);
+        if (byId != null) return byId;
+        if (text(name).isBlank()) return null;
+        List<NamedResource> matches = options.stream().filter(item -> item.name().equalsIgnoreCase(name)).toList();
+        if (matches.size() == 1) return matches.get(0);
+        warnings.add(label + "“" + name + "”未匹配");
+        return null;
+    }
+
+    private Member matchMember(String id, String name, List<Member> members) {
+        Member byId = members.stream().filter(item -> item.id().equals(id)).findFirst().orElse(null);
+        if (byId != null) return byId;
+        List<Member> matches = members.stream().filter(item -> item.username().equalsIgnoreCase(text(name))
+                || item.displayName().equalsIgnoreCase(text(name))).toList();
+        return matches.size() == 1 ? matches.get(0) : null;
+    }
+
     private String systemPrompt(LedgerBookAccess.Context context) {
+        List<Category> categories = books.categories(context.bookPublicId(), false);
         return """
                 你是记账解析器。只返回 JSON 对象：{"transactions":[...]}。
                 每笔字段：kind,amount,occurredOn,accountName,targetAccountName,categoryName,
@@ -184,145 +226,48 @@ public class LedgerAiService {
                 当前商家：%s
                 当前成员：%s
                 当前项目：%s
-                """.formatted(
-                LocalDate.now(),
-                names(books.accounts(context.bookPublicId(), false), "name"),
-                categoryPaths(books.categories(context.bookPublicId(), false)),
-                names(books.merchants(context.bookPublicId(), false), "name"),
-                names(books.members(context.bookPublicId()), "displayName"),
-                names(books.projects(context.bookPublicId(), false), "name"));
+                """.formatted(LocalDate.now(), names(books.accounts(context.bookPublicId(), false), Account::name),
+                categoryPaths(categories), names(books.merchants(context.bookPublicId(), false), NamedResource::name),
+                memberNames(books.members(context.bookPublicId())),
+                names(books.projects(context.bookPublicId(), false), NamedResource::name));
     }
 
-    private List<Map<String, Object>> parseGateway(String response) {
+    private List<GatewayDraft> parseGateway(String response) {
         String json = text(response);
         int first = json.indexOf('{');
         int last = json.lastIndexOf('}');
         if (first >= 0 && last > first) json = json.substring(first, last + 1);
-        Map<String, Object> root = parseMap(json);
-        List<Map<String, Object>> transactions = maps(root.get("transactions"));
-        if (transactions.isEmpty() && root.containsKey("amount")) transactions = List.of(root);
-        return transactions;
+        try {
+            JsonNode root = mapper.readTree(json);
+            JsonNode items = root.get("transactions");
+            if (items != null && items.isArray()) {
+                return mapper.readerForListOf(GatewayDraft.class).readValue(items);
+            }
+            return root.has("amount") ? List.of(mapper.treeToValue(root, GatewayDraft.class)) : List.of();
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("AI 返回的结构化内容无效");
+        }
     }
 
-    private List<Map<String, Object>> localDrafts(String text) {
-        List<Map<String, Object>> result = new ArrayList<>();
+    private List<GatewayDraft> localDrafts(String text) {
+        List<GatewayDraft> result = new ArrayList<>();
         for (String part : text.split("[\\n；;]+")) {
             if (part.isBlank()) continue;
             Matcher matcher = AMOUNT.matcher(part);
             if (!matcher.find()) continue;
-            Map<String, Object> draft = new LinkedHashMap<>();
-            draft.put("kind", inferKind(part));
-            draft.put("amount", matcher.group(1));
-            draft.put("occurredOn", inferDate(part));
-            draft.put("note", part.trim());
-            result.add(draft);
+            result.add(new GatewayDraft(null, inferKind(part), matcher.group(1), inferDate(part), null,
+                    null, null, null, null, null, null, null, null, null, null, null, null, part.trim()));
         }
         return result;
     }
 
-    private void resolveByName(Map<String, Object> draft,
-                               String idField,
-                               String nameField,
-                               List<Map<String, Object>> options,
-                               List<String> warnings,
-                               String label) {
-        String id = text(draft.get(idField));
-        if (!id.isBlank()) {
-            Map<String, Object> matchedById = options.stream()
-                    .filter(item -> id.equals(text(item.get("id"))))
-                    .findFirst().orElse(null);
-            if (matchedById != null) {
-                draft.put(nameField, matchedById.get("name"));
-                return;
-            }
-        }
-        String name = text(draft.get(nameField));
-        if (name.isBlank()) return;
-        List<Map<String, Object>> matched = options.stream()
-                .filter(item -> name.equalsIgnoreCase(text(item.get("name")))).toList();
-        if (matched.size() == 1) {
-            draft.put(idField, matched.get(0).get("id"));
-            draft.put(nameField, matched.get(0).get("name"));
-        }
-        else warnings.add(label + "“" + name + "”未匹配");
+    private TransactionCommand command(AiDraft draft) {
+        return new TransactionCommand(null, draft.accountId(), draft.targetAccountId(), draft.categoryId(),
+                draft.merchantId(), draft.memberId(), draft.projectId(), draft.kind(), draft.amount(), null,
+                draft.occurredOn(), draft.merchantName(), draft.member(), draft.projectName(), draft.note(),
+                "ai-confirmed", null, null, null);
     }
 
-    private void resolveCategory(Map<String, Object> draft,
-                                 List<Map<String, Object>> secondaries,
-                                 List<Map<String, Object>> allCategories,
-                                 String kind,
-                                 List<String> warnings) {
-        if (!requiresCategory(kind)) {
-            draft.put("categoryMatchStatus", "not_required");
-            return;
-        }
-        String id = text(draft.get("categoryId"));
-        Map<String, Object> byId = secondaries.stream()
-                .filter(item -> id.equals(text(item.get("id"))))
-                .findFirst().orElse(null);
-        if (byId != null) {
-            enrichCategoryNames(draft, byId, allCategories);
-            draft.put("categoryMatchStatus", "matched");
-            return;
-        }
-        String childName = text(draft.get("categoryName"));
-        String parentName = text(draft.get("parentCategoryName"));
-        String[] reference = categoryReference(childName, parentName);
-        final String resolvedParentName = reference[0];
-        final String resolvedChildName = reference[1];
-        parentName = resolvedParentName;
-        childName = resolvedChildName;
-        if (parentName.isBlank() && !resolvedChildName.isBlank()
-                && allCategories.stream().anyMatch(item -> item.get("parentId") == null
-                && kind.equals(item.get("kind"))
-                && resolvedChildName.equalsIgnoreCase(text(item.get("name"))))) {
-            draft.put("categoryMatchStatus", "primary_only");
-            warnings.add("分类“" + childName + "”只有一级分类，请补充二级分类");
-            return;
-        }
-        if (childName.isBlank() && !parentName.isBlank()) {
-            draft.put("categoryMatchStatus", "primary_only");
-            warnings.add("分类“" + parentName + "”只有一级分类，请补充二级分类");
-            return;
-        }
-        if (childName.isBlank()) {
-            draft.put("categoryMatchStatus", "missing");
-            warnings.add("缺少二级分类，请补充分类");
-            return;
-        }
-        List<Map<String, Object>> matched = secondaries.stream().filter(item -> {
-            if (!resolvedChildName.equalsIgnoreCase(text(item.get("name")))) return false;
-            if (resolvedParentName.isBlank()) return true;
-            Map<String, Object> parent = allCategories.stream()
-                    .filter(candidate -> text(candidate.get("id")).equals(text(item.get("parentId"))))
-                    .findFirst().orElse(null);
-            return resolvedParentName.equalsIgnoreCase(text(parent == null ? null : parent.get("name")));
-        }).toList();
-        if (matched.size() == 1) {
-            Map<String, Object> category = matched.get(0);
-            draft.put("categoryId", category.get("id"));
-            enrichCategoryNames(draft, category, allCategories);
-            draft.put("categoryMatchStatus", "matched");
-        } else if (matched.isEmpty()) {
-            draft.put("categoryMatchStatus", "unmatched");
-            warnings.add("二级分类“" + childName + "”未匹配当前账本");
-        } else {
-            draft.put("categoryMatchStatus", "ambiguous");
-            warnings.add("二级分类“" + childName + "”存在多个匹配，请选择一级分类");
-        }
-    }
-
-    private void enrichCategoryNames(Map<String, Object> draft,
-                                     Map<String, Object> category,
-                                     List<Map<String, Object>> allCategories) {
-        draft.put("categoryName", category.get("name"));
-        allCategories.stream()
-                .filter(item -> text(item.get("id")).equals(text(category.get("parentId"))))
-                .findFirst()
-                .ifPresent(parent -> draft.put("parentCategoryName", parent.get("name")));
-    }
-
-    /** Accept both separate fields and the path format emitted by the LLM, e.g. "餐饮 / 早餐". */
     static String[] categoryReference(String childName, String parentName) {
         String child = childName == null ? "" : childName.trim();
         String parent = parentName == null ? "" : parentName.trim();
@@ -336,48 +281,20 @@ public class LedgerAiService {
         return new String[]{parent, child};
     }
 
-    private boolean requiresCategory(String kind) {
-        return "INCOME".equals(kind) || "EXPENSE".equals(kind);
+    private String categoryPaths(List<Category> categories) {
+        return categories.stream().filter(item -> item.parentId() != null).map(item -> {
+            String parent = categories.stream().filter(candidate -> candidate.id().equals(item.parentId()))
+                    .map(Category::name).findFirst().orElse("");
+            return parent.isBlank() ? item.name() : parent + " / " + item.name();
+        }).filter(value -> !value.isBlank()).toList().toString();
     }
 
-    private String categoryPaths(List<Map<String, Object>> categories) {
-        return categories.stream()
-                .filter(item -> item.get("parentId") != null)
-                .map(item -> {
-                    String parent = categories.stream()
-                            .filter(candidate -> text(candidate.get("id")).equals(text(item.get("parentId"))))
-                            .map(candidate -> text(candidate.get("name")))
-                            .findFirst().orElse("");
-                    return parent.isBlank() ? text(item.get("name")) : parent + " / " + text(item.get("name"));
-                })
-                .filter(value -> !value.isBlank())
-                .toList()
-                .toString();
+    private <T> String names(List<T> values, Function<T, String> name) {
+        return values.stream().map(name).map(this::text).filter(value -> !value.isBlank()).toList().toString();
     }
 
-    private void resolveMember(Map<String, Object> draft,
-                               List<Map<String, Object>> members,
-                               List<String> warnings) {
-        String id = text(draft.get("memberId"));
-        if (!id.isBlank()) {
-            Map<String, Object> matchedById = members.stream()
-                    .filter(item -> id.equals(text(item.get("id"))))
-                    .findFirst().orElse(null);
-            if (matchedById != null) {
-                draft.put("member", matchedById.get("displayName"));
-                return;
-            }
-        }
-        String name = text(draft.get("member"));
-        if (name.isBlank()) return;
-        List<Map<String, Object>> matched = members.stream().filter(item ->
-                name.equalsIgnoreCase(text(item.get("username")))
-                        || name.equalsIgnoreCase(text(item.get("displayName")))).toList();
-        if (matched.size() == 1) {
-            draft.put("memberId", matched.get(0).get("id"));
-            draft.put("member", matched.get(0).get("displayName"));
-        }
-        else warnings.add("成员“" + name + "”未匹配");
+    private String memberNames(List<Member> values) {
+        return values.stream().map(Member::displayName).filter(value -> !value.isBlank()).toList().toString();
     }
 
     private String inferKind(String text) {
@@ -396,9 +313,9 @@ public class LedgerAiService {
         return LocalDate.now().toString();
     }
 
-    private String normalizeKind(Object value) {
+    private TransactionKind normalizeKind(Object value) {
         String kind = text(value).toUpperCase(Locale.ROOT);
-        return switch (kind) {
+        kind = switch (kind) {
             case "收入" -> "INCOME";
             case "转账" -> "TRANSFER";
             case "借入" -> "BORROW_IN";
@@ -408,30 +325,23 @@ public class LedgerAiService {
             case "INCOME", "TRANSFER", "BORROW_IN", "LEND_OUT", "COLLECT_DEBT", "REPAY_DEBT" -> kind;
             default -> "EXPENSE";
         };
+        return TransactionKind.valueOf(kind);
     }
 
-    private String categoryKind(String kind) {
-        return List.of("INCOME", "BORROW_IN", "COLLECT_DEBT").contains(kind) ? "INCOME" : "EXPENSE";
-    }
-
-    private String validDate(Object value) {
+    private LocalDate validDate(Object value) {
         try {
-            return LocalDate.parse(text(value)).toString();
+            return LocalDate.parse(text(value));
         } catch (Exception ignored) {
-            return LocalDate.now().toString();
+            return LocalDate.now();
         }
     }
 
-    private String positiveAmount(Object value) {
+    private BigDecimal positiveAmount(Object value) {
         try {
-            return new BigDecimal(text(value)).abs().setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
+            return new BigDecimal(text(value)).abs().setScale(2, java.math.RoundingMode.HALF_UP);
         } catch (Exception ignored) {
-            return "";
+            return null;
         }
-    }
-
-    private String names(List<Map<String, Object>> values, String field) {
-        return values.stream().map(item -> text(item.get(field))).filter(value -> !value.isBlank()).toList().toString();
     }
 
     private void requireWrite(LedgerBookAccess.Context context) {
@@ -448,33 +358,26 @@ public class LedgerAiService {
         }
     }
 
-    private Map<String, Object> parseMap(Object value) {
+    private <T> T read(Object value, Class<T> type) {
         try {
-            return mapper.readValue(String.valueOf(value), new TypeReference<>() {});
+            return mapper.readValue(String.valueOf(value), type);
         } catch (Exception exception) {
-            throw new IllegalArgumentException("AI 返回的结构化内容无效");
+            throw new IllegalArgumentException("AI 草稿数据无效", exception);
         }
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> maps(Object value) {
-        if (!(value instanceof List<?> list)) return List.of();
-        return list.stream().filter(Map.class::isInstance)
-                .map(item -> (Map<String, Object>) item).toList();
-    }
-
-    private Map<String, Object> publicTransaction(Map<String, Object> source) {
-        Map<String, Object> result = new LinkedHashMap<>(source);
-        result.remove("internalId");
-        return result;
     }
 
     private String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
     }
 
-    private long number(Object value) {
-        if (value == null) return 0;
-        return value instanceof Number number ? number.longValue() : Long.parseLong(String.valueOf(value));
-    }
+    private record CategoryMatch(String categoryId, String categoryName, String parentName, String status) { }
+
+    private record GatewayResponse(List<GatewayDraft> transactions) { }
+
+    private record GatewayDraft(String id, String kind, String amount, String occurredOn,
+                                String accountId, String accountName, String targetAccountId,
+                                String targetAccountName, String categoryId, String categoryName,
+                                String parentCategoryName, String merchantId, String merchantName,
+                                String memberId, String member, String projectId, String projectName,
+                                String note) { }
 }

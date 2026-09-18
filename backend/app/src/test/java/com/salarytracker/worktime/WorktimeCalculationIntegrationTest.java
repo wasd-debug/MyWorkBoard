@@ -15,6 +15,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import com.salarytracker.worktime.WorktimeModels.Basis;
+import com.salarytracker.worktime.WorktimeModels.MonthlySalary;
+import com.salarytracker.worktime.WorktimeModels.RecordCommand;
+import com.salarytracker.worktime.WorktimeModels.Settings;
+import com.salarytracker.worktime.WorktimeModels.SettingsUpdate;
+import com.salarytracker.worktime.WorktimeModels.WorkRecord;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class WorktimeCalculationIntegrationTest extends MySqlIntegrationTestSupport {
@@ -26,40 +33,25 @@ class WorktimeCalculationIntegrationTest extends MySqlIntegrationTestSupport {
     @Test
     void appliesMonthlySalaryOverridesAndPreOrPostTaxBasisOnTheServer() {
         WorktimeService service = serviceForNewUser();
-        Map<String, Object> preTax = service.writeSettings(Map.ofEntries(
-                Map.entry("salaryPre", 20000),
-                Map.entry("salaryPost", 12000),
-                Map.entry("basis", "pre"),
-                Map.entry("workStart", "09:00"),
-                Map.entry("workEnd", "18:00"),
-                Map.entry("lunchMin", 60),
-                Map.entry("daysPerMonth", 20),
-                Map.entry("autoDays", false),
-                Map.entry("salaries", Map.of("2026-09", Map.of("pre", 16000, "post", 10000)))),
-                null);
+        Settings preTax = service.writeSettings(new SettingsUpdate(
+                new BigDecimal("20000"), new BigDecimal("12000"), Basis.PRE, "09:00", "18:00", 60,
+                new BigDecimal("20"), false,
+                Map.of("2026-09", new MonthlySalary(new BigDecimal("16000"), new BigDecimal("10000")))), null);
 
-        Map<String, Object> monthlyOverride = service.createRecord(record("2026-09-17"), "worktime-monthly-override");
-        Map<String, Object> defaultPreTax = service.createRecord(record("2026-10-01"), "worktime-default-pre");
+        WorkRecord monthlyOverride = service.createRecord(record("2026-09-17"), "worktime-monthly-override");
+        WorkRecord defaultPreTax = service.createRecord(record("2026-10-01"), "worktime-default-pre");
 
-        assertDecimal("100.00", monthlyOverride.get("realHourlyWage"));
-        assertDecimal("125.00", defaultPreTax.get("realHourlyWage"));
-        assertEquals("phase0-v1", monthlyOverride.get("calcVersion"));
-        assertEquals("Asia/Shanghai", monthlyOverride.get("timezone"));
-        assertEquals(1L, monthlyOverride.get("revision"));
+        assertDecimal("100.00", monthlyOverride.realHourlyWage());
+        assertDecimal("125.00", defaultPreTax.realHourlyWage());
+        assertEquals("phase0-v1", monthlyOverride.calcVersion());
+        assertEquals("Asia/Shanghai", monthlyOverride.timezone());
+        assertEquals(1L, monthlyOverride.revision());
 
-        long revision = ((Number) preTax.get("revision")).longValue();
-        service.writeSettings(Map.ofEntries(
-                Map.entry("salaryPre", 20000),
-                Map.entry("salaryPost", 12000),
-                Map.entry("basis", "post"),
-                Map.entry("workStart", "09:00"),
-                Map.entry("workEnd", "18:00"),
-                Map.entry("lunchMin", 60),
-                Map.entry("daysPerMonth", 20),
-                Map.entry("autoDays", false)),
-                String.valueOf(revision));
-        Map<String, Object> postTax = service.createRecord(record("2026-11-02"), "worktime-default-post");
-        assertDecimal("75.00", postTax.get("realHourlyWage"));
+        service.writeSettings(new SettingsUpdate(new BigDecimal("20000"), new BigDecimal("12000"), Basis.POST,
+                "09:00", "18:00", 60, new BigDecimal("20"), false, null),
+                String.valueOf(preTax.revision()));
+        WorkRecord postTax = service.createRecord(record("2026-11-02"), "worktime-default-post");
+        assertDecimal("75.00", postTax.realHourlyWage());
     }
 
     private WorktimeService serviceForNewUser() {
@@ -72,8 +64,8 @@ class WorktimeCalculationIntegrationTest extends MySqlIntegrationTestSupport {
         return new WorktimeService(jdbc, new ObjectMapper().findAndRegisterModules(), new CurrentUserResolver());
     }
 
-    private Map<String, Object> record(String date) {
-        return Map.of("date", date, "start", "09:00", "end", "18:00", "rest", 0);
+    private RecordCommand record(String date) {
+        return new RecordCommand(date, "09:00", "18:00", 0, "");
     }
 
     private void assertDecimal(String expected, Object actual) {

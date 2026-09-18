@@ -367,7 +367,7 @@
           <label><span>账本名称</span><Input v-model="forms.book.name" maxlength="120" placeholder="例如：家庭账本" required /></label>
           <div class="form-grid">
             <label><span>币种</span><select v-model="forms.book.currency"><option value="CNY">CNY</option><option value="USD">USD</option><option value="HKD">HKD</option></select></label>
-            <label v-if="!editingItem"><span>初始化方式</span><select v-model="forms.book.mode"><option value="BLANK">空白账本</option><option value="SYSTEM_TEMPLATE">系统基础模板</option><option value="COPY">复制已有账本</option></select></label>
+            <label v-if="!editingItem"><span>初始化方式</span><select v-model="forms.book.mode"><option value="EMPTY">空白账本</option><option value="SYSTEM_TEMPLATE">系统基础模板</option><option value="COPY">复制已有账本</option></select></label>
           </div>
           <label v-if="!editingItem && forms.book.mode === 'COPY'"><span>复制来源</span><select v-model="forms.book.sourceBookId" required><option value="" disabled>请选择账本</option><option v-for="book in ledger.books" :key="book.id" :value="book.id">{{ book.name }}</option></select></label>
         </template>
@@ -395,14 +395,14 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from '../services/message.js'
+import { message } from '../services/message.js'
 import { ArrowDown, ArrowRight, Delete, DeleteFilled, Lock, Management, Plus, Refresh } from '../icons.js'
 import {
   apiDownloadLedgerExport,
   apiListLedgerAuditLogs,
   apiListLedgerBooks,
   apiListLedgerRecycle
-} from '../api'
+} from '../../packages/api-client/src/index.js'
 import { useLedgerStore } from '../stores/ledger'
 import LedgerIconPicker from '../components/ledger/LedgerIconPicker.vue'
 import LedgerResourceIcon from '../components/ledger/LedgerResourceIcon.vue'
@@ -464,7 +464,7 @@ const forms = reactive({
   named: { name: '', icon: 'shop', note: '', color: '#0f5132' },
   member: { username: '', roleId: '', icon: 'user' },
   role: { name: '', permissions: [] },
-  book: { name: '', currency: 'CNY', mode: 'BLANK', sourceBookId: '' }
+  book: { name: '', currency: 'CNY', mode: 'EMPTY', sourceBookId: '' }
 })
 const liabilityTypes = new Set(['card', 'credit', 'credit_card', 'loan'])
 const editablePermissions = [
@@ -650,7 +650,7 @@ function openEdit(item, resource = resourceForTab()) {
   if (resource === 'merchant' || resource === 'project') Object.assign(forms.named, { name: item.name, icon: item.icon || (resource === 'project' ? 'folder' : 'shop'), note: item.note || '', color: item.color || '#0f5132' })
   if (resource === 'member') Object.assign(forms.member, { username: item.username, roleId: item.roleId, icon: item.icon || 'user' })
   if (resource === 'role') Object.assign(forms.role, { name: item.name, permissions: item.permissions.filter(permission => permission !== 'AUDIT_SELF_READ') })
-  if (resource === 'book') Object.assign(forms.book, { name: item.name, currency: item.currency || 'CNY', mode: 'BLANK', sourceBookId: '' })
+  if (resource === 'book') Object.assign(forms.book, { name: item.name, currency: item.currency || 'CNY', mode: 'EMPTY', sourceBookId: '' })
   formOpen.value = true
 }
 async function submitForm() {
@@ -670,9 +670,9 @@ async function submitForm() {
       await ledger.refreshServer()
     }
     formOpen.value = false
-    ElMessage.success(editingItem.value ? '修改已保存' : '新增成功')
+    message.success(editingItem.value ? '修改已保存' : '新增成功')
   } catch (error) {
-    ElMessage.error(error?.response?.data?.detail || error?.message || '保存失败')
+    message.error(error?.response?.data?.detail || error?.message || '保存失败')
   } finally {
     saving.value = false
   }
@@ -682,9 +682,9 @@ async function toggleHidden(type, item) {
   saving.value = true
   try {
     await ledger.saveResource(type, resourcePayload(type, item, { hidden: !item.hidden }))
-    ElMessage.success(item.hidden ? '已恢复显示' : '已隐藏')
+    message.success(item.hidden ? '已恢复显示' : '已隐藏')
   } catch (error) {
-    ElMessage.error(error?.response?.data?.detail || error?.message || '操作失败')
+    message.error(error?.response?.data?.detail || error?.message || '操作失败')
   } finally {
     saving.value = false
   }
@@ -721,19 +721,19 @@ async function confirmAction() {
     if (confirmState.mode === 'purge') {
       await ledger.purgeRecycle(confirmState.item)
       await loadSecondary()
-      ElMessage.success('已永久删除')
+      message.success('已永久删除')
     } else if (confirmState.mode === 'delete-book') {
       await ledger.deleteBook(confirmState.item)
-      ElMessage.success('账本已删除')
+      message.success('账本已删除')
     } else {
       if (confirmState.type === 'member') await ledger.deleteMember(confirmState.item)
       else if (confirmState.type === 'role') await ledger.deleteRole(confirmState.item)
       else await ledger.deleteResource(confirmState.type, resourcePayload(confirmState.type, confirmState.item))
-      ElMessage.success('已移入回收站')
+      message.success('已移入回收站')
     }
     confirmOpen.value = false
   } catch (error) {
-    ElMessage.error(error?.response?.data?.detail || error?.message || '删除失败')
+    message.error(error?.response?.data?.detail || error?.message || '删除失败')
   } finally {
     saving.value = false
   }
@@ -745,9 +745,9 @@ async function restore(item) {
     await ledger.restoreRecycle(item)
     if (recycle.value.items.length === 1 && recycle.value.page > 1) recycle.value.page--
     await loadSecondary()
-    ElMessage.success('已恢复')
+    message.success('已恢复')
   } catch (error) {
-    ElMessage.error(error?.response?.data?.detail || error?.message || '恢复失败')
+    message.error(error?.response?.data?.detail || error?.message || '恢复失败')
   } finally {
     saving.value = false
   }
@@ -757,9 +757,9 @@ async function selectBook(item) {
   saving.value = true
   try {
     await ledger.selectBook(item.id)
-    ElMessage.success(`已切换到“${item.name}”`)
+    message.success(`已切换到“${item.name}”`)
   } catch (error) {
-    ElMessage.error(error?.response?.data?.detail || error?.message || '账本切换失败')
+    message.error(error?.response?.data?.detail || error?.message || '账本切换失败')
   } finally {
     saving.value = false
   }
@@ -777,9 +777,9 @@ async function exportBook(item) {
     anchor.click()
     anchor.remove()
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-    ElMessage.success(`“${item.name}”流水已导出`)
+    message.success(`“${item.name}”流水已导出`)
   } catch (error) {
-    ElMessage.error(error?.response?.data?.detail || error?.message || '账本导出失败')
+    message.error(error?.response?.data?.detail || error?.message || '账本导出失败')
   } finally {
     exportingBookId.value = ''
   }
@@ -827,7 +827,7 @@ function resetForm() {
   Object.assign(forms.named, { name: '', icon: 'shop', note: '', color: '#0f5132' })
   Object.assign(forms.member, { username: '', roleId: '', icon: 'user' })
   Object.assign(forms.role, { name: '', permissions: [] })
-  Object.assign(forms.book, { name: '', currency: 'CNY', mode: 'BLANK', sourceBookId: '' })
+  Object.assign(forms.book, { name: '', currency: 'CNY', mode: 'EMPTY', sourceBookId: '' })
 }
 function safeFilename(value) { return String(value || '账本').replace(/[\\/:*?"<>|]/g, '-').trim() || '账本' }
 function money(value) { return Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
@@ -840,20 +840,20 @@ function permissionLabel(permission) { return ({ BOOK_DELETE: '删除账本', RE
 </script>
 
 <style scoped>
-.ledger-management{min-width:0;max-width:100%}.manager-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin:24px 0 18px;padding-bottom:20px;border-bottom:1px solid var(--line)}.manager-heading-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.manager-overline{margin:0 0 4px;color:var(--muted);font-size:10px;letter-spacing:.16em}.manager-title-line{display:flex;align-items:baseline;gap:24px;flex-wrap:wrap}.manager-title-line h1{margin:0;color:var(--ink);font:700 30px/1.15 Georgia,"Songti SC",serif;letter-spacing:-.025em}.manager-description{margin:7px 0 0;color:var(--muted);font-size:12px}.manager-create svg,.manager-toolbar svg{width:15px;height:15px}.account-totals{display:flex;align-items:center;gap:22px;color:var(--muted);font-size:12px}.account-totals span{display:flex;align-items:baseline;gap:7px}.account-totals b{color:var(--ink);font-size:18px;font-weight:600}.account-totals b.up{color:var(--up)}.account-totals b.down{color:var(--down)}.manager-main-tabs{display:flex;align-items:center;gap:4px;max-width:100%;margin:-3px 0 16px;padding:3px;border:1px solid var(--line);border-radius:4px;background:var(--paper);overflow-x:auto}.manager-main-tabs button{flex:1 0 auto;min-height:36px;padding:7px 18px;border:0;border-radius:3px;background:transparent;color:var(--muted);font-size:12px;font-weight:600;white-space:nowrap}.manager-main-tabs button:hover{color:var(--ink)}.manager-main-tabs button.active{background:var(--card);color:var(--accent);box-shadow:0 1px 4px #00000012}.manager-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:44px;margin-bottom:12px}.segment-control{display:flex;align-items:center;gap:20px}.segment-control button{position:relative;padding:9px 0;border:0;background:transparent;color:var(--muted);font-size:13px;font-weight:600}.segment-control button::after{content:"";position:absolute;right:0;bottom:0;left:0;height:2px;background:transparent}.segment-control button.active{color:var(--accent)}.segment-control button.active::after{background:var(--accent)}.toolbar-summary{display:flex;align-items:baseline;gap:6px}.toolbar-summary b{font:700 22px Georgia,serif}.toolbar-summary span{color:var(--muted);font-size:11px}.visibility-toggle{display:inline-flex;align-items:center;gap:8px;margin-left:auto;padding:7px 0;border:0;background:transparent;color:var(--muted);font-size:12px}.visibility-toggle:hover{color:var(--ink)}.check-box{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border:1px solid var(--line2);border-radius:3px;background:var(--card);color:#fff;font-size:11px}.visibility-toggle[aria-pressed=true] .check-box{border-color:var(--accent);background:var(--accent)}.manager-table-card{padding:0;overflow:hidden}.manager-table{width:100%;min-width:0;animation:manager-view-in .2s ease both}@keyframes manager-view-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}.table-header,.table-row{display:grid;align-items:center;min-width:0}.table-header{min-height:50px;padding:0 20px;background:color-mix(in srgb,var(--paper) 78%,var(--card));color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;border-bottom:1px solid var(--line)}.table-row{min-height:64px;padding:10px 20px;border-bottom:1px solid var(--line);color:var(--ink2);font-size:12px}.table-row:last-child{border-bottom:0}.data-row{transition:background .12s}.data-row:hover{background:color-mix(in srgb,var(--accent-soft) 45%,transparent)}.data-row.hidden{opacity:.55}.account-table .table-header,.account-table .table-row{grid-template-columns:minmax(210px,1.5fr) minmax(110px,.8fr) minmax(72px,.45fr) minmax(110px,.65fr) minmax(210px,1fr);gap:16px}.category-table .table-header,.category-table .table-row,.simple-table .table-header,.simple-table .table-row,.role-table .table-header,.role-table .table-row,.recycle-table .table-header,.recycle-table .table-row{grid-template-columns:minmax(220px,1.5fr) minmax(100px,.65fr) minmax(170px,1fr) minmax(210px,1fr);gap:16px}.member-table .table-header,.member-table .table-row{grid-template-columns:minmax(180px,1.1fr) minmax(130px,.8fr) minmax(120px,.7fr) minmax(110px,.65fr) minmax(190px,1fr);gap:16px}.audit-table .table-header,.audit-table .table-row{grid-template-columns:minmax(170px,1fr) minmax(120px,.7fr) minmax(180px,1.1fr) minmax(180px,1fr);gap:16px}.book-table .table-header,.book-table .table-row{grid-template-columns:minmax(190px,1.4fr) minmax(70px,.4fr) minmax(78px,.5fr) minmax(88px,.55fr) minmax(100px,.65fr) minmax(260px,1.4fr);gap:14px}.group-row{background:color-mix(in srgb,var(--paper) 55%,var(--card));color:var(--ink)}button.group-row{width:100%;border-width:0 0 1px;border-style:solid;border-color:var(--line);text-align:left}.cell-primary{display:flex;align-items:center;min-width:0;gap:10px;color:var(--ink)}.cell-primary b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.cell-primary>svg,.disclosure>svg{flex:0 0 14px;width:14px;height:14px;color:var(--muted)}.child-cell{padding-left:32px}.resource-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 30px;width:30px;height:30px;border:1px solid var(--line);border-radius:50%;background:var(--card);color:var(--accent)}.resource-icon svg{width:15px;height:15px}.color-mark{flex:0 0 9px;width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 10%,transparent)}.disclosure{padding:0;border:0;background:transparent;text-align:left}.status-dot{display:inline-block;width:6px;height:6px;margin-right:7px;border-radius:50%;background:var(--accent)}.status-dot.muted{background:var(--muted)}.row-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;min-width:0}.row-actions button{padding:4px 0;border:0;background:transparent;color:var(--accent);font-size:11px;white-space:nowrap}.row-actions button:hover{text-decoration:underline}.row-actions button:disabled{cursor:wait;opacity:.5;text-decoration:none}.row-actions button.danger{color:var(--down)}.truncate-note{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.member-avatar{display:inline-flex;align-items:center;justify-content:center;flex:0 0 30px;width:30px;height:30px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-weight:700}.role-badge,.permission-list em{display:inline-flex;padding:3px 7px;border-radius:3px;background:var(--accent-soft);color:var(--accent);font-size:10px;font-style:normal}.permission-list{display:flex;min-width:0;flex-wrap:wrap;gap:4px}.permission-list small,.protected-label{color:var(--muted);font-size:10px}.num{font-variant-numeric:tabular-nums}.audit-target{display:flex;min-width:0;flex-direction:column;gap:3px}.audit-target small{color:var(--muted);font-size:10px}.audit-target b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}.management-pagination{display:flex;align-items:center;justify-content:flex-end;gap:14px;padding:14px 20px;border-top:1px solid var(--line);color:var(--muted);font-size:11px}.management-pagination label{display:inline-flex;align-items:center;gap:6px}.management-pagination select{height:28px;padding:0 20px 0 7px;border:1px solid var(--line2);border-radius:3px;background:var(--card);color:var(--ink2);font:inherit}.management-pagination button{height:28px;padding:0 9px;border:1px solid var(--line2);border-radius:3px;background:var(--card);color:var(--ink2);font:inherit}.management-pagination button:disabled{cursor:not-allowed;opacity:.4}.management-pagination b{min-width:40px;text-align:center;color:var(--ink2)}.manager-form{display:flex;flex-direction:column;gap:15px}.manager-form label{display:flex;flex-direction:column;gap:6px;color:var(--ink2);font-size:11px;font-weight:600}.manager-form select{height:38px}.manager-form input[type=color]{padding:4px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.form-help{margin:0;color:var(--muted);font-size:11px}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin:4px -18px -18px;padding:14px 18px;border-top:1px solid var(--line)}.confirm-content{display:flex;align-items:flex-start;gap:12px}.confirm-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 36px;width:36px;height:36px;border-radius:50%;background:color-mix(in srgb,var(--down) 10%,transparent);color:var(--down)}.confirm-icon svg{width:17px;height:17px}.confirm-content b{color:var(--ink);font-size:13px}.confirm-content p{margin:5px 0 0;color:var(--muted);font-size:11px;line-height:1.6}
+.ledger-management{min-width:0;max-width:100%}.manager-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin:24px 0 18px;padding-bottom:20px;border-bottom:1px solid var(--line)}.manager-heading-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.manager-overline{margin:0 0 4px;color:var(--muted);font-size:12px;letter-spacing:.16em}.manager-title-line{display:flex;align-items:baseline;gap:24px;flex-wrap:wrap}.manager-title-line h1{margin:0;color:var(--ink);font:700 30px/1.15 Georgia,"Songti SC",serif;letter-spacing:-.025em}.manager-description{margin:7px 0 0;color:var(--muted);font-size:12px}.manager-create svg,.manager-toolbar svg{width:15px;height:15px}.account-totals{display:flex;align-items:center;gap:22px;color:var(--muted);font-size:12px}.account-totals span{display:flex;align-items:baseline;gap:7px}.account-totals b{color:var(--ink);font-size:18px;font-weight:600}.account-totals b.up{color:var(--up)}.account-totals b.down{color:var(--down)}.manager-main-tabs{display:flex;align-items:center;gap:4px;max-width:100%;margin:-3px 0 16px;padding:3px;border:1px solid var(--line);border-radius:4px;background:var(--paper);overflow-x:auto}.manager-main-tabs button{flex:1 0 auto;min-height:36px;padding:7px 18px;border:0;border-radius:3px;background:transparent;color:var(--muted);font-size:12px;font-weight:600;white-space:nowrap}.manager-main-tabs button:hover{color:var(--ink)}.manager-main-tabs button.active{background:var(--card);color:var(--accent);box-shadow:0 1px 4px #00000012}.manager-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:44px;margin-bottom:12px}.segment-control{display:flex;align-items:center;gap:20px}.segment-control button{position:relative;padding:9px 0;border:0;background:transparent;color:var(--muted);font-size:13px;font-weight:600}.segment-control button::after{content:"";position:absolute;right:0;bottom:0;left:0;height:2px;background:transparent}.segment-control button.active{color:var(--accent)}.segment-control button.active::after{background:var(--accent)}.toolbar-summary{display:flex;align-items:baseline;gap:6px}.toolbar-summary b{font:700 22px Georgia,serif}.toolbar-summary span{color:var(--muted);font-size:12px}.visibility-toggle{display:inline-flex;align-items:center;gap:8px;margin-left:auto;padding:7px 0;border:0;background:transparent;color:var(--muted);font-size:12px}.visibility-toggle:hover{color:var(--ink)}.check-box{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border:1px solid var(--line2);border-radius:3px;background:var(--card);color:#fff;font-size:12px}.visibility-toggle[aria-pressed=true] .check-box{border-color:var(--accent);background:var(--accent)}.manager-table-card{padding:0;overflow:hidden}.manager-table{width:100%;min-width:0;animation:manager-view-in .2s ease both}@keyframes manager-view-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}.table-header,.table-row{display:grid;align-items:center;min-width:0}.table-header{min-height:50px;padding:0 20px;background:color-mix(in srgb,var(--paper) 78%,var(--card));color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;border-bottom:1px solid var(--line)}.table-row{min-height:64px;padding:10px 20px;border-bottom:1px solid var(--line);color:var(--ink2);font-size:12px}.table-row:last-child{border-bottom:0}.data-row{transition:background .12s}.data-row:hover{background:color-mix(in srgb,var(--accent-soft) 45%,transparent)}.data-row.hidden{opacity:.55}.account-table .table-header,.account-table .table-row{grid-template-columns:minmax(210px,1.5fr) minmax(110px,.8fr) minmax(72px,.45fr) minmax(110px,.65fr) minmax(210px,1fr);gap:16px}.category-table .table-header,.category-table .table-row,.simple-table .table-header,.simple-table .table-row,.role-table .table-header,.role-table .table-row,.recycle-table .table-header,.recycle-table .table-row{grid-template-columns:minmax(220px,1.5fr) minmax(100px,.65fr) minmax(170px,1fr) minmax(210px,1fr);gap:16px}.member-table .table-header,.member-table .table-row{grid-template-columns:minmax(180px,1.1fr) minmax(130px,.8fr) minmax(120px,.7fr) minmax(110px,.65fr) minmax(190px,1fr);gap:16px}.audit-table .table-header,.audit-table .table-row{grid-template-columns:minmax(170px,1fr) minmax(120px,.7fr) minmax(180px,1.1fr) minmax(180px,1fr);gap:16px}.book-table .table-header,.book-table .table-row{grid-template-columns:minmax(190px,1.4fr) minmax(70px,.4fr) minmax(78px,.5fr) minmax(88px,.55fr) minmax(100px,.65fr) minmax(260px,1.4fr);gap:14px}.group-row{background:color-mix(in srgb,var(--paper) 55%,var(--card));color:var(--ink)}button.group-row{width:100%;border-width:0 0 1px;border-style:solid;border-color:var(--line);text-align:left}.cell-primary{display:flex;align-items:center;min-width:0;gap:10px;color:var(--ink)}.cell-primary b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.cell-primary>svg,.disclosure>svg{flex:0 0 14px;width:14px;height:14px;color:var(--muted)}.child-cell{padding-left:32px}.resource-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 30px;width:30px;height:30px;border:1px solid var(--line);border-radius:50%;background:var(--card);color:var(--accent)}.resource-icon svg{width:15px;height:15px}.color-mark{flex:0 0 9px;width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 10%,transparent)}.disclosure{padding:0;border:0;background:transparent;text-align:left}.status-dot{display:inline-block;width:6px;height:6px;margin-right:7px;border-radius:50%;background:var(--accent)}.status-dot.muted{background:var(--muted)}.row-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;min-width:0}.row-actions button{padding:4px 0;border:0;background:transparent;color:var(--accent);font-size:12px;white-space:nowrap}.row-actions button:hover{text-decoration:underline}.row-actions button:disabled{cursor:wait;opacity:.5;text-decoration:none}.row-actions button.danger{color:var(--down)}.truncate-note{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.member-avatar{display:inline-flex;align-items:center;justify-content:center;flex:0 0 30px;width:30px;height:30px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-weight:700}.role-badge,.permission-list em{display:inline-flex;padding:3px 7px;border-radius:3px;background:var(--accent-soft);color:var(--accent);font-size:12px;font-style:normal}.permission-list{display:flex;min-width:0;flex-wrap:wrap;gap:4px}.permission-list small,.protected-label{color:var(--muted);font-size:12px}.num{font-variant-numeric:tabular-nums}.audit-target{display:flex;min-width:0;flex-direction:column;gap:3px}.audit-target small{color:var(--muted);font-size:12px}.audit-target b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}.management-pagination{display:flex;align-items:center;justify-content:flex-end;gap:14px;padding:14px 20px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}.management-pagination label{display:inline-flex;align-items:center;gap:6px}.management-pagination select{height:28px;padding:0 20px 0 7px;border:1px solid var(--line2);border-radius:3px;background:var(--card);color:var(--ink2);font:inherit}.management-pagination button{height:28px;padding:0 9px;border:1px solid var(--line2);border-radius:3px;background:var(--card);color:var(--ink2);font:inherit}.management-pagination button:disabled{cursor:not-allowed;opacity:.4}.management-pagination b{min-width:40px;text-align:center;color:var(--ink2)}.manager-form{display:flex;flex-direction:column;gap:15px}.manager-form label{display:flex;flex-direction:column;gap:6px;color:var(--ink2);font-size:12px;font-weight:600}.manager-form select{height:38px}.manager-form input[type=color]{padding:4px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.form-help{margin:0;color:var(--muted);font-size:12px}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin:4px -18px -18px;padding:14px 18px;border-top:1px solid var(--line)}.confirm-content{display:flex;align-items:flex-start;gap:12px}.confirm-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 36px;width:36px;height:36px;border-radius:50%;background:color-mix(in srgb,var(--down) 10%,transparent);color:var(--down)}.confirm-icon svg{width:17px;height:17px}.confirm-content b{color:var(--ink);font-size:13px}.confirm-content p{margin:5px 0 0;color:var(--muted);font-size:12px;line-height:1.6}
 
 @media(max-width:900px){.account-totals{width:100%;gap:16px}.account-totals span{flex-direction:column;gap:0}.account-totals b{font-size:15px}.table-header{display:none}.manager-table-card{overflow:visible;border:0;background:transparent}.table-row{grid-template-columns:minmax(0,1fr) auto!important;gap:5px 12px;min-height:0;margin-bottom:8px;padding:13px 14px;border:1px solid var(--line)!important;border-radius:4px;background:var(--card)}.table-row>span:not(.cell-primary):not(.row-actions),.table-row>strong{grid-column:2;text-align:right}.table-row>.cell-primary{grid-column:1;grid-row:1 / span 2}.table-row>.row-actions{grid-column:1 / -1;grid-row:auto;justify-content:flex-end;margin-top:7px;padding-top:8px;border-top:1px solid var(--line)}.group-row{margin-top:12px;background:color-mix(in srgb,var(--paper) 55%,var(--card))}.group-row>span:last-child{display:none}.child-cell{padding-left:18px}.permission-list{grid-column:1 / -1!important;text-align:left!important}.audit-table .table-row>.cell-primary{grid-row:1}.audit-table .table-row>span{grid-column:auto}.audit-table .table-row>span:last-child{grid-column:1 / -1;text-align:left}.recycle-table .table-row>.row-actions{grid-column:1 / -1}}
 @media(prefers-reduced-motion:reduce){.manager-table{animation:none}}
 @media(max-width:680px){.manager-heading{align-items:stretch;flex-direction:column;gap:14px;margin-top:18px}.manager-heading-actions{justify-content:stretch}.manager-heading-actions .ui-button{flex:1}.manager-title-line h1{font-size:26px}.manager-create{width:100%}.manager-toolbar{align-items:flex-start;flex-wrap:wrap}.visibility-toggle{order:2;margin-left:0}.segment-control{width:100%;justify-content:flex-start}.form-grid{grid-template-columns:1fr}.account-totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.account-totals span{min-width:0}.account-totals b{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.table-row{padding:12px}.row-actions{gap:14px}.role-table .table-row>span:nth-child(2){grid-column:2}.role-table .table-row>.permission-list{grid-column:1 / -1}.management-pagination{align-items:flex-start;flex-wrap:wrap;justify-content:flex-start;gap:8px;padding:12px}.management-pagination span{order:3;width:100%}.manager-description{max-width:92%}}
 .permission-picker{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0;padding:0;border:0}
-.permission-picker legend{grid-column:1 / -1;margin-bottom:1px;color:var(--ink2);font-size:11px;font-weight:600}
+.permission-picker legend{grid-column:1 / -1;margin-bottom:1px;color:var(--ink2);font-size:12px;font-weight:600}
 .manager-form .permission-option{display:grid;grid-template-columns:16px minmax(0,1fr);gap:9px;padding:10px;border:1px solid var(--line);border-radius:4px;background:var(--paper);cursor:pointer}
 .manager-form .permission-option:has(input:checked){border-color:color-mix(in srgb,var(--accent) 55%,var(--line));background:var(--accent-soft)}
 .manager-form .permission-option.required{cursor:default;opacity:.72}
 .permission-option input{width:15px;height:15px;margin:2px 0 0;accent-color:var(--accent)}
 .permission-option span{display:flex;min-width:0;flex-direction:column;gap:2px}
-.permission-option b{color:var(--ink);font-size:11px}
-.permission-option small{color:var(--muted);font-size:9px;font-weight:400;line-height:1.4}
+.permission-option b{color:var(--ink);font-size:12px}
+.permission-option small{color:var(--muted);font-size:12px;font-weight:400;line-height:1.4}
 @media(max-width:680px){.permission-picker{grid-template-columns:1fr}}
 .entity-link{display:block;min-width:0;max-width:100%;overflow:hidden;padding:3px 0;border:0;background:transparent;color:var(--ink);text-align:left;cursor:pointer}
 .entity-link b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

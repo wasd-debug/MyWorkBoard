@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createPinia, setActivePinia } from 'pinia'
-import { api } from '../api/index.js'
+import { api } from '../../packages/api-client/src/index.js'
 import { useWorktimeStore } from './worktime.js'
 
 function response(config, data) {
@@ -19,10 +19,10 @@ test('fetch loads worktime settings and records from resource endpoints', async 
   const requests = []
   api.defaults.adapter = async config => {
     requests.push(config.url)
-    if (config.url === '/v1/worktime/settings') {
+    if (config.url === '/api/v1/worktime/settings') {
       return response(config, { workStart: '09:00', revision: 3 })
     }
-    if (config.url === '/v1/worktime/records') {
+    if (config.url.startsWith('/api/v1/worktime/records')) {
       return response(config, [{
         id: 17,
         date: '2026-09-17',
@@ -45,8 +45,8 @@ test('fetch loads worktime settings and records from resource endpoints', async 
   await store.fetch()
 
   assert.deepEqual(requests, [
-    '/v1/worktime/settings',
-    '/v1/worktime/records'
+    '/api/v1/worktime/settings',
+    '/api/v1/worktime/records?limit=200&offset=0'
   ])
   assert.equal(store.settings.revision, 3)
   assert.deepEqual(store.records['2026-09-17'], {
@@ -72,9 +72,10 @@ test('fetch follows record pages so history beyond 200 entries is not lost', asy
     revision: 1
   }))
   api.defaults.adapter = async config => {
-    if (config.url === '/v1/worktime/settings') return response(config, { revision: 1 })
-    offsets.push(Number(config.params?.offset || 0))
-    return response(config, Number(config.params?.offset || 0) === 0
+    if (config.url === '/api/v1/worktime/settings') return response(config, { revision: 1 })
+    const offset = Number(new URL(config.url, 'http://local').searchParams.get('offset') || 0)
+    offsets.push(offset)
+    return response(config, offset === 0
       ? firstPage
       : [
           { id: 201, date: '2020-01-02', revision: 1 },
@@ -118,7 +119,7 @@ test('resource commands use idempotency and revision headers and apply server pr
   await store.deleteRecord('2026-09-17')
 
   assert.equal(requests[0].method, 'patch')
-  assert.equal(requests[0].url, '/v1/worktime/records/17')
+  assert.equal(requests[0].url, '/api/v1/worktime/records/17')
   assert.equal(requests[0].headers['If-Match'], '2')
   assert.equal(requests[1].method, 'post')
   assert.equal(requests[1].headers['Idempotency-Key']?.length > 0, true)
@@ -189,7 +190,7 @@ test('clearResources deletes records and resets settings through resource endpoi
   const requests = []
   api.defaults.adapter = async config => {
     requests.push({ method: config.method, url: config.url })
-    if (config.url === '/v1/worktime/settings') return response(config, { workStart: '09:00', revision: 3 })
+    if (config.url === '/api/v1/worktime/settings') return response(config, { workStart: '09:00', revision: 3 })
     return response(config, { deleted: true })
   }
   t.after(() => { api.defaults.adapter = originalAdapter })
@@ -205,9 +206,9 @@ test('clearResources deletes records and resets settings through resource endpoi
   await store.clearResources({ workStart: '09:00' })
 
   assert.deepEqual(requests, [
-    { method: 'delete', url: '/v1/worktime/records/17' },
-    { method: 'delete', url: '/v1/worktime/records/18' },
-    { method: 'put', url: '/v1/worktime/settings' }
+    { method: 'delete', url: '/api/v1/worktime/records/17' },
+    { method: 'delete', url: '/api/v1/worktime/records/18' },
+    { method: 'put', url: '/api/v1/worktime/settings' }
   ])
   assert.deepEqual(store.records, {})
   assert.equal(store.settings.workStart, '09:00')

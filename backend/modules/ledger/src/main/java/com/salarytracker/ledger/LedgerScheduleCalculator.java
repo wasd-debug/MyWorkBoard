@@ -4,8 +4,9 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.temporal.TemporalAdjusters;
-import java.util.Map;
 import java.util.Set;
+
+import com.salarytracker.ledger.LedgerModels.CalendarRule;
 
 final class LedgerScheduleCalculator {
     static final String INTERVAL = "INTERVAL";
@@ -14,7 +15,7 @@ final class LedgerScheduleCalculator {
 
     private LedgerScheduleCalculator() {}
 
-    static void validate(String mode, String frequency, int interval, Map<String, Object> rule) {
+    static void validate(String mode, String frequency, int interval, CalendarRule rule) {
         if (!MODES.contains(mode)) throw new IllegalArgumentException("执行方式不正确");
         if (interval < 1) throw new IllegalArgumentException("间隔时间必须大于等于 1");
         if (INTERVAL.equals(mode)) return;
@@ -30,7 +31,7 @@ final class LedgerScheduleCalculator {
         }
     }
 
-    static LocalDate firstDate(LocalDate start, String mode, String frequency, int interval, Map<String, Object> rule) {
+    static LocalDate firstDate(LocalDate start, String mode, String frequency, int interval, CalendarRule rule) {
         validate(mode, frequency, interval, rule);
         if (INTERVAL.equals(mode)) return start;
         return switch (frequency) {
@@ -41,7 +42,7 @@ final class LedgerScheduleCalculator {
         };
     }
 
-    static LocalDate nextDate(LocalDate current, String mode, String frequency, int interval, Map<String, Object> rule) {
+    static LocalDate nextDate(LocalDate current, String mode, String frequency, int interval, CalendarRule rule) {
         validate(mode, frequency, interval, rule);
         if (INTERVAL.equals(mode)) {
             return switch (frequency) {
@@ -60,8 +61,8 @@ final class LedgerScheduleCalculator {
         };
     }
 
-    private static void validateMonthly(Map<String, Object> rule) {
-        String monthlyMode = text(rule.get("monthlyMode"), "DAY_OF_MONTH").toUpperCase();
+    private static void validateMonthly(CalendarRule rule) {
+        String monthlyMode = text(rule == null ? null : rule.monthlyMode(), "DAY_OF_MONTH").toUpperCase();
         if ("DAY_OF_MONTH".equals(monthlyMode)) integer(rule, "dayOfMonth", 1, 31, "日期");
         else if ("NTH_WEEKDAY".equals(monthlyMode)) {
             integer(rule, "weekOfMonth", 1, 5, "周次");
@@ -69,8 +70,8 @@ final class LedgerScheduleCalculator {
         } else throw new IllegalArgumentException("每月固定规则不正确");
     }
 
-    private static LocalDate monthlyOnOrAfter(LocalDate start, Map<String, Object> rule) {
-        String monthlyMode = text(rule.get("monthlyMode"), "DAY_OF_MONTH").toUpperCase();
+    private static LocalDate monthlyOnOrAfter(LocalDate start, CalendarRule rule) {
+        String monthlyMode = text(rule == null ? null : rule.monthlyMode(), "DAY_OF_MONTH").toUpperCase();
         YearMonth month = YearMonth.from(start);
         for (int i = 0; i < 240; i++, month = month.plusMonths(1)) {
             LocalDate candidate;
@@ -86,7 +87,7 @@ final class LedgerScheduleCalculator {
         throw new IllegalArgumentException("无法计算下一次执行日期");
     }
 
-    private static LocalDate yearlyOnOrAfter(LocalDate start, Map<String, Object> rule) {
+    private static LocalDate yearlyOnOrAfter(LocalDate start, CalendarRule rule) {
         int month = integer(rule, "month", 1, 12, "月份");
         int day = integer(rule, "dayOfMonth", 1, java.time.Month.of(month).maxLength(), "日期");
         for (int year = start.getYear(); year < start.getYear() + 20; year++) {
@@ -103,12 +104,18 @@ final class LedgerScheduleCalculator {
         return YearMonth.from(candidate).equals(month) ? candidate : null;
     }
 
-    private static DayOfWeek dayOfWeek(Map<String, Object> rule) {
+    private static DayOfWeek dayOfWeek(CalendarRule rule) {
         return DayOfWeek.of(integer(rule, "dayOfWeek", 1, 7, "星期"));
     }
 
-    private static int integer(Map<String, Object> rule, String key, int min, int max, String label) {
-        Object value = rule == null ? null : rule.get(key);
+    private static int integer(CalendarRule rule, String key, int min, int max, String label) {
+        Object value = rule == null ? null : switch (key) {
+            case "weekOfMonth" -> rule.weekOfMonth();
+            case "dayOfWeek" -> rule.dayOfWeek();
+            case "dayOfMonth" -> rule.dayOfMonth();
+            case "month" -> rule.month();
+            default -> null;
+        };
         int number;
         try { number = Integer.parseInt(String.valueOf(value)); }
         catch (Exception ignored) { throw new IllegalArgumentException(label + "不能为空"); }

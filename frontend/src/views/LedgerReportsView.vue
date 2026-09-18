@@ -1,7 +1,8 @@
 <template>
   <section ref="reportExportRef" class="ledger-reports">
+    <TabsRoot v-model="selectedReport" as-child>
     <header class="report-tabbar">
-      <nav class="report-tabs" aria-label="已添加报表">
+      <TabsList as-child aria-label="已添加报表"><nav ref="reportTabsRef" class="report-tabs">
         <div
           v-for="item in visibleReportOptions"
           :key="item.value"
@@ -13,12 +14,9 @@
           @drop.prevent="handleReportDrop(item.value, $event)"
           @dragend="handleReportDragEnd"
         >
-          <button type="button" class="report-tab-label" @click="selectedReport = item.value">{{ item.label }}</button>
-          <button type="button" class="report-tab-remove" :aria-label="`从标签栏移除${item.label}`" @click.stop="removeReportTab(item.value)">
-            <Close />
-          </button>
+          <TabsTrigger as-child :value="item.value"><button type="button" class="report-tab-label">{{ item.label }}</button></TabsTrigger>
         </div>
-      </nav>
+      </nav></TabsList>
       <div ref="libraryRef" class="report-library-anchor">
         <button type="button" class="report-library-button" aria-label="报表库" title="报表库" :aria-expanded="libraryOpen" @click="toggleLibrary">
           <Grid />
@@ -51,6 +49,7 @@
         </div>
       </div>
     </header>
+    </TabsRoot>
 
     <div class="report-content-heading">
       <div>
@@ -703,10 +702,11 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, TransitionGroup, watch } from 'vue'
+import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, TransitionGroup, watch } from 'vue'
+import { TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowDown, ArrowLeft, ArrowRight, Close, Grid, Plus, Remove } from '../icons.js'
-import { ElMessage } from '../services/message.js'
+import { message } from '../services/message.js'
 import html2canvas from 'html2canvas'
 import Card from '../components/ui/Card.vue'
 import Empty from '../components/ui/Empty.vue'
@@ -717,7 +717,7 @@ import LedgerActionIcon from '../components/ledger/LedgerActionIcon.vue'
 import LoadingOverlay from '../components/ledger/LoadingOverlay.vue'
 import { categoryColor, categorySeries, resourceSeries, stableResourceColor } from '../components/ledger/chartPalette'
 import { accountBalancesAt, totalLedgerAssets } from '../components/ledger/ledgerAccounting'
-import { apiLedgerMonthlyAnalysis, apiListLedgerBudgets } from '../api'
+import { apiLedgerMonthlyAnalysis, apiListLedgerBudgets } from '../../packages/api-client/src/index.js'
 import { useLedgerStore } from '../stores/ledger'
 
 const ledger = useLedgerStore()
@@ -754,6 +754,7 @@ const visibleReportOptions = computed(() => visibleReportKeys.value
   .map(key => reportOptions.find(item => item.value === key))
   .filter(Boolean))
 if (!visibleReportKeys.value.includes(selectedReport.value)) visibleReportKeys.value.push(selectedReport.value)
+const reportTabsRef = ref(null)
 const libraryRef = ref(null)
 const libraryOpen = ref(false)
 const datePickerRef = ref(null)
@@ -807,7 +808,7 @@ function exportClone() {
   if (!source) throw new Error('报表内容尚未准备好')
   const clone = source.cloneNode(true)
   clone.querySelector('.report-heading-actions')?.remove()
-  clone.querySelectorAll('.date-picker-popover,.report-library-popover,.report-tab-remove').forEach(node => node.remove())
+  clone.querySelectorAll('.date-picker-popover,.report-library-popover').forEach(node => node.remove())
   const sourceCanvases = Array.from(source.querySelectorAll('canvas'))
   const cloneCanvases = Array.from(clone.querySelectorAll('canvas'))
   sourceCanvases.forEach((canvas, index) => {
@@ -923,7 +924,7 @@ async function exportReportImage() {
         return value ? `${name}:${value};` : ''
       }).join('')
     })
-    clone.querySelectorAll('.report-heading-actions,.date-picker-popover,.report-library-popover,.report-tab-remove').forEach(node => node.remove())
+    clone.querySelectorAll('.report-heading-actions,.date-picker-popover,.report-library-popover').forEach(node => node.remove())
     const sourceCanvases = Array.from(source.querySelectorAll('canvas'))
     const cloneCanvases = Array.from(clone.querySelectorAll('canvas'))
     sourceCanvases.forEach((canvas, index) => {
@@ -942,9 +943,9 @@ async function exportReportImage() {
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
     if (!blob) throw new Error('图片生成失败')
     downloadExport(blob, `ledger-report-${selectedReport.value}-${period.value}.png`)
-    ElMessage.success('报表图片已生成')
+    message.success('报表图片已生成')
   } catch (error) {
-    ElMessage.error(error.message || '报表图片导出失败')
+    message.error(error.message || '报表图片导出失败')
   } finally {
     reportExporting.value = false
   }
@@ -965,9 +966,9 @@ async function exportReportPdf() {
     const print = () => { if (printed) return; printed = true; printWindow.focus(); printWindow.print() }
     printWindow.addEventListener('load', print, { once: true })
     window.setTimeout(print, 500)
-    ElMessage.success('已打开 PDF 打印窗口，请选择“存储为 PDF”')
+    message.success('已打开 PDF 打印窗口，请选择“存储为 PDF”')
   } catch (error) {
-    ElMessage.error(error.message || '报表 PDF 导出失败')
+    message.error(error.message || '报表 PDF 导出失败')
   } finally {
     reportExporting.value = false
   }
@@ -1776,11 +1777,11 @@ function comparisonText(current, previous) {
 }
 async function analyzeMonth() {
   if (!ledger.online) {
-    ElMessage.warning('离线状态下暂不可调用 DeepSeek')
+    message.warning('离线状态下暂不可调用 DeepSeek')
     return
   }
   if (rangeScope.value !== 'month') {
-    ElMessage.warning('请先切换到按月查看')
+    message.warning('请先切换到按月查看')
     return
   }
   if (!ledger.currentBookId) return
@@ -1800,7 +1801,7 @@ async function analyzeMonth() {
     })
   } catch (error) {
     aiError.value = error.response?.data?.detail || 'DeepSeek 暂时无法完成分析，请稍后重试'
-    ElMessage.error(aiError.value)
+    message.error(aiError.value)
   } finally {
     aiLoading.value = false
   }
@@ -2501,6 +2502,10 @@ async function loadBudgets() {
 
 watch(rangeScope, scope => { period.value = normalizePeriod(period.value, scope) })
 watch(visibleReportKeys, persistReportTabs, { deep: true })
+watch(selectedReport, async () => {
+  await nextTick()
+  reportTabsRef.value?.querySelector('[data-state="active"]')?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+})
 watch([selectedReport, rangeScope, period], syncRangeQuery)
 watch([rangeScope, period, () => ledger.currentBookId], () => {
   aiAnalysis.value = null
@@ -2608,25 +2613,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 .report-tab-item.active .report-tab-label { color: var(--ink); font-weight: 700; }
-.report-tab-remove {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  margin-right: 9px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--muted);
-  opacity: 0;
-  transition: opacity .14s ease, background .14s ease, color .14s ease;
-}
-.report-tab-remove svg { width: 11px; height: 11px; }
-.report-tab-item:hover .report-tab-remove,
-.report-tab-item:focus-within .report-tab-remove { opacity: 1; }
-.report-tab-remove:hover { background: var(--paper); color: var(--down); }
 .report-library-anchor {
   position: relative;
   display: flex;
@@ -2675,7 +2661,7 @@ onBeforeUnmount(() => {
 }
 .library-popover-head > div { display: flex; flex-direction: column; gap: 3px; }
 .library-popover-head b { font-size: 17px; }
-.library-popover-head span { color: var(--muted); font-size: 11px; }
+.library-popover-head span { color: var(--muted); font-size:12px; }
 .library-popover-head button {
   display: inline-flex;
   width: 28px;
@@ -2707,7 +2693,7 @@ onBeforeUnmount(() => {
 .library-report-item.added { border-color: color-mix(in srgb, var(--accent) 42%, var(--line)); background: var(--accent-soft); }
 .library-report-item > span:first-child { display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
 .library-report-item b { font-size: 13px; }
-.library-report-item small { overflow: hidden; color: var(--muted); font-size: 10px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.library-report-item small { overflow: hidden; color: var(--muted); font-size:12px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
 .library-report-action {
   display: inline-flex;
   flex: 0 0 auto;
@@ -2741,7 +2727,7 @@ onBeforeUnmount(() => {
 }
 .report-heading-actions .ledger-action-icon { width: 34px; height: 34px; }
 .report-content-heading h1 { margin: 0; font: 700 clamp(25px, 3vw, 34px)/1.2 Georgia, "Songti SC", serif; }
-.report-content-heading span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+.report-content-heading span { display: block; margin-top: 5px; color: var(--muted); font-size:12px; }
 .date-picker-anchor { position: relative; flex: 0 0 auto; }
 .date-trigger {
   display: grid;
@@ -2862,7 +2848,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 6px;
   color: var(--muted);
-  font-size: 11px;
+  font-size:12px;
 }
 .custom-date-range input {
   width: 100%;
@@ -2901,7 +2887,7 @@ onBeforeUnmount(() => {
   gap: 10px;
   margin: -8px 0 15px;
 }
-.report-sub-controls label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+.report-sub-controls label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size:12px; }
 .report-sub-controls select { width: auto; min-width: 150px; height: 34px; padding: 0 28px 0 10px; }
 .basic-dashboard-grid {
   display: grid;
@@ -2927,7 +2913,7 @@ onBeforeUnmount(() => {
   gap: 18px;
 }
 .category-statistics-head h2 { margin: 0; font: 700 20px/1.2 Georgia, "Songti SC", serif; white-space: nowrap; }
-.category-statistics-total { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 18px; color: var(--muted); font-size: 11px; }
+.category-statistics-total { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 18px; color: var(--muted); font-size:12px; }
 .category-statistics-total strong,
 .category-statistics-total b { margin-left: 4px; font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .category-level-row {
@@ -2937,7 +2923,7 @@ onBeforeUnmount(() => {
   gap: 9px;
   margin-top: 16px;
 }
-.category-level-row > span { color: var(--muted); font-size: 10px; }
+.category-level-row > span { color: var(--muted); font-size:12px; }
 .category-statistics-card :deep(.category-ranking) {
   margin-top: 12px;
   padding-top: 22px;
@@ -3007,9 +2993,9 @@ onBeforeUnmount(() => {
   margin-bottom: 26px;
 }
 .account-ranking-head h2 { margin: 0; font: 700 20px/1.2 Georgia, "Songti SC", serif; }
-.account-ranking-head > span { display: inline-flex; align-items: baseline; gap: 5px; color: var(--muted); font-size: 11px; }
+.account-ranking-head > span { display: inline-flex; align-items: baseline; gap: 5px; color: var(--muted); font-size:12px; }
 .account-ranking-head strong { margin-left: 5px; color: var(--ink2); font-size: 14px; font-variant-numeric: tabular-nums; }
-.account-ranking-head small { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.account-ranking-head small { color: var(--muted); font-size:12px; white-space: nowrap; }
 .account-ranking-list { display: flex; flex-direction: column; gap: 26px; }
 .account-ranking-row {
   display: grid;
@@ -3040,7 +3026,7 @@ onBeforeUnmount(() => {
 .account-ranking-label { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .account-ranking-label b { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .account-ranking-label > span { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
-.account-ranking-label small { color: var(--muted); font-size: 10px; }
+.account-ranking-label small { color: var(--muted); font-size:12px; }
 .account-ranking-label i { width: 3px; height: 3px; border-radius: 50%; background: var(--line2); }
 .account-ranking-label strong { font-size: 13px; font-weight: 600; }
 .account-ranking-track { height: 4px; overflow: hidden; border-radius: 4px; background: var(--line); }
@@ -3056,7 +3042,7 @@ onBeforeUnmount(() => {
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 11px;
+  font-size:12px;
 }
 .account-ranking-expand:hover { color: var(--ink); }
 .account-ranking-expand svg { width: 14px; height: 14px; transition: transform .16s ease; }
@@ -3083,9 +3069,9 @@ onBeforeUnmount(() => {
 .merchant-summary-identity { display: flex; min-width: 0; align-items: center; gap: 13px; }
 .merchant-summary-identity > span { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
 .merchant-summary-identity b { overflow: hidden; color: var(--ink); font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
-.merchant-summary-identity small { color: var(--muted); font-size: 11px; }
+.merchant-summary-identity small { color: var(--muted); font-size:12px; }
 .merchant-summary-values { display: flex; flex: 0 0 auto; flex-direction: column; align-items: flex-end; gap: 5px; }
-.merchant-summary-values span { color: var(--muted); font-size: 11px; }
+.merchant-summary-values span { color: var(--muted); font-size:12px; }
 .merchant-summary-values strong { display: inline-block; min-width: 110px; margin-left: 7px; font-size: 15px; font-variant-numeric: tabular-nums; text-align: right; }
 .merchant-distribution-card {
   padding: 28px 30px 24px;
@@ -3101,7 +3087,7 @@ onBeforeUnmount(() => {
   margin-bottom: 8px;
 }
 .merchant-distribution-head h2 { margin: 0; font: 700 20px/1.2 Georgia, "Songti SC", serif; white-space: nowrap; }
-.merchant-distribution-head > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px 18px; color: var(--muted); font-size: 11px; }
+.merchant-distribution-head > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px 18px; color: var(--muted); font-size:12px; }
 .merchant-distribution-head strong,
 .merchant-distribution-head b { margin-left: 5px; font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .merchant-ranking { margin-top: 8px; padding-top: 22px; border-top: 1px solid var(--line); }
@@ -3125,7 +3111,7 @@ onBeforeUnmount(() => {
 .merchant-ranking-label { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .merchant-ranking-label b { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .merchant-ranking-label > span { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
-.merchant-ranking-label small { color: var(--muted); font-size: 10px; }
+.merchant-ranking-label small { color: var(--muted); font-size:12px; }
 .merchant-ranking-label i { width: 3px; height: 3px; border-radius: 50%; background: var(--line2); }
 .merchant-ranking-label strong { font-size: 13px; font-weight: 600; }
 .merchant-ranking-track { height: 4px; overflow: hidden; border-radius: 4px; background: var(--line); }
@@ -3141,7 +3127,7 @@ onBeforeUnmount(() => {
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 11px;
+  font-size:12px;
 }
 .merchant-ranking-expand:hover { color: var(--ink); }
 .merchant-ranking-expand svg { width: 14px; height: 14px; transition: transform .16s ease; }
@@ -3170,9 +3156,9 @@ onBeforeUnmount(() => {
   color: #fff;
 }
 .month-summary-head svg { width: 15px; height: 15px; }
-.month-summary-banner > small { display: block; margin-top: 22px; color: rgba(255,255,255,.82); font-size: 11px; }
+.month-summary-banner > small { display: block; margin-top: 22px; color: rgba(255,255,255,.82); font-size:12px; }
 .month-summary-banner > strong { display: block; margin-top: 5px; color: #fff !important; font: 750 clamp(38px, 5vw, 54px)/1 Georgia, serif; }
-.month-summary-values { display: flex; align-items: center; gap: 16px; margin-top: 23px; color: rgba(255,255,255,.84); font-size: 11px; }
+.month-summary-values { display: flex; align-items: center; gap: 16px; margin-top: 23px; color: rgba(255,255,255,.84); font-size:12px; }
 .month-summary-values span { display: flex; align-items: baseline; gap: 6px; }
 .month-summary-values b { color: #fff !important; font-size: 14px; }
 .month-summary-values i { width: 1px; height: 17px; background: rgba(255,255,255,.38); }
@@ -3180,9 +3166,9 @@ onBeforeUnmount(() => {
 .month-narrative h3 { margin: 0 0 20px; font: 700 16px/1.4 Georgia, "Songti SC", serif; }
 .month-narrative p { margin: 0; color: var(--ink2); font-size: 13px; line-height: 1.9; }
 .month-narrative small { display: block; margin-top: 18px; color: var(--muted); line-height: 1.6; }
-.month-ai-error { margin-top: 14px !important; color: var(--up) !important; font-size: 11px !important; }
+.month-ai-error { margin-top: 14px !important; color: var(--up) !important; font-size:12px !important; }
 .ai-advice-list { display: flex; flex-direction: column; gap: 7px; margin-top: 18px; }
-.ai-advice-list span { position: relative; padding-left: 15px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.ai-advice-list span { position: relative; padding-left: 15px; color: var(--muted); font-size:12px; line-height: 1.6; }
 .ai-advice-list span::before { position: absolute; top: .65em; left: 2px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); content: ""; }
 .month-top-card { padding: 25px 30px 28px; border-radius: 10px; }
 .month-top-card h2,
@@ -3196,7 +3182,7 @@ onBeforeUnmount(() => {
 .transaction-spotlight-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 11px; }
 .transaction-spotlight-main { min-width: 0; }
 .transaction-spotlight-main > button { display: block; max-width: 100%; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.transaction-spotlight-main > span { display: flex; min-width: 0; align-items: center; gap: 5px; margin-top: 5px; color: var(--muted); font-size: 10px; }
+.transaction-spotlight-main > span { display: flex; min-width: 0; align-items: center; gap: 5px; margin-top: 5px; color: var(--muted); font-size:12px; }
 .transaction-spotlight-main > span button { max-width: 100px; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: inherit; text-overflow: ellipsis; white-space: nowrap; }
 .transaction-spotlight-main button:hover { color: var(--accent); text-decoration: underline; }
 .transaction-spotlight-main > span > * + *::before { margin-right: 5px; color: var(--line2); content: "·"; }
@@ -3205,9 +3191,9 @@ onBeforeUnmount(() => {
 .month-compare-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 92px; padding: 20px 26px; border-bottom: 1px solid var(--line); }
 .month-compare-row:last-child { border-bottom: 0; }
 .month-compare-row > span:first-child { display: flex; align-items: center; gap: 11px; font-size: 16px; }
-.month-compare-row > span:last-child { display: grid; grid-template-columns: auto auto; align-items: baseline; justify-items: end; gap: 3px 7px; color: var(--muted); font-size: 10px; }
+.month-compare-row > span:last-child { display: grid; grid-template-columns: auto auto; align-items: baseline; justify-items: end; gap: 3px 7px; color: var(--muted); font-size:12px; }
 .month-compare-row strong { font: 650 16px Georgia, serif; }
-.month-compare-row small { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+.month-compare-row small { grid-column: 1 / -1; color: var(--muted); font-size:12px; }
 .expense-dot,
 .income-dot,
 .balance-dot { display: inline-grid; width: 27px; height: 27px; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-style: normal; }
@@ -3226,7 +3212,7 @@ onBeforeUnmount(() => {
   border-radius: 10px;
 }
 .flow-category-summary-card h2 { margin: 0; font: 700 20px/1.2 Georgia, "Songti SC", serif; }
-.flow-category-summary-card > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 20px; color: var(--muted); font-size: 11px; }
+.flow-category-summary-card > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 20px; color: var(--muted); font-size:12px; }
 .flow-category-summary-card strong,
 .flow-category-summary-card b { margin-left: 5px; font-size: 15px; font-variant-numeric: tabular-nums; }
 .flow-category-ranking-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 18px; }
@@ -3240,7 +3226,7 @@ onBeforeUnmount(() => {
 .account-overview-row:last-child { border-bottom: 0; }
 .account-overview-row > b { font-size: 15px; }
 .account-overview-row > span { display: flex; align-items: baseline; gap: 6px; }
-.account-overview-row small { color: var(--muted); font-size: 10px; }
+.account-overview-row small { color: var(--muted); font-size:12px; }
 .account-overview-row strong { color: var(--ink2); font: 650 15px Georgia, serif; font-variant-numeric: tabular-nums; }
 .account-distribution-card { padding: 27px 30px 28px; border-radius: 10px; }
 .account-distribution-card > header { margin-bottom: 5px; }
@@ -3249,13 +3235,13 @@ onBeforeUnmount(() => {
 .debt-summary-card { padding: 24px 30px; border-radius: 10px; }
 .debt-summary-card > header > div { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
 .debt-summary-card h2 { margin: 0; font: 700 19px/1.2 Georgia, "Songti SC", serif; }
-.debt-summary-card header span { color: var(--muted); font-size: 10px; }
+.debt-summary-card header span { color: var(--muted); font-size:12px; }
 .debt-summary-card header strong { margin-left: 4px; font-size: 14px; }
 .debt-summary-row { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 12px; margin-top: 24px; }
 .debt-summary-row > span { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
 .debt-summary-row > span:last-child { align-items: flex-end; }
 .debt-summary-row b { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
-.debt-summary-row small { color: var(--muted); font-size: 10px; }
+.debt-summary-row small { color: var(--muted); font-size:12px; }
 .account-flow-card { padding: 27px 30px 10px; border-radius: 10px; }
 .account-flow-card > header { margin-bottom: 17px; }
 .account-flow-chart { padding: 20px 0 14px; border-top: 1px solid var(--line); }
@@ -3289,7 +3275,7 @@ onBeforeUnmount(() => {
   margin-bottom: 8px;
 }
 .statistics-card-head h2 { margin: 0; font: 700 20px/1.2 Georgia, "Songti SC", serif; }
-.statistics-card-head > span { flex: 0 0 auto; color: var(--muted); font-size: 11px; }
+.statistics-card-head > span { flex: 0 0 auto; color: var(--muted); font-size:12px; }
 .statistics-card-head strong,
 .statistics-card-head b { margin-left: 5px; color: var(--ink2); font-size: 15px; font-variant-numeric: tabular-nums; }
 .statistics-card-head strong.income { color: var(--down) !important; }
@@ -3301,7 +3287,7 @@ onBeforeUnmount(() => {
 .statistics-debt-card { min-height: 150px; }
 .statistics-debt-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 12px; margin-top: 24px; }
 .statistics-debt-row > span { display: flex; min-width: 0; flex-direction: column; align-items: flex-end; gap: 3px; }
-.statistics-debt-row small { color: var(--muted); font-size: 10px; }
+.statistics-debt-row small { color: var(--muted); font-size:12px; }
 .statistics-debt-row strong { color: var(--ink2); font-size: 14px; font-variant-numeric: tabular-nums; }
 .project-balance-card {
   display: flex;
@@ -3312,7 +3298,7 @@ onBeforeUnmount(() => {
   border-radius: 10px;
 }
 .project-balance-card b { font: 700 20px/1.2 Georgia, "Songti SC", serif; }
-.project-balance-card > span { display: flex; align-items: baseline; gap: 7px; margin-left: auto; color: var(--muted); font-size: 11px; }
+.project-balance-card > span { display: flex; align-items: baseline; gap: 7px; margin-left: auto; color: var(--muted); font-size:12px; }
 .project-balance-card strong { font: 650 16px Georgia, serif; font-variant-numeric: tabular-nums; }
 .cashflow-compare-card { min-height: 260px; }
 .cashflow-compare-card > header { margin-bottom: 15px; }
@@ -3335,12 +3321,12 @@ onBeforeUnmount(() => {
 .cashflow-compare-main { min-width: 0; }
 .cashflow-compare-name { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
 .cashflow-compare-name b { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
-.cashflow-compare-name span { flex: 0 0 auto; color: var(--muted); font-size: 10px; }
+.cashflow-compare-name span { flex: 0 0 auto; color: var(--muted); font-size:12px; }
 .cashflow-compare-bars { display: flex; flex-direction: column; gap: 4px; }
 .cashflow-bar { display: block; height: 5px; min-width: 0; border-radius: 5px; }
 .cashflow-bar.income-bar { background: var(--down); }
 .cashflow-bar.expense-bar { background: var(--up); }
-.cashflow-compare-values { display: flex; flex-wrap: wrap; gap: 7px 16px; margin-top: 7px; color: var(--muted); font-size: 10px; }
+.cashflow-compare-values { display: flex; flex-wrap: wrap; gap: 7px 16px; margin-top: 7px; color: var(--muted); font-size:12px; }
 .cashflow-compare-values span { display: inline-flex; align-items: center; gap: 5px; }
 .cashflow-compare-values i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
 .cashflow-compare-values .income-dot { background: var(--down); }
@@ -3385,12 +3371,12 @@ onBeforeUnmount(() => {
 .resource-ranking-label { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
 .resource-ranking-label b { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .resource-ranking-label > span { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
-.resource-ranking-label small { color: var(--muted); font-size: 10px; }
+.resource-ranking-label small { color: var(--muted); font-size:12px; }
 .resource-ranking-label i { width: 3px; height: 3px; border-radius: 50%; background: var(--line2); }
 .resource-ranking-label strong { font-size: 13px; font-weight: 600; }
 .resource-ranking-track { height: 4px; overflow: hidden; border-radius: 4px; background: var(--line); }
 .resource-ranking-track span { display: block; height: 100%; border-radius: inherit; }
-.resource-ranking-expand { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px; border: 0; background: transparent; color: var(--muted); font-size: 11px; }
+.resource-ranking-expand { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px; border: 0; background: transparent; color: var(--muted); font-size:12px; }
 .resource-ranking-expand svg { width: 14px; height: 14px; transition: transform .16s ease; }
 .resource-ranking-expand.expanded svg { transform: rotate(180deg); }
 .basic-report-column { display: flex; flex-direction: column; gap: 18px; }
@@ -3418,7 +3404,7 @@ onBeforeUnmount(() => {
 .flow-summary-banner::after { top: -60px; right: 28%; width: 130px; height: 150px; }
 .flow-summary-banner > * { position: relative; z-index: 1; }
 .flow-summary-banner > span { display: block; margin-bottom: 25px; font-size: 18px; font-weight: 700; }
-.flow-summary-banner > small { display: block; margin-bottom: 4px; color: rgba(255,255,255,.8); font-size: 11px; }
+.flow-summary-banner > small { display: block; margin-bottom: 4px; color: rgba(255,255,255,.8); font-size:12px; }
 .flow-summary-banner > strong {
   display: block;
   overflow: hidden;
@@ -3428,7 +3414,7 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.flow-summary-values { display: flex; align-items: center; gap: 16px; margin-top: 22px; color: rgba(255,255,255,.8); font-size: 11px; }
+.flow-summary-values { display: flex; align-items: center; gap: 16px; margin-top: 22px; color: rgba(255,255,255,.8); font-size:12px; }
 .flow-summary-values span { display: flex; align-items: baseline; gap: 7px; }
 .flow-summary-values b { color: #fff !important; font-size: 14px; }
 .flow-summary-values i { width: 1px; height: 17px; background: rgba(255,255,255,.35); }
@@ -3451,7 +3437,7 @@ onBeforeUnmount(() => {
   color: var(--accent);
 }
 .milestone-row b { font-size: 15px; }
-.milestone-row > span:last-child { justify-self: end; color: var(--muted); font-size: 11px; }
+.milestone-row > span:last-child { justify-self: end; color: var(--muted); font-size:12px; }
 .milestone-row strong { margin-left: 5px; color: var(--ink); font: 700 17px Georgia, serif; }
 .ranking-card { min-height: 430px; padding: 24px 28px 20px; border-radius: 10px; }
 .ranking-card-head,
@@ -3472,7 +3458,7 @@ onBeforeUnmount(() => {
   border-radius: 4px;
   background: transparent;
   color: var(--muted);
-  font-size: 11px;
+  font-size:12px;
 }
 .level-switch button.active { background: var(--card); color: var(--accent); font-weight: 700; box-shadow: 0 2px 8px color-mix(in srgb, var(--ink) 9%, transparent); }
 .category-ranking { display: flex; flex-direction: column; gap: 19px; }
@@ -3502,7 +3488,7 @@ onBeforeUnmount(() => {
 .category-ranking-label { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
 .category-ranking-label b { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .category-ranking-label > span { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
-.category-ranking-label small { color: var(--muted); font-size: 10px; }
+.category-ranking-label small { color: var(--muted); font-size:12px; }
 .category-ranking-label i { width: 3px; height: 3px; border-radius: 50%; background: var(--line2); }
 .category-ranking-label strong { font-size: 12px; font-weight: 600; }
 .category-ranking-track { height: 4px; overflow: hidden; border-radius: 4px; background: var(--line); }
@@ -3511,19 +3497,19 @@ onBeforeUnmount(() => {
 .summary-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .summary-card,
 .milestone-card { min-height: 126px; }
-.summary-label { color: var(--muted); font-size: 11px; }
+.summary-label { color: var(--muted); font-size:12px; }
 .summary-value,
 .milestone-value { display: block; margin: 8px 0 11px; overflow: hidden; font: 700 clamp(24px, 3vw, 34px)/1 Georgia, serif; text-overflow: ellipsis; white-space: nowrap; }
-.summary-meta { display: block; color: var(--muted); font-size: 11px; }
+.summary-meta { display: block; color: var(--muted); font-size:12px; }
 .income { color: var(--down) !important; }
 .expense { color: var(--up) !important; }
 .report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .report-card { overflow: hidden; padding: 24px 28px; border-radius: 10px; }
 .report-wide { grid-column: 1 / -1; }
-.report-card-heading span { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.report-card-heading span { overflow: hidden; color: var(--muted); font-size:12px; text-overflow: ellipsis; white-space: nowrap; }
 .budget-layout { display: grid; grid-template-columns: minmax(240px, .75fr) minmax(0, 1.25fr); align-items: center; gap: 24px; }
 .budget-list { display: flex; flex-direction: column; gap: 14px; }
-.budget-row > div:first-child { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; font-size: 11px; }
+.budget-row > div:first-child { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; font-size:12px; }
 .budget-row span { color: var(--muted); }
 .progress-track { height: 5px; overflow: hidden; border-radius: 5px; background: var(--line); }
 .progress-track i { display: block; height: 100%; background: var(--accent); }
@@ -3537,7 +3523,7 @@ onBeforeUnmount(() => {
 .report-card :deep(.ui-table th:last-child) { text-align: right; }
 .report-card :deep(.ui-table td:nth-child(2)) { display: table-cell; }
 .report-card :deep(.ui-table tr:not(.report-table-header) td:nth-child(2):has(.ledger-resource-icon)) { display: flex; align-items: center; gap: 7px; }
-.report-table-header th { background: var(--paper); color: var(--muted); font-size: 10px; font-weight: 650; letter-spacing: .08em; }
+.report-table-header th { background: var(--paper); color: var(--muted); font-size:12px; font-weight: 650; letter-spacing: .08em; }
 .category-ranking-row,
 .account-ranking-row,
 .merchant-ranking-row,
@@ -3640,17 +3626,18 @@ onBeforeUnmount(() => {
   .report-tabbar { min-height: 52px; margin-bottom: 16px; }
   .report-tab-item { min-height: 50px; }
   .report-tab-label { padding: 0 7px 0 13px; font-size: 12px; }
-  .report-tab-remove { width: 19px; height: 19px; margin-right: 6px; opacity: 1; }
   .report-library-anchor { padding: 7px; }
-  .report-library-button { width: 38px; height: 36px; padding: 0; }
+  .report-library-button { width: 44px; min-width: 44px; height: 44px; padding: 0; }
   .report-library-button svg { width: 18px; height: 18px; }
   .report-library-button { font-size: 0; }
+  .report-heading-actions .ledger-action-icon { width: 44px; min-width: 44px; height: 44px; }
+  .date-trigger { grid-template-columns: 44px minmax(88px, auto) 44px; height: 44px; }
   .report-library-popover { right: -1px; width: min(560px, calc(100vw - 28px)); padding: 14px; }
   .library-grid { grid-template-columns: minmax(0, 1fr); max-height: 54vh; overflow-y: auto; }
   .report-content-heading { align-items: flex-start; margin-bottom: 16px; }
   .report-content-heading h1 { font-size: 25px; }
   .report-content-heading span { max-width: 44vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .date-trigger { grid-template-columns: 34px minmax(82px, auto) 34px; height: 38px; }
+  .date-trigger { grid-template-columns: 44px minmax(82px, auto) 44px; height: 44px; }
   .date-trigger .date-trigger-label { padding: 0 8px; font-size: 12px; }
   .date-picker-popover { padding: 15px; }
   .custom-date-range { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
@@ -3732,7 +3719,7 @@ onBeforeUnmount(() => {
   .statistics-debt-row > span { grid-column: 2; align-items: flex-start; }
   .project-balance-card { min-height: 86px; padding: 18px 16px; }
   .project-balance-card b { font-size: 17px; }
-  .project-balance-card > span { font-size: 10px; }
+  .project-balance-card > span { font-size:12px; }
   .cashflow-compare-card { min-height: 0; }
   .cashflow-compare { gap: 18px; }
   .category-statistics-head { align-items: flex-start; flex-direction: column; gap: 8px; }
@@ -3755,7 +3742,7 @@ onBeforeUnmount(() => {
   }
   .ranking-name,
   .ranking-amount { font-size: 12px; }
-  .ranking-share { font-size: 10px; }
+  .ranking-share { font-size:12px; }
   .ranking-values { gap: 4px; }
   .summary-grid,
   .summary-grid.three { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -3784,7 +3771,7 @@ onBeforeUnmount(() => {
   .summary-grid.three { grid-template-columns: minmax(0, 1fr); }
   .report-content-heading { gap: 10px; }
   .report-content-heading span { display: none; }
-  .date-trigger { grid-template-columns: 31px minmax(74px, auto) 31px; }
+  .date-trigger { grid-template-columns: 44px minmax(74px, auto) 44px; }
   .date-trigger .date-trigger-label { padding: 0 5px; }
   .flow-summary-values { align-items: flex-start; flex-direction: column; gap: 5px; }
   .flow-summary-values i { display: none; }
@@ -3809,8 +3796,8 @@ onBeforeUnmount(() => {
     grid-template-columns: 17px 28px minmax(0, 1fr);
   }
   .ranking-name,
-  .ranking-amount { font-size: 11px; }
-  .ranking-share { font-size: 9px; }
+  .ranking-amount { font-size:12px; }
+  .ranking-share { font-size:12px; }
 }
 </style>
 
@@ -3964,7 +3951,7 @@ onBeforeUnmount(() => {
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 11px;
+  font-size:12px;
   cursor: pointer;
 }
 .ledger-reports .account-ranking-expand svg,
@@ -4000,13 +3987,13 @@ onBeforeUnmount(() => {
   }
   .ledger-reports .ranking-name,
   .ledger-reports .ranking-amount { font-size: 12px; }
-  .ledger-reports .ranking-share { font-size: 10px; }
+  .ledger-reports .ranking-share { font-size:12px; }
   .ledger-reports .ranking-values { gap: 4px; }
 }
 @media (max-width: 420px) {
   .ledger-reports .ranking-name,
-  .ledger-reports .ranking-amount { font-size: 11px; }
-  .ledger-reports .ranking-share { font-size: 9px; }
+  .ledger-reports .ranking-amount { font-size:12px; }
+  .ledger-reports .ranking-share { font-size:12px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ledger-reports .ranking-expand-enter-active,

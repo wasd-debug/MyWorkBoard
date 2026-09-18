@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test",
+    "test": "node --import tsx --test",
+    "typecheck": "tsc -p tsconfig.openapi.json",
+    "api:generate": "openapi-generator-cli generate -i packages/api-client/openapi.json -g typescript-axios -o packages/api-client/src/generated --additional-properties=supportsES6=true,withSeparateModelsAndApi=true,apiPackage=api,modelPackage=models,useSingleRequestParameter=true,stringEnums=true,enumPropertyNaming=original,importFileExtension=.ts --global-property=apiDocs=false,modelDocs=false,apiTests=false,modelTests=false && rm -rf packages/api-client/src/generated/.openapi-generator && rm -f packages/api-client/src/generated/git_push.sh packages/api-client/src/generated/.gitignore packages/api-client/src/generated/.npmignore && node scripts/normalize-generated-client.mjs packages/api-client/src/generated",
+    "api:check": "bash scripts/check-openapi-client.sh",
     "test:e2e": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test",
     "preview": "vite preview"
   },
@@ -16,14 +19,19 @@
     "html2canvas": "^1.4.1",
     "lucide-vue-next": "^0.577.0",
     "pinia": "^2.1.7",
+    "reka-ui": "2.10.4",
     "vue": "^3.4.27",
     "vue-router": "^4.3.2"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@openapitools/openapi-generator-cli": "2.41.0",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-vue": "^5.0.4",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.20.6",
+    "typescript": "5.9.2",
     "vite": "^5.2.11"
   }
 }

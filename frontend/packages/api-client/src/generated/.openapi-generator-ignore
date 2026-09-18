@@ -1,0 +1,4 @@
+git_push.sh
+.gitignore
+.npmignore
+.openapi-generator/*

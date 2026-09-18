@@ -12,9 +12,16 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.math.BigDecimal;
 import java.util.Map;
 
-import static org.mockito.ArgumentMatchers.anyMap;
+import com.salarytracker.worktime.WorktimeModels.Basis;
+import com.salarytracker.worktime.WorktimeModels.RecordCommand;
+import com.salarytracker.worktime.WorktimeModels.Settings;
+import com.salarytracker.worktime.WorktimeModels.SettingsUpdate;
+import com.salarytracker.worktime.WorktimeModels.WorkRecord;
+
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -50,17 +57,8 @@ class WorktimeResourceContractTest {
     @WithMockUser(authorities = "worktime:read")
     void listsRecordsWithPaginationAndStableCalculatedFields() throws Exception {
         when(worktimeService.listRecords("2026-01-01", "2026-12-31", 200, 200))
-                .thenReturn(List.of(Map.ofEntries(
-                        Map.entry("id", 17L),
-                        Map.entry("date", "2026-09-17"),
-                        Map.entry("start", "09:00"),
-                        Map.entry("end", "18:30"),
-                        Map.entry("rest", 90),
-                        Map.entry("overtimeMin", 30),
-                        Map.entry("realHourlyWage", 42.50),
-                        Map.entry("calcVersion", 1),
-                        Map.entry("timezone", "Asia/Shanghai"),
-                        Map.entry("revision", 2L))));
+                .thenReturn(List.of(new WorkRecord(17L, "2026-09-17", "09:00", "18:30", 90,
+                        30, new BigDecimal("42.50"), "", "phase0-v1", "Asia/Shanghai", 2L)));
 
         mockMvc.perform(get("/api/v1/worktime/records")
                         .param("from", "2026-01-01")
@@ -71,7 +69,7 @@ class WorktimeResourceContractTest {
                 .andExpect(jsonPath("$.data[0].id").value(17))
                 .andExpect(jsonPath("$.data[0].overtimeMin").value(30))
                 .andExpect(jsonPath("$.data[0].realHourlyWage").value(42.5))
-                .andExpect(jsonPath("$.data[0].calcVersion").value(1))
+                .andExpect(jsonPath("$.data[0].calcVersion").value("phase0-v1"))
                 .andExpect(jsonPath("$.data[0].timezone").value("Asia/Shanghai"))
                 .andExpect(jsonPath("$.data[0].revision").value(2));
     }
@@ -89,20 +87,16 @@ class WorktimeResourceContractTest {
     @Test
     @WithMockUser(authorities = "worktime:write")
     void forwardsRevisionAndIdempotencyHeadersForWrites() throws Exception {
-        when(worktimeService.writeSettings(anyMap(), org.mockito.ArgumentMatchers.eq("4")))
-                .thenReturn(Map.of("workStart", "09:00", "revision", 5L));
-        when(worktimeService.createRecord(anyMap(), org.mockito.ArgumentMatchers.eq("create-1")))
-                .thenReturn(Map.ofEntries(
-                        Map.entry("id", 18L),
-                        Map.entry("date", "2026-09-18"),
-                        Map.entry("overtimeMin", 0),
-                        Map.entry("realHourlyWage", 35),
-                        Map.entry("calcVersion", 1),
-                        Map.entry("timezone", "Asia/Shanghai"),
-                        Map.entry("revision", 1L)));
-        when(worktimeService.updateRecord(org.mockito.ArgumentMatchers.eq(18L), anyMap(),
+        when(worktimeService.writeSettings(any(SettingsUpdate.class), org.mockito.ArgumentMatchers.eq("4")))
+                .thenReturn(new Settings(BigDecimal.ZERO, BigDecimal.ZERO, Basis.POST, "09:00", "18:00",
+                        90, new BigDecimal("21.75"), true, Map.of(), 5L));
+        when(worktimeService.createRecord(any(RecordCommand.class), org.mockito.ArgumentMatchers.eq("create-1")))
+                .thenReturn(new WorkRecord(18L, "2026-09-18", "09:00", "", 0, 0,
+                        new BigDecimal("35"), "", "phase0-v1", "Asia/Shanghai", 1L));
+        when(worktimeService.updateRecord(org.mockito.ArgumentMatchers.eq(18L), any(RecordCommand.class),
                 org.mockito.ArgumentMatchers.eq("1")))
-                .thenReturn(Map.of("id", 18L, "date", "2026-09-18", "revision", 2L));
+                .thenReturn(new WorkRecord(18L, "2026-09-18", "09:00", "18:30", 0, 0,
+                        new BigDecimal("35"), "", "phase0-v1", "Asia/Shanghai", 2L));
 
         mockMvc.perform(put("/api/v1/worktime/settings")
                         .with(csrf())
@@ -117,7 +111,7 @@ class WorktimeResourceContractTest {
                         .contentType("application/json")
                         .content("{\"date\":\"2026-09-18\",\"start\":\"09:00\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.calcVersion").value(1))
+                .andExpect(jsonPath("$.data.calcVersion").value("phase0-v1"))
                 .andExpect(jsonPath("$.data.timezone").value("Asia/Shanghai"));
         mockMvc.perform(patch("/api/v1/worktime/records/18")
                         .with(csrf())
@@ -127,9 +121,9 @@ class WorktimeResourceContractTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.revision").value(2));
 
-        verify(worktimeService).writeSettings(anyMap(), org.mockito.ArgumentMatchers.eq("4"));
-        verify(worktimeService).createRecord(anyMap(), org.mockito.ArgumentMatchers.eq("create-1"));
-        verify(worktimeService).updateRecord(org.mockito.ArgumentMatchers.eq(18L), anyMap(),
+        verify(worktimeService).writeSettings(any(SettingsUpdate.class), org.mockito.ArgumentMatchers.eq("4"));
+        verify(worktimeService).createRecord(any(RecordCommand.class), org.mockito.ArgumentMatchers.eq("create-1"));
+        verify(worktimeService).updateRecord(org.mockito.ArgumentMatchers.eq(18L), any(RecordCommand.class),
                 org.mockito.ArgumentMatchers.eq("1"));
     }
 }

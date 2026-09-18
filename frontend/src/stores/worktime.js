@@ -1,12 +1,12 @@
 import { defineStore } from 'pinia'
 import {
-  apiGetWorktimeSettings,
+  getWorktimeSettings,
   apiPutWorktimeSettings,
   apiListWorktimeRecords,
   apiCreateWorktimeRecord,
   apiUpdateWorktimeRecord,
   apiDeleteWorktimeRecord
-} from '../api/worktime.js'
+} from '../../packages/api-client/src/index.js'
 import { createClientId } from '../utils/clientId.js'
 
 export const DEFAULT_WORKTIME_SETTINGS = {
@@ -60,7 +60,7 @@ export const useWorktimeStore = defineStore('worktime', {
       this.loading = true
       try {
         const [settings, records] = await Promise.all([
-          apiGetWorktimeSettings(),
+          getWorktimeSettings(),
           fetchAllRecords()
         ])
         this.settings = { ...DEFAULT_WORKTIME_SETTINGS, ...(settings || {}) }
@@ -96,9 +96,9 @@ export const useWorktimeStore = defineStore('worktime', {
       await this.saveSettings({ ...DEFAULT_WORKTIME_SETTINGS, ...defaultSettings })
       return { settings: this.settings, records: this.records }
     },
-    async importResources(snapshot = {}) {
-      await this.clearResources(snapshot.settings || {})
-      for (const [date, record] of Object.entries(snapshot.records || {})) {
+    async importResources(payload = {}) {
+      await this.clearResources(payload.settings || {})
+      for (const [date, record] of Object.entries(payload.records || {})) {
         await this.saveRecord({ ...record, date })
       }
       return { settings: this.settings, records: this.records }

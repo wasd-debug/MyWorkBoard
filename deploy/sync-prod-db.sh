@@ -6,6 +6,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.dev-db.yml"
 PROD_SSH_HOST="${PROD_SSH_HOST:-212.64.29.21}"
 PROD_SSH_USER="${PROD_SSH_USER:-ubuntu}"
+SSH_KEY="$PROJECT_DIR/workboard.pem"
 SNAPSHOT_DIR="$PROJECT_DIR/.local/db"
 SNAPSHOT_FILE="$SNAPSHOT_DIR/production-latest.sql.gz"
 TEMP_FILE="$SNAPSHOT_FILE.part"
@@ -13,12 +14,15 @@ TEMP_FILE="$SNAPSHOT_FILE.part"
 command -v docker >/dev/null 2>&1 || { echo "缺少 Docker，请先启动 Docker Desktop。"; exit 1; }
 command -v ssh >/dev/null 2>&1 || { echo "缺少 ssh 命令。"; exit 1; }
 command -v gzip >/dev/null 2>&1 || { echo "缺少 gzip 命令。"; exit 1; }
+test -f "$SSH_KEY" || { echo "缺少 SSH 私钥：$SSH_KEY"; exit 1; }
+chmod 600 "$SSH_KEY"
 
 mkdir -p "$SNAPSHOT_DIR"
 trap 'rm -f "$TEMP_FILE"' EXIT
 
-echo "从 ${PROD_SSH_USER}@${PROD_SSH_HOST} 只读导出生产数据库，SSH 密码将交互输入。"
-ssh -o StrictHostKeyChecking=accept-new "${PROD_SSH_USER}@${PROD_SSH_HOST}" \
+echo "使用仓库 PEM 从 ${PROD_SSH_USER}@${PROD_SSH_HOST} 只读导出生产数据库。"
+ssh -F /dev/null -i "$SSH_KEY" -o BatchMode=yes -o PasswordAuthentication=no -o StrictHostKeyChecking=accept-new \
+  "${PROD_SSH_USER}@${PROD_SSH_HOST}" \
   "sudo docker exec salary-mysql sh -c 'MYSQL_PWD=\"\$MYSQL_ROOT_PASSWORD\" exec mysqldump --single-transaction --quick --routines --triggers --events --no-tablespaces -uroot salary' | gzip -1" \
   > "$TEMP_FILE"
 
@@ -40,4 +44,3 @@ docker exec salary-mysql-dev sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroo
 gzip -dc "$SNAPSHOT_FILE" | docker exec -i salary-mysql-dev sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot salary'
 
 echo "同步完成：本地 MySQL 127.0.0.1:${DEV_MYSQL_PORT:-3307}，快照保存在 .local/db（已被 Git 忽略）。"
-

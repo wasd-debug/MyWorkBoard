@@ -2,6 +2,8 @@ package com.salarytracker.platform.ai;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -11,8 +13,6 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.util.List;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 @Service
 public class LlmGateway {
@@ -37,14 +37,12 @@ public class LlmGateway {
         this.apiKey = apiKey;
     }
 
-    public Map<String, Object> chat(String message) {
+    public ChatResponse chat(String message) {
         if (!configured()) {
-            return Map.of("content", "AI 网关尚未配置，已启用本地自然语言记账解析。", "provider", "local-fallback", "configured", false);
+            return new ChatResponse("AI 网关尚未配置，已启用本地自然语言记账解析。", "local-fallback", false);
         }
-        Map<String, Object> payload = Map.of(
-                "model", model,
-                "messages", List.of(Map.of("role", "user", "content", message)),
-                "temperature", 0.1);
+        ChatCompletionRequest payload = new ChatCompletionRequest(
+                model, List.of(new TextMessage("user", message)), 0.1, null);
         RestClient.RequestBodySpec request = client.post().uri(endpoint).contentType(MediaType.APPLICATION_JSON).body(payload);
         if (apiKey != null && !apiKey.isBlank()) request = request.header("Authorization", "Bearer " + apiKey);
         String body;
@@ -58,9 +56,9 @@ public class LlmGateway {
         try {
             JsonNode root = mapper.readTree(body);
             String content = root.path("choices").path(0).path("message").path("content").asText(body);
-            return Map.of("content", content, "provider", endpoint, "configured", true);
+            return new ChatResponse(content, endpoint, true);
         } catch (Exception ignored) {
-            return Map.of("content", body, "provider", endpoint, "configured", true);
+            return new ChatResponse(body, endpoint, true);
         }
     }
 
@@ -73,26 +71,22 @@ public class LlmGateway {
                              byte[] image,
                              String mediaType) {
         if (!configured()) throw new IllegalStateException("AI 网关尚未配置");
-        List<Map<String, Object>> messages;
+        List<ProviderMessage> messages;
         if (image == null || image.length == 0) {
             messages = List.of(
-                    Map.of("role", "system", "content", systemPrompt),
-                    Map.of("role", "user", "content", userPrompt));
+                    new TextMessage("system", systemPrompt),
+                    new TextMessage("user", userPrompt));
         } else {
             String encoded = java.util.Base64.getEncoder().encodeToString(image);
-            List<Map<String, Object>> content = List.of(
-                    Map.of("type", "text", "text", userPrompt),
-                    Map.of("type", "image_url", "image_url",
-                            Map.of("url", "data:" + mediaType + ";base64," + encoded)));
+            List<ContentPart> content = List.of(
+                    new TextContent("text", userPrompt),
+                    new ImageContent("image_url", new ImageUrl("data:" + mediaType + ";base64," + encoded)));
             messages = List.of(
-                    Map.of("role", "system", "content", systemPrompt),
-                    Map.of("role", "user", "content", content));
+                    new TextMessage("system", systemPrompt),
+                    new RichMessage("user", content));
         }
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("model", model);
-        payload.put("messages", messages);
-        payload.put("temperature", 0.1);
-        payload.put("response_format", Map.of("type", "json_object"));
+        ChatCompletionRequest payload = new ChatCompletionRequest(
+                model, messages, 0.1, new ResponseFormat("json_object"));
         RestClient.RequestBodySpec request = client.post().uri(endpoint)
                 .contentType(MediaType.APPLICATION_JSON).body(payload);
         if (apiKey != null && !apiKey.isBlank()) {
@@ -128,5 +122,37 @@ public class LlmGateway {
                     : "DeepSeek 暂时不可用，请稍后重试";
         }
         return new IllegalStateException(detail);
+    }
+
+    public record ChatResponse(String content, String provider, boolean configured) {
+    }
+
+    private sealed interface ProviderMessage permits TextMessage, RichMessage {
+    }
+
+    private record TextMessage(String role, String content) implements ProviderMessage {
+    }
+
+    private record RichMessage(String role, List<ContentPart> content) implements ProviderMessage {
+    }
+
+    private sealed interface ContentPart permits TextContent, ImageContent {
+    }
+
+    private record TextContent(String type, String text) implements ContentPart {
+    }
+
+    private record ImageContent(String type, @JsonProperty("image_url") ImageUrl imageUrl) implements ContentPart {
+    }
+
+    private record ImageUrl(String url) {
+    }
+
+    private record ResponseFormat(String type) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record ChatCompletionRequest(String model, List<ProviderMessage> messages, double temperature,
+                                         @JsonProperty("response_format") ResponseFormat responseFormat) {
     }
 }

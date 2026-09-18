@@ -2,6 +2,8 @@ package com.salarytracker.identity;
 
 import com.salarytracker.platform.ApiResponse;
 import com.salarytracker.platform.Audit;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -15,10 +17,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.beans.factory.annotation.Value;
 
 import java.time.Duration;
-import java.util.Map;
-
 @RestController
-@RequestMapping({"/api/v1/auth", "/api/auth"})
+@RequestMapping("/api/v1/auth")
+@Tag(name = "Authentication")
 public class AuthController {
     private static final String REFRESH_COOKIE = "refresh_token";
     private final AuthService authService;
@@ -31,48 +32,53 @@ public class AuthController {
 
     @PostMapping("/register")
     @Audit(module = "identity", action = "register", targetType = "app_user")
-    public ApiResponse<Map<String, Object>> register(@RequestBody Credentials body, HttpServletResponse response) {
+    @Operation(operationId = "register")
+    public ApiResponse<AuthResponse> register(@RequestBody Credentials body, HttpServletResponse response) {
         if (body == null) throw new IllegalArgumentException("请求体不能为空");
         AuthService.AuthTokens tokens = authService.register(body.username(), body.password(), body.nickname(), body.email());
         setRefreshCookie(response, tokens.refreshToken());
-        return ApiResponse.ok(Map.of("accessToken", tokens.accessToken(), "user", tokens.user()));
+        return ApiResponse.ok(new AuthResponse(tokens.accessToken(), tokens.user()));
     }
 
     @PostMapping("/login")
     @Audit(module = "identity", action = "login", targetType = "app_user")
-    public ApiResponse<Map<String, Object>> login(@RequestBody Credentials body, HttpServletRequest request, HttpServletResponse response) {
+    @Operation(operationId = "login")
+    public ApiResponse<AuthResponse> login(@RequestBody Credentials body, HttpServletRequest request, HttpServletResponse response) {
         if (body == null) throw new IllegalArgumentException("请求体不能为空");
         AuthService.AuthTokens tokens = authService.login(body.username(), body.password(), request.getHeader("User-Agent"));
         setRefreshCookie(response, tokens.refreshToken());
-        return ApiResponse.ok(Map.of("accessToken", tokens.accessToken(), "user", tokens.user()));
+        return ApiResponse.ok(new AuthResponse(tokens.accessToken(), tokens.user()));
     }
 
     @PostMapping("/refresh")
     @Audit(module = "identity", action = "refresh", targetType = "refresh_token")
-    public ApiResponse<Map<String, Object>> refresh(@CookieValue(value = REFRESH_COOKIE, required = false) String cookie,
+    @Operation(operationId = "refreshAccessToken")
+    public ApiResponse<AuthResponse> refresh(@CookieValue(value = REFRESH_COOKIE, required = false) String cookie,
                                                     @RequestBody(required = false) RefreshRequest body,
                                                     HttpServletResponse response) {
         String raw = cookie != null ? cookie : body == null ? null : body.refreshToken();
         AuthService.AuthTokens tokens = authService.refresh(raw);
         setRefreshCookie(response, tokens.refreshToken());
-        return ApiResponse.ok(Map.of("accessToken", tokens.accessToken(), "user", tokens.user()));
+        return ApiResponse.ok(new AuthResponse(tokens.accessToken(), tokens.user()));
     }
 
     @PostMapping("/logout")
     @Audit(module = "identity", action = "logout", targetType = "refresh_token")
-    public ApiResponse<Map<String, Boolean>> logout(@CookieValue(value = REFRESH_COOKIE, required = false) String cookie,
+    @Operation(operationId = "logout")
+    public ApiResponse<ActionResult> logout(@CookieValue(value = REFRESH_COOKIE, required = false) String cookie,
                                                     HttpServletResponse response) {
         authService.logout(cookie);
         response.addHeader("Set-Cookie", ResponseCookie.from(REFRESH_COOKIE, "").httpOnly(true).secure(cookieSecure).sameSite("Lax").path("/").maxAge(Duration.ZERO).build().toString());
-        return ApiResponse.ok(Map.of("loggedOut", true));
+        return ApiResponse.ok(new ActionResult(true));
     }
 
     @PostMapping("/password")
     @PreAuthorize("isAuthenticated()")
     @Audit(module = "identity", action = "password.change", targetType = "app_user")
-    public ApiResponse<Map<String, Boolean>> changePassword(@RequestBody PasswordChange body) {
+    @Operation(operationId = "changePassword")
+    public ApiResponse<ActionResult> changePassword(@RequestBody PasswordChange body) {
         authService.changePassword(body.currentPassword(), body.newPassword());
-        return ApiResponse.ok(Map.of("changed", true));
+        return ApiResponse.ok(new ActionResult(true));
     }
 
     private void setRefreshCookie(HttpServletResponse response, String value) {
@@ -86,5 +92,11 @@ public class AuthController {
     }
 
     public record PasswordChange(String currentPassword, String newPassword) {
+    }
+
+    public record AuthResponse(String accessToken, CurrentUser user) {
+    }
+
+    public record ActionResult(boolean success) {
     }
 }

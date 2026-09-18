@@ -40,7 +40,7 @@ export function resetMessages() {
   messages.splice(0)
 }
 
-export const ElMessage = {
+export const message = {
   success: input => enqueue('success', input),
   warning: input => enqueue('warning', input),
   error: input => enqueue('error', input),

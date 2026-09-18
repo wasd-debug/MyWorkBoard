@@ -108,14 +108,14 @@ function closeMenusSoon() { window.setTimeout(() => { primaryOpen.value=false; s
 .flow-filter-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px 12px }
 .flow-filter-section:last-of-type { padding-bottom: 0; border-bottom: 0 }
 .flow-filter-heading { display: flex; align-items: center; justify-content: space-between; color: var(--ink); font-size: 12px; font-weight: 700 }
-.flow-filter-heading button { padding: 0; border: 0; background: transparent; color: var(--accent); font-size: 11px }
-.flow-filters label { display:flex; min-width:0; flex-direction:column; gap:5px; color:var(--muted); font-size:11px }
+.flow-filter-heading button { padding: 0; border: 0; background: transparent; color: var(--accent); font-size:12px }
+.flow-filters label { display:flex; min-width:0; flex-direction:column; gap:5px; color:var(--muted); font-size:12px }
 .flow-filters input,.flow-filters select { width:100%; min-width:0; max-width:100%; box-sizing:border-box }
 .flow-date-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px }
 .flow-date-grid .ui-input { min-width: 0 }
 .flow-quick-periods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px }
-.flow-quick-periods button { height: 30px; border: 1px solid var(--line2); border-radius: 3px; background: var(--card); color: var(--ink2); font-size: 11px }
+.flow-quick-periods button { height: 30px; border: 1px solid var(--line2); border-radius: 3px; background: var(--card); color: var(--ink2); font-size:12px }
 .flow-quick-periods button:hover { border-color: var(--accent); color: var(--accent) }
 .flow-reset-button { width: 100% }
-.filter-combobox{position:relative;min-width:0}.filter-options{position:absolute;z-index:40;top:calc(100% + 4px);left:0;right:0;max-height:210px;overflow:auto;padding:4px;border:1px solid var(--line2);border-radius:4px;background:var(--card);box-shadow:0 12px 28px rgba(20,23,28,.14)}.filter-options button{display:flex;width:100%;min-height:32px;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border:0;border-radius:3px;background:transparent;color:var(--ink2);font-size:11px;text-align:left;cursor:pointer}.filter-options button:hover{background:var(--accent-soft);color:var(--ink)}.filter-options small{color:var(--muted);font-size:9px}.filter-options>span{display:block;padding:8px;color:var(--muted);font-size:10px;text-align:center}
+.filter-combobox{position:relative;min-width:0}.filter-options{position:absolute;z-index:40;top:calc(100% + 4px);left:0;right:0;max-height:210px;overflow:auto;padding:4px;border:1px solid var(--line2);border-radius:4px;background:var(--card);box-shadow:0 12px 28px rgba(20,23,28,.14)}.filter-options button{display:flex;width:100%;min-height:32px;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border:0;border-radius:3px;background:transparent;color:var(--ink2);font-size:12px;text-align:left;cursor:pointer}.filter-options button:hover{background:var(--accent-soft);color:var(--ink)}.filter-options small{color:var(--muted);font-size:12px}.filter-options>span{display:block;padding:8px;color:var(--muted);font-size:12px;text-align:center}
 </style>

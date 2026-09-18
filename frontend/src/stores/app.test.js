@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createPinia, setActivePinia } from 'pinia'
-import { api } from '../api/index.js'
+import { api } from '../../packages/api-client/src/index.js'
 import { useAppStore } from './app.js'
 import { useLedgerStore } from './ledger.js'
 

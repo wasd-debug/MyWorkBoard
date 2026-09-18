@@ -17,7 +17,6 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -55,27 +54,32 @@ public class AuthService {
 
     public AuthTokens login(String username, String password, String device) {
         if (username == null || password == null || username.isBlank()) throw new UnauthorizedException("用户名或密码错误");
-        Map<String, Object> row;
+        LoginRow row;
         try {
-            row = jdbcTemplate.queryForMap("SELECT id, username, nickname, password_hash, status FROM app_user WHERE username = ?", username.trim());
+            row = jdbcTemplate.queryForObject("SELECT id, username, nickname, password_hash, status FROM app_user WHERE username = ?",
+                    (result, rowNum) -> new LoginRow(result.getLong("id"), result.getString("username"),
+                            result.getString("nickname"), result.getString("password_hash"), result.getString("status")),
+                    username.trim());
         } catch (Exception exception) {
             throw new UnauthorizedException("用户名或密码错误");
         }
-        if (!"ACTIVE".equals(row.get("status")) || !passwordEncoder.matches(password, String.valueOf(row.get("password_hash")))) {
+        if (!"ACTIVE".equals(row.status()) || !passwordEncoder.matches(password, row.passwordHash())) {
             throw new UnauthorizedException("用户名或密码错误");
         }
-        return issue(((Number) row.get("id")).longValue(), String.valueOf(row.get("username")), String.valueOf(row.get("nickname")), device);
+        return issue(row.id(), row.username(), row.nickname(), device);
     }
 
     @Transactional
     public AuthTokens refresh(String rawToken) {
         if (rawToken == null || rawToken.isBlank()) throw new UnauthorizedException("刷新令牌缺失");
         String hash = hash(rawToken);
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT rt.user_id, u.username, u.nickname FROM refresh_token rt JOIN app_user u ON u.id = rt.user_id WHERE rt.token_hash = ? AND rt.revoked_at IS NULL AND rt.expires_at > CURRENT_TIMESTAMP", hash);
+        List<UserRow> rows = jdbcTemplate.query("SELECT rt.user_id, u.username, u.nickname FROM refresh_token rt JOIN app_user u ON u.id = rt.user_id WHERE rt.token_hash = ? AND rt.revoked_at IS NULL AND rt.expires_at > CURRENT_TIMESTAMP",
+                (result, rowNum) -> new UserRow(result.getLong("user_id"), result.getString("username"),
+                        result.getString("nickname")), hash);
         if (rows.isEmpty()) throw new UnauthorizedException("刷新令牌无效或已过期");
-        Map<String, Object> row = rows.get(0);
+        UserRow row = rows.get(0);
         jdbcTemplate.update("UPDATE refresh_token SET revoked_at = CURRENT_TIMESTAMP WHERE token_hash = ?", hash);
-        return issue(((Number) row.get("user_id")).longValue(), String.valueOf(row.get("username")), String.valueOf(row.get("nickname")), "refresh");
+        return issue(row.id(), row.username(), row.nickname(), "refresh");
     }
 
     public void logout(String rawToken) {
@@ -97,15 +101,18 @@ public class AuthService {
     }
 
     public CurrentUser loadUser(long id) {
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT u.id, u.username, u.nickname, r.code role_code, p.code permission_code FROM app_user u JOIN user_role ur ON ur.user_id = u.id JOIN role r ON r.id = ur.role_id LEFT JOIN role_permission rp ON rp.role_id = r.id LEFT JOIN permission p ON p.id = rp.permission_id WHERE u.id = ? AND u.status = 'ACTIVE'", id);
+        List<AuthorityRow> rows = jdbcTemplate.query("SELECT u.id, u.username, u.nickname, r.code role_code, p.code permission_code FROM app_user u JOIN user_role ur ON ur.user_id = u.id JOIN role r ON r.id = ur.role_id LEFT JOIN role_permission rp ON rp.role_id = r.id LEFT JOIN permission p ON p.id = rp.permission_id WHERE u.id = ? AND u.status = 'ACTIVE'",
+                (result, rowNum) -> new AuthorityRow(result.getLong("id"), result.getString("username"),
+                        result.getString("nickname"), result.getString("role_code"),
+                        result.getString("permission_code")), id);
         if (rows.isEmpty()) return null;
-        Map<String, Object> first = rows.get(0);
+        AuthorityRow first = rows.get(0);
         Set<String> authorities = new HashSet<>();
-        for (Map<String, Object> row : rows) {
-            if (row.get("role_code") != null) authorities.add("ROLE_" + row.get("role_code"));
-            if (row.get("permission_code") != null) authorities.add(String.valueOf(row.get("permission_code")));
+        for (AuthorityRow row : rows) {
+            if (row.roleCode() != null) authorities.add("ROLE_" + row.roleCode());
+            if (row.permissionCode() != null) authorities.add(row.permissionCode());
         }
-        return new CurrentUser(id, String.valueOf(first.get("username")), String.valueOf(first.get("nickname")), authorities);
+        return new CurrentUser(id, first.username(), first.nickname(), authorities);
     }
 
     private AuthTokens issue(long userId, String username, String nickname, String device) {
@@ -143,5 +150,14 @@ public class AuthService {
     }
 
     public record AuthTokens(String accessToken, String refreshToken, CurrentUser user) {
+    }
+
+    private record LoginRow(long id, String username, String nickname, String passwordHash, String status) {
+    }
+
+    private record UserRow(long id, String username, String nickname) {
+    }
+
+    private record AuthorityRow(long id, String username, String nickname, String roleCode, String permissionCode) {
     }
 }

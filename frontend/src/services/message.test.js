@@ -1,13 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ElMessage, dismissMessage, messages, resetMessages } from './message.js'
+import { message, dismissMessage, messages, resetMessages } from './message.js'
 
 test('message service queues typed notices and dismisses a single duplicate', () => {
   resetMessages()
-  const first = ElMessage.success({ message: '已保存', duration: 0 })
-  const second = ElMessage.success({ message: '已保存', duration: 0 })
-  ElMessage.warning({ message: '当前离线', duration: 0 })
-  ElMessage.error({ message: '同步失败', duration: 0 })
+  const first = message.success({ message: '已保存', duration: 0 })
+  const second = message.success({ message: '已保存', duration: 0 })
+  message.warning({ message: '当前离线', duration: 0 })
+  message.error({ message: '同步失败', duration: 0 })
 
   assert.deepEqual(messages.map(item => [item.type, item.text]), [
     ['success', '已保存'],

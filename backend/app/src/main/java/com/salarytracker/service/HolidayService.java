@@ -66,25 +66,19 @@ public class HolidayService {
      * @param year 年份
      * @return {days: {"2026-01-01": {name, off}}, source: cache|remote|builtin|none}
      */
-    public Map<String, Object> getHolidays(int year) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("year", year);
-
+    public HolidayResponse getHolidays(int year) {
         if (jdbcTemplate != null) {
             try {
-                List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT DATE_FORMAT(date, '%Y-%m-%d') date, name, is_off FROM holiday WHERE year_key = ? ORDER BY date", year);
+                List<HolidayRow> rows = jdbcTemplate.query(
+                        "SELECT DATE_FORMAT(date, '%Y-%m-%d') date, name, is_off FROM holiday WHERE year_key = ? ORDER BY date",
+                        (result, rowNum) -> new HolidayRow(result.getString("date"), result.getString("name"),
+                                result.getBoolean("is_off")), year);
                 if (!rows.isEmpty()) {
-                    Map<String, Object> days = new LinkedHashMap<>();
-                    for (Map<String, Object> row : rows) {
-                        Map<String, Object> item = new LinkedHashMap<>();
-                        item.put("name", row.get("name"));
-                        item.put("off", row.get("is_off") instanceof Boolean flag ? flag : ((Number) row.get("is_off")).intValue() == 1);
-                        days.put(String.valueOf(row.get("date")), item);
+                    Map<String, HolidayDay> days = new LinkedHashMap<>();
+                    for (HolidayRow row : rows) {
+                        days.put(row.date(), new HolidayDay(row.name(), row.off()));
                     }
-                    result.put("days", days);
-                    result.put("source", "database");
-                    result.put("ok", true);
-                    return result;
+                    return new HolidayResponse(true, year, days, HolidaySource.DATABASE);
                 }
             } catch (Exception e) {
                 log.debug("读取节假日表失败 year={}: {}", year, e.getMessage());
@@ -97,10 +91,7 @@ public class HolidayService {
             KvEntry cached = kvEntryMapper.selectById(cacheKey);
             if (cached != null && cached.getValue() != null && !cached.getValue().isEmpty()) {
                 JsonNode days = objectMapper.readTree(cached.getValue());
-                result.put("days", normalize(days));
-                result.put("source", "cache");
-                result.put("ok", true);
-                return result;
+                return new HolidayResponse(true, year, normalize(days), HolidaySource.CACHE);
             }
         } catch (Exception e) {
             log.warn("读取节假日缓存失败 year={}: {}", year, e.getMessage());
@@ -124,10 +115,7 @@ public class HolidayService {
                     entry.setValue(compact);
                     kvEntryMapper.updateById(entry);
                 }
-                result.put("days", normalize(days));
-                result.put("source", "remote");
-                result.put("ok", true);
-                return result;
+                return new HolidayResponse(true, year, normalize(days), HolidaySource.REMOTE);
             } catch (Exception e) {
                 log.warn("解析远程节假日数据失败 year={}: {}", year, e.getMessage());
             }
@@ -137,30 +125,21 @@ public class HolidayService {
         JsonNode builtin = loadBuiltin(year);
         if (builtin != null) {
             persistDatabase(year, normalize(builtin));
-            result.put("days", normalize(builtin));
-            result.put("source", "builtin");
-            result.put("ok", true);
-            return result;
+            return new HolidayResponse(true, year, normalize(builtin), HolidaySource.BUILTIN);
         }
 
         // 4. 全部失败：返回空，前端按纯周一~周五计算
-        result.put("days", new LinkedHashMap<String, Object>());
-        result.put("source", "none");
-        result.put("ok", true);
-        return result;
+        return new HolidayResponse(true, year, Map.of(), HolidaySource.NONE);
     }
 
     /** 归一化为 {date: {name, off}} */
-    private Map<String, Object> normalize(JsonNode daysNode) {
-        Map<String, Object> out = new LinkedHashMap<>();
+    private Map<String, HolidayDay> normalize(JsonNode daysNode) {
+        Map<String, HolidayDay> out = new LinkedHashMap<>();
         if (daysNode != null && daysNode.isArray()) {
             for (JsonNode d : daysNode) {
                 String date = d.path("date").asText("");
                 if (date.isEmpty()) continue;
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("name", d.path("name").asText(""));
-                item.put("off", d.path("isOffDay").asBoolean(false));
-                out.put(date, item);
+                out.put(date, new HolidayDay(d.path("name").asText(""), d.path("isOffDay").asBoolean(false)));
             }
         }
         return out;
@@ -220,13 +199,13 @@ public class HolidayService {
         }
     }
 
-    private void persistDatabase(int year, Map<String, Object> days) {
+    private void persistDatabase(int year, Map<String, HolidayDay> days) {
         if (jdbcTemplate == null) return;
         try {
-            for (Map.Entry<String, Object> entry : days.entrySet()) {
-                Map<?, ?> value = (Map<?, ?>) entry.getValue();
+            for (Map.Entry<String, HolidayDay> entry : days.entrySet()) {
+                HolidayDay value = entry.getValue();
                 jdbcTemplate.update("INSERT INTO holiday (year_key, date, name, is_off) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE year_key = VALUES(year_key), name = VALUES(name), is_off = VALUES(is_off)",
-                        year, entry.getKey(), value.get("name"), value.get("off"));
+                        year, entry.getKey(), value.name(), value.off());
             }
         } catch (Exception e) {
             log.debug("写入节假日表失败 year={}: {}", year, e.getMessage());
@@ -241,5 +220,18 @@ public class HolidayService {
         } catch (Exception e) {
             return -1;
         }
+    }
+
+    public enum HolidaySource {
+        DATABASE, CACHE, REMOTE, BUILTIN, NONE
+    }
+
+    public record HolidayDay(String name, boolean off) {
+    }
+
+    public record HolidayResponse(boolean ok, int year, Map<String, HolidayDay> days, HolidaySource source) {
+    }
+
+    private record HolidayRow(String date, String name, boolean off) {
     }
 }

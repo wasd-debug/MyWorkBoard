@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static com.salarytracker.ledger.LedgerModels.Member;
+import static com.salarytracker.ledger.LedgerModels.MemberCommand;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
@@ -37,7 +40,7 @@ class LedgerMemberRegistrationTest {
                 .thenReturn(List.of());
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> books.addMember("book-id", Map.of("username", " missing "), null));
+                () -> books.addMember("book-id", new MemberCommand(null, " missing ", null, null), null));
 
         assertEquals("该用户名未注册或账号不可用，请先确认用户名", error.getMessage());
     }
@@ -52,7 +55,7 @@ class LedgerMemberRegistrationTest {
                 Integer.class, 12L, 42L)).thenReturn(1);
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> books.addMember("book-id", Map.of("username", "registered"), null));
+                () -> books.addMember("book-id", new MemberCommand(null, "registered", null, null), null));
 
         assertEquals("该用户已是当前账本成员", error.getMessage());
     }
@@ -67,18 +70,19 @@ class LedgerMemberRegistrationTest {
                 Integer.class, 12L, 42L)).thenReturn(0);
         when(jdbc.queryForObject(
                 "SELECT id FROM ledger_role WHERE book_id=? AND code='MEMBER'", Long.class, 12L)).thenReturn(8L);
-        when(jdbc.queryForMap(contains("WHERE m.user_id=? AND m.book_id=?"), eq(42L), eq(12L)))
-                .thenReturn(Map.ofEntries(
+        when(jdbc.queryForList(contains("WHERE m.user_id=? AND m.book_id=?"), eq(42L), eq(12L)))
+                .thenReturn(List.of(Map.ofEntries(
                         Map.entry("public_id", "new-member"), Map.entry("user_id", 42L),
                         Map.entry("created_by", 3L), Map.entry("username", "registered"),
                         Map.entry("nickname", "新成员"), Map.entry("role_public_id", "role-member"),
                         Map.entry("role_code", "MEMBER"), Map.entry("role_name", "成员"),
-                        Map.entry("icon", "user"), Map.entry("revision", 1L)));
+                        Map.entry("icon", "user"), Map.entry("revision", 1L))));
 
-        Map<String, Object> member = books.addMember("book-id", Map.of("username", "registered"), "invitation-op");
+        Member member = books.addMember("book-id",
+                new MemberCommand(null, "registered", null, null), "invitation-op");
 
-        assertEquals(42L, member.get("userId"));
-        assertEquals("MEMBER", member.get("roleCode"));
+        assertEquals(42L, member.userId());
+        assertEquals("MEMBER", member.roleCode());
         verify(jdbc).update(contains("INSERT INTO ledger_book_member"), anyString(), eq(12L),
                 eq(42L), eq(8L), eq("user"), eq(3L));
     }

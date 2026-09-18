@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static com.salarytracker.ledger.LedgerModels.*;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -40,43 +42,43 @@ class LedgerImportWorkbookTest {
             workbook = output.toByteArray();
         }
 
-        Map<String, Object> preview = service().preview("test-book",
+        ImportPreview preview = service().preview("test-book",
                 new MockMultipartFile("file", "test.xlsx", null, workbook), "AUTO");
-        assertEquals(3, preview.get("validCount"));
-        assertEquals(0, preview.get("errorCount"));
-        List<Map<String, Object>> rows = rows(preview);
+        assertEquals(3, preview.validCount());
+        assertEquals(0, preview.errorCount());
+        List<ImportRow> rows = preview.rows();
         assertEquals(List.of("转账", "支出", "收入"),
-                rows.stream().map(row -> String.valueOf(row.get("sheet"))).toList());
-        assertEquals("TRANSFER", rows.get(0).get("kind"));
-        assertEquals("2026-09-08", rows.get(0).get("occurredOn"));
-        assertEquals("银行卡", rows.get(0).get("targetAccount"));
+                rows.stream().map(ImportRow::sheet).toList());
+        assertEquals(TransactionKind.TRANSFER, rows.get(0).kind());
+        assertEquals("2026-09-08", rows.get(0).occurredOn().toString());
+        assertEquals("银行卡", rows.get(0).targetAccount());
     }
 
     @Test
     void previewsProvidedWorkbookWithoutDroppingLateRows() throws Exception {
         String fixture = System.getProperty("ledger.import.fixture", "");
         assumeTrue(!fixture.isBlank() && Files.isRegularFile(Path.of(fixture)));
-        Map<String, Object> preview = service().preview("test-book",
+        ImportPreview preview = service().preview("test-book",
                 new MockMultipartFile("file", "fixture.xlsx", null, Files.readAllBytes(Path.of(fixture))),
                 "AUTO");
-        List<Map<String, Object>> rows = rows(preview);
+        List<ImportRow> rows = preview.rows();
         // The workbook contains one real record on the 退款 sheet in addition to
         // the transfer, expense, income and borrow sheets.
         assertEquals(7661, rows.size());
-        assertEquals(534, rows.stream().filter(row -> "TRANSFER".equals(row.get("kind"))).count());
-        assertEquals(0, preview.get("errorCount"));
-        assertEquals(0, preview.get("duplicateCount"));
-        assertEquals(7661, preview.get("validCount"));
-        assertTrue(rows.stream().anyMatch(row -> "TRANSFER".equals(row.get("kind"))
-                && "2026-09-08".equals(row.get("occurredOn"))));
+        assertEquals(534, rows.stream().filter(row -> row.kind() == TransactionKind.TRANSFER).count());
+        assertEquals(0, preview.errorCount());
+        assertEquals(0, preview.duplicateCount());
+        assertEquals(7661, preview.validCount());
+        assertTrue(rows.stream().anyMatch(row -> row.kind() == TransactionKind.TRANSFER
+                && "2026-09-08".equals(row.occurredOn().toString())));
         assertEquals(478, rows.stream().filter(row ->
-                String.valueOf(row.get("occurredOn")).compareTo("2026-06-04") >= 0).count());
+                row.occurredOn().toString().compareTo("2026-06-04") >= 0).count());
     }
 
     @Test
     void confirmsTransferAsOneCategoryFreeDraftWithBothAccounts() throws Exception {
         String[] savedPayload = new String[1];
-        List<Map<String, Object>> created = new ArrayList<>();
+        List<TransactionCommand> created = new ArrayList<>();
         JdbcTemplate jdbc = new JdbcTemplate() {
             @Override
             public List<Map<String, Object>> queryForList(String sql, Object... args) {
@@ -106,7 +108,7 @@ class LedgerImportWorkbookTest {
             }
         };
         LedgerBookAccess access = access(jdbc);
-        ObjectMapper mapper = new ObjectMapper();
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
         LedgerTransactionService transactions = new LedgerTransactionService(jdbc, mapper, access, null, null) {
             @Override
             String matchAccount(LedgerBookAccess.Context context, String name) {
@@ -114,25 +116,25 @@ class LedgerImportWorkbookTest {
             }
 
             @Override
-            public Map<String, Object> create(String bookPublicId, Map<String, Object> input, String opId) {
+            public Transaction create(String bookPublicId, TransactionCommand input, String opId) {
                 created.add(input);
-                return input;
+                return null;
             }
         };
         LedgerImportService service = new LedgerImportService(jdbc, mapper, access, transactions);
         byte[] csv = ("交易类型,日期,转出账户,转入账户,金额\n"
                 + "转账,2026-09-08,现金,银行卡,20\n").getBytes(StandardCharsets.UTF_8);
-        Map<String, Object> preview = service.preview("test-book",
+        ImportPreview preview = service.preview("test-book",
                 new MockMultipartFile("file", "transfer.csv", null, csv), "AUTO");
-        Map<String, Object> confirmed = service.confirm("test-book", String.valueOf(preview.get("batchId")));
+        ImportConfirm confirmed = service.confirm("test-book", preview.batchId());
 
-        assertEquals(1L, confirmed.get("createdCount"));
+        assertEquals(1L, confirmed.createdCount());
         assertEquals(1, created.size());
-        assertEquals("TRANSFER", created.get(0).get("kind"));
-        assertEquals("现金-id", created.get(0).get("accountId"));
-        assertEquals("银行卡-id", created.get(0).get("targetAccountId"));
-        assertEquals("current-member-id", created.get(0).get("memberId"));
-        assertTrue(!created.get(0).containsKey("categoryId"));
+        assertEquals(TransactionKind.TRANSFER, created.get(0).kind());
+        assertEquals("现金-id", created.get(0).accountId());
+        assertEquals("银行卡-id", created.get(0).targetAccountId());
+        assertEquals("current-member-id", created.get(0).memberId());
+        assertEquals(null, created.get(0).categoryId());
     }
 
     private LedgerImportService service() {
@@ -153,7 +155,7 @@ class LedgerImportWorkbookTest {
             }
         };
         LedgerBookAccess access = access(jdbc);
-        ObjectMapper mapper = new ObjectMapper();
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
         return new LedgerImportService(jdbc, mapper, access,
                 new LedgerTransactionService(jdbc, mapper, access, null, null));
     }
@@ -165,11 +167,6 @@ class LedgerImportWorkbookTest {
                 return new Context(1, publicId, 2, 2, 3, 4, "OWNER", Set.of("IMPORT_EXPORT"));
             }
         };
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> rows(Map<String, Object> preview) {
-        return (List<Map<String, Object>>) preview.get("rows");
     }
 
     private void addSheet(XSSFWorkbook workbook, String name, String[] headers, String[] values) {
