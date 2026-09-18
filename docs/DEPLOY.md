@@ -215,6 +215,14 @@ unset VERIFY_DB_PASSWORD
 - Flyway v11 校验成功，13 个迁移全部有效且无需执行新迁移；四张核心表发布后记录数与发布前备份源一致。
 - 内网与公网 `GET /api/health` 均返回 `{"ok":true}`，公网首页返回 HTTP 200，新后端与前端容器运行正常。
 
+## 2026-09-18 生产发布记录
+
+- 应用提交：`642d191`，以 `git archive` 创建独立发布目录：`/home/ubuntu/salary-tracker/releases/642d191`；后端和前端均在服务器上从该源码目录构建为 `amd64` 镜像。
+- 发布前先将当前运行镜像保留为 `salary-backend:pre-642d191` 和 `salary-frontend:pre-642d191`，并完成可校验备份 `backups/salary-before-642d191-20260918-171520.sql.gz`（`gzip -t` 和 SQL 结尾标记均通过）。生产数据库账户没有 `PROCESS` 权限，因此备份明确使用 `mysqldump --no-tablespaces`；不读取 tablespace 元数据不会影响应用表的逻辑恢复。
+- 仅通过 `docker compose ... up -d --no-deps --force-recreate backend frontend` 更新应用容器；MySQL 容器和数据卷未重建。切换后健康探测在第 6 次成功，启动早期的短暂 502 属于后端尚未监听时的预期窗口；若 60 次探测均失败，发布脚本会把上述 `pre-642d191` 标签重新标记为 `latest` 并重建应用容器。
+- 发布后核心数据为 `app_user=3`、`work_record=38`、`ledger_book=5`、`ledger_transaction=16435`；Flyway 已验证 13 个迁移且当前 schema 为 v11，无失败迁移。
+- 内网和公网 `GET /api/health`、首页与 `/v3/api-docs` 均返回 200；旧路径 `/api/data`、`/api/auth/login`、`/api/worktime/settings`、`/api/ledger/books` 均返回 404，未认证的 `/api/v1/worktime/settings` 和 `/api/v1/ledger/books` 均返回 401。线上 OpenAPI 统计为 49 个路径、70 个 operation、120 个 schema、0 个重复 operationId 与 0 个自由 object schema。
+
 ## 健康检查与配置
 
 - 健康检查：`GET /api/health`，成功响应包含 `{"ok": true}`。
