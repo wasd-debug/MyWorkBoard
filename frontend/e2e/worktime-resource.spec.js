@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { registerUser } from './helpers.js'
+import { markSessionBeforeLoad, registerUser } from './helpers.js'
 
 test('removed API aliases return 404 without authentication', async ({ request }) => {
   for (const path of ['/api/data', '/api/auth/login', '/api/worktime/snapshot', '/api/ledger/books', '/api/holidays']) {
@@ -10,6 +10,7 @@ test('removed API aliases return 404 without authentication', async ({ request }
 
 test('worktime UI reads and writes resources without snapshot requests', async ({ page }) => {
   const auth = await registerUser(page.request, 'worktime-resource-e2e')
+  await markSessionBeforeLoad(page, auth.user.id)
   const requests = []
   page.on('request', request => {
     if (request.url().includes('/api/v1/worktime/')) {

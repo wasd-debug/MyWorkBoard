@@ -38,7 +38,16 @@ export async function createServerBorrowing(request, { bookId, accountId, header
   return (await response.json()).data
 }
 
+export async function markSessionBeforeLoad(page, userId) {
+  await page.addInitScript(id => {
+    if (!localStorage.getItem('st_offline_user_v1')) {
+      localStorage.setItem('st_offline_user_v1', JSON.stringify({ id, username: `e2e-${id}` }))
+    }
+  }, userId)
+}
+
 export async function selectLedgerBeforeLoad(page, userId, bookId) {
+  await markSessionBeforeLoad(page, userId)
   await page.addInitScript(({ userId: id, bookId: selectedBook }) => {
     const storageKey = `ledger-current-book:id-${id}`
     if (!localStorage.getItem(storageKey)) localStorage.setItem(storageKey, selectedBook)
