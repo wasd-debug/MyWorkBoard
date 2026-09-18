@@ -3,6 +3,7 @@ package com.salarytracker;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.client.RestClient;
 import net.javacrumbs.shedlock.core.LockProvider;
@@ -12,7 +13,7 @@ import net.javacrumbs.shedlock.spring.annotation.EnableSchedulerLock;
 /**
  * 真实时薪 · 加班追踪 后端入口
  */
-@SpringBootApplication
+@SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)
 @EnableScheduling
 @EnableSchedulerLock(defaultLockAtMostFor = "PT10M")
 @MapperScan("com.salarytracker.mapper")

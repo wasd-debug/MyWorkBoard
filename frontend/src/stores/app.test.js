@@ -32,6 +32,27 @@ function installBrowserGlobals(online) {
   })
 }
 
+test('fresh anonymous start does not issue a refresh request', async t => {
+  installBrowserGlobals(true)
+  const originalAdapter = api.defaults.adapter
+  let refreshRequests = 0
+  api.defaults.adapter = async config => {
+    if (String(config.url).includes('/api/v1/auth/refresh')) refreshRequests += 1
+    const error = new Error(`unexpected request: ${config.url}`)
+    error.config = config
+    throw error
+  }
+  t.after(() => { api.defaults.adapter = originalAdapter })
+
+  setActivePinia(createPinia())
+  const session = useAppStore()
+  await session.init()
+
+  assert.equal(refreshRequests, 0)
+  assert.equal(session.authRequired, true)
+  assert.equal(session.ready, true)
+})
+
 test('offline refresh restores the last local account scope instead of clearing ledger session', async t => {
   installBrowserGlobals(false)
   const originalAdapter = api.defaults.adapter

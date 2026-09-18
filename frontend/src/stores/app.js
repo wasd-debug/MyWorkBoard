@@ -183,6 +183,12 @@ export const useAppStore = defineStore('app', {
     async init() {
       if (this.ready) return
       this.applyTheme()
+      if (!readOfflineUser()) {
+        this.authRequired = true
+        this.ready = true
+        this.ensureHolidays(new Date().getFullYear())
+        return
+      }
       try {
         const session = await apiRefresh()
         await this.completeLogin(session.user)
