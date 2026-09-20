@@ -225,6 +225,13 @@ unset VERIFY_DB_PASSWORD
 - 发布后核心数据为 `app_user=3`、`work_record=38`、`ledger_book=5`、`ledger_transaction=16435`；Flyway 已验证 13 个迁移且当前 schema 为 v11，无失败迁移。
 - 内网和公网 `GET /api/health`、首页与 `/v3/api-docs` 均返回 200；旧路径 `/api/data`、`/api/auth/login`、`/api/worktime/settings`、`/api/ledger/books` 均返回 404，未认证的 `/api/v1/worktime/settings` 和 `/api/v1/ledger/books` 均返回 401。线上 OpenAPI 统计为 49 个路径、70 个 operation、120 个 schema、0 个重复 operationId 与 0 个自由 object schema。
 
+## 2026-09-20 生产发布记录
+
+- 前端应用提交：`6d15aca`，发布目录：`/home/ubuntu/salary-tracker/releases/6d15aca`；提交归档在服务器上构建为 `amd64` 镜像 `salary-frontend:6d15aca`。
+- 本次仅更新前端容器，后端、MySQL 容器及数据卷均未重建；当前前端镜像已保留为 `salary-frontend:pre-6d15aca`，用于快速回滚。
+- 使用 `docker compose ... up -d --no-deps --force-recreate frontend` 完成切换；内网 `GET /api/health` 返回 `{"ok":true}`，公网 `/ledger` 与首页均返回 HTTP 200，MySQL 状态为 `running/healthy`。
+- 发布内容包括 GPT 式 AI 工作台、会话侧栏和多模态输入界面、账本卡片布局、移动端底栏、五套主题以及暗夜导航选中态。知识库和任务仍保持规划状态，没有新增虚构后端接口。
+
 ## 健康检查与配置
 
 - 健康检查：`GET /api/health`，成功响应包含 `{"ok": true}`。
