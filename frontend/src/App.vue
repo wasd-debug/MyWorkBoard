@@ -1,82 +1,47 @@
 <template>
   <ToastViewport />
   <LoadingOverlay :open="!store.ready || navigationLoading" :label="!store.ready ? '正在初始化工作台…' : '正在切换页面…'" />
-  <div v-if="store.ready" class="app-shell">
+  <div v-if="store.ready" class="app-shell" :class="{ 'is-home': isHome }">
     <LoginView v-if="store.authRequired" />
     <template v-else>
-      <aside class="app-sidebar" aria-label="主导航">
-        <div class="sidebar-brand">
-          <div class="title serif">个人工作台</div>
-          <div class="label">PERSONAL WORKSPACE</div>
-        </div>
-        <nav class="sidebar-nav">
-          <section v-for="group in navGroups" :key="group.key" class="nav-group" :class="{ open: isGroupOpen(group) }">
-            <button v-if="group.items.length" class="nav-group-head" type="button" :aria-expanded="isGroupOpen(group)" @click="toggleGroup(group.key)">
-              <span class="nav-group-title">{{ group.label }}</span><ArrowDown class="nav-group-chevron" aria-hidden="true" />
-            </button>
-            <Transition name="nav-collapse">
-            <div v-show="isGroupOpen(group)" class="nav-group-items">
-              <component
-                :is="item.disabled ? 'span' : 'router-link'"
-                v-for="item in group.items"
-                :key="item.key"
-                :to="item.disabled ? undefined : item.to"
-                :class="{ 'nav-item-disabled': item.disabled, 'nav-item-current': isNavItemActive(item) }"
-                :aria-disabled="item.disabled || undefined"
-              >
-                <component :is="item.icon" class="nav-item-icon" aria-hidden="true" />
-                <span>{{ item.label }}</span>
-                <span v-if="item.disabled" class="nav-item-soon">即将开放</span>
-              </component>
+      <header class="workspace-topbar">
+        <router-link class="workspace-brand" to="/" aria-label="返回个人工作台"><span class="workspace-brand-mark"><House aria-hidden="true" /></span><b>个人工作台</b></router-link>
+        <template v-if="!isHome">
+          <span class="workspace-nav-divider" aria-hidden="true"></span>
+          <router-link class="workspace-return" to="/"><ArrowLeft aria-hidden="true" />返回</router-link>
+          <span class="workspace-module-label">{{ moduleLabel }}</span>
+          <nav class="workspace-module-nav" :aria-label="`${moduleLabel}二级导航`">
+            <router-link v-for="item in moduleNav" :key="item.key" :to="item.to" :class="{ active: isNavActive(item) }">{{ item.label }}</router-link>
+          </nav>
+        </template>
+        <div class="workspace-top-actions">
+          <div class="theme-picker">
+            <button class="top-text-button theme-trigger" type="button" aria-label="切换配色风格" title="切换配色风格" :aria-expanded="themeMenuOpen" @click="themeMenuOpen = !themeMenuOpen"><span class="theme-dot" :style="{ background: currentPalette.color }"></span><span>配色</span></button>
+            <div v-if="themeMenuOpen" class="theme-popover">
+              <button v-for="item in palettes" :key="item.key" type="button" :class="{ active: store.accent === item.key }" @click="selectPalette(item.key)"><span :style="{ background: item.color }"></span>{{ item.label }}</button>
             </div>
-            </Transition>
-          </section>
-          <router-link class="nav-settings-link" to="/settings"><Setting class="nav-item-icon" aria-hidden="true" /><span>设置</span></router-link>
-        </nav>
-        <div class="sidebar-foot">
-          <div class="sidebar-status">
-            <span class="status-dot" :class="{ online: store.dbMode }"></span>
-            <span>{{ store.dbMode ? '数据库已同步' : '本地离线' }}</span>
           </div>
-          <div class="sidebar-actions">
-            <button class="sidebar-action sidebar-theme-action" type="button" :aria-label="store.theme === 'dark' ? '切换日间模式' : '切换暗夜模式'" :title="store.theme === 'dark' ? '切换日间模式' : '切换暗夜模式'" @click="store.toggleTheme()">
-              <Sunny v-if="store.theme === 'dark'" aria-hidden="true" /><Moon v-else aria-hidden="true" />
-            </button>
-            <button class="sidebar-action" type="button" aria-label="同步状态" :title="store.dbMode ? '数据库已连接' : '本地离线'" @click="onSyncClick">
-              <Connection v-if="store.dbMode" aria-hidden="true" /><Refresh v-else aria-hidden="true" />
-            </button>
-            <button class="sidebar-action" type="button" aria-label="退出登录" title="退出登录" @click="store.logout()"><SwitchButton aria-hidden="true" /></button>
-          </div>
+          <button class="top-text-button" type="button" aria-label="帮助中心" title="同步状态" @click="onSyncClick"><Connection aria-hidden="true" /><span>帮助中心</span></button>
+          <router-link class="top-text-button" to="/settings" aria-label="设置" title="设置"><Setting aria-hidden="true" /><span>设置</span></router-link>
+          <button class="workspace-avatar" type="button" title="退出登录" aria-label="退出登录" @click="store.logout()">{{ userInitial }}</button>
         </div>
-      </aside>
-
+      </header>
       <main class="app-main">
-        <div v-if="showBasis" class="page-toolbar">
-          <div class="basis-seg" aria-label="工资口径">
-            <button :class="{ on: basis === 'pre' }" type="button" @click="setBasis('pre')">税前</button>
-            <button :class="{ on: basis === 'post' }" type="button" @click="setBasis('post')">税后</button>
-          </div>
-        </div>
-        <div class="page-content">
-          <router-view v-slot="{ Component }">
-            <transition name="page" mode="out-in">
-              <component :is="Component" :key="route.path" />
-            </transition>
-          </router-view>
-        </div>
+        <div v-if="showBasis" class="page-toolbar"><div class="basis-seg" aria-label="工资口径"><button :class="{ on: basis === 'pre' }" type="button" @click="setBasis('pre')">税前</button><button :class="{ on: basis === 'post' }" type="button" @click="setBasis('post')">税后</button></div></div>
+        <div class="page-content"><router-view v-slot="{ Component }"><transition name="page" mode="out-in"><component :is="Component" :key="route.fullPath" /></transition></router-view></div>
       </main>
-      <BottomNav />
+      <BottomNav v-if="!isHome" />
     </template>
   </div>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
+import { ArrowLeft, Connection, House, Setting } from './icons.js'
 import { message } from './services/message.js'
 import { useAppStore } from './stores/app'
 import { useWorktimeStore } from './stores/worktime.js'
-import { useRoute } from 'vue-router'
-import { ArrowDown, Calendar, Connection, CreditCard, DataAnalysis, DeleteFilled, Document, List, Management, Moon, Notebook, Refresh, Setting, Sunny, SwitchButton, Tickets, Timer, UserFilled, Wallet } from './icons.js'
 import BottomNav from './components/BottomNav.vue'
 import LoadingOverlay from './components/ledger/LoadingOverlay.vue'
 import ToastViewport from './components/ui/ToastViewport.vue'
@@ -86,120 +51,53 @@ import router from './router'
 const store = useAppStore()
 const worktimeStore = useWorktimeStore()
 const route = useRoute()
+const isHome = computed(() => route.path === '/')
+const themeMenuOpen = ref(false)
 const navigationLoading = ref(false)
 let navigationFinishTimer
 let navigationSafetyTimer
-
-function clearNavigationTimers() {
-  window.clearTimeout(navigationFinishTimer)
-  window.clearTimeout(navigationSafetyTimer)
-}
-
-function finishNavigationLoading(delay = 0) {
-  clearNavigationTimers()
-  if (delay > 0) {
-    navigationFinishTimer = window.setTimeout(() => {
-      navigationLoading.value = false
-    }, delay)
-    return
-  }
-  navigationLoading.value = false
-}
-
-function startNavigationLoading() {
-  clearNavigationTimers()
-  navigationLoading.value = true
-  navigationSafetyTimer = window.setTimeout(() => {
-    navigationLoading.value = false
-  }, 5000)
-}
-
-const removeBeforeGuard = router.beforeEach((to, from) => {
-  if (to.path === from.path) return
-  startNavigationLoading()
-})
-const removeAfterGuard = router.afterEach(() => {
-  finishNavigationLoading(80)
-})
-const removeErrorGuard = router.onError(() => {
-  finishNavigationLoading()
-})
-
-const navGroups = [
-  { key: 'work', label: '工时记录', items: [{ key: 'punch', to: '/punch', label: '打卡', icon: Timer }, { key: 'records', to: '/records', label: '记录', icon: Calendar }, { key: 'stats', to: '/stats', label: '统计', icon: DataAnalysis }] },
-  { key: 'ledger', label: '个人账本', items: [
-    { key: 'overview', to: '/ledger', label: '总览', icon: Wallet },
-    { key: 'details', to: '/ledger/transactions', label: '流水', icon: Tickets },
-    { key: 'accounts', to: { path: '/ledger/manage', query: { view: 'accounts' } }, label: '账户', icon: CreditCard },
-    { key: 'reports', to: '/ledger/reports', label: '报表', icon: DataAnalysis },
-    { key: 'scheduled-tasks', to: '/ledger/scheduled-tasks', label: '定时任务', icon: Timer },
-    { key: 'management', to: { path: '/ledger/manage', query: { view: 'categories' } }, views: ['categories', 'merchants', 'projects', 'books'], label: '管理', icon: Management },
-    { key: 'members', to: { path: '/ledger/manage', query: { view: 'members' } }, label: '成员与角色权限', icon: UserFilled },
-    { key: 'recycle', to: { path: '/ledger/manage', query: { view: 'recycle' } }, label: '回收站', icon: DeleteFilled },
-    { key: 'audit', to: { path: '/ledger/manage', query: { view: 'audit' } }, label: '操作日志', icon: Document }
-  ] },
-  { key: 'knowledge', label: '个人知识库', items: [{ key: 'knowledge-home', to: '/knowledge', label: '知识库', icon: Notebook, disabled: true }] },
-  { key: 'tasks', label: '任务', items: [{ key: 'task-home', to: '/tasks', label: '任务清单', icon: List, disabled: true }] }
+const palettes = [
+  { key: 'sun', label: '日光', color: '#ffd22e' }, { key: 'ocean', label: '海洋', color: '#68d5cf' },
+  { key: 'forest', label: '森林', color: '#91bd58' }, { key: 'berry', label: '莓果', color: '#c85f8c' },
+  { key: 'night', label: '暗夜', color: '#242933' }
 ]
-const openGroups = ref(new Set())
-
-function groupHasRoute(group) {
-  return group.items.some(item => isNavItemActive(item))
-}
-function isNavItemActive(item) {
-  if (item.disabled) return false
+const currentPalette = computed(() => palettes.find(item => item.key === store.accent) || palettes[0])
+const userInitial = computed(() => String(store.authUser?.nickname || store.authUser?.username || '我').slice(0, 1))
+const workNav = [{ key: 'punch', to: '/punch', label: '打卡' }, { key: 'records', to: '/records', label: '记录' }, { key: 'stats', to: '/stats', label: '统计' }]
+const ledgerNav = [
+  { key: 'overview', to: '/ledger', label: '总览' }, { key: 'transactions', to: '/ledger/transactions', label: '流水' },
+  { key: 'accounts', to: { path: '/ledger/manage', query: { view: 'accounts' } }, label: '账户' }, { key: 'reports', to: '/ledger/reports', label: '报表' },
+  { key: 'scheduled', to: '/ledger/scheduled-tasks', label: '定时任务' },
+  { key: 'manage', to: { path: '/ledger/manage', query: { view: 'categories' } }, label: '管理', views: ['categories', 'merchants', 'projects', 'books'] },
+  { key: 'members', to: { path: '/ledger/manage', query: { view: 'members' } }, label: '成员与权限' },
+  { key: 'recycle', to: { path: '/ledger/manage', query: { view: 'recycle' } }, label: '回收站' },
+  { key: 'audit', to: { path: '/ledger/manage', query: { view: 'audit' } }, label: '操作日志' }
+]
+const isLedger = computed(() => route.path.startsWith('/ledger'))
+const moduleLabel = computed(() => isLedger.value ? '账本' : route.path === '/settings' ? '设置' : '工时')
+const moduleNav = computed(() => isLedger.value ? ledgerNav : route.path === '/settings' ? [] : workNav)
+function isNavActive(item) {
   const target = typeof item.to === 'string' ? { path: item.to } : item.to
   if (route.path !== target.path) return false
-  if (item.views?.length) return item.views.includes(String(route.query.view))
-  return target.query?.view ? route.query.view === target.query.view : !route.query.view
+  if (item.views) return item.views.includes(String(route.query.view || 'categories'))
+  return target.query?.view ? route.query.view === target.query.view : true
 }
-function isGroupOpen(group) { return openGroups.value.has(group.key) || groupHasRoute(group) }
-function toggleGroup(key) {
-  const next = new Set(openGroups.value)
-  next.has(key) ? next.delete(key) : next.add(key)
-  openGroups.value = next
-}
-
+function selectPalette(key) { store.setAccent(key); themeMenuOpen.value = false }
+function clearNavigationTimers() { window.clearTimeout(navigationFinishTimer); window.clearTimeout(navigationSafetyTimer) }
+function finishNavigationLoading(delay = 0) { clearNavigationTimers(); if (delay) navigationFinishTimer = window.setTimeout(() => { navigationLoading.value = false }, delay); else navigationLoading.value = false }
+function startNavigationLoading() { clearNavigationTimers(); navigationLoading.value = true; navigationSafetyTimer = window.setTimeout(() => { navigationLoading.value = false }, 5000) }
+const removeBeforeGuard = router.beforeEach((to, from) => { if (to.fullPath !== from.fullPath) startNavigationLoading() })
+const removeAfterGuard = router.afterEach(() => finishNavigationLoading(80))
+const removeErrorGuard = router.onError(() => finishNavigationLoading())
 const basis = computed(() => worktimeStore.settings.basis)
 const showBasis = computed(() => ['/punch', '/records', '/stats'].includes(route.path))
-
-async function setBasis(value) {
-  if (worktimeStore.settings.basis === value) return
-  await worktimeStore.saveSettings({ basis: value })
-}
-
-function onSyncClick() {
-  if (store.dbMode) message.success('数据已安全同步到数据库')
-  else store.connectDb().then(() => store.dbMode ? message.success('已连接数据库') : message.warning(store.authRequired ? '请先登录' : '数据库仍不可用'))
-}
-
-onMounted(() => { store.init() })
-onBeforeUnmount(() => {
-  finishNavigationLoading()
-  removeBeforeGuard()
-  removeAfterGuard()
-  removeErrorGuard()
-})
+async function setBasis(value) { if (worktimeStore.settings.basis !== value) await worktimeStore.saveSettings({ basis: value }) }
+function onSyncClick() { if (store.dbMode) message.success('数据已安全同步到数据库'); else store.connectDb().then(() => store.dbMode ? message.success('已连接数据库') : message.warning(store.authRequired ? '请先登录' : '数据库仍不可用')) }
+onMounted(() => store.init())
+onBeforeUnmount(() => { finishNavigationLoading(); removeBeforeGuard(); removeAfterGuard(); removeErrorGuard() })
 </script>
 
 <style scoped>
-.page-enter-active,
-.page-leave-active { transition: opacity .22s ease, transform .22s ease, filter .22s ease }
-.page-enter-from { opacity: 0; transform: translateY(8px); filter: blur(2px) }
-.page-leave-to { opacity: 0; transform: translateY(-4px); filter: blur(1px) }
-.nav-collapse-enter-active,
-.nav-collapse-leave-active {
-  overflow: hidden;
-  transition: max-height .2s ease, opacity .16s ease, transform .2s ease;
-}
-.nav-collapse-enter-from,
-.nav-collapse-leave-to { max-height: 0; opacity: 0; transform: translateY(-4px) }
-.nav-collapse-enter-to,
-.nav-collapse-leave-from { max-height: 520px; opacity: 1; transform: translateY(0) }
-@media (prefers-reduced-motion: reduce) {
-  .page-enter-active,
-  .page-leave-active,
-  .nav-collapse-enter-active,
-  .nav-collapse-leave-active { transition: none }
-}
+.page-enter-active,.page-leave-active { transition: opacity .22s ease, transform .22s ease }.page-enter-from { opacity:0; transform:translateY(8px) }.page-leave-to { opacity:0; transform:translateY(-4px) }
+@media (prefers-reduced-motion:reduce) { .page-enter-active,.page-leave-active { transition:none } }
 </style>

@@ -43,6 +43,11 @@ services:
       DB_PASSWORD: SalaryApp@2026
       JWT_SECRET: "local-development-secret-change-me-32-bytes"
       COOKIE_SECURE: "false"
+      # 本地数据库可能来自较早的快照：允许已存在的历史校验差异，
+      # 并跳过已经在快照中落地但未登记的 out-of-order migration。
+      # 生产 Compose 仍保持严格的 Flyway 校验。
+      SPRING_FLYWAY_VALIDATE_ON_MIGRATE: "false"
+      SPRING_FLYWAY_IGNORE_MIGRATION_PATTERNS: "*:pending"
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       LLM_ENDPOINT: ${LLM_ENDPOINT:-https://api.deepseek.com/chat/completions}
       LLM_MODEL: ${LLM_MODEL:-deepseek-flash}

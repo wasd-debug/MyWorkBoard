@@ -8,14 +8,10 @@
     <div class="card set-group appearance-group">
       <h2>外观</h2>
       <div class="row">
-        <div class="lbl">主题强调色<small>用于选中态、按钮、图表与悬浮边缘</small></div>
+        <div class="lbl">配色风格<small>同步调整页面背景、功能卡片、按钮与图表</small></div>
         <div class="ctl accent-options" aria-label="选择主题强调色">
           <button v-for="item in accents" :key="item.key" class="accent-swatch" :class="{ active: appStore.accent === item.key }" :style="{ '--swatch': item.color }" type="button" :aria-label="item.label" :title="item.label" @click="appStore.setAccent(item.key)"></button>
         </div>
-      </div>
-      <div class="row">
-        <div class="lbl">暗夜模式<small>使用深色纸张与低反光悬浮卡片</small></div>
-        <div class="ctl"><Toggle :model-value="appStore.theme === 'dark'" aria-label="暗夜模式" @update:model-value="appStore.toggleTheme()" /></div>
       </div>
     </div>
 
@@ -71,7 +67,6 @@ import { message } from '../services/message.js'
 import Button from '../components/ui/Button.vue'
 import Input from '../components/ui/Input.vue'
 import Textarea from '../components/ui/Textarea.vue'
-import Toggle from '../components/ui/Toggle.vue'
 import { useAppStore } from '../stores/app'
 import { DEFAULT_WORKTIME_SETTINGS as DEFAULTS, useWorktimeStore } from '../stores/worktime.js'
 import { CALC } from '../utils/calc'
@@ -80,10 +75,11 @@ const appStore = useAppStore()
 const store = useWorktimeStore()
 const settings = computed(() => store.settings)
 const accents = [
-  { key: 'green', label: '森林绿', color: '#267251' },
-  { key: 'blue', label: '墨水蓝', color: '#3e667d' },
-  { key: 'plum', label: '灰紫', color: '#80536c' },
-  { key: 'rust', label: '陶土红', color: '#a4573f' }
+  { key: 'sun', label: '日光', color: '#ffd22e' },
+  { key: 'ocean', label: '海洋', color: '#68d5cf' },
+  { key: 'forest', label: '森林', color: '#91bd58' },
+  { key: 'berry', label: '莓果', color: '#c85f8c' },
+  { key: 'night', label: '暗夜', color: '#242933' }
 ]
 const ioArea = ref('')
 const curMonthKey = CALC.dateKey(new Date()).slice(0, 7)

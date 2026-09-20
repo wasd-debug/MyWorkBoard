@@ -148,6 +148,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.local.yml up -d
 
 该模式把 `backend/target` 和 `frontend/dist` 挂载到容器中，适合验证构建产物与容器网络。
 
+本地联调 Compose 对 Flyway 使用宽松校验：关闭历史 checksum 校验，并忽略快照中已落地但尚未登记的 pending migration。这样可以直接使用旧的本地数据库快照启动后端；生产 Compose 仍保持严格校验。若需要验证迁移完整性，请使用上面的 `verify-backup-restore.sh` 恢复演练，而不要把本地宽松配置带到生产环境。
+
 ## 运维命令
 
 以下命令均在项目根目录执行：

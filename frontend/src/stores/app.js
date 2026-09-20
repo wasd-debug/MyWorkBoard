@@ -37,11 +37,14 @@ function clearOfflineUser() {
 }
 
 export const ACCENTS = {
-  green: { light: '#0f5132', dark: '#7bd3a6', soft: '#e6efe8', darkSoft: '#203a2b' },
-  blue: { light: '#3e667d', dark: '#83bdd7', soft: '#e4edf2', darkSoft: '#203541' },
-  plum: { light: '#80536c', dark: '#d2a0be', soft: '#f0e6ec', darkSoft: '#432d3e' },
-  rust: { light: '#a4573f', dark: '#e6a38d', soft: '#f4e7e1', darkSoft: '#452d27' }
+  sun: { light: '#1d1d21', dark: '#ffd85a', soft: '#fff7dc', darkSoft: '#3a3422' },
+  ocean: { light: '#137d80', dark: '#79e2dd', soft: '#e9f8f6', darkSoft: '#173b3c' },
+  forest: { light: '#2f7653', dark: '#9bd39e', soft: '#eef6d9', darkSoft: '#22392c' },
+  berry: { light: '#a94771', dark: '#f09abd', soft: '#fff1cf', darkSoft: '#442735' },
+  night: { light: '#e8edf5', dark: '#e8edf5', soft: '#252c37', darkSoft: '#252c37' }
 }
+
+const LEGACY_ACCENTS = { green: 'forest', blue: 'ocean', plum: 'berry', rust: 'sun' }
 
 export const useAppStore = defineStore('app', {
   state: () => ({
@@ -50,7 +53,7 @@ export const useAppStore = defineStore('app', {
     _holReq: {},                     // 进行中的年份请求（防重复）
     dbMode: false,                   // 本地服务（数据库）可用
     theme: 'light',
-    accent: 'green',
+    accent: 'sun',
     ready: false,                    // 初始化完成
     authUser: null,
     accountScope: '',
@@ -64,15 +67,18 @@ export const useAppStore = defineStore('app', {
       const storedTheme = localStorage.getItem(LS_THEME)
       const isMobile = window.matchMedia?.('(max-width: 640px)').matches || window.matchMedia?.('(pointer: coarse)').matches
       const systemDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
-      const theme = storedTheme === 'dark' || storedTheme === 'light'
+      const theme = localStorage.getItem(LS_ACCENT) === 'night' ? 'dark' : storedTheme === 'dark' || storedTheme === 'light'
         ? storedTheme
         : (isMobile && systemDark ? 'dark' : 'light')
-      const accent = ACCENTS[localStorage.getItem(LS_ACCENT)] ? localStorage.getItem(LS_ACCENT) : 'green'
+      const storedAccent = localStorage.getItem(LS_ACCENT)
+      const accent = ACCENTS[storedAccent] ? storedAccent : (LEGACY_ACCENTS[storedAccent] || 'sun')
       this.theme = theme
       this.accent = accent
       const root = document.documentElement
       root.classList.toggle('dark', theme === 'dark')
       root.classList.toggle('light', theme !== 'dark')
+      if (root.dataset) root.dataset.theme = accent
+      else root.setAttribute?.('data-theme', accent)
       const palette = ACCENTS[accent]
       const darkMode = theme === 'dark'
       root.style.setProperty('--accent', darkMode ? palette.dark : palette.light)
@@ -93,6 +99,7 @@ export const useAppStore = defineStore('app', {
       if (!ACCENTS[name]) return
       this.accent = name
       localStorage.setItem(LS_ACCENT, name)
+      localStorage.setItem(LS_THEME, name === 'night' ? 'dark' : 'light')
       this.applyTheme()
     },
 

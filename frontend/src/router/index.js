@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
-  { path: '/', redirect: '/punch' },
+  { path: '/', name: 'workspace-home', component: () => import('../views/HomeView.vue'), meta: { title: 'AI 工作台' } },
   { path: '/punch', name: 'punch', component: () => import('../views/PunchView.vue'), meta: { title: '打卡' } },
   { path: '/records', name: 'records', component: () => import('../views/RecordsView.vue'), meta: { title: '记录' } },
   { path: '/stats', name: 'stats', component: () => import('../views/StatsView.vue'), meta: { title: '统计' } },
