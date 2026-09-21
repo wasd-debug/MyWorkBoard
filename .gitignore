@@ -5,3 +5,6 @@ deploy/.env
 .docs/
 /.github/
 /docs/
+!/docs/
+/docs/*
+!/docs/工作台的Agent改造计划.md

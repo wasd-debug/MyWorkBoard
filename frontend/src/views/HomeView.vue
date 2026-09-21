@@ -44,11 +44,11 @@
           <article v-for="item in activeMessages" :key="item.id" class="chat-message" :class="item.role">
             <span v-if="item.role === 'assistant'" class="message-avatar"><Sparkles /></span>
             <div class="message-content">
-              <p>{{ item.content }}</p>
+              <p>{{ item.content }}<span v-if="item.typing" class="typing-cursor" aria-label="正在输入">▍</span></p>
               <div v-if="item.attachments?.length" class="message-attachments">
                 <span v-for="file in item.attachments" :key="file.id"><ImageIcon v-if="file.type === 'image'" /><Mic v-else-if="file.type === 'audio'" /><Paperclip v-else />{{ file.name }}</span>
               </div>
-              <button v-if="item.route" class="message-route" type="button" @click="router.push(item.route)">进入{{ item.routeLabel }}<ArrowUpRight /></button>
+              <button v-if="item.route && !item.typing" class="message-route" type="button" @click="router.push(item.route)">进入{{ item.routeLabel }}<ArrowUpRight /></button>
             </div>
           </article>
         </div>
@@ -99,6 +99,7 @@ const recording = ref(false)
 let mediaRecorder = null
 let mediaStream = null
 let recordingStartedAt = 0
+const typingTimers = new Set()
 
 const historyKey = computed(() => `workspace_ai_conversations_v1:${store.accountScope || 'local'}`)
 const displayName = computed(() => store.authUser?.nickname || store.authUser?.username || '建胜')
@@ -115,7 +116,10 @@ const cards = [
 function uid() { return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}` }
 function persist() { localStorage.setItem(historyKey.value, JSON.stringify(conversations.value.slice(0, 60))) }
 function loadConversations() {
-  try { conversations.value = JSON.parse(localStorage.getItem(historyKey.value) || '[]') } catch { conversations.value = [] }
+  try {
+    const stored = JSON.parse(localStorage.getItem(historyKey.value) || '[]')
+    conversations.value = stored.map(item => ({ ...item, messages: (item.messages || []).map(message => ({ ...message, typing: false })) }))
+  } catch { conversations.value = [] }
   activeId.value = conversations.value[0]?.id || ''
 }
 function newConversation() { activeId.value = ''; prompt.value = ''; attachments.value = []; if (window.innerWidth < 900) sidebarOpen.value = false }
@@ -128,6 +132,24 @@ function addFiles(event, type) {
   event.target.value = ''
 }
 function removeAttachment(id) { attachments.value = attachments.value.filter(item => item.id !== id) }
+function typeReply(conversation, reply) {
+  const assistantMessage = { id: uid(), role: 'assistant', content: '', typing: true, route: reply.route, routeLabel: reply.routeLabel }
+  conversation.messages.push(assistantMessage)
+  let index = 0
+  const timer = window.setInterval(() => {
+    assistantMessage.content = reply.content.slice(0, index + 1)
+    index += 1
+    persist()
+    scrollToBottom()
+    if (index >= reply.content.length) {
+      window.clearInterval(timer)
+      typingTimers.delete(timer)
+      assistantMessage.typing = false
+      persist()
+    }
+  }, 35)
+  typingTimers.add(timer)
+}
 function getReply(text) {
   if (/工时|打卡|上班|下班/.test(text)) return { content: '我已经准备好工时工作区，你可以继续打卡、补录或查看统计。', route: '/punch', routeLabel: '工时' }
   if (/报表/.test(text)) return { content: '我已经为你定位到账本报表，可以按分类、账户、商家和时间范围继续分析。', route: '/ledger/reports', routeLabel: '账本报表' }
@@ -149,7 +171,7 @@ async function submitPrompt() {
   }
   conversation.messages.push({ id: uid(), role: 'user', content: text || '请分析这些附件', attachments: attachments.value.map(item => ({ ...item })) })
   const reply = getReply(text)
-  conversation.messages.push({ id: uid(), role: 'assistant', ...reply })
+  typeReply(conversation, reply)
   conversation.updatedAt = now
   conversations.value = [conversation, ...conversations.value.filter(item => item.id !== conversation.id)]
   prompt.value = ''
@@ -176,5 +198,10 @@ async function toggleRecording() {
 }
 
 onMounted(() => { loadConversations(); sidebarOpen.value = window.innerWidth >= 900 })
-onBeforeUnmount(() => { if (mediaRecorder?.state === 'recording') mediaRecorder.stop(); mediaStream?.getTracks().forEach(track => track.stop()) })
+onBeforeUnmount(() => {
+  typingTimers.forEach(timer => window.clearInterval(timer))
+  typingTimers.clear()
+  if (mediaRecorder?.state === 'recording') mediaRecorder.stop()
+  mediaStream?.getTracks().forEach(track => track.stop())
+})
 </script>

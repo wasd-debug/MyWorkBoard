@@ -30,11 +30,14 @@ class ArchitectureBoundaryTest {
         assertModuleOwns("identity");
         assertModuleOwns("worktime");
         assertModuleOwns("ledger");
+        assertModuleOwns("ai");
         Path legacySource = BACKEND_ROOT.resolve("src/main/java/com/salarytracker");
-        for (String module : new String[]{"platform", "identity", "worktime", "ledger"}) {
+        for (String module : new String[]{"platform", "identity", "worktime", "ledger", "ai"}) {
             assertFalse(Files.exists(legacySource.resolve(module)),
                     () -> "central source root still owns " + module);
         }
+        assertNoJavaSources(BACKEND_ROOT.resolve("app/src/main/java/com/salarytracker/ai"),
+                "app source root must not own ai module sources");
     }
 
     private void assertModuleOwns(String module) {
@@ -46,6 +49,15 @@ class ArchitectureBoundaryTest {
                     () -> module + " module contains no Java sources");
         } catch (java.io.IOException exception) {
             throw new IllegalStateException("cannot inspect module sources", exception);
+        }
+    }
+
+    private void assertNoJavaSources(Path source, String message) {
+        if (!Files.isDirectory(source)) return;
+        try (var files = Files.walk(source)) {
+            assertFalse(files.anyMatch(path -> path.getFileName().toString().endsWith(".java")), message);
+        } catch (java.io.IOException exception) {
+            throw new IllegalStateException("cannot inspect source directory", exception);
         }
     }
 
@@ -68,4 +80,16 @@ class ArchitectureBoundaryTest {
     static final ArchRule worktime_does_not_depend_on_ledger = noClasses()
             .that().resideInAnyPackage("com.salarytracker.worktime..")
             .should().dependOnClassesThat().resideInAnyPackage("com.salarytracker.ledger..");
+
+    @ArchTest
+    static final ArchRule core_domains_do_not_depend_on_ai = noClasses()
+            .that().resideInAnyPackage("com.salarytracker.identity..", "com.salarytracker.worktime..",
+                    "com.salarytracker.ledger..")
+            .should().dependOnClassesThat().resideInAnyPackage("com.salarytracker.ai..");
+
+    @ArchTest
+    static final ArchRule ai_does_not_depend_on_controllers_or_mappers = noClasses()
+            .that().resideInAnyPackage("com.salarytracker.ai..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "com.salarytracker.controller..", "com.salarytracker.mapper..");
 }

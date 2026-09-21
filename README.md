@@ -34,18 +34,19 @@
 ### 后续阶段
 
 - **Phase 2 任务管理：未启动。** 计划包含清单、任务、日历、提醒、番茄钟、习惯和倒数日。
-- **Phase 3 RAG/Agent：主体未启动。** 当前只有 OpenAI 兼容 LLM 网关和账本 AI 能力。
-- **Phase 4 跨域洞察：未启动。** 计划通过领域事件生成日/周/月/年报。
-- **Phase 5 持续打磨：部分能力提前实现。** 响应式布局、主题和共享账本已存在；PWA、搜索和可观测体系尚未实现。
+- **Phase 3A-D Agent/MCP：Phase 3A 部分实现。** 已建立 AI 物理模块、Domain Tool 基础和四个内部 R1 工时/账本查询工具；action、写工具、Web Agent 和 MCP 尚未实现。
+- **Phase 4 文件/RAG：未启动。** 计划在 Agent/MCP 稳定后建设文件域、向量库和知识库。
+- **Phase 5 跨域洞察：未启动。** 计划通过领域事件生成日/周/月/年报。
+- **Phase 6 持续打磨：部分能力提前实现。** 响应式布局、主题和共享账本已存在；PWA、搜索和可观测体系尚未实现。
 
-详细现状见 [项目总览](docs/overview.md)，长期设计和阶段门禁见 [架构文档](docs/ARCHITECTURE.md)，账本细节见 [Phase 1 设计](<docs/Phase 1 —— 账本设计具体展开.md>)。
+详细现状见 [项目总览](docs/overview.md)，长期设计和阶段门禁见 [架构文档](docs/ARCHITECTURE.md)，Agent/MCP 实施步骤见 [工作台 Agent 改造计划](<docs/工作台的Agent改造计划.md>)，账本细节见 [Phase 1 设计](<docs/Phase 1 —— 账本设计具体展开.md>)。
 
 ## 技术栈
 
 | 层 | 当前实现 | 后续目标 |
 |---|---|---|
 | 前端 | Vue 3、Vite、Pinia、Vue Router、ECharts、Tailwind CSS 4、Reka UI、Lucide、OpenAPI 生成客户端 | PWA，并把 local-first 模式扩展到后续领域 |
-| 后端 | Java 17、Spring Boot 3.2、Spring Security、Spring Modulith、JDBC/MyBatis-Plus、Flyway、EasyExcel、ShedLock；platform/identity/worktime/ledger/app 物理模块 | 按阶段引入文件、事件、RAG 和洞察能力 |
+| 后端 | Java 17、Spring Boot 3.2、Spring Security、Spring Modulith、JDBC/MyBatis-Plus、Flyway、EasyExcel、ShedLock；platform/identity/worktime/ledger/ai/app 物理模块 | 按阶段引入 Agent 会话、MCP、文件、RAG 和洞察能力 |
 | 数据库 | MySQL 8，Flyway V1-V11 | 后续按需增加 Redis、MinIO/NAS、Qdrant 和搜索服务 |
 | 部署 | Docker Compose、Nginx、Spring Boot、MySQL | 健康检查、备份恢复和可观测体系持续完善 |
 
@@ -63,7 +64,7 @@ salary-sync/
 ├── backend/
 │   ├── app/                         # 应用组装与 Spring Boot 打包
 │   │   └── src/                     # 装配、迁移、跨模块集成与架构测试
-│   └── modules/                     # platform/identity/worktime/ledger 真实源码模块
+│   └── modules/                     # platform/identity/worktime/ledger/ai 真实源码模块
 ├── frontend/
 │   ├── src/views/                   # 工时和账本页面
 │   ├── src/components/              # 通用与账本组件
@@ -173,7 +174,7 @@ npm run build
 npm run test:e2e
 ```
 
-2026-09-18 收口验证结果：Maven 默认套件 57 项通过、1 项真实 Excel fixture 按设计跳过；指定仓库根目录真实工作簿后 ledger 37/37 通过并覆盖金额与重复导入对账。前端 Node/契约测试 44/44，OpenAPI 49 paths、70 operations、120 schemas，operationId 重复和自由 object schema 均为 0，客户端重新生成无差异，TypeScript 严格编译与 Vite 生产构建通过。Docker 源码构建后的 Playwright 定义 36 项，32 passed、4 项仅在非快照项目按设计 skipped，覆盖 desktop Chromium/WebKit 与 320/375/768/1024/1440px、深浅和四套主题、axe、键盘、断网账本、工时资源 API 和旧路径 404。恢复演练完成旧 schema 快照导出、临时库恢复、Flyway v11 migrate/validate、核心数据对账和健康检查。
+2026-09-21 Agent 基础增量验证：`mvn test` 共发现 70 个用例，63 个通过、7 个跳过、0 个失败；AI 模块 11/11、架构边界 6/6 通过。跳过项包含 1 个真实 Excel fixture 用例和 6 个因 Docker 未运行而跳过的 Testcontainers 用例。上一轮前端 Node/契约 44/44、OpenAPI、TypeScript、Vite、Playwright 32 passed/4 skipped 和恢复演练继续作为已验证基线；本次未重跑前端与 Playwright。
 
 ## 服务器部署
 

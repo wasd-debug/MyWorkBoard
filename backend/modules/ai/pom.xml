@@ -7,9 +7,9 @@
         <groupId>com.salarytracker</groupId>
         <artifactId>salary-tracker-backend</artifactId>
         <version>1.0.0</version>
-        <relativePath>../pom.xml</relativePath>
+        <relativePath>../../pom.xml</relativePath>
     </parent>
-    <artifactId>salary-tracker-app</artifactId>
+    <artifactId>salary-tracker-ai</artifactId>
     <dependencies>
         <dependency>
             <groupId>com.salarytracker</groupId>
@@ -31,34 +31,5 @@
             <artifactId>salary-tracker-ledger</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <dependency>
-            <groupId>com.salarytracker</groupId>
-            <artifactId>salary-tracker-ai</artifactId>
-            <version>${project.version}</version>
-        </dependency>
     </dependencies>
-    <build>
-        <directory>../target</directory>
-        <finalName>salary-tracker-backend</finalName>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-                <configuration>
-                    <mainClass>com.salarytracker.SalaryTrackerApplication</mainClass>
-                    <excludes>
-                        <exclude>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                        </exclude>
-                    </excludes>
-                </configuration>
-                <executions>
-                    <execution>
-                        <goals><goal>repackage</goal></goals>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
-    </build>
 </project>

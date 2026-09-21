@@ -1,22 +1,23 @@
 # 个人效率中枢 · 整体架构设计与长期发展规划
 
-> 版本：v1.4（2026-09-18）
+> 版本：v1.6（2026-09-21）
 > 范围：基于现有 salary-sync（加班时长与时薪计算）系统，规划"工时 + 账本 + 任务 + AI"一体化个人效率平台的整体架构与演进路线。
 
 > 实施状态：Phase 0/Phase 1 自动化收口已完成，真机验收和周期生产运维按发布记录持续执行。本文同时包含目标架构与实施计划；除明确标注“当前实现”的内容外，其余技术组件和阶段能力均为目标状态，不代表已经上线。
 
-## 0. 当前实施快照（2026-09-18）
+## 0. 当前实施快照（2026-09-21）
 
 | 阶段 | 状态 | 结论 |
 |---|---|---|
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
 | Phase 2 任务 | 未启动 | 只有禁用导航占位，无领域模块、数据表和页面 |
-| Phase 3 RAG/Agent | 未启动主体 | 只有 OpenAI 兼容 LLM 网关及账本 AI 能力，无文件域、RAG、知识库和 Agent 编排 |
-| Phase 4 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
-| Phase 5 打磨 | 部分提前实现 | 已有响应式布局、主题、共享账本、自动视觉/无障碍和恢复演练；PWA、搜索及完整可观测体系未实现 |
+| Phase 3A-D Agent/MCP | Phase 3A 部分实现 | AI 物理模块、Domain Tool 契约/注册表与 4 个 R1 工时/账本查询工具已落地；action、写工具、Web Agent 和 MCP 尚未实现 |
+| Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
+| Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
+| Phase 6 打磨 | 部分提前实现 | 已有响应式布局、主题、共享账本、自动视觉/无障碍和恢复演练；PWA、搜索及完整可观测体系未实现 |
 
-当前自动化结果为 Maven 默认套件 57 项通过、1 项真实 Excel fixture 按设计跳过，指定真实工作簿后 ledger 37/37；前端 Node/契约 44/44，OpenAPI 生成幂等与 TypeScript 严格编译通过；Docker 源码构建后的 Playwright 32 passed、4 项按项目设计 skipped，覆盖 Chromium/WebKit、320/375/768/1024/1440px、主题、键盘、axe 和旧路径 404。Flyway v11 与旧 schema 恢复演练均实际执行。第 12.6 节中的 Android Chrome 与 iOS Safari 真机验收仍需在实际设备上留档。
+2026-09-21 后端 `mvn test` 共发现 70 个用例，63 个通过、7 个跳过、0 个失败；其中 AI 模块 11/11、架构边界 6/6 通过。7 个跳过项为 1 个真实 Excel fixture 用例和 6 个当前 Docker 未运行的 Testcontainers 用例。上一轮前端 Node/契约 44/44、OpenAPI 生成、TypeScript 严格编译、Playwright 32 passed/4 skipped 和恢复演练结果仍作为现有基线，本次 AI 基础增量未重跑前端与 Playwright。第 12.6 节中的 Android Chrome 与 iOS Safari 真机验收仍需在实际设备上留档。
 
 ---
 
@@ -29,7 +30,7 @@
 5. [技术选型建议](#5-技术选型建议)
 6. [数据模型与存储方案](#6-数据模型与存储方案)
 7. [离线同步方案](#7-离线同步方案)
-8. [RAG + Agent 接入方式](#8-rag--agent-接入方式)
+8. [Agent、MCP 与 RAG 接入方式](#8-agentmcp-与-rag-接入方式)
 9. [跨模块数据联动流程设计](#9-跨模块数据联动流程设计)
 10. [分阶段落地规划](#10-分阶段落地规划)
 11. [非功能需求与风险](#11-非功能需求与风险)
@@ -44,7 +45,7 @@
 | 层 | 现状 | 评价 |
 |---|---|---|
 | 前端 | Vue 3 + Vite + Pinia + Vue Router + ECharts + Tailwind/token + Reka UI + Lucide；Element Plus 已移除 | 工时使用生成客户端访问资源 API；账本六类资源使用 IndexedDB/oplog local-first，在线命令由 store facade 统一管理 |
-| 后端 | Java 17 + Spring Boot 3.2；platform/identity/worktime/ledger/app 五个 Maven 模块 | 业务源码和单测已物理归属对应模块，app 仅装配应用、迁移资源和跨模块测试 |
+| 后端 | Java 17 + Spring Boot 3.2；platform/identity/worktime/ledger/ai/app 六个 Maven 模块 | 业务源码和单测已物理归属对应模块，app 仅装配应用、迁移资源和跨模块测试；AI 当前只含原有网关和领域工具基础 |
 | 数据库 | MySQL 8 + Flyway V1-V11；用户、工时、账本、同步、定时任务、审计和 AI 草稿表 | 多用户和账本数据模型已落地；事件、任务、文件、RAG 和洞察读模型仍未落地 |
 | 鉴权 | Spring Security + JWT access token + HttpOnly refresh cookie；用户、角色和权限表 | 已替换静态 AccessCode；仍需限流、安全集成测试和更完整的会话运维能力 |
 | 部署 | Docker Compose（Nginx + Spring Boot + MySQL），源码/预构建镜像/本地产物三种模式 | 当前仍是三服务单机部署；Redis、MinIO、Qdrant、监控等按后续阶段引入 |
@@ -456,9 +457,39 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 
 ---
 
-## 8. RAG + Agent 接入方式
+## 8. Agent、MCP 与 RAG 接入方式
 
-### 8.1 附件 → RAG 管道（异步、可重试）
+详细实现、接口、工具覆盖矩阵、风险分级和逐阶段验证门禁见 [`工作台的Agent改造计划.md`](工作台的Agent改造计划.md)。长期路线调整为先交付 Agent 驱动现有功能和 MCP，再建设文件与 RAG，避免尚未存在的文件域和向量库阻塞账本、工时能力接入。
+
+### 8.1 Agent 与 MCP 共享领域工具
+
+```text
+传统 Web 页面     Web AI 工作台     WorkBuddy / Codex / 其他 MCP Host
+       │                 │                         │
+       └─────────────────┼─────────────────────────┘
+                         ▼
+               统一 Domain Tool 层
+                         ▼
+             ledger / worktime 应用服务
+                         ▼
+          权限、事务、校验、审计、幂等、同步
+```
+
+- 新增独立 `ai` Maven 模块，承载会话、Agent 编排、Domain Tool、待确认 action、MCP 适配和 trace。
+- Web Agent 与 MCP 共用工具注册表和执行策略，但分别使用进程内和 MCP 协议适配器；内部 Agent 不反向 HTTP 调用本站 MCP。
+- Agent 工具调用各域公开应用接口，不直接读写领域表；用户、账本和 scope 由服务端认证上下文注入。
+- 所有 R2-R4 写操作使用 `prepare → 补充/确认 → commit`，不能依赖模型自行声明“用户已确认”。
+- 工作台通过 SSE 返回文本、工具状态、受控表单和确认事件；模型不得生成可执行 HTML。
+
+### 8.2 MCP 对外接入
+
+- 同一 Spring Boot 应用提供 Streamable HTTP MCP Server，PAT 用于首轮兼容验证，OAuth 2.1 + PKCE 用于正式远程接入。
+- MCP 默认只读，账本与工时分别设置 read、prepare 和 commit scope。
+- 高风险写操作返回站内审批链接，用户登录网站确认后才允许 commit。
+- 至少使用 MCP Inspector、Codex 和 WorkBuddy 完成真实连接验证，保存客户端版本、传输方式、认证方式和已知限制。
+- MCP 调用按用户、客户端、工具和账本审计并限流，不能暴露同步、余额物化等基础设施接口。
+
+### 8.3 文件 → RAG 管道（Agent/MCP 稳定后）
 
 ```text
 上传附件(task/ledger)
@@ -473,31 +504,14 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
   失败 → status=failed，可从 storage_uri 随时重新入队
 ```
 
-### 8.2 Agent 架构（工具型 Assistant）
+### 8.4 关键约束
 
-```text
-用户消息（对话/报表生成/自然语言记账）
-  → ai 模块：Agent 编排（LangChain4j）
-      ├─ 意图路由：闲聊 | 工具调用 | RAG 检索
-      ├─ RAG：Query → Qdrant 检索（过滤 user_id + 业务域）→ 上下文注入
-      └─ Tools（function calling，权限随当前用户）：
-           · worktime_query(range)      查工时/加班/时薪
-           · ledger_query(range, dims)  查收支/分类/预算执行
-           · task_query(filter)         查任务/清单/习惯
-           · insight_report(period)    生成日/周/月/年报
-           · attachment_fetch(file_id)  按 storage_uri 动态拉取附件内容
-           · ledger_book(entry)         自然语言记账（"午饭 32 元"→结构化交易）
-           · task_create(...)           自然语言建任务
-  → LLM 网关（DeepSeek / OpenAI 兼容端点可配置，密钥服务端持有）
-  → 流式响应（SSE）回前端对话组件
-```
-
-### 8.3 关键约束
-
-1. **权限同源**：Agent 工具内部调用各域 `api` 包，与 REST 同一套 `@PreAuthorize`，杜绝 AI 越权读写。
-2. **成本控制**：会话上下文按条数+token 双截断；RAG 检索 top-k 默认 5；LLM 调用计入 `ai_usage` 表便于监控。
-3. **可观测**：每次 Agent 执行落 `agent_trace`（工具调用链、token 消耗、耗时），排查"AI 答错了"必备。
-4. **LLM 供应商可替换**：网关层统一 `ChatModel` 抽象，DeepSeek/通义/OpenAI 用配置切换，不绑死单一厂商。
+1. **权限同源**：Agent 和 MCP 工具复用领域权限、事务和审计，不复制业务规则。
+2. **写入可控**：所有写工具有风险级别、稳定 Schema、幂等键和过期 action；R4 必须站内审批。
+3. **成本控制**：会话上下文按条数和 token 双截断；RAG 检索 top-k 默认 5；调用计入 `ai_usage`。
+4. **可观测**：每次执行记录工具链、模型、token、耗时和脱敏结果，业务写入仍进入领域审计。
+5. **供应商可替换**：`AgentModel` 隔离 DeepSeek/OpenAI 等供应商；工具契约不依赖模型 SDK。
+6. **RAG 输入不可信**：文档内容不能改变系统提示、工具权限、用户身份或审批策略。
 
 ---
 
@@ -544,7 +558,7 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 
 > 时薪口径以服务端 `work_record.real_hourly_wage` 落库值为准，报表不再前端计算——保证三个模块数字永远一致。
 
-> **阶段依赖修正**：Phase 0/1 先交付事件信封、幂等和消费位点等基础设施，但不提前交付完整 insight。Phase 1 的 AI 仅包含账本自然语言记账；`insight_report` 工具和跨域报表必须等 Phase 4 的事实表与快照稳定后启用。这样可以避免 Agent 依赖尚未存在的读模型。
+> **阶段依赖修正**：Phase 0/1 先交付事件信封、幂等和消费位点等基础设施，但不提前交付完整 insight。Phase 1 的 AI 仅包含账本自然语言记账；`insight_report` 工具和跨域报表必须等 Phase 5 的事实表与快照稳定后启用。这样可以避免 Agent 依赖尚未存在的读模型。
 
 ---
 
@@ -561,7 +575,7 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 
 状态符号：`[x]` 已实现，`[~]` 部分实现，`[ ]` 未实现或未完成验收。
 
-- [x] 后端 platform/identity/worktime/ledger/app Maven Module 已物理拆分，Spring Modulith 与 ArchUnit 校验依赖和源码归属
+- [x] 后端 platform/identity/worktime/ledger/ai/app Maven Module 已物理拆分，Spring Modulith 与 ArchUnit 校验依赖和源码归属
 - [x] Flyway 接管表结构；`work_record` 迁移（含 user_id/revision），旧数据通过 V2 回填
 - [x] identity：注册/登录/JWT 双令牌/Spring Security；静态 AccessCode 已下线
 - [~] RBAC 表、审计 AOP/表/查询 API 已实现；全局 `@PreAuthorize` 策略与安全集成测试仍需补齐
@@ -596,24 +610,54 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 ### Phase 2 —— 任务管理（滴答清单形态）
 
 - [ ] 清单（含分组）/任务/子任务/标签/优先级/自定义筛选器；使用 shadcn-vue `Command`、`Tabs`、`DropdownMenu` 组合筛选交互
-- [ ] 任务日志 task_activity（时间线）；附件关联（file 域先行落地：MinIO→NAS + 签名 URL）
+- [ ] 任务日志 task_activity（时间线）；附件关联延后到 Phase 4 file 模块落地后接入，不阻塞任务核心流程
 - [ ] 日历视图：FullCalendar 日/周/月 + 自研年视图；多日/多周切换；移动端默认日/周视图，桌面端支持月视图；与打卡、记账叠加显示
 - [ ] 提醒：reminder 表 + notification 模块（站内 + Web Push）
 - [ ] 番茄钟（前端计时 + 统计上报）；习惯打卡；倒数日/纪念日
-- [ ] 全局搜索 v1（MySQL 全文索引，任务+账本+附件名）；离线同步覆盖 task 域；桌面快捷键与移动端显式入口一致
+- [ ] 全局搜索 v1（MySQL 全文索引，任务+账本；附件名在 Phase 4 接入）；离线同步覆盖 task 域；桌面快捷键与移动端显式入口一致
 - **验收**：任务全流程离线可用；提醒准点送达（±1min）；日历四视图切换流畅；手机端无 hover-only 操作。
 
-### Phase 3 —— RAG + Agent + NAS 深化
+### Phase 3A —— 统一领域工具层
 
-- [ ] RAG 管道：Tika 解析 → 分块 → embedding → Qdrant（Qdrant 容器上线）
-- [ ] 附件知识库页面：文档列表/解析状态/重新解析/删除（向量联动清除）
-- [ ] Agent 编排（LangChain4j）：意图路由 + 工具注册（worktime/ledger/task/insight 查询类工具）
-- [ ] attachment_fetch 动态拉取工具（签名 URL 流式读取）
-- [ ] agent_trace 可观测 + ai_usage 计量；对话历史落库
-- [ ] NAS 备份自动化（restic 定时快照 + 异地同步）
-- **验收**：上传 PDF 后可就其内容问答（答案含引用定位）；Agent 能正确回答"这个月加了多少班、花了多少钱、完成了几个任务"。
+Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后启动，不等待 Phase 2 任务域；任务模块完成后再注册 `task.*` 工具。
 
-### Phase 4 —— 数据联动与全景报表
+- [~] 已新增 `ai` Maven 模块，Domain Tool 注册表、风险分级和统一结果已实现；action 状态机未实现
+- [~] 已实现 `worktime.settings.get`、`worktime.records.search`、`ledger.books.list`、`ledger.overview`；其余查询及 prepare/commit、revision、幂等和领域审计待实现
+- [~] 已覆盖当前用户、authority、未知字段、重名注册与模块边界；真实 MySQL、冲突、过期和重复提交待实现，Agent 与 MCP 未对外启用
+- **验收**：每个工具具备成功、缺参、无权限、冲突和重复提交测试；prepare 不产生业务写入。
+
+### Phase 3B —— Web 工作台 Agent
+
+- [ ] 会话、消息、turn、SSE、结构化表单、确认弹窗、执行结果和断流恢复
+- [ ] 先开放只读查询，再开放记账/记工时，最后接入修改、删除和管理工具
+- [ ] Agent 在线写入后触发账本增量同步，不改变传统页面 local-first 主链
+- [ ] agent trace、ai usage、模型/提示词/工具版本评测和功能开关
+- **验收**：完整输入、缺参、歧义、拒绝、重复确认和 revision 冲突 E2E 全部通过；错误写入为零。
+
+### Phase 3C —— MCP 对外接入
+
+- [ ] Streamable HTTP MCP Server，Domain Tool 到 MCP Tool 的单一适配层
+- [ ] PAT、read/prepare/commit scope、撤销、账本限制、审计和限流
+- [ ] OAuth 2.1 + PKCE、站内审批中心和高风险 confirmation URL
+- [ ] MCP Inspector、Codex 和 WorkBuddy 真实兼容验证
+- **验收**：默认只读；未审批、过期、重放、伪造用户和越权账本均不能写入；真实客户端完成查询和低风险写入。
+
+### Phase 3D —— 现有功能全量覆盖与稳定化
+
+- [ ] 覆盖所有用户级工时和账本功能，排除同步、物化等内部维护接口
+- [ ] 模型回归评测、失败回放、成本告警、客户端熔断和数据清理任务
+- [ ] 灰度开放 MCP 写入并固化运行手册、指标、告警和回滚步骤
+- **验收**：功能覆盖矩阵无缺项，连续灰度周期无 P0/P1 数据事故，关键链路均可审计和关闭。
+
+### Phase 4 —— 文件、向量库与 RAG
+
+- [ ] file 模块、MinIO/NAS、签名 URL 和备份自动化
+- [ ] Tika 解析、分块、embedding 和 Qdrant，按用户与业务域强隔离
+- [ ] 附件知识库页面、解析重试、引用定位和向量联动清除
+- [ ] `knowledge.*` MCP 工具和 Agent RAG 检索，文档内容按不可信输入处理
+- **验收**：上传 PDF 后可就其内容问答并定位引用；越权检索为零；失败可重试。
+
+### Phase 5 —— 数据联动与全景报表
 
 - [ ] domain_event 事件表 + insight 监听器上线，report_fact 日聚合
 - [ ] 日报/周报/月报/年报快照生成（定时任务）+ 报表中心页面
@@ -621,7 +665,7 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 - [ ] 旧 `/api/data` 快照接口下线；前端 localStorage 旧数据迁移完成
 - **验收**：三域数据在任意报表中口径一致；断开任一模块，其余模块不受影响（联动仅靠事件，天然解耦）。
 
-### Phase 5 —— 打磨与规模化（持续）
+### Phase 6 —— 打磨与规模化（持续）
 
 - 全局搜索升级 Meilisearch；多端适配（PWA 安装体验、平板布局）
 - 视觉系统收敛：移除所有 Element Plus 依赖；统一 shadcn-vue 组件版本、设计 token、响应式回归和无障碍基线
@@ -632,9 +676,11 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 ### 里程碑总览
 
 ```text
-Phase 0 地基 ──→ Phase 1 账本 ──→ Phase 2 任务 ──→ Phase 3 RAG/Agent ──→ Phase 4 联动报表 ──→ Phase 5 打磨
-  多用户/RBAC      离线同步v1        附件/NAS/日历      向量库/Agent        事件联动/年报       规模化
-  审计/资源化API   周期账单/AI记账    提醒/番茄钟/习惯    知识库问答          AI日报月报          共享/可观测
+Phase 0 地基 → Phase 1 账本 ─┬→ Phase 2 任务核心 ───────────────┐
+  多用户/RBAC    离线同步v1  │    清单/日历/提醒/习惯           │
+  审计/API       周期/AI记账 │                                  ▼
+                             └→ Phase 3A-D Agent/MCP → Phase 4 文件/RAG → Phase 5 联动报表 → Phase 6 打磨
+                                工具/工作台/外部接入      向量库/知识库      事件/周期报告       规模化
 ```
 
 ---
@@ -794,10 +840,14 @@ GET    /api/v1/sync/pull?cursor=&limit=
 |---|---|---|---|
 | Phase 0 地基 | 决策项确认；完成 0A 备份 | identity、worktime v1、迁移/兼容层、CI、恢复演练、Tailwind/shadcn-vue 设计基座和响应式应用壳 | 新旧数据对账无 P0/P1 差异；可回滚；核心页面通过三类视口和基础无障碍检查 |
 | Phase 1 账本 | Phase 0 通过；事件信封和同步契约冻结 | 账户/交易/预算、导入导出、sync-engine v1、周期账单、自然语言记账预览、账本桌面/移动布局 | 断网记账无重复/丢失；金额对账通过；写工具必须确认；手机端录入无需缩放 |
-| Phase 2 任务 | sync-engine ledger 稳定；file 接口冻结 | 任务/日历/提醒/附件关联/番茄钟/习惯、移动端底部导航和日历布局 | 离线任务重放通过；提醒误差 ≤1 分钟；附件权限隔离；无 hover-only 核心操作 |
-| Phase 3 RAG/Agent | file/NAS 和隐私策略通过；供应商预算确定 | 解析、向量索引、引用问答、查询工具、AI 可观测 | 每个答案可定位来源；越权检索为 0；失败可重试 |
-| Phase 4 联动 | 事件重试和事实表稳定；口径冻结 | 日/周/月/年报、AI 总结和推送 | 事件重放后报表可重建；三域数字对账一致 |
-| Phase 5 持续 | 监控、备份和告警已启用 | 搜索、多端、共享、规模化运维 | 按 SLO 和季度恢复演练持续评估 |
+| Phase 2 任务 | sync-engine ledger 稳定 | 任务/日历/提醒/番茄钟/习惯、移动端底部导航和日历布局；附件关联延后至 Phase 4 | 离线任务重放通过；提醒误差 ≤1 分钟；无 hover-only 核心操作 |
+| Phase 3A 工具层 | Phase 1 稳定；领域公开接口和权限契约冻结 | Domain Tool、风险分级、prepare/commit、action 状态机 | prepare 无业务写入；幂等、冲突和越权测试全绿 |
+| Phase 3B Web Agent | 3A 通过；模型预算与隐私策略确定 | 会话、SSE、受控表单、确认、工时/账本 Agent | 断流可恢复；错误写入为 0；同步投影一致 |
+| Phase 3C MCP | 3B 写入链稳定；外部授权策略冻结 | Streamable HTTP、PAT/OAuth、scope、站内审批、真实客户端验证 | Inspector、Codex、WorkBuddy 通过；撤销即时生效；越权为 0 |
+| Phase 3D 稳定化 | 核心工具和客户端兼容通过 | 用户级现有功能全覆盖、评测、告警、熔断和运行手册 | 覆盖矩阵无缺项；连续灰度无 P0/P1 数据事故 |
+| Phase 4 文件/RAG | Agent/MCP 稳定；file/NAS 和隐私策略通过 | 解析、向量索引、引用问答、知识库工具 | 每个答案可定位来源；越权检索为 0；失败可重试 |
+| Phase 5 联动 | 事件重试和事实表稳定；口径冻结 | 日/周/月/年报、AI 总结和推送 | 事件重放后报表可重建；三域数字对账一致 |
+| Phase 6 持续 | 监控、备份和告警已启用 | 搜索、多端、共享、规模化运维 | 按 SLO 和季度恢复演练持续评估 |
 
 执行上允许并行的只有不改变契约的工作：前端 UI 草图、OpenAPI 文档、领域单测和部署脚本可并行；数据库迁移、认证切换、同步协议和 Agent 写工具必须按门禁串行推进。
 
