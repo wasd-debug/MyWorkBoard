@@ -24,7 +24,7 @@
         <div><b>{{ activeConversation?.title || '新对话' }}</b><small>AI 个人工作台</small></div>
       </header>
 
-      <div ref="messageViewport" class="chat-message-viewport">
+      <div ref="messageViewport" class="chat-message-viewport" @scroll.passive="handleMessageScroll">
         <div v-if="!activeMessages.length" class="chat-empty-state">
           <div class="chat-empty-copy">
             <span class="chat-ai-mark"><Sparkles /></span>
@@ -44,7 +44,11 @@
           <article v-for="item in activeMessages" :key="item.id" class="chat-message" :class="item.role">
             <span v-if="item.role === 'assistant'" class="message-avatar"><Sparkles /></span>
             <div class="message-content">
-              <p>{{ item.content }}<span v-if="item.typing" class="typing-cursor" aria-label="正在输入">▍</span></p>
+              <template v-if="item.role === 'assistant'">
+                <div class="message-markdown" v-html="renderMarkdown(item.content)"></div>
+                <span v-if="item.typing" class="typing-cursor" aria-label="正在输入">▍</span>
+              </template>
+              <p v-else>{{ item.content }}</p>
               <div v-if="item.attachments?.length" class="message-attachments">
                 <span v-for="file in item.attachments" :key="file.id"><ImageIcon v-if="file.type === 'image'" /><Mic v-else-if="file.type === 'audio'" /><Paperclip v-else />{{ file.name }}</span>
               </div>
@@ -53,6 +57,8 @@
           </article>
         </div>
       </div>
+
+      <button v-if="activeMessages.length && !autoFollow" class="scroll-to-bottom" type="button" title="滚动到底部并继续跟随" aria-label="滚动到底部并继续跟随" @click="scrollToBottom(true)"><ArrowDown /></button>
 
       <div class="chat-composer-wrap">
         <div v-if="attachments.length" class="composer-attachments">
@@ -80,7 +86,9 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowUp, ArrowUpRight, Image as ImageIcon, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, Paperclip, Sparkles, Square, SquarePen, Trash2, X } from 'lucide-vue-next'
+import DOMPurify from 'dompurify'
+import { marked } from 'marked'
+import { ArrowDown, ArrowUp, ArrowUpRight, Image as ImageIcon, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, Paperclip, Sparkles, Square, SquarePen, Trash2, X } from 'lucide-vue-next'
 import { Calendar, List, Timer, Wallet } from '../icons.js'
 import { message } from '../services/message.js'
 import { useAppStore } from '../stores/app'
@@ -97,6 +105,7 @@ const fileInput = ref(null)
 const imageInput = ref(null)
 const messageViewport = ref(null)
 const recording = ref(false)
+const autoFollow = ref(true)
 let mediaRecorder = null
 let mediaStream = null
 let recordingStartedAt = 0
@@ -123,8 +132,8 @@ function loadConversations() {
   } catch { conversations.value = [] }
   activeId.value = conversations.value[0]?.id || ''
 }
-function newConversation() { activeId.value = ''; prompt.value = ''; attachments.value = []; if (window.innerWidth < 900) sidebarOpen.value = false }
-function openConversation(id) { activeId.value = id; if (window.innerWidth < 900) sidebarOpen.value = false; scrollToBottom() }
+function newConversation() { activeId.value = ''; prompt.value = ''; attachments.value = []; autoFollow.value = true; if (window.innerWidth < 900) sidebarOpen.value = false }
+function openConversation(id) { activeId.value = id; autoFollow.value = true; if (window.innerWidth < 900) sidebarOpen.value = false; scrollToBottom(true) }
 function deleteConversation(id) { conversations.value = conversations.value.filter(item => item.id !== id); if (activeId.value === id) activeId.value = conversations.value[0]?.id || ''; persist() }
 function formatTime(value) { return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) }
 function openCard(card) { if (card.planned) { prompt.value = `打开${card.title}`; submitPrompt(); return } router.push(card.route) }
@@ -133,12 +142,23 @@ function addFiles(event, type) {
   event.target.value = ''
 }
 function removeAttachment(id) { attachments.value = attachments.value.filter(item => item.id !== id) }
+function renderMarkdown(content) {
+  return DOMPurify.sanitize(marked.parse(content || '', { breaks: true }), {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'a', 'hr'],
+    ALLOWED_ATTR: ['href', 'title'],
+  })
+}
+function handleMessageScroll() {
+  const viewport = messageViewport.value
+  if (!viewport) return
+  autoFollow.value = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 48
+}
 function createReplyPlaceholder(conversation) {
   const assistantMessage = { id: uid(), role: 'assistant', content: '正在思考…', typing: true }
   conversation.messages.push(assistantMessage)
   persist()
   scrollToBottom()
-  return assistantMessage
+  return conversation.messages[conversation.messages.length - 1]
 }
 function typeReply(assistantMessage, reply) {
   assistantMessage.content = ''
@@ -202,7 +222,14 @@ async function submitPrompt() {
     })
   }
 }
-async function scrollToBottom() { await nextTick(); if (messageViewport.value) messageViewport.value.scrollTop = messageViewport.value.scrollHeight }
+async function scrollToBottom(force = false) {
+  if (force) autoFollow.value = true
+  if (!autoFollow.value) return
+  await nextTick()
+  const viewport = messageViewport.value
+  if (!viewport) return
+  viewport.scrollTop = viewport.scrollHeight
+}
 async function toggleRecording() {
   if (recording.value) { mediaRecorder?.stop(); return }
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') { message.warning('当前浏览器不支持录音'); return }
@@ -220,7 +247,7 @@ async function toggleRecording() {
   } catch { message.warning('无法使用麦克风，请检查浏览器权限') }
 }
 
-onMounted(() => { loadConversations(); sidebarOpen.value = window.innerWidth >= 900 })
+onMounted(() => { loadConversations(); sidebarOpen.value = window.innerWidth >= 900; scrollToBottom(true) })
 onBeforeUnmount(() => {
   typingTimers.forEach(timer => window.clearInterval(timer))
   typingTimers.clear()
