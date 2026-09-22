@@ -15,6 +15,7 @@
 
 
 export * from './api/aiapi.ts';
+export * from './api/agent-api.ts';
 export * from './api/audit-api.ts';
 export * from './api/authentication-api.ts';
 export * from './api/holidays-api.ts';

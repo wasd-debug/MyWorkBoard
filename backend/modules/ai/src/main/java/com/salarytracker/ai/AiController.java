@@ -25,9 +25,10 @@ public class AiController {
     @PreAuthorize("isAuthenticated()")
     @Operation(operationId = "chatWithAssistant")
     public ApiResponse<LlmGateway.ChatResponse> chat(@RequestBody ChatRequest body) {
-        return ApiResponse.ok(agent.chat(body == null ? "" : body.message()));
+        return ApiResponse.ok(agent.chat(body == null ? null : body.sessionId(),
+                body == null ? "" : body.message()));
     }
 
-    public record ChatRequest(String message) {
+    public record ChatRequest(String sessionId, String message) {
     }
 }

@@ -71,7 +71,7 @@
 ### Phase 2-6
 
 - **Phase 2 任务管理：未启动。** 导航只有禁用占位，没有 task/file/notification 模块或表结构。
-- **Phase 3A-D Agent/MCP：Phase 3A/3B 部分实现。** 已新增 AI 物理模块、七个内部 R1 查询工具、[功能覆盖与中文评测集](Agent功能覆盖与中文评测集.md)、action JDBC 持久化、首个工时 prepare/commit 工具和最小受控 REST 入口；首页真实 DeepSeek 已能在最多 4 次调用内选择当前用户可见的只读工具。会话/turn 持久化、SSE、受控确认 UI 和 MCP Server 尚未完成。
+- **Phase 3A-D Agent/MCP：Phase 3A/3B 部分实现。** 已新增 AI 物理模块、七个内部 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit、V13 会话消息持久化和最小受控 REST 入口；首页真实 DeepSeek 已能选择当前用户可见的只读工具，并支持同一会话连续追问。SSE、turn 恢复、受控确认 UI 和 MCP Server 尚未完成。
 - **Phase 4 文件/RAG：未启动。** 尚无 MinIO/NAS 文件域、Tika、Qdrant 和知识库。
 - **Phase 5 跨域洞察：未启动。** 只有 `domain_event` 预留表，无事件发布/消费、`report_fact`、`report_snapshot` 或洞察页面。
 - **Phase 6 持续打磨：部分能力提前实现。** 已有响应式布局、主题、共享账本和可重复恢复演练；PWA、全局搜索和完整可观测体系尚未实现。
@@ -83,6 +83,7 @@
 - `cd backend && mvn -pl modules/ai -am test`：目标 Reactor 共执行 75 项，74 项通过、1 项账本 Excel fixture 跳过；platform 1/1、AI 27/27 通过，覆盖模型工具协议、只读工具隔离、参数失败回传和调用上限。
 - `cd frontend && npm run build`：成功；聚焦 Agent Playwright（desktop Chromium）2/2 通过，覆盖新会话首条响应立即可见、Markdown、假打字机和滚动跟随控制。
 - 本地真实 DeepSeek 已完成账本列表、近 30 天工时和写入边界手动验证；只读查询返回当前用户数据，写入请求没有产生记录。
+- `AgentConversationIntegrationTest` 使用真实 MySQL 执行 V1-V13 并验证消息顺序与用户隔离；OpenAPI 生成检查和 TypeScript 严格编译通过。
 
 - `cd backend && mvn test`：共发现 70 个用例，63 个通过、7 个跳过、0 个失败；AI 11/11、架构边界 6/6 通过。跳过项为 1 个真实 Excel fixture 用例和 6 个当前 Docker 未运行的 Testcontainers 用例。
 
@@ -101,7 +102,7 @@
 1. 完成 Android Chrome 与 iOS Safari 真机验收记录。
 2. 确认 MoneyWiz 与外部账单源范围。
 3. 将恢复脚本纳入季度生产运维并持续留存发布/回滚记录。
-4. 继续 [工作台的 Agent 改造计划](工作台的Agent改造计划.md) Phase 3B：在现有只读工具循环之上建设 session/turn 持久化与状态查询，再接入 SSE 与受控表单。
+4. 继续 [工作台的 Agent 改造计划](工作台的Agent改造计划.md) Phase 3B：在现有文本上下文之上建设会话列表/消息查询、turn 状态和 SSE，再接入受控表单。
 5. Phase 2 任务域与现有工时/账本 Agent 可分别推进；任务能力完成后再注册为新的 Domain Tool，不阻塞 Phase 3A-D。
 
 ## 文档约定

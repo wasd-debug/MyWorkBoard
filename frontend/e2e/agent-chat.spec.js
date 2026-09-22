@@ -22,6 +22,38 @@ test('agent chat displays the first reply in a new conversation without refresh'
   await expect(page.getByText('可以正常访问。', { exact: false })).toBeVisible()
 })
 
+test('agent chat reuses one session id for follow-up questions', async ({ page }) => {
+  const auth = await registerUser(page.request, 'agent-context-e2e')
+  await markSessionBeforeLoad(page, auth.user.id)
+  const requests = []
+  await page.route('**/api/v1/ai/chat', async route => {
+    const body = route.request().postDataJSON()
+    requests.push(body)
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: {
+        content: requests.length === 1 ? '你有一个账本。' : '它叫默认账本。',
+        provider: 'test',
+        configured: true,
+        sessionId: body.sessionId,
+      } }),
+    })
+  })
+
+  await page.goto('/')
+  await page.getByLabel('给 AI 发送消息').fill('我有几个账本？')
+  await page.getByRole('button', { name: '发送' }).click()
+  await expect(page.getByText('你有一个账本。')).toBeVisible()
+  await page.getByLabel('给 AI 发送消息').fill('它叫什么？')
+  await page.getByRole('button', { name: '发送' }).click()
+  await expect(page.getByText('它叫默认账本。')).toBeVisible()
+
+  expect(requests).toHaveLength(2)
+  expect(requests[0].sessionId).toBeTruthy()
+  expect(requests[1].sessionId).toBe(requests[0].sessionId)
+})
+
 test('agent chat renders markdown and exposes controllable bottom following', async ({ page }) => {
   const auth = await registerUser(page.request, 'agent-chat-e2e')
   await markSessionBeforeLoad(page, auth.user.id)

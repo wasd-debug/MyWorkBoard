@@ -207,7 +207,7 @@ async function submitPrompt() {
   conversation = activeConversation.value
   const assistantMessage = createReplyPlaceholder(conversation)
   try {
-    const result = await apiChatWithAssistant(text || '请分析这些附件')
+    const result = await apiChatWithAssistant(text || '请分析这些附件', conversation.id)
     const reply = {
       content: result?.content || '模型没有返回可显示的内容，请稍后重试。',
       ...inferRoute(text),

@@ -14,9 +14,9 @@
 
 
 
-export interface ChatResponse {
-    'content'?: string;
-    'provider'?: string;
-    'configured'?: boolean;
-    'sessionId'?: string;
+export interface ActionResponse {
+    'id'?: string;
+    'toolName'?: string;
+    'status'?: string;
+    'expiresAt'?: string;
 }

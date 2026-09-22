@@ -13,10 +13,11 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { ActionResponse } from './action-response.ts';
 
-export interface ChatResponse {
-    'content'?: string;
-    'provider'?: string;
-    'configured'?: boolean;
-    'sessionId'?: string;
+export interface ApiResponseActionResponse {
+    'data'?: ActionResponse;
+    'traceId'?: string;
 }

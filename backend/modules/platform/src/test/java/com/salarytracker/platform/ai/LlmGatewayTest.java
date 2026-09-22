@@ -66,4 +66,13 @@ class LlmGatewayTest {
         assertEquals("ledger__overview", turn.toolCalls().get(0).name());
         assertEquals("{\"bookId\":\"book-1\"}", turn.toolCalls().get(0).arguments());
     }
+
+    @Test
+    void omitsToolCallsForPlainAssistantHistory() throws Exception {
+        JsonNode message = mapper.valueToTree(LlmGateway.AgentMessage.assistant("历史回答", List.of()));
+
+        assertEquals("assistant", message.path("role").asText());
+        assertEquals("历史回答", message.path("content").asText());
+        assertTrue(message.path("tool_calls").isMissingNode());
+    }
 }

@@ -159,7 +159,10 @@ public class LlmGateway {
         }
     }
 
-    public record ChatResponse(String content, String provider, boolean configured) {
+    public record ChatResponse(String content, String provider, boolean configured, String sessionId) {
+        public ChatResponse(String content, String provider, boolean configured) {
+            this(content, provider, configured, null);
+        }
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -177,7 +180,7 @@ public class LlmGateway {
         }
 
         public static AgentMessage assistant(String content, List<AgentToolCall> calls) {
-            List<ProviderToolCall> providerCalls = calls.stream()
+            List<ProviderToolCall> providerCalls = calls == null || calls.isEmpty() ? null : calls.stream()
                     .map(call -> new ProviderToolCall(call.id(), "function",
                             new ProviderFunctionCall(call.name(), call.arguments())))
                     .toList();

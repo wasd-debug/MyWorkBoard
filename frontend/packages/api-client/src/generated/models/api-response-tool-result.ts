@@ -13,10 +13,11 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { ToolResult } from './tool-result.ts';
 
-export interface ChatResponse {
-    'content'?: string;
-    'provider'?: string;
-    'configured'?: boolean;
-    'sessionId'?: string;
+export interface ApiResponseToolResult {
+    'data'?: ToolResult;
+    'traceId'?: string;
 }

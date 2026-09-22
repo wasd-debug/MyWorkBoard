@@ -1,11 +1,11 @@
 # 工作台 Agent 与 MCP 改造计划
 
-> 版本：v1.5（2026-09-22）
-> 状态：实施中（阶段 2 已完成真实 DeepSeek 与 R0/R1 Domain Tool 的最小只读调用循环；会话持久化、SSE、trace 和受控写入仍按后续增量建设）
+> 版本：v1.6（2026-09-22）
+> 状态：实施中（阶段 2 已完成真实 DeepSeek、R0/R1 Domain Tool 和基础会话上下文；SSE、turn 状态、trace 和受控写入仍按后续增量建设）
 
 > 运维修正：迁移 `V8.1` 是在 `V8` 已发布后补充的索引迁移，已有数据库升级时需开启 `FLYWAY_OUT_OF_ORDER=true`；不得删除或改写 `flyway_schema_history`。
 
-> 本地数据库修复记录（2026-09-22）：旧库中的 `V9` checksum 与当前源码不一致，已确认源码未被改写后执行 Flyway repair；`V8.1` 的 MySQL DDL 已实际完成但留下 `success=0`，核对索引存在后仅修复历史状态。未删除业务表或数据，后端已成功迁移至 V12。
+> 本地数据库修复记录（2026-09-22）：旧库中的 `V9` checksum 与当前源码不一致，已确认源码未被改写后执行 Flyway repair；`V8.1` 的 MySQL DDL 已实际完成但留下 `success=0`，核对索引存在后仅修复历史状态。未删除业务表或数据，后端已成功迁移至 V13。
 > 适用范围：现有工时、账本和 AI 工作台；任务、文件、向量库与 RAG 按后续阶段接入
 > 总原则：先把现有业务能力收敛为可验证的领域工具，再接入 Web Agent 和 MCP；每一阶段独立交付、独立验证、可通过功能开关回滚，未通过退出门禁不得进入下一阶段。
 
@@ -30,10 +30,12 @@
 - 工具结果作为不可信数据回传模型，单轮最多执行 4 次工具；达到上限后关闭工具选择并要求模型总结，写工具 R2-R4 不会进入模型上下文。
 - LLM 网关已覆盖 OpenAI-compatible `tools`、`tool_choice`、assistant `tool_calls` 和 tool `tool_call_id` 请求格式，并解析 DeepSeek 工具调用响应。
 - 修复新会话首条回答继续修改非响应式原始对象的问题；“正在思考…”和后续假打字机内容无需刷新即可显示，并加入独立浏览器回归。
+- 增加 V13 `agent_session`、`agent_message` 表和用户隔离的 JDBC 会话服务；首页现将同一前端会话的 `sessionId` 发送到后端，模型每轮加载最近 20 条 user/assistant 消息，并在最终回答后持久化本轮问答。
+- 上下文有长度上限和消息长度校验；实时账本/工时数据仍要求重新调用只读工具，历史回答不能替代事实查询。不存在的或其他用户的会话 ID 不会被接受。
 
 本次明确未实施：
 
-- 模型会话持久化、SSE、Agent trace、动态表单和完整首页 Agent UI；当前首页可执行无状态的只读工具循环，但刷新后没有服务端会话历史，也不能恢复进行中的 turn。
+- SSE、turn 状态、Agent trace、动态表单和完整首页 Agent UI；当前已持久化文本上下文，但仍不能恢复进行中的 turn，也没有服务端会话列表/消息 API。
 - 账本真实写工具、工时修改/删除、revision 冲突展示和相关领域审计扩展。
 - MCP Server、PAT/OAuth、scope、站内审批与外部客户端兼容验证。
 - 文件、向量库和 RAG。
@@ -43,10 +45,12 @@
 - `cd backend && mvn -pl modules/ai -am test` 成功；目标 Reactor 共执行 75 项，74 项通过、1 项账本 Excel fixture 跳过；其中 platform 1/1、AI 模块 27/27 通过。新增测试覆盖只读工具暴露、R2 隔离、参数校验、4 次调用上限及 DeepSeek 工具协议序列化/解析。
 - `cd frontend && npm run build` 成功；`SALARY_E2E_SOURCE_BUILD=1 PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test e2e/agent-chat.spec.js --project=desktop-chromium` 2/2 通过，覆盖新会话首条响应、Markdown、假打字机和用户控制的底部跟随。
 - 本地真实 DeepSeek 手动验证通过：“我有哪些账本？”返回当前用户默认账本；“查询我最近的工时记录”调用查询工具并返回近 30 天 0 条；“帮我记今天工时”明确拒绝写入。发送后思考占位与回复均无需刷新可见。
+- Testcontainers `AgentConversationIntegrationTest` 成功，真实 MySQL 从空库执行 V1-V13 并验证会话消息顺序和用户隔离；本地 Compose 后端已迁移至 V13 并启动成功。
+- `cd frontend && npm run build && npm run api:check` 成功；新增浏览器回归覆盖同一 sessionId 的连续追问。
 - `cd backend && mvn -pl app -am -Dtest=ArchitectureBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false test` 成功；架构边界测试 7/7 通过。
 - `cd backend && mvn test` 已运行至 app 的 Testcontainers 阶段；Docker 客户端连接成功，但 Ryuk 容器持续停在启动状态且未出现在 `docker ps`。使用 `TESTCONTAINERS_RYUK_DISABLED=true` 复测后，目标 `mysql:8.0.36` 容器也停在相同状态，两次测试进程均已人工终止。真实 MySQL 门禁仍标记为未完成，不能用本次结果宣称通过。
 
-当前判定：本增量仍未满足阶段 2 的完整退出门禁。首页真实模型已能自主选择并执行只读工具，但尚无会话持久化、SSE、断流恢复和自动中文评测；下一增量优先建设 session/turn 持久化与状态查询，不启动 MCP。
+当前判定：本增量仍未满足阶段 2 的完整退出门禁。首页真实模型已能自主选择只读工具并保留最近文本上下文，但尚无 SSE、turn 状态、断流恢复和自动中文评测；下一增量优先建设会话列表/消息查询与 SSE，不启动 MCP。
 
 ### 本地手动验证
 
@@ -66,7 +70,7 @@
 - 账本、账户、分类、商家、项目、成员、角色、预算、流水、周期任务、导入导出、回收站和审计能力。
 - 账本 IndexedDB + oplog local-first 同步链路。
 - OpenAI 兼容 LLM 网关，以及自然语言记账“解析草稿 → 审核 → 确认”能力。
-- AI 工作台页面骨架；首页已从本地关键词回复切换到服务端 DeepSeek 聊天，并具备最小无状态只读工具调用循环。发送后立即创建“正在思考…”助手气泡，模型返回后在同一气泡内进行假打字机输出。助手内容支持经过标签白名单清理的 Markdown；只有用户处于底部附近时才自动跟随，向上滚动后停止吸附并提供恢复到底部的按钮。当前尚未形成可恢复的服务端 Agent 会话。
+- AI 工作台页面骨架；首页已从本地关键词回复切换到服务端 DeepSeek 聊天，并具备带服务端文本上下文的只读工具调用循环。发送后立即创建“正在思考…”助手气泡，模型返回后在同一气泡内进行假打字机输出。助手内容支持经过标签白名单清理的 Markdown；只有用户处于底部附近时才自动跟随，向上滚动后停止吸附并提供恢复到底部的按钮。当前尚未形成可恢复的服务端 Agent turn。
 
 本次改造的目标不是用对话页面替换现有 Web 页面，而是让同一套业务能力同时服务于三类入口：
 
@@ -636,6 +640,7 @@ mcp:worktime:commit
 - 接入导航卡片，但不开放写工具。
 - [x] 将首页本地关键词回复替换为真实服务端 DeepSeek 聊天；保留假打字机，未配置密钥或上游失败时展示明确状态。
 - [x] 建立最多 4 次调用的只读模型工具循环；R2-R4 不向模型暴露，工具执行继续复用注册表的 Schema、权限和领域校验。
+- [x] 持久化前端会话的最近 20 条文本消息，连续追问复用同一 `sessionId`；会话按认证用户隔离，历史实时数据仍强制重新查询。
 
 验证：
 

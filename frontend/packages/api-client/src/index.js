@@ -16,8 +16,8 @@ const revision = value => value === undefined || value === null || value === '' 
 export { api, clearAccessToken, getAccessToken, setAccessToken }
 export * from './generated/models/index.ts'
 
-export async function apiChatWithAssistant(message) {
-  return data(await api.post('/api/v1/ai/chat', { message }, { timeout: 60_000 }))
+export async function apiChatWithAssistant(message, sessionId) {
+  return data(await api.post('/api/v1/ai/chat', { sessionId, message }, { timeout: 60_000 }))
 }
 
 export async function apiLogin(credentials) { const result = data(await auth.login({ credentials })); setAccessToken(result?.accessToken); return result }

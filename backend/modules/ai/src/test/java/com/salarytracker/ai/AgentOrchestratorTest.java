@@ -2,12 +2,14 @@ package com.salarytracker.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.salarytracker.ai.tool.DomainToolRegistry;
+import com.salarytracker.ai.session.AgentConversationService;
 import com.salarytracker.ai.tool.ToolDefinition;
 import com.salarytracker.ai.tool.ToolResult;
 import com.salarytracker.ai.tool.ToolRisk;
 import com.salarytracker.ai.tool.ToolSchemas;
 import com.salarytracker.platform.ai.LlmGateway;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
@@ -16,6 +18,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -26,6 +29,13 @@ class AgentOrchestratorTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final DomainToolRegistry tools = mock(DomainToolRegistry.class);
     private final LlmGateway model = mock(LlmGateway.class);
+    private final AgentConversationService conversations = mock(AgentConversationService.class);
+
+    @BeforeEach
+    void setUpConversation() {
+        when(conversations.open(nullable(String.class), any()))
+                .thenReturn(new AgentConversationService.SessionContext("session-1", 7L, List.of()));
+    }
 
     @Test
     void exposesAndExecutesOnlyAuthorizedReadTools() {
@@ -42,7 +52,7 @@ class AgentOrchestratorTest {
                 .thenReturn(new LlmGateway.AgentTurn("你有一个账本：**日常账本**。", List.of(),
                         "deepseek", true));
 
-        LlmGateway.ChatResponse response = new AgentOrchestrator(tools, model, mapper).chat("我有哪些账本？");
+        LlmGateway.ChatResponse response = orchestrator().chat("我有哪些账本？");
 
         assertEquals("你有一个账本：**日常账本**。", response.content());
         verify(tools).invoke(org.mockito.ArgumentMatchers.eq("ledger.books.list"), any());
@@ -69,7 +79,7 @@ class AgentOrchestratorTest {
                     return new LlmGateway.AgentTurn("请补充查询范围。", List.of(), "deepseek", true);
                 });
 
-        LlmGateway.ChatResponse response = new AgentOrchestrator(tools, model, mapper).chat("查询工时");
+        LlmGateway.ChatResponse response = orchestrator().chat("查询工时");
 
         assertEquals("请补充查询范围。", response.content());
         verify(tools, never()).invoke(any(), any());
@@ -80,7 +90,7 @@ class AgentOrchestratorTest {
         when(model.configured()).thenReturn(false);
         when(model.chat("你好")).thenReturn(new LlmGateway.ChatResponse("未配置", "not-configured", false));
 
-        LlmGateway.ChatResponse response = new AgentOrchestrator(tools, model, mapper).chat("你好");
+        LlmGateway.ChatResponse response = orchestrator().chat("你好");
 
         assertEquals("未配置", response.content());
         verify(tools, never()).definitionsForCurrentUser();
@@ -103,13 +113,43 @@ class AgentOrchestratorTest {
                         "deepseek", true))
                 .thenReturn(new LlmGateway.AgentTurn("查询完成。", List.of(), "deepseek", true));
 
-        LlmGateway.ChatResponse response = new AgentOrchestrator(tools, model, mapper).chat("查询多个账本信息");
+        LlmGateway.ChatResponse response = orchestrator().chat("查询多个账本信息");
 
         assertEquals("查询完成。", response.content());
         verify(tools, times(4)).invoke(org.mockito.ArgumentMatchers.eq("ledger.books.list"), any());
         var toolCaptor = ArgumentCaptor.forClass(List.class);
         verify(model, times(2)).agentTurn(any(), toolCaptor.capture());
         assertTrue(toolCaptor.getAllValues().get(1).isEmpty());
+    }
+
+    @Test
+    void includesRecentConversationMessagesAndPersistsFinalReply() {
+        when(model.configured()).thenReturn(true);
+        when(tools.definitionsForCurrentUser()).thenReturn(List.of());
+        when(conversations.open("conversation-1", "它叫什么？"))
+                .thenReturn(new AgentConversationService.SessionContext("conversation-1", 7L, List.of(
+                        new AgentConversationService.StoredMessage("user", "我有几个账本？"),
+                        new AgentConversationService.StoredMessage("assistant", "你有一个账本。"))));
+        when(model.agentTurn(any(), any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<LlmGateway.AgentMessage> messages = invocation.getArgument(0);
+            assertEquals(List.of("system", "user", "assistant", "user"),
+                    messages.stream().map(LlmGateway.AgentMessage::role).toList());
+            assertEquals("我有几个账本？", messages.get(1).content());
+            assertEquals("它叫什么？", messages.get(3).content());
+            return new LlmGateway.AgentTurn("默认账本。", List.of(), "deepseek", true);
+        });
+
+        LlmGateway.ChatResponse response = orchestrator().chat("conversation-1", "它叫什么？");
+
+        assertEquals("conversation-1", response.sessionId());
+        assertEquals("默认账本。", response.content());
+        verify(conversations).complete(any(), org.mockito.ArgumentMatchers.eq("它叫什么？"),
+                org.mockito.ArgumentMatchers.eq("默认账本。"));
+    }
+
+    private AgentOrchestrator orchestrator() {
+        return new AgentOrchestrator(tools, model, mapper, conversations);
     }
 
     private ToolDefinition definition(String name, ToolRisk risk) {
