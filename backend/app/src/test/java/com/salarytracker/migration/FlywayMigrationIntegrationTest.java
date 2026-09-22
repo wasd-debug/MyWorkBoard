@@ -34,10 +34,12 @@ class FlywayMigrationIntegrationTest {
         flyway.migrate();
         flyway.validate();
 
-        assertEquals("11", flyway.info().current().getVersion().getVersion());
+        assertEquals("14", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(
-                MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())) {
+                MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
+             var statement = connection.createStatement()) {
             assertTrue(tableExists(connection, "work_record"));
+            assertEquals(39L, scalar(statement, "SELECT COUNT(*) FROM holiday WHERE year_key=2026"));
             assertTrue(tableExists(connection, "ledger_transaction"));
             assertTrue(tableExists(connection, "ledger_sync_oplog"));
             assertTrue(tableExists(connection, "ledger_scheduled_task"));
@@ -70,7 +72,7 @@ class FlywayMigrationIntegrationTest {
         flyway.migrate();
         flyway.validate();
 
-        assertEquals("11", flyway.info().current().getVersion().getVersion());
+        assertEquals("14", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement()) {
@@ -80,6 +82,8 @@ class FlywayMigrationIntegrationTest {
             assertEquals(18000L, scalar(statement, "SELECT salary_pre FROM work_setting WHERE user_id=1"));
             assertEquals(2L, scalar(statement, "SELECT source_count FROM migration_reconciliation WHERE migration_name='legacy-records-to-work-record'"));
             assertEquals(2L, scalar(statement, "SELECT target_count FROM migration_reconciliation WHERE migration_name='legacy-records-to-work-record'"));
+            assertEquals(-22L, scalar(statement, "SELECT overtime_min FROM work_record WHERE date='2026-08-03'"));
+            assertEquals(2L, scalar(statement, "SELECT COUNT(*) FROM work_record WHERE calc_version='phase0-v2-day-type'"));
         }
     }
 

@@ -11,7 +11,7 @@ final class WorktimeCalculator {
 
     static Result calculate(String startText, String endText, int lunchMin, int restMin,
                             String workStartText, String workEndText,
-                            BigDecimal salary, BigDecimal daysPerMonth) {
+                            BigDecimal salary, BigDecimal daysPerMonth, boolean offDay) {
         LocalTime start = LocalTime.parse(normalizeTime(startText));
         int actualMin = 0;
         if (endText != null && !endText.isBlank()) {
@@ -26,7 +26,7 @@ final class WorktimeCalculator {
         long standardElapsed = Duration.between(workStart, workEnd).toMinutes();
         if (standardElapsed < 0) standardElapsed += 24 * 60;
         int standardMin = Math.max(0, (int) standardElapsed - lunchMin);
-        int overtimeMin = actualMin == 0 ? 0 : actualMin - standardMin;
+        int overtimeMin = actualMin == 0 ? 0 : offDay ? actualMin : actualMin - standardMin;
         BigDecimal realHourlyWage = actualMin > 0 && salary.signum() > 0 && daysPerMonth.signum() > 0
                 ? salary.divide(daysPerMonth, 8, RoundingMode.HALF_UP)
                         .divide(BigDecimal.valueOf(actualMin).divide(BigDecimal.valueOf(60), 8, RoundingMode.HALF_UP), 2, RoundingMode.HALF_UP)

@@ -46,7 +46,7 @@
 |---|---|---|
 | 前端 | Vue 3 + Vite + Pinia + Vue Router + ECharts + Tailwind/token + Reka UI + Lucide；Element Plus 已移除 | 工时使用生成客户端访问资源 API；账本六类资源使用 IndexedDB/oplog local-first，在线命令由 store facade 统一管理 |
 | 后端 | Java 17 + Spring Boot 3.2；platform/identity/worktime/ledger/ai/app 六个 Maven 模块 | 业务源码和单测已物理归属对应模块，app 仅装配应用、迁移资源和跨模块测试；AI 当前只含原有网关和领域工具基础 |
-| 数据库 | MySQL 8 + Flyway V1-V11；用户、工时、账本、同步、定时任务、审计和 AI 草稿表 | 多用户和账本数据模型已落地；事件、任务、文件、RAG 和洞察读模型仍未落地 |
+| 数据库 | MySQL 8 + Flyway V1-V14；用户、工时、账本、同步、定时任务、审计和 AI 会话表 | 多用户和账本数据模型已落地；事件、任务、文件、RAG 和洞察读模型仍未落地 |
 | 鉴权 | Spring Security + JWT access token + HttpOnly refresh cookie；用户、角色和权限表 | 已替换静态 AccessCode；仍需限流、安全集成测试和更完整的会话运维能力 |
 | 部署 | Docker Compose（Nginx + Spring Boot + MySQL），源码/预构建镜像/本地产物三种模式 | 当前仍是三服务单机部署；Redis、MinIO、Qdrant、监控等按后续阶段引入 |
 
@@ -131,7 +131,7 @@ frontend/
 
 `packages/ui` 和 `src/components/ui` 维护可审查、可定制的源码组件，页面通过组合组件复用能力；图标统一由 Lucide 提供，Element Plus 及其图标依赖已经移除。
 
-> 计算口径迁移说明：现有 `utils/calc.js` 的时薪公式复制到后端 `worktime` 模块作为权威实现，前端仅保留展示层计算，两者通过 OpenAPI 中的常量定义保持一致，报表联动一律采用服务端计算结果。
+> 计算口径迁移说明：现有 `utils/calc.js` 的时薪公式复制到后端 `worktime` 模块作为权威实现，前端仅保留展示层计算，两者通过 OpenAPI 中的常量定义保持一致，报表联动一律采用服务端计算结果。服务端保存时必须按法定日历区分工作日与休息日：工作日加班为净工时减标准工时，休息日加班为扣除午休和自定义休息后的全部净工时；每条记录通过 `calc_version` 标识所用口径。
 
 ---
 
@@ -581,6 +581,7 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 - [~] RBAC 表、审计 AOP/表/查询 API 已实现；全局 `@PreAuthorize` 策略与安全集成测试仍需补齐
 - [x] `/api/v1/worktime` 资源 CRUD 已实现并由工时前端使用；snapshot 与旧 `/api/data` 已删除
 - [x] 已保存记录的加班/时薪由后端持久化并有黄金样例，前端 `calc.js` 只用于表单预览和页面聚合
+- [x] Flyway V14 已将旧算法记录全量回算为 `phase0-v2-day-type`；后端保存与前端预览统一使用法定节假日、调休补班和自然周末判定
 - [x] 统一 `ApiResponse<T>`、RFC 7807 `ApiProblem`、springdoc 与固定 operationId 已实现；`api-client` 由 OpenAPI Generator 生成
 - [x] Tailwind、语义 token、Reka UI 基础组件、响应式应用壳、focus-visible 和主题对比度门禁已建立
 - [x] 页面具备响应式布局，Element Plus 与图标包已清零，消息和图标使用本地服务/组件及 Lucide
@@ -720,7 +721,7 @@ Phase 0 地基 → Phase 1 账本 ─┬→ Phase 2 任务核心 ─────
 当前实现事实：
 
 - 后端为 Maven 父工程 + `platform`/`identity`/`worktime`/`ledger`/`app`，业务源码已物理迁入所属模块，app 只做组装。
-- Flyway V1-V11 管理用户、工时、账本、同步、定时任务和审计结构；`spring.sql.init.mode=never`。
+- Flyway V1-V14 管理用户、工时、账本、同步、定时任务、审计和 Agent 会话结构，并通过 V14 统一回算历史工时口径；`spring.sql.init.mode=never`。
 - Spring Security + JWT 已替换 AccessCode；账本共享权限由服务端逐请求校验。
 - 工时前端使用 settings/records 资源 API；账本六类离线资源写入使用 IndexedDB/oplog，跨资源命令由在线 store facade 管理。
 - 任务、文件/RAG 和洞察模块尚未进入实现阶段。

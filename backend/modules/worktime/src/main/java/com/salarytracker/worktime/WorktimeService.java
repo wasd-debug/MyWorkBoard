@@ -30,6 +30,7 @@ import java.util.Map;
 @Service
 public class WorktimeService {
     private static final DateTimeFormatter DATE = DateTimeFormatter.ISO_LOCAL_DATE;
+    private static final String CALC_VERSION = "phase0-v2-day-type";
     private static final String RECORD_COLUMNS = "id, date, TIME_FORMAT(start_time, '%H:%i') start_time, " +
             "IFNULL(TIME_FORMAT(end_time, '%H:%i'), '') end_time, rest_min, overtime_min, " +
             "real_hourly_wage, note, calc_version, timezone, revision";
@@ -37,11 +38,13 @@ public class WorktimeService {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final CurrentUserResolver currentUser;
+    private final WorkdayCalendar workdayCalendar;
 
     public WorktimeService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper, CurrentUserResolver currentUser) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.currentUser = currentUser;
+        this.workdayCalendar = new WorkdayCalendar(jdbcTemplate, objectMapper);
     }
 
     public Settings readSettings() {
@@ -208,14 +211,14 @@ public class WorktimeService {
         Calculation calculation = calculate(date, start, end, rest);
         SalarySnapshot snapshot = new SalarySnapshot(readSettings().basis(), calculation.salary());
         if (id == null) {
-            jdbcTemplate.update("INSERT INTO work_record (user_id, date, start_time, end_time, rest_min, overtime_min, real_hourly_wage, note, salary_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            jdbcTemplate.update("INSERT INTO work_record (user_id, date, start_time, end_time, rest_min, overtime_min, real_hourly_wage, note, salary_snapshot, calc_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     userId, date, Time.valueOf(toSqlTime(start)), end.isBlank() ? null : Time.valueOf(toSqlTime(end)),
-                    rest, calculation.overtimeMin(), calculation.realHourlyWage(), note, json(snapshot));
+                    rest, calculation.overtimeMin(), calculation.realHourlyWage(), note, json(snapshot), CALC_VERSION);
             id = jdbcTemplate.queryForObject("SELECT id FROM work_record WHERE user_id = ? AND date = ?", Long.class, userId, date);
         } else {
-            jdbcTemplate.update("UPDATE work_record SET date = ?, start_time = ?, end_time = ?, rest_min = ?, overtime_min = ?, real_hourly_wage = ?, note = ?, salary_snapshot = ?, deleted = FALSE, revision = revision + 1 WHERE id = ? AND user_id = ?",
+            jdbcTemplate.update("UPDATE work_record SET date = ?, start_time = ?, end_time = ?, rest_min = ?, overtime_min = ?, real_hourly_wage = ?, note = ?, salary_snapshot = ?, calc_version = ?, deleted = FALSE, revision = revision + 1 WHERE id = ? AND user_id = ?",
                     date, Time.valueOf(toSqlTime(start)), end.isBlank() ? null : Time.valueOf(toSqlTime(end)), rest,
-                    calculation.overtimeMin(), calculation.realHourlyWage(), note, json(snapshot), id, userId);
+                    calculation.overtimeMin(), calculation.realHourlyWage(), note, json(snapshot), CALC_VERSION, id, userId);
         }
         return jdbcTemplate.queryForObject("SELECT " + RECORD_COLUMNS + " FROM work_record WHERE id = ? AND user_id = ?",
                 (result, rowNum) -> workRecord(result), id, userId);
@@ -229,7 +232,7 @@ public class WorktimeService {
                 : (settings.basis() == Basis.PRE ? monthly.pre() : monthly.post());
         WorktimeCalculator.Result result = WorktimeCalculator.calculate(
                 startText, endText, settings.lunchMin(), rest, settings.workStart(), settings.workEnd(),
-                salary, settings.daysPerMonth());
+                salary, settings.daysPerMonth(), workdayCalendar.isOffDay(LocalDate.parse(date, DATE)));
         return new Calculation(result.overtimeMin(), result.realHourlyWage(), salary);
     }
 

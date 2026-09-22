@@ -91,7 +91,9 @@ public class HolidayService {
             KvEntry cached = kvEntryMapper.selectById(cacheKey);
             if (cached != null && cached.getValue() != null && !cached.getValue().isEmpty()) {
                 JsonNode days = objectMapper.readTree(cached.getValue());
-                return new HolidayResponse(true, year, normalize(days), HolidaySource.CACHE);
+                Map<String, HolidayDay> normalized = normalize(days);
+                persistDatabase(year, normalized);
+                return new HolidayResponse(true, year, normalized, HolidaySource.CACHE);
             }
         } catch (Exception e) {
             log.warn("读取节假日缓存失败 year={}: {}", year, e.getMessage());

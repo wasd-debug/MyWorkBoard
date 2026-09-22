@@ -43,7 +43,7 @@ class WorktimeCalculationIntegrationTest extends MySqlIntegrationTestSupport {
 
         assertDecimal("100.00", monthlyOverride.realHourlyWage());
         assertDecimal("125.00", defaultPreTax.realHourlyWage());
-        assertEquals("phase0-v1", monthlyOverride.calcVersion());
+        assertEquals("phase0-v2-day-type", monthlyOverride.calcVersion());
         assertEquals("Asia/Shanghai", monthlyOverride.timezone());
         assertEquals(1L, monthlyOverride.revision());
 
@@ -52,6 +52,22 @@ class WorktimeCalculationIntegrationTest extends MySqlIntegrationTestSupport {
                 String.valueOf(preTax.revision()));
         WorkRecord postTax = service.createRecord(record("2026-11-02"), "worktime-default-post");
         assertDecimal("75.00", postTax.realHourlyWage());
+    }
+
+    @Test
+    void distinguishesNaturalOffDaysFromStatutoryMakeupWorkdays() {
+        WorktimeService service = serviceForNewUser();
+        service.writeSettings(new SettingsUpdate(
+                new BigDecimal("10000"), new BigDecimal("8000"), Basis.POST,
+                "08:30", "17:30", 120, new BigDecimal("20"), false, null), null);
+
+        WorkRecord saturday = service.createRecord(
+                new RecordCommand("2026-09-19", "08:30", "22:00", 0, ""));
+        WorkRecord makeupSunday = service.createRecord(
+                new RecordCommand("2026-09-20", "08:30", "22:00", 0, ""));
+
+        assertEquals(690, saturday.overtimeMin());
+        assertEquals(270, makeupSunday.overtimeMin());
     }
 
     private WorktimeService serviceForNewUser() {

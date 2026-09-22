@@ -31,6 +31,7 @@
 本轮新增收口：
 
 - 工时 store 与页面已切换 settings/records CRUD；服务端持久化计算结果，前端计算只用于未保存预览和页面聚合。
+- 工时服务按法定节假日、调休补班和自然周末统一判定日期类型：工作日加班为净工时减标准工时，休息日加班为扣除午休与自定义休息后的全部净工时。Flyway V14 将历史记录统一回算为 `phase0-v2-day-type`，避免旧算法和重新保存后的新算法混用。
 - Testcontainers 覆盖 MySQL 资源契约、工资口径、权限、同步与 Flyway 空库/旧 fixture 重放。
 - Element Plus 与图标包已经移除，统一使用源码 UI、轻量消息服务和 Lucide。
 - 恢复脚本和 Playwright 工时资源/账本断网场景已建立。
