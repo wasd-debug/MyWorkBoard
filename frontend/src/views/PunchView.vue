@@ -113,7 +113,9 @@ const std = computed(() => CALC.stdWorkMin(ctx.value))
 const ot = computed(() => rec.value.id ? Number(rec.value.overtimeMin || 0) : (isOffDay.value ? m.value : m.value - std.value))
 const otLabel = computed(() => isOffDay.value ? '加班 OT' : (ot.value >= 0 ? '加班 OT' : '早退 EARLY'))
 const effDays = computed(() => CALC.effDaysPerMonth(ctx.value, punchDate.value.slice(0, 7), appStore.holidays, store.records))
-const rate = computed(() => rec.value.id ? Number(rec.value.realHourlyWage || 0) : CALC.dayRate(rec.value, ctx.value, store.settings.basis, effDays.value))
+// The persisted rate is calculated with the basis active when the record was saved.
+// Recalculate from the current basis so switching pre-tax/post-tax updates the page.
+const rate = computed(() => CALC.dayRate(rec.value, ctx.value, store.settings.basis, effDays.value))
 const otherRate = computed(() => CALC.dayRate(rec.value, ctx.value, store.settings.basis === 'pre' ? 'post' : 'pre', effDays.value))
 const base = computed(() => CALC.baseRate(ctx.value, store.settings.basis, effDays.value))
 const diff = computed(() => base.value > 0 ? (rate.value - base.value) / base.value * 100 : 0)

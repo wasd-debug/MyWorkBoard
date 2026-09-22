@@ -185,7 +185,8 @@ const hours = CALC.fmtHours
 const signed = CALC.fmtSigned
 const actual = key => CALC.actualMin(store.records[key], ctx.value)
 const otOf = key => store.records[key]?.id ? Number(store.records[key].overtimeMin || 0) : (CALC.dayType(key, appStore.holidays) === 'off' ? actual(key) : actual(key) - CALC.stdWorkMin(ctx.value))
-const rateOf = key => store.records[key]?.id ? Number(store.records[key].realHourlyWage || 0) : CALC.dayRate(store.records[key], ctx.value, store.settings.basis, effDays.value)
+// Records can outlive a basis change; calculate the displayed rate from the active basis.
+const rateOf = key => CALC.dayRate(store.records[key], ctx.value, store.settings.basis, effDays.value)
 
 const monthPre = ref(0)
 const monthPost = ref(0)
