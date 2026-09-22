@@ -133,9 +133,17 @@ function addFiles(event, type) {
   event.target.value = ''
 }
 function removeAttachment(id) { attachments.value = attachments.value.filter(item => item.id !== id) }
-function typeReply(conversation, reply) {
-  conversation.messages.push({ id: uid(), role: 'assistant', content: '', typing: true, route: reply.route, routeLabel: reply.routeLabel })
-  const assistantMessage = conversation.messages[conversation.messages.length - 1]
+function createReplyPlaceholder(conversation) {
+  const assistantMessage = { id: uid(), role: 'assistant', content: '正在思考…', typing: true }
+  conversation.messages.push(assistantMessage)
+  persist()
+  scrollToBottom()
+  return assistantMessage
+}
+function typeReply(assistantMessage, reply) {
+  assistantMessage.content = ''
+  assistantMessage.route = reply.route
+  assistantMessage.routeLabel = reply.routeLabel
   let index = 0
   const timer = window.setInterval(() => {
     assistantMessage.content = reply.content.slice(0, index + 1)
@@ -175,6 +183,7 @@ async function submitPrompt() {
   attachments.value = []
   persist()
   await scrollToBottom()
+  const assistantMessage = createReplyPlaceholder(conversation)
   try {
     const result = await apiChatWithAssistant(text || '请分析这些附件')
     const reply = {
@@ -184,10 +193,10 @@ async function submitPrompt() {
     if (result?.configured === false) {
       reply.content = 'DeepSeek 尚未配置。请在启动后端的环境中设置 DEEPSEEK_API_KEY，然后重启后端再试。'
     }
-    typeReply(conversation, reply)
+    typeReply(assistantMessage, reply)
   } catch (error) {
-    const detail = error?.problem?.message || error?.response?.data?.message || error?.message
-    typeReply(conversation, {
+    const detail = error?.problem?.detail || error?.problem?.message || error?.response?.data?.detail || error?.response?.data?.message || error?.message
+    typeReply(assistantMessage, {
       content: detail || '暂时无法连接 AI 服务，请确认后端已启动并稍后重试。',
       ...inferRoute(text),
     })
