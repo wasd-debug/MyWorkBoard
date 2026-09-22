@@ -12,7 +12,7 @@
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
 | Phase 2 任务 | 未启动 | 只有禁用导航占位，无领域模块、数据表和页面 |
-| Phase 3A-D Agent/MCP | Phase 3A 部分实现 | AI 物理模块、Domain Tool 契约/注册表与 4 个 R1 工时/账本查询工具已落地；action、写工具、Web Agent 和 MCP 尚未实现 |
+| Phase 3A-D Agent/MCP | Phase 3A 部分实现 | AI 物理模块、7 个 R1 查询工具、覆盖矩阵、中文评测集与 action 内存状态基础已落地；持久化、写工具、Web Agent 和 MCP 尚未实现 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
 | Phase 6 打磨 | 部分提前实现 | 已有响应式布局、主题、共享账本、自动视觉/无障碍和恢复演练；PWA、搜索及完整可观测体系未实现 |
@@ -621,9 +621,9 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 
 Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后启动，不等待 Phase 2 任务域；任务模块完成后再注册 `task.*` 工具。
 
-- [~] 已新增 `ai` Maven 模块，Domain Tool 注册表、风险分级和统一结果已实现；action 状态机未实现
-- [~] 已实现 `worktime.settings.get`、`worktime.records.search`、`ledger.books.list`、`ledger.overview`；其余查询及 prepare/commit、revision、幂等和领域审计待实现
-- [~] 已覆盖当前用户、authority、未知字段、重名注册与模块边界；真实 MySQL、冲突、过期和重复提交待实现，Agent 与 MCP 未对外启用
+- [~] 已新增 `ai` Maven 模块，Domain Tool 注册表、风险分级、统一结果及 action 内存状态基础；action 持久化未实现
+- [~] 已实现 2 个工时与 5 个账本 R1 查询工具；真实业务 prepare/commit、revision、幂等和领域审计待实现
+- [~] 已覆盖当前用户、authority、未知字段、重名注册、过期、用户隔离、重复 commit 与模块边界；真实 MySQL 冲突仍待实现，Agent 与 MCP 未对外启用
 - **验收**：每个工具具备成功、缺参、无权限、冲突和重复提交测试；prepare 不产生业务写入。
 
 ### Phase 3B —— Web 工作台 Agent

@@ -1,7 +1,7 @@
 # 个人工作台项目总览
 
-> 状态日期：2026-09-21
-> 当前主线：Phase 3A 开始增量实施，已完成 Agent 领域工具基础与首批只读查询；仍按“现有功能 Agent 化 → MCP → 文件/RAG”顺序推进
+> 状态日期：2026-09-22
+> 当前主线：Phase 3A 增量实施中，已完成七个只读工具、覆盖矩阵、中文评测集和 action 内存状态基础；仍按“现有功能 Agent 化 → MCP → 文件/RAG”顺序推进
 
 ## 项目定位
 
@@ -71,7 +71,7 @@
 ### Phase 2-6
 
 - **Phase 2 任务管理：未启动。** 导航只有禁用占位，没有 task/file/notification 模块或表结构。
-- **Phase 3A-D Agent/MCP：Phase 3A 部分实现。** 已新增 AI 物理模块、Domain Tool 契约/注册表/风险/结果基础，以及 `worktime.settings.get`、`worktime.records.search`、`ledger.books.list`、`ledger.overview` 四个内部 R1 查询工具。action、写工具、Web Agent、受控确认和 MCP Server 均未开始。
+- **Phase 3A-D Agent/MCP：Phase 3A 部分实现。** 已新增 AI 物理模块、七个内部 R1 查询工具、[功能覆盖与中文评测集](Agent功能覆盖与中文评测集.md)，以及用于验证过期、确认、用户隔离和单次 commit 的 action 内存基础。action 持久化、真实写工具、Web Agent、受控确认 UI 和 MCP Server 均未开始。
 - **Phase 4 文件/RAG：未启动。** 尚无 MinIO/NAS 文件域、Tika、Qdrant 和知识库。
 - **Phase 5 跨域洞察：未启动。** 只有 `domain_event` 预留表，无事件发布/消费、`report_fact`、`report_snapshot` 或洞察页面。
 - **Phase 6 持续打磨：部分能力提前实现。** 已有响应式布局、主题、共享账本和可重复恢复演练；PWA、全局搜索和完整可观测体系尚未实现。
@@ -97,7 +97,7 @@
 1. 完成 Android Chrome 与 iOS Safari 真机验收记录。
 2. 确认 MoneyWiz 与外部账单源范围。
 3. 将恢复脚本纳入季度生产运维并持续留存发布/回滚记录。
-4. 继续 [工作台的 Agent 改造计划](工作台的Agent改造计划.md) Phase 3A：先补功能覆盖矩阵和中文评测集，再扩展其余只读工具，最后建设 action 与 prepare/commit。
+4. 继续 [工作台的 Agent 改造计划](工作台的Agent改造计划.md) Phase 3A：为 action 增加 Flyway 持久化，完成真实 MySQL 验证，再选择一个低风险写工具实现首个 prepare/commit。
 5. Phase 2 任务域与现有工时/账本 Agent 可分别推进；任务能力完成后再注册为新的 Domain Tool，不阻塞 Phase 3A-D。
 
 ## 文档约定
