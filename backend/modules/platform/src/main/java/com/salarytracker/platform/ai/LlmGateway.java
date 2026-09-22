@@ -39,7 +39,7 @@ public class LlmGateway {
 
     public ChatResponse chat(String message) {
         if (!configured()) {
-            return new ChatResponse("AI 网关尚未配置，已启用本地自然语言记账解析。", "local-fallback", false);
+            return new ChatResponse("DeepSeek 尚未配置。请设置 DEEPSEEK_API_KEY 后重启后端。", "not-configured", false);
         }
         ChatCompletionRequest payload = new ChatCompletionRequest(
                 model, List.of(new TextMessage("user", message)), 0.1, null);

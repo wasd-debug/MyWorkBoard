@@ -12,7 +12,7 @@
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
 | Phase 2 任务 | 未启动 | 只有禁用导航占位，无领域模块、数据表和页面 |
-| Phase 3A-D Agent/MCP | Phase 3A 部分实现 | AI 物理模块、7 个 R1 查询工具、覆盖矩阵、中文评测集、action JDBC 持久化与首个工时 prepare/commit 已落地；Web Agent 和 MCP 尚未实现 |
+| Phase 3A-D Agent/MCP | Phase 3A/3B 入口部分实现 | AI 物理模块、7 个 R1 查询工具、覆盖矩阵、中文评测集、action JDBC 持久化、首个工时 prepare/commit 和最小受控 REST 入口已落地；首页已接入真实 DeepSeek 聊天与假打字机，但模型会话、工具调用循环、SSE 和 MCP 尚未实现 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
 | Phase 6 打磨 | 部分提前实现 | 已有响应式布局、主题、共享账本、自动视觉/无障碍和恢复演练；PWA、搜索及完整可观测体系未实现 |
@@ -623,7 +623,7 @@ Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后
 
 - [~] 已新增 `ai` Maven 模块、Domain Tool 注册表、风险分级、统一结果、action JDBC repository 和 V12 Flyway 表
 - [~] 已实现 2 个工时与 5 个账本 R1 查询工具，以及 `worktime.record.create.prepare/commit` 内部工具；工时修改/删除和账本写工具待实现
-- [~] 已覆盖当前用户、authority、未知字段、重名注册、过期、用户隔离、重复 commit、服务端预览和模块边界；Testcontainers 因 Docker Desktop 启动阻塞待重跑，Agent 与 MCP 未对外启用
+- [~] 已覆盖当前用户、authority、工具目录过滤、未知字段、重名注册、过期、用户隔离、重复 commit、服务端预览和模块边界；Testcontainers 因 Docker Desktop 启动阻塞待重跑，模型 Agent 与 MCP 未对外启用
 - **验收**：每个工具具备成功、缺参、无权限、冲突和重复提交测试；prepare 不产生业务写入。
 
 ### Phase 3B —— Web 工作台 Agent

@@ -73,6 +73,11 @@ public class PendingActionService {
     }
 
     @Transactional
+    public PendingAction reject(String id, long userId) {
+        return transition(id, userId, ActionStatus.DENIED);
+    }
+
+    @Transactional
     public PendingAction beginCommit(String id, long userId) {
         PendingAction current = required(id, userId);
         Instant now = Instant.now();

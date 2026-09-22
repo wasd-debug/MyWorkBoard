@@ -84,6 +84,17 @@ class DomainToolRegistryTest {
         assertEquals(expected, registry.invoke("ledger.books.list", null));
     }
 
+    @Test
+    void listsOnlyToolsAllowedForCurrentUser() {
+        when(currentUser.required()).thenReturn(new CurrentUser(9L, "viewer", null, Set.of("ledger:read")));
+        DomainToolRegistry registry = new DomainToolRegistry(currentUser, List.of(
+                tool("ledger.books.list", Set.of("ledger:read")),
+                tool("worktime.settings.get", Set.of("worktime:read"))));
+
+        assertEquals(List.of("ledger.books.list"), registry.definitionsForCurrentUser().stream()
+                .map(ToolDefinition::name).toList());
+    }
+
     private DomainTool tool(String name, Set<String> authorities) {
         ToolDefinition definition = definition(name, authorities);
         return new DomainTool() {

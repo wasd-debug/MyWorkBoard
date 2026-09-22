@@ -1,7 +1,7 @@
 # Agent 功能覆盖与中文评测集
 
-> 版本：v0.2（2026-09-22）
-> 用途：Phase 3A 工具契约基线。当前执行 Domain Tool 单元验证和 Flyway/JDBC 集成门禁，不代表 Web Agent 已接入模型。
+> 版本：v0.3（2026-09-22）
+> 用途：Phase 3A/3B 入口契约基线。当前执行 Domain Tool 单元验证和 Flyway/JDBC 集成门禁；REST 入口已可手动调用，模型和首页尚未接入。
 
 ## 1. 功能覆盖矩阵
 

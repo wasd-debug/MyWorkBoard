@@ -84,6 +84,7 @@ import { ArrowUp, ArrowUpRight, Image as ImageIcon, MessageSquareText, Mic, Pane
 import { Calendar, List, Timer, Wallet } from '../icons.js'
 import { message } from '../services/message.js'
 import { useAppStore } from '../stores/app'
+import { apiChatWithAssistant } from '../../packages/api-client/src/index.js'
 
 const router = useRouter()
 const store = useAppStore()
@@ -150,14 +151,12 @@ function typeReply(conversation, reply) {
   }, 35)
   typingTimers.add(timer)
 }
-function getReply(text) {
-  if (/工时|打卡|上班|下班/.test(text)) return { content: '我已经准备好工时工作区，你可以继续打卡、补录或查看统计。', route: '/punch', routeLabel: '工时' }
-  if (/报表/.test(text)) return { content: '我已经为你定位到账本报表，可以按分类、账户、商家和时间范围继续分析。', route: '/ledger/reports', routeLabel: '账本报表' }
-  if (/流水/.test(text)) return { content: '我已经为你定位到账本流水，可以继续筛选、编辑或导入记录。', route: '/ledger/transactions', routeLabel: '账本流水' }
-  if (/记账|支出|收入|账本/.test(text)) return { content: '我已经准备好账本工作区，可以继续用自然语言记账或查看总览。', route: '/ledger', routeLabel: '账本' }
-  if (/知识/.test(text)) return { content: '知识库能力正在规划中，这段需求已经保留在当前会话。' }
-  if (/任务|待办|计划/.test(text)) return { content: '任务能力正在规划中，这段需求已经保留在当前会话。' }
-  return { content: `已记录“${text || '附件内容'}”。当前可以直接驱动账本与工时，知识库和任务会在后续接入。` }
+function inferRoute(text) {
+  if (/工时|打卡|上班|下班/.test(text)) return { route: '/punch', routeLabel: '工时' }
+  if (/报表/.test(text)) return { route: '/ledger/reports', routeLabel: '账本报表' }
+  if (/流水/.test(text)) return { route: '/ledger/transactions', routeLabel: '账本流水' }
+  if (/记账|支出|收入|账本/.test(text)) return { route: '/ledger', routeLabel: '账本' }
+  return {}
 }
 async function submitPrompt() {
   if (!canSubmit.value) return
@@ -170,14 +169,29 @@ async function submitPrompt() {
     activeId.value = conversation.id
   }
   conversation.messages.push({ id: uid(), role: 'user', content: text || '请分析这些附件', attachments: attachments.value.map(item => ({ ...item })) })
-  const reply = getReply(text)
-  typeReply(conversation, reply)
   conversation.updatedAt = now
   conversations.value = [conversation, ...conversations.value.filter(item => item.id !== conversation.id)]
   prompt.value = ''
   attachments.value = []
   persist()
   await scrollToBottom()
+  try {
+    const result = await apiChatWithAssistant(text || '请分析这些附件')
+    const reply = {
+      content: result?.content || '模型没有返回可显示的内容，请稍后重试。',
+      ...inferRoute(text),
+    }
+    if (result?.configured === false) {
+      reply.content = 'DeepSeek 尚未配置。请在启动后端的环境中设置 DEEPSEEK_API_KEY，然后重启后端再试。'
+    }
+    typeReply(conversation, reply)
+  } catch (error) {
+    const detail = error?.problem?.message || error?.response?.data?.message || error?.message
+    typeReply(conversation, {
+      content: detail || '暂时无法连接 AI 服务，请确认后端已启动并稍后重试。',
+      ...inferRoute(text),
+    })
+  }
 }
 async function scrollToBottom() { await nextTick(); if (messageViewport.value) messageViewport.value.scrollTop = messageViewport.value.scrollHeight }
 async function toggleRecording() {

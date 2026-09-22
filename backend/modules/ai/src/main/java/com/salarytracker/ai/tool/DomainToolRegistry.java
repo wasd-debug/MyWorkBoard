@@ -32,6 +32,13 @@ public class DomainToolRegistry {
                 .sorted(java.util.Comparator.comparing(ToolDefinition::name)).toList();
     }
 
+    public List<ToolDefinition> definitionsForCurrentUser() {
+        CurrentUser user = currentUserResolver.required();
+        return definitions().stream()
+                .filter(tool -> user.authorities().containsAll(tool.requiredAuthorities()))
+                .toList();
+    }
+
     public ToolResult invoke(String name, JsonNode input) {
         DomainTool tool = tools.get(name);
         if (tool == null) throw new IllegalArgumentException("未知领域工具: " + name);

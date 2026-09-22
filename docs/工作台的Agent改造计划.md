@@ -1,7 +1,7 @@
 # 工作台 Agent 与 MCP 改造计划
 
-> 版本：v1.3（2026-09-22）
-> 状态：实施中（阶段 1 已完成七个只读工具、action 持久化基础和首个工时 prepare/commit 工具）
+> 版本：v1.4（2026-09-22）
+> 状态：实施中（阶段 2 已接入真实 DeepSeek 聊天网关：首页已调用服务端模型并保留假打字机；Domain Tool 编排、会话/SSE 仍按后续增量建设）
 > 适用范围：现有工时、账本和 AI 工作台；任务、文件、向量库与 RAG 按后续阶段接入
 > 总原则：先把现有业务能力收敛为可验证的领域工具，再接入 Web Agent 和 MCP；每一阶段独立交付、独立验证、可通过功能开关回滚，未通过退出门禁不得进入下一阶段。
 
@@ -18,24 +18,33 @@
 - 增加 [Agent 功能覆盖与中文评测集](Agent功能覆盖与中文评测集.md)，固定首批工具覆盖状态、中文表达和安全断言。
 - 建立 `ActionStatus`、`PendingAction`、`InteractionPolicy` 和 JDBC `PendingActionRepository`，通过 `agent_pending_action` 持久化 action，覆盖过期、用户隔离、强制确认和数据库条件更新的单次 commit 入口。
 - 增加 `worktime.record.create.prepare/commit`：prepare 只生成缺参提示或服务端工时预览，commit 仅接受已批准且未过期的 action，并复用现有 `WorktimeService.createRecord` 的幂等、冲突和计算规则。
+- 增加最小 Agent REST 入口：`GET /api/v1/agent/tools`、`POST /api/v1/agent/tools/{toolName}/invoke`、action approve/reject/commit；工具目录按当前用户 authority 过滤，所有调用仍经过 Domain Tool Registry。
 - 工具调用由服务端当前用户上下文注入身份，调用前检查 authority，并继续复用现有工时/账本服务的用户与账本成员权限。
 - 工具注册表拒绝重名工具和未知输入字段；工时查询加入 ISO 日期、日期范围、最大分页数量和 offset 上限校验。
 - 增加 AI 模块单测和架构边界测试：核心领域不得依赖 AI，AI 不得依赖领域 Controller 或 Mapper，AI Java 源码必须归属物理模块。
 
 本次明确未实施：
 
-- Web Agent 会话、模型编排、SSE、动态表单、确认 UI 和前端改造；当前写工具仍只能通过内部 Domain Tool 测试调用。
+- 模型会话、SSE、动态表单和完整首页 Agent UI；当前首页已经接入 `/api/v1/ai/chat`，但还不代表模型已经能自主调用 Domain Tool。
 - 账本真实写工具、工时修改/删除、revision 冲突展示和相关领域审计扩展。
 - MCP Server、PAT/OAuth、scope、站内审批与外部客户端兼容验证。
 - 文件、向量库和 RAG。
 
 验证记录：
 
-- `cd backend && mvn -pl modules/ai -am test` 成功；AI 模块 22/22 通过，相关 identity、worktime 和 ledger 模块通过，账本 Excel fixture 用例跳过 1 项。
+- `cd backend && mvn -pl modules/ai -am test` 成功；AI 模块 23/23 通过，相关 identity、worktime 和 ledger 模块通过，账本 Excel fixture 用例跳过 1 项。
 - `cd backend && mvn -pl app -am -Dtest=ArchitectureBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false test` 成功；架构边界测试 7/7 通过。
 - `cd backend && mvn test` 已运行至 app 的 Testcontainers 阶段；Docker 客户端连接成功，但 Ryuk 容器持续停在启动状态且未出现在 `docker ps`。使用 `TESTCONTAINERS_RYUK_DISABLED=true` 复测后，目标 `mysql:8.0.36` 容器也停在相同状态，两次测试进程均已人工终止。真实 MySQL 门禁仍标记为未完成，不能用本次结果宣称通过。
 
-当前判定：本增量仍未满足阶段 1 的完整退出门禁。当前已具备持久化 action 和首个真实工时 prepare/commit，但没有 Web Agent API，不能从首页直接调用；下一增量继续补工时修改/删除或账本写入，不启动 MCP。
+当前判定：本增量仍未满足阶段 2 的完整退出门禁。首页真实模型聊天已可手动验证，但尚无模型工具调用循环、会话持久化和 SSE；下一增量建设只读 Agent 会话与工具编排，不启动 MCP。
+
+### 本地手动验证
+
+1. 登录获取 access token：`POST /api/v1/auth/login`。
+2. 使用 `Authorization: Bearer <token>` 请求 `GET /api/v1/agent/tools`，确认只返回当前用户可用工具。
+3. 调用 `POST /api/v1/agent/tools/worktime.record.create.prepare/invoke`，提交完整日期、开始时间、结束时间和休息分钟，记录返回的 `actionId`。
+4. 调用 `POST /api/v1/agent/actions/{actionId}/approve`，再调用 `POST /api/v1/agent/actions/{actionId}/commit`。
+5. 从原工时页面或 `GET /api/v1/worktime/records` 检查保存结果；重复 commit 必须被拒绝。
 
 ## 1. 背景与目标
 
@@ -47,7 +56,7 @@
 - 账本、账户、分类、商家、项目、成员、角色、预算、流水、周期任务、导入导出、回收站和审计能力。
 - 账本 IndexedDB + oplog local-first 同步链路。
 - OpenAI 兼容 LLM 网关，以及自然语言记账“解析草稿 → 审核 → 确认”能力。
-- AI 工作台页面骨架，但当前对话仍以浏览器本地关键词匹配为主，尚未形成真实 Agent 会话和工具编排。
+- AI 工作台页面骨架；首页已从本地关键词回复切换到服务端 DeepSeek 聊天，保留假打字机、错误提示和关键词导航卡片，但尚未形成真实 Agent 会话和工具编排。
 
 本次改造的目标不是用对话页面替换现有 Web 页面，而是让同一套业务能力同时服务于三类入口：
 
@@ -613,7 +622,7 @@ mcp:worktime:commit
 - 接入会话、消息、turn、SSE 和 AgentModel。
 - 开放工时、流水、账本总览、预算和报表查询。
 - 接入导航卡片，但不开放写工具。
-- 将首页本地关键词回复替换为真实服务端会话。
+- [x] 将首页本地关键词回复替换为真实服务端 DeepSeek 聊天；保留假打字机，未配置密钥或上游失败时展示明确状态。
 
 验证：
 
