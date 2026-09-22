@@ -1,23 +1,23 @@
 # 个人效率中枢 · 整体架构设计与长期发展规划
 
-> 版本：v1.6（2026-09-21）
+> 版本：v1.7（2026-09-22）
 > 范围：基于现有 salary-sync（加班时长与时薪计算）系统，规划"工时 + 账本 + 任务 + AI"一体化个人效率平台的整体架构与演进路线。
 
 > 实施状态：Phase 0/Phase 1 自动化收口已完成，真机验收和周期生产运维按发布记录持续执行。本文同时包含目标架构与实施计划；除明确标注“当前实现”的内容外，其余技术组件和阶段能力均为目标状态，不代表已经上线。
 
-## 0. 当前实施快照（2026-09-21）
+## 0. 当前实施快照（2026-09-22）
 
 | 阶段 | 状态 | 结论 |
 |---|---|---|
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
 | Phase 2 任务 | 未启动 | 只有禁用导航占位，无领域模块、数据表和页面 |
-| Phase 3A-D Agent/MCP | Phase 3A/3B 入口部分实现 | AI 物理模块、7 个 R1 查询工具、覆盖矩阵、中文评测集、action JDBC 持久化、首个工时 prepare/commit 和最小受控 REST 入口已落地；首页已接入真实 DeepSeek 聊天与假打字机，但模型会话、工具调用循环、SSE 和 MCP 尚未实现 |
+| Phase 3A-D Agent/MCP | Phase 3A/3B 部分实现 | AI 物理模块、7 个 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit 和受控 REST 入口已落地；首页真实 DeepSeek 已可调用当前用户可见的 R0/R1 工具，但会话持久化、SSE、trace、受控写入和 MCP 尚未实现 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
 | Phase 6 打磨 | 部分提前实现 | 已有响应式布局、主题、共享账本、自动视觉/无障碍和恢复演练；PWA、搜索及完整可观测体系未实现 |
 
-2026-09-21 后端 `mvn test` 共发现 70 个用例，63 个通过、7 个跳过、0 个失败；其中 AI 模块 11/11、架构边界 6/6 通过。7 个跳过项为 1 个真实 Excel fixture 用例和 6 个当前 Docker 未运行的 Testcontainers 用例。上一轮前端 Node/契约 44/44、OpenAPI 生成、TypeScript 严格编译、Playwright 32 passed/4 skipped 和恢复演练结果仍作为现有基线，本次 AI 基础增量未重跑前端与 Playwright。第 12.6 节中的 Android Chrome 与 iOS Safari 真机验收仍需在实际设备上留档。
+2026-09-22 执行 `mvn -pl modules/ai -am test`，目标 Reactor 共 75 项，74 项通过、1 项账本 Excel fixture 跳过；platform 1/1、AI 27/27 通过，新增 DeepSeek 工具协议和编排上限测试。前端生产构建成功，聚焦 Agent Playwright 2/2 通过，并完成真实 DeepSeek 账本/工时查询与只读写入边界验证。完整 `mvn test` 最近基线仍为 70 项中 63 项通过、7 项跳过、0 项失败；完整前端 Node/契约 44/44、OpenAPI 生成、TypeScript 严格编译、Playwright 32 passed/4 skipped 和恢复演练结果继续作为既有基线。第 12.6 节中的 Android Chrome 与 iOS Safari 真机验收仍需在实际设备上留档。
 
 ---
 
@@ -628,6 +628,7 @@ Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后
 
 ### Phase 3B —— Web 工作台 Agent
 
+- [~] 首页已接入真实 DeepSeek 和最小只读 Agent 编排；模型只看到当前用户可用的 R0/R1 工具，单轮最多执行 4 次，R2-R4 不暴露
 - [ ] 会话、消息、turn、SSE、结构化表单、确认弹窗、执行结果和断流恢复
 - [ ] 先开放只读查询，再开放记账/记工时，最后接入修改、删除和管理工具
 - [ ] Agent 在线写入后触发账本增量同步，不改变传统页面 local-first 主链

@@ -1,7 +1,7 @@
 # 工作台 Agent 与 MCP 改造计划
 
-> 版本：v1.4（2026-09-22）
-> 状态：实施中（阶段 2 已接入真实 DeepSeek 聊天网关：首页已调用服务端模型并保留假打字机；Domain Tool 编排、会话/SSE 仍按后续增量建设）
+> 版本：v1.5（2026-09-22）
+> 状态：实施中（阶段 2 已完成真实 DeepSeek 与 R0/R1 Domain Tool 的最小只读调用循环；会话持久化、SSE、trace 和受控写入仍按后续增量建设）
 
 > 运维修正：迁移 `V8.1` 是在 `V8` 已发布后补充的索引迁移，已有数据库升级时需开启 `FLYWAY_OUT_OF_ORDER=true`；不得删除或改写 `flyway_schema_history`。
 
@@ -11,7 +11,7 @@
 
 ## 0. 实施进度快照（2026-09-22）
 
-本次只交付 Phase 3A 的基础铺底和简单只读查询，不对外开放 Agent 或 MCP 入口。
+当前增量交付 Phase 3B 的最小只读 Agent 工具调用闭环，不开放写工具或 MCP 入口。
 
 已完成：
 
@@ -26,29 +26,35 @@
 - 工具调用由服务端当前用户上下文注入身份，调用前检查 authority，并继续复用现有工时/账本服务的用户与账本成员权限。
 - 工具注册表拒绝重名工具和未知输入字段；工时查询加入 ISO 日期、日期范围、最大分页数量和 offset 上限校验。
 - 增加 AI 模块单测和架构边界测试：核心领域不得依赖 AI，AI 不得依赖领域 Controller 或 Mapper，AI Java 源码必须归属物理模块。
+- 新增 `AgentOrchestrator`，由首页既有 `/api/v1/ai/chat` 入口驱动 DeepSeek function calling；只向模型暴露当前用户可见的 R0/R1 工具，点分工具名转换为供应商兼容名称，执行时仍由 `DomainToolRegistry` 完成 Schema、authority 和领域权限校验。
+- 工具结果作为不可信数据回传模型，单轮最多执行 4 次工具；达到上限后关闭工具选择并要求模型总结，写工具 R2-R4 不会进入模型上下文。
+- LLM 网关已覆盖 OpenAI-compatible `tools`、`tool_choice`、assistant `tool_calls` 和 tool `tool_call_id` 请求格式，并解析 DeepSeek 工具调用响应。
+- 修复新会话首条回答继续修改非响应式原始对象的问题；“正在思考…”和后续假打字机内容无需刷新即可显示，并加入独立浏览器回归。
 
 本次明确未实施：
 
-- 模型会话、SSE、动态表单和完整首页 Agent UI；当前首页已经接入 `/api/v1/ai/chat`，但还不代表模型已经能自主调用 Domain Tool。
+- 模型会话持久化、SSE、Agent trace、动态表单和完整首页 Agent UI；当前首页可执行无状态的只读工具循环，但刷新后没有服务端会话历史，也不能恢复进行中的 turn。
 - 账本真实写工具、工时修改/删除、revision 冲突展示和相关领域审计扩展。
 - MCP Server、PAT/OAuth、scope、站内审批与外部客户端兼容验证。
 - 文件、向量库和 RAG。
 
 验证记录：
 
-- `cd backend && mvn -pl modules/ai -am test` 成功；AI 模块 23/23 通过，相关 identity、worktime 和 ledger 模块通过，账本 Excel fixture 用例跳过 1 项。
+- `cd backend && mvn -pl modules/ai -am test` 成功；目标 Reactor 共执行 75 项，74 项通过、1 项账本 Excel fixture 跳过；其中 platform 1/1、AI 模块 27/27 通过。新增测试覆盖只读工具暴露、R2 隔离、参数校验、4 次调用上限及 DeepSeek 工具协议序列化/解析。
+- `cd frontend && npm run build` 成功；`SALARY_E2E_SOURCE_BUILD=1 PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test e2e/agent-chat.spec.js --project=desktop-chromium` 2/2 通过，覆盖新会话首条响应、Markdown、假打字机和用户控制的底部跟随。
+- 本地真实 DeepSeek 手动验证通过：“我有哪些账本？”返回当前用户默认账本；“查询我最近的工时记录”调用查询工具并返回近 30 天 0 条；“帮我记今天工时”明确拒绝写入。发送后思考占位与回复均无需刷新可见。
 - `cd backend && mvn -pl app -am -Dtest=ArchitectureBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false test` 成功；架构边界测试 7/7 通过。
 - `cd backend && mvn test` 已运行至 app 的 Testcontainers 阶段；Docker 客户端连接成功，但 Ryuk 容器持续停在启动状态且未出现在 `docker ps`。使用 `TESTCONTAINERS_RYUK_DISABLED=true` 复测后，目标 `mysql:8.0.36` 容器也停在相同状态，两次测试进程均已人工终止。真实 MySQL 门禁仍标记为未完成，不能用本次结果宣称通过。
 
-当前判定：本增量仍未满足阶段 2 的完整退出门禁。首页真实模型聊天已可手动验证，但尚无模型工具调用循环、会话持久化和 SSE；下一增量建设只读 Agent 会话与工具编排，不启动 MCP。
+当前判定：本增量仍未满足阶段 2 的完整退出门禁。首页真实模型已能自主选择并执行只读工具，但尚无会话持久化、SSE、断流恢复和自动中文评测；下一增量优先建设 session/turn 持久化与状态查询，不启动 MCP。
 
 ### 本地手动验证
 
-1. 登录获取 access token：`POST /api/v1/auth/login`。
-2. 使用 `Authorization: Bearer <token>` 请求 `GET /api/v1/agent/tools`，确认只返回当前用户可用工具。
-3. 调用 `POST /api/v1/agent/tools/worktime.record.create.prepare/invoke`，提交完整日期、开始时间、结束时间和休息分钟，记录返回的 `actionId`。
-4. 调用 `POST /api/v1/agent/actions/{actionId}/approve`，再调用 `POST /api/v1/agent/actions/{actionId}/commit`。
-5. 从原工时页面或 `GET /api/v1/worktime/records` 检查保存结果；重复 commit 必须被拒绝。
+1. 登录后在首页询问“我有哪些账本？”，确认回答来自当前用户可见账本。
+2. 询问“查询我最近的工时记录”，确认模型调用工时查询工具并说明日期范围。
+3. 询问“查看这个月的账本概览”；若未指定账本，模型应先查询账本列表，再查询概览或要求选择。
+4. 询问“帮我记今天工时”，确认当前只读 Agent 不会声称已经写入，也不会调用 R2 工具。
+5. 观察发送后立即出现“正在思考…”；Markdown、假打字机、手动上滚停止吸附和恢复到底部按钮仍应正常。
 
 ## 1. 背景与目标
 
@@ -60,7 +66,7 @@
 - 账本、账户、分类、商家、项目、成员、角色、预算、流水、周期任务、导入导出、回收站和审计能力。
 - 账本 IndexedDB + oplog local-first 同步链路。
 - OpenAI 兼容 LLM 网关，以及自然语言记账“解析草稿 → 审核 → 确认”能力。
-- AI 工作台页面骨架；首页已从本地关键词回复切换到服务端 DeepSeek 聊天。发送后立即创建“正在思考…”助手气泡，模型返回后在同一气泡内进行假打字机输出。助手内容支持经过标签白名单清理的 Markdown；只有用户处于底部附近时才自动跟随，向上滚动后停止吸附并提供恢复到底部的按钮。当前仍未形成真实 Agent 会话和工具编排。
+- AI 工作台页面骨架；首页已从本地关键词回复切换到服务端 DeepSeek 聊天，并具备最小无状态只读工具调用循环。发送后立即创建“正在思考…”助手气泡，模型返回后在同一气泡内进行假打字机输出。助手内容支持经过标签白名单清理的 Markdown；只有用户处于底部附近时才自动跟随，向上滚动后停止吸附并提供恢复到底部的按钮。当前尚未形成可恢复的服务端 Agent 会话。
 
 本次改造的目标不是用对话页面替换现有 Web 页面，而是让同一套业务能力同时服务于三类入口：
 
@@ -621,12 +627,15 @@ mcp:worktime:commit
 
 ### 阶段 2：只读 Web Agent
 
+**当前状态：部分完成。** 首页已接入真实 DeepSeek，最小 `AgentOrchestrator` 能选择和串联当前用户可用的 R0/R1 Domain Tool；会话、turn、SSE、断流恢复、trace 和自动评测尚未完成。
+
 实施：
 
 - 接入会话、消息、turn、SSE 和 AgentModel。
 - 开放工时、流水、账本总览、预算和报表查询。
 - 接入导航卡片，但不开放写工具。
 - [x] 将首页本地关键词回复替换为真实服务端 DeepSeek 聊天；保留假打字机，未配置密钥或上游失败时展示明确状态。
+- [x] 建立最多 4 次调用的只读模型工具循环；R2-R4 不向模型暴露，工具执行继续复用注册表的 Schema、权限和领域校验。
 
 验证：
 

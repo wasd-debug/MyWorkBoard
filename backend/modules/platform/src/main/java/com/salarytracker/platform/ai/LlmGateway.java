@@ -62,6 +62,29 @@ public class LlmGateway {
         }
     }
 
+    public AgentTurn agentTurn(List<AgentMessage> messages, List<AgentTool> tools) {
+        if (!configured()) {
+            return new AgentTurn("DeepSeek 尚未配置。请设置 DEEPSEEK_API_KEY 后重启后端。",
+                    List.of(), "not-configured", false);
+        }
+        ChatCompletionRequest payload = new ChatCompletionRequest(
+                model, messages, 0.1, null, tools.isEmpty() ? null : tools, tools.isEmpty() ? null : "auto");
+        String body = execute(payload);
+        try {
+            JsonNode message = mapper.readTree(body).path("choices").path(0).path("message");
+            List<AgentToolCall> calls = new java.util.ArrayList<>();
+            for (JsonNode call : message.path("tool_calls")) {
+                calls.add(new AgentToolCall(
+                        call.path("id").asText(),
+                        call.path("function").path("name").asText(),
+                        call.path("function").path("arguments").asText("{}")));
+            }
+            return new AgentTurn(message.path("content").asText(""), List.copyOf(calls), endpoint, true);
+        } catch (Exception exception) {
+            throw new IllegalStateException("DeepSeek 返回了无法解析的 Agent 响应", exception);
+        }
+    }
+
     public boolean configured() {
         return endpoint != null && !endpoint.isBlank() && apiKey != null && !apiKey.isBlank();
     }
@@ -92,14 +115,7 @@ public class LlmGateway {
         if (apiKey != null && !apiKey.isBlank()) {
             request = request.header("Authorization", "Bearer " + apiKey);
         }
-        String body;
-        try {
-            body = request.retrieve().body(String.class);
-        } catch (RestClientResponseException exception) {
-            throw upstreamError(exception.getResponseBodyAsString(), exception.getStatusCode().value());
-        } catch (RestClientException exception) {
-            throw new IllegalStateException("DeepSeek 暂时不可用，请稍后重试", exception);
-        }
+        String body = retrieve(request);
         try {
             JsonNode root = mapper.readTree(body);
             return root.path("choices").path(0).path("message").path("content").asText(body);
@@ -124,7 +140,74 @@ public class LlmGateway {
         return new IllegalStateException(detail);
     }
 
+    private String execute(ChatCompletionRequest payload) {
+        RestClient.RequestBodySpec request = client.post().uri(endpoint)
+                .contentType(MediaType.APPLICATION_JSON).body(payload);
+        if (apiKey != null && !apiKey.isBlank()) {
+            request = request.header("Authorization", "Bearer " + apiKey);
+        }
+        return retrieve(request);
+    }
+
+    private String retrieve(RestClient.RequestBodySpec request) {
+        try {
+            return request.retrieve().body(String.class);
+        } catch (RestClientResponseException exception) {
+            throw upstreamError(exception.getResponseBodyAsString(), exception.getStatusCode().value());
+        } catch (RestClientException exception) {
+            throw new IllegalStateException("DeepSeek 暂时不可用，请稍后重试", exception);
+        }
+    }
+
     public record ChatResponse(String content, String provider, boolean configured) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record AgentMessage(
+            String role,
+            String content,
+            @JsonProperty("tool_call_id") String toolCallId,
+            @JsonProperty("tool_calls") List<ProviderToolCall> toolCalls) {
+        public static AgentMessage system(String content) {
+            return new AgentMessage("system", content, null, null);
+        }
+
+        public static AgentMessage user(String content) {
+            return new AgentMessage("user", content, null, null);
+        }
+
+        public static AgentMessage assistant(String content, List<AgentToolCall> calls) {
+            List<ProviderToolCall> providerCalls = calls.stream()
+                    .map(call -> new ProviderToolCall(call.id(), "function",
+                            new ProviderFunctionCall(call.name(), call.arguments())))
+                    .toList();
+            return new AgentMessage("assistant", content, null, providerCalls);
+        }
+
+        public static AgentMessage tool(String callId, String content) {
+            return new AgentMessage("tool", content, callId, null);
+        }
+    }
+
+    public record AgentTool(String type, AgentFunction function) {
+        public static AgentTool function(String name, String description, JsonNode parameters) {
+            return new AgentTool("function", new AgentFunction(name, description, parameters));
+        }
+    }
+
+    public record AgentFunction(String name, String description, JsonNode parameters) {
+    }
+
+    public record AgentToolCall(String id, String name, String arguments) {
+    }
+
+    public record AgentTurn(String content, List<AgentToolCall> toolCalls, String provider, boolean configured) {
+    }
+
+    public record ProviderToolCall(String id, String type, ProviderFunctionCall function) {
+    }
+
+    public record ProviderFunctionCall(String name, String arguments) {
     }
 
     private sealed interface ProviderMessage permits TextMessage, RichMessage {
@@ -152,7 +235,13 @@ public class LlmGateway {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    private record ChatCompletionRequest(String model, List<ProviderMessage> messages, double temperature,
-                                         @JsonProperty("response_format") ResponseFormat responseFormat) {
+    private record ChatCompletionRequest(String model, List<?> messages, double temperature,
+                                         @JsonProperty("response_format") ResponseFormat responseFormat,
+                                         List<AgentTool> tools,
+                                         @JsonProperty("tool_choice") String toolChoice) {
+        private ChatCompletionRequest(String model, List<?> messages, double temperature,
+                                      ResponseFormat responseFormat) {
+            this(model, messages, temperature, responseFormat, null, null);
+        }
     }
 }

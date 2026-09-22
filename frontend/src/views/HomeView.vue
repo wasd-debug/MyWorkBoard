@@ -203,6 +203,8 @@ async function submitPrompt() {
   attachments.value = []
   persist()
   await scrollToBottom()
+  // Re-read the proxied conversation after inserting a brand-new raw object into the ref array.
+  conversation = activeConversation.value
   const assistantMessage = createReplyPlaceholder(conversation)
   try {
     const result = await apiChatWithAssistant(text || '请分析这些附件')

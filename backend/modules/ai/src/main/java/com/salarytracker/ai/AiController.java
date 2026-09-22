@@ -15,17 +15,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping(value = "/api/v1/ai", produces = MediaType.APPLICATION_JSON_VALUE)
 @Tag(name = "AI")
 public class AiController {
-    private final LlmGateway gateway;
+    private final AgentOrchestrator agent;
 
-    public AiController(LlmGateway gateway) {
-        this.gateway = gateway;
+    public AiController(AgentOrchestrator agent) {
+        this.agent = agent;
     }
 
     @PostMapping(value = "/chat", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("isAuthenticated()")
     @Operation(operationId = "chatWithAssistant")
     public ApiResponse<LlmGateway.ChatResponse> chat(@RequestBody ChatRequest body) {
-        return ApiResponse.ok(gateway.chat(body == null ? "" : body.message()));
+        return ApiResponse.ok(agent.chat(body == null ? "" : body.message()));
     }
 
     public record ChatRequest(String message) {

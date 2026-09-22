@@ -1,6 +1,27 @@
 import { test, expect } from '@playwright/test'
 import { markSessionBeforeLoad, registerUser } from './helpers.js'
 
+test('agent chat displays the first reply in a new conversation without refresh', async ({ page }) => {
+  const auth = await registerUser(page.request, 'agent-first-reply-e2e')
+  await markSessionBeforeLoad(page, auth.user.id)
+  await page.route('**/api/v1/ai/chat', async route => {
+    await new Promise(resolve => setTimeout(resolve, 300))
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { content: '**默认账本** 可以正常访问。', provider: 'test', configured: true } }),
+    })
+  })
+
+  await page.goto('/')
+  await page.getByLabel('给 AI 发送消息').fill('我有哪些账本？')
+  await page.getByRole('button', { name: '发送' }).click()
+
+  await expect(page.getByText('正在思考…')).toBeAttached()
+  await expect(page.locator('.message-markdown strong')).toHaveText('默认账本')
+  await expect(page.getByText('可以正常访问。', { exact: false })).toBeVisible()
+})
+
 test('agent chat renders markdown and exposes controllable bottom following', async ({ page }) => {
   const auth = await registerUser(page.request, 'agent-chat-e2e')
   await markSessionBeforeLoad(page, auth.user.id)
