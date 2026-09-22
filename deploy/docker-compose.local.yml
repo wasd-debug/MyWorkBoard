@@ -48,6 +48,7 @@ services:
       # 生产 Compose 仍保持严格的 Flyway 校验。
       SPRING_FLYWAY_VALIDATE_ON_MIGRATE: "false"
       SPRING_FLYWAY_IGNORE_MIGRATION_PATTERNS: "*:pending"
+      FLYWAY_OUT_OF_ORDER: "true"
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       LLM_ENDPOINT: ${LLM_ENDPOINT:-https://api.deepseek.com/chat/completions}
       LLM_MODEL: ${LLM_MODEL:-deepseek-flash}

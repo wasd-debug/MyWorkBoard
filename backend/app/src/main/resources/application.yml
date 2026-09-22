@@ -18,6 +18,7 @@ spring:
 
   flyway:
     enabled: true
+    out-of-order: ${FLYWAY_OUT_OF_ORDER:false}
     locations: classpath:db/migration
     baseline-on-migrate: true
     baseline-version: 0
