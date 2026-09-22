@@ -133,8 +133,8 @@ function addFiles(event, type) {
 }
 function removeAttachment(id) { attachments.value = attachments.value.filter(item => item.id !== id) }
 function typeReply(conversation, reply) {
-  const assistantMessage = { id: uid(), role: 'assistant', content: '', typing: true, route: reply.route, routeLabel: reply.routeLabel }
-  conversation.messages.push(assistantMessage)
+  conversation.messages.push({ id: uid(), role: 'assistant', content: '', typing: true, route: reply.route, routeLabel: reply.routeLabel })
+  const assistantMessage = conversation.messages[conversation.messages.length - 1]
   let index = 0
   const timer = window.setInterval(() => {
     assistantMessage.content = reply.content.slice(0, index + 1)
