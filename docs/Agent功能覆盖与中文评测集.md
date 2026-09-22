@@ -1,7 +1,7 @@
 # Agent 功能覆盖与中文评测集
 
-> 版本：v0.1（2026-09-22）
-> 用途：Phase 3A 工具契约基线。当前只执行 Domain Tool 单元/集成验证，不代表 Web Agent 已接入模型。
+> 版本：v0.2（2026-09-22）
+> 用途：Phase 3A 工具契约基线。当前执行 Domain Tool 单元验证和 Flyway/JDBC 集成门禁，不代表 Web Agent 已接入模型。
 
 ## 1. 功能覆盖矩阵
 
@@ -14,7 +14,7 @@
 | 搜索账本流水 | `ledger.transactions.search` | R1 | 已实现 | 多过滤条件真实 MySQL 测试 |
 | 汇总账本报表 | `ledger.reports.summary` | R1 | 已实现 | 跨月和分类汇总测试 |
 | 查询预算 | `ledger.budgets.list` | R1 | 已实现 | 总预算/分类预算测试 |
-| 新增工时 | `worktime.record.create.prepare/commit` | R2 | 未实现 | 缺参、确认、幂等、冲突 |
+| 新增工时 | `worktime.record.create.prepare/commit` | R2 | 已实现（内部调用） | 真实 MySQL action 恢复、缺参补答、确认、幂等、冲突 |
 | 修改/删除工时 | `worktime.record.update/delete.prepare/commit` | R3 | 未实现 | revision、差异、重复提交 |
 | 新增流水 | `ledger.transaction.create.prepare/commit` | R2 | 未实现 | 分类匹配、确认、同步投影 |
 | 修改/删除流水 | `ledger.transaction.update/delete.prepare/commit` | R3 | 未实现 | revision、权限、审计 |

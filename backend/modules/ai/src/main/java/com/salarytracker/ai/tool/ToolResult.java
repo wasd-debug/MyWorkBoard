@@ -17,4 +17,26 @@ public record ToolResult(
         return new ToolResult(ToolStatus.COMPLETED, summary, structuredContent,
                 null, null, null, null);
     }
+
+    public static ToolResult needsInput(String summary, JsonNode structuredContent,
+                                        String actionId, String expiresAt) {
+        return new ToolResult(ToolStatus.NEEDS_INPUT, summary, structuredContent,
+                actionId, null, expiresAt, null);
+    }
+
+    public static ToolResult needsConfirmation(String summary, JsonNode structuredContent,
+                                               String actionId, String expiresAt) {
+        return new ToolResult(ToolStatus.NEEDS_CONFIRMATION, summary, structuredContent,
+                actionId, null, expiresAt, null);
+    }
+
+    public static ToolResult conflict(String summary, JsonNode structuredContent, String actionId) {
+        return new ToolResult(ToolStatus.CONFLICT, summary, structuredContent,
+                actionId, null, null, null);
+    }
+
+    public static ToolResult failed(String summary, JsonNode structuredContent, String actionId) {
+        return new ToolResult(ToolStatus.FAILED, summary, structuredContent,
+                actionId, null, null, null);
+    }
 }

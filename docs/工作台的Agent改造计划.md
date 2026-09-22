@@ -1,7 +1,7 @@
 # 工作台 Agent 与 MCP 改造计划
 
-> 版本：v1.2（2026-09-22）
-> 状态：实施中（阶段 0 契约继续补齐，阶段 1 已完成七个只读工具和 action 内存基础）
+> 版本：v1.3（2026-09-22）
+> 状态：实施中（阶段 1 已完成七个只读工具、action 持久化基础和首个工时 prepare/commit 工具）
 > 适用范围：现有工时、账本和 AI 工作台；任务、文件、向量库与 RAG 按后续阶段接入
 > 总原则：先把现有业务能力收敛为可验证的领域工具，再接入 Web Agent 和 MCP；每一阶段独立交付、独立验证、可通过功能开关回滚，未通过退出门禁不得进入下一阶段。
 
@@ -16,25 +16,26 @@
 - 注册首批 R1 只读工具：`worktime.settings.get`、`worktime.records.search`、`ledger.books.list`、`ledger.overview`。
 - 增加 `ledger.transactions.search`、`ledger.reports.summary`、`ledger.budgets.list`，仍通过领域服务执行账本成员权限与查询规则。
 - 增加 [Agent 功能覆盖与中文评测集](Agent功能覆盖与中文评测集.md)，固定首批工具覆盖状态、中文表达和安全断言。
-- 建立 `ActionStatus`、`PendingAction`、`InteractionPolicy` 和 `PendingActionService` 内存基础，覆盖过期、用户隔离、强制确认和单次 commit 入口；持久化与真实写工具尚未实现。
+- 建立 `ActionStatus`、`PendingAction`、`InteractionPolicy` 和 JDBC `PendingActionRepository`，通过 `agent_pending_action` 持久化 action，覆盖过期、用户隔离、强制确认和数据库条件更新的单次 commit 入口。
+- 增加 `worktime.record.create.prepare/commit`：prepare 只生成缺参提示或服务端工时预览，commit 仅接受已批准且未过期的 action，并复用现有 `WorktimeService.createRecord` 的幂等、冲突和计算规则。
 - 工具调用由服务端当前用户上下文注入身份，调用前检查 authority，并继续复用现有工时/账本服务的用户与账本成员权限。
 - 工具注册表拒绝重名工具和未知输入字段；工时查询加入 ISO 日期、日期范围、最大分页数量和 offset 上限校验。
 - 增加 AI 模块单测和架构边界测试：核心领域不得依赖 AI，AI 不得依赖领域 Controller 或 Mapper，AI Java 源码必须归属物理模块。
 
 本次明确未实施：
 
-- action 持久化、真实业务 `prepare/commit`、幂等写入、revision 冲突处理和相关 Flyway 表。
-- Agent 会话、模型编排、SSE、动态表单、确认 UI 和前端改造。
+- Web Agent 会话、模型编排、SSE、动态表单、确认 UI 和前端改造；当前写工具仍只能通过内部 Domain Tool 测试调用。
+- 账本真实写工具、工时修改/删除、revision 冲突展示和相关领域审计扩展。
 - MCP Server、PAT/OAuth、scope、站内审批与外部客户端兼容验证。
 - 文件、向量库和 RAG。
 
 验证记录：
 
-- `cd backend && mvn -pl modules/ai -am test` 成功；AI 模块 19/19 通过，相关 identity、worktime 和 ledger 模块通过，账本 Excel fixture 用例跳过 1 项。
+- `cd backend && mvn -pl modules/ai -am test` 成功；AI 模块 22/22 通过，相关 identity、worktime 和 ledger 模块通过，账本 Excel fixture 用例跳过 1 项。
 - `cd backend && mvn -pl app -am -Dtest=ArchitectureBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false test` 成功；架构边界测试 7/7 通过。
 - `cd backend && mvn test` 已运行至 app 的 Testcontainers 阶段；Docker 客户端连接成功，但 Ryuk 容器持续停在启动状态且未出现在 `docker ps`。使用 `TESTCONTAINERS_RYUK_DISABLED=true` 复测后，目标 `mysql:8.0.36` 容器也停在相同状态，两次测试进程均已人工终止。真实 MySQL 门禁仍标记为未完成，不能用本次结果宣称通过。
 
-当前判定：本增量仍未满足阶段 0 和阶段 1 的完整退出门禁。当前 action 服务是用于验证状态规则的临时内存实现，不能用于会话恢复或生产写入；下一增量仍在 Phase 3A 内完成持久化和首个真实 prepare/commit，不启动 Web Agent 或 MCP。
+当前判定：本增量仍未满足阶段 1 的完整退出门禁。当前已具备持久化 action 和首个真实工时 prepare/commit，但没有 Web Agent API，不能从首页直接调用；下一增量继续补工时修改/删除或账本写入，不启动 MCP。
 
 ## 1. 背景与目标
 
@@ -585,7 +586,7 @@ mcp:worktime:commit
 
 ### 阶段 1：统一 Domain Tool
 
-**当前状态：部分完成。** AI 物理模块、工具契约/注册表/风险/结果基础和四个 R1 查询工具已完成；action 状态机、写工具、迁移、幂等、冲突和真实 MySQL 验证尚未完成。
+**当前状态：部分完成。** AI 物理模块、工具契约/注册表/风险/结果基础、七个 R1 查询工具、action JDBC 持久化以及首个工时新增 prepare/commit 已完成；其余写工具、revision 差异预览和隔离 MySQL 集成门禁尚未完成。
 
 实施：
 

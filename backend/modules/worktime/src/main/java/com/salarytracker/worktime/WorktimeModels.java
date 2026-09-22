@@ -52,6 +52,11 @@ public final class WorktimeModels {
     public record RecordCommand(String date, String start, String end, Integer rest, String note) {
     }
 
+    @Schema(name = "WorktimeRecordPreview")
+    public record RecordPreview(String date, String start, String end, int rest, int overtimeMin,
+                                BigDecimal realHourlyWage, String note) {
+    }
+
     @Schema(name = "WorktimeRecord")
     public record WorkRecord(long id, String date, String start, String end, int rest, int overtimeMin,
                              BigDecimal realHourlyWage, String note, String calcVersion, String timezone,

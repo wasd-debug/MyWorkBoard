@@ -7,6 +7,7 @@ import com.salarytracker.worktime.WorktimeModels.Basis;
 import com.salarytracker.worktime.WorktimeModels.DeletedResource;
 import com.salarytracker.worktime.WorktimeModels.MonthlySalary;
 import com.salarytracker.worktime.WorktimeModels.RecordCommand;
+import com.salarytracker.worktime.WorktimeModels.RecordPreview;
 import com.salarytracker.worktime.WorktimeModels.Settings;
 import com.salarytracker.worktime.WorktimeModels.SettingsUpdate;
 import com.salarytracker.worktime.WorktimeModels.WorkRecord;
@@ -119,6 +120,17 @@ public class WorktimeService {
     @Transactional
     public WorkRecord createRecord(RecordCommand body) {
         return createRecord(body, null);
+    }
+
+    public RecordPreview previewCreateRecord(RecordCommand body) {
+        String date = requiredDate(body == null ? null : body.date());
+        String start = validTime(body.start(), false);
+        String end = validTime(body.end(), true);
+        int rest = bounded(body.rest(), 0, 0, 600);
+        String note = body.note() == null ? "" : body.note();
+        Calculation calculation = calculate(date, start, end, rest);
+        return new RecordPreview(date, start, end, rest, calculation.overtimeMin(),
+                calculation.realHourlyWage(), note);
     }
 
     @Transactional

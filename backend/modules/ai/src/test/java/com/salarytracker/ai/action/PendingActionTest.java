@@ -8,7 +8,10 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -68,6 +71,31 @@ class PendingActionTest {
     }
 
     private PendingActionService service() {
-        return new PendingActionService(new ObjectMapper(), new InteractionPolicy());
+        return new PendingActionService(new MemoryRepository(), new ObjectMapper(), new InteractionPolicy());
+    }
+
+    private static final class MemoryRepository implements PendingActionRepository {
+        private final Map<String, PendingAction> actions = new ConcurrentHashMap<>();
+
+        @Override
+        public void insert(PendingAction action) {
+            if (actions.putIfAbsent(action.id(), action) != null) throw new IllegalStateException("actionId 已存在");
+        }
+
+        @Override
+        public Optional<PendingAction> find(String id, long userId) {
+            return Optional.ofNullable(actions.get(id)).filter(action -> action.userId() == userId);
+        }
+
+        @Override
+        public boolean transition(String id, long userId, ActionStatus expected, ActionStatus next, Instant updatedAt) {
+            final boolean[] changed = {false};
+            actions.computeIfPresent(id, (key, current) -> {
+                if (current.userId() != userId || current.status() != expected) return current;
+                changed[0] = true;
+                return current.transition(next, updatedAt);
+            });
+            return changed[0];
+        }
     }
 }

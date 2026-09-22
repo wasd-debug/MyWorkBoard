@@ -35,6 +35,8 @@ Use JUnit 5 names ending in `Test.java`; write behavior-focused method names suc
 
 Recent history uses concise conventional prefixes, for example `feat：完善账本流水管理` and `fix：账本`. Prefer `feat:`, `fix:`, `chore:`, or `test:` followed by a specific summary. PRs should describe scope, data/schema impact, test commands and results, linked issues, and screenshots for UI changes. Keep unrelated changes in separate commits.
 
+For incremental development requested in this repository, finish each increment by updating the relevant files under `docs/`, running proportional verification, refreshing any affected local development services so the checked-out code is available for manual testing, and creating a local Git commit containing only that increment. Do not push, deploy, or include unrelated untracked files unless the user explicitly requests it. If verification or service refresh is blocked, document and report the blocker before committing.
+
 ## Security & Configuration Tips
 
 Never commit `deploy/.env`, credentials, tokens, database snapshots, or generated build output. Add schema changes as a new versioned Flyway migration; do not rewrite an applied migration. Avoid destructive Compose commands such as `down -v` unless data removal is explicitly intended.
