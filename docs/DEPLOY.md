@@ -232,6 +232,14 @@ unset VERIFY_DB_PASSWORD
 - 使用 `docker compose ... up -d --no-deps --force-recreate frontend` 完成切换；内网 `GET /api/health` 返回 `{"ok":true}`，公网 `/ledger` 与首页均返回 HTTP 200，MySQL 状态为 `running/healthy`。
 - 发布内容包括 GPT 式 AI 工作台、会话侧栏和多模态输入界面、账本卡片布局、移动端底栏、五套主题以及暗夜导航选中态。知识库和任务仍保持规划状态，没有新增虚构后端接口。
 
+## 2026-09-22 生产发布记录
+
+- 应用提交：`1d2c465`，发布目录：`/home/ubuntu/salary-tracker/releases/1d2c465`；后端和前端均在服务器上从该源码目录构建为 `amd64` 镜像 `salary-backend:1d2c465` 与 `salary-frontend:1d2c465`。
+- 发布前完成逻辑备份：`backups/salary-before-1d2c465-20260922-182728.sql.gz`，使用 `mysqldump --no-tablespaces --single-transaction` 并通过 `gzip -t` 校验；旧应用镜像保留为 `salary-backend:pre-1d2c465` 和 `salary-frontend:pre-1d2c465`。
+- 仅执行 `up -d --no-deps --force-recreate backend frontend`，MySQL 容器与数据卷未重建。后端启动约 12 秒期间 Nginx 出现短暂 502，随后 `/api/health` 恢复为 `{"ok":true}`，首页返回 HTTP 200。
+- Flyway 从 v11 成功应用两条迁移至 v13；`agent_session` 和 `agent_message` 表已在生产库创建。后端日志确认 `Started SalaryTrackerApplication`，未发现应用启动失败。
+- 本次上线包含 Agent 服务端文本会话上下文；SSE、可恢复 turn、写入 Agent、MCP、文件与 RAG 仍未开放。
+
 ## 健康检查与配置
 
 - 健康检查：`GET /api/health`，成功响应包含 `{"ok": true}`。
