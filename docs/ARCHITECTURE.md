@@ -12,7 +12,7 @@
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
 | Phase 2 任务 | 未启动 | 只有禁用导航占位，无领域模块、数据表和页面 |
-| Phase 3A-D Agent/MCP | Phase 3A/3B 部分实现 | AI 物理模块、7 个 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit 和受控 REST 入口已落地；首页真实 DeepSeek 已可调用当前用户可见的 R0/R1 工具，但会话持久化、SSE、trace、受控写入和 MCP 尚未实现 |
+| Phase 3A-D Agent/MCP | Phase 3A/3B 部分实现 | AI 物理模块、7 个 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit、文本会话上下文和受控 REST 入口已落地；首页真实 DeepSeek 已可调用 R0/R1 工具并展示 Token、工具链与耗时，但 turn/SSE、服务端 trace、受控写入和 MCP 尚未实现 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
 | Phase 6 打磨 | 部分提前实现 | 已有响应式布局、主题、共享账本、自动视觉/无障碍和恢复演练；PWA、搜索及完整可观测体系未实现 |

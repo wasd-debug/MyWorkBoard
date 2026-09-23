@@ -54,6 +54,39 @@ test('agent chat reuses one session id for follow-up questions', async ({ page }
   expect(requests[1].sessionId).toBe(requests[0].sessionId)
 })
 
+test('agent reply shows tools tokens duration time and supports copying', async ({ page, context }) => {
+  const auth = await registerUser(page.request, 'agent-observability-e2e')
+  await markSessionBeforeLoad(page, auth.user.id)
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:14173' })
+  await page.route('**/api/v1/ai/chat', async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: {
+        content: '已查询到一个默认账本。', provider: 'test', configured: true,
+        durationMs: 1834,
+        usage: { inputTokens: 1250, outputTokens: 86, totalTokens: 1336, cacheHitTokens: 900, cacheMissTokens: 350 },
+        toolExecutions: [{ name: 'ledger.books.list', status: 'COMPLETED', summary: '当前可访问 1 个账本', durationMs: 21 }],
+      } }),
+    })
+  })
+
+  await page.goto('/')
+  await page.getByLabel('给 AI 发送消息').fill('我有哪些账本？')
+  await page.getByRole('button', { name: '发送' }).click()
+
+  await expect(page.getByText('已查询到一个默认账本。')).toBeVisible()
+  await expect(page.getByText('1,336 Tokens')).toBeVisible()
+  await expect(page.getByText('1.8s')).toBeVisible()
+  await page.getByText('已调用 1 个工具').click()
+  await expect(page.getByText('查询账本')).toBeVisible()
+  await expect(page.getByText('当前可访问 1 个账本')).toBeVisible()
+  await page.getByRole('button', { name: '复制消息' }).last().click()
+  await expect(page.getByRole('button', { name: '消息已复制' })).toBeVisible()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('已查询到一个默认账本。')
+  await expect(page.locator('.message-meta time')).toHaveCount(2)
+})
+
 test('agent chat renders markdown and exposes controllable bottom following', async ({ page }) => {
   const auth = await registerUser(page.request, 'agent-chat-e2e')
   await markSessionBeforeLoad(page, auth.user.id)

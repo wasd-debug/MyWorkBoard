@@ -55,6 +55,10 @@ class AgentOrchestratorTest {
         LlmGateway.ChatResponse response = orchestrator().chat("我有哪些账本？");
 
         assertEquals("你有一个账本：**日常账本**。", response.content());
+        assertEquals(1, response.toolExecutions().size());
+        assertEquals("ledger.books.list", response.toolExecutions().get(0).name());
+        assertEquals("COMPLETED", response.toolExecutions().get(0).status());
+        assertTrue(response.durationMs() >= 0);
         verify(tools).invoke(org.mockito.ArgumentMatchers.eq("ledger.books.list"), any());
         var captor = ArgumentCaptor.forClass(List.class);
         verify(model, org.mockito.Mockito.atLeastOnce()).agentTurn(any(), captor.capture());

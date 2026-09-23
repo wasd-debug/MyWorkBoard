@@ -1,7 +1,7 @@
 # 工作台 Agent 与 MCP 改造计划
 
 > 版本：v1.6（2026-09-22）
-> 状态：实施中（阶段 2 已完成真实 DeepSeek、R0/R1 Domain Tool 和基础会话上下文；SSE、turn 状态、trace 和受控写入仍按后续增量建设）
+> 状态：实施中（阶段 2 已完成真实 DeepSeek、R0/R1 Domain Tool、基础会话上下文和回复可观测元数据；SSE、turn 状态、持久化 trace 和受控写入仍按后续增量建设）
 
 > 运维修正：迁移 `V8.1` 是在 `V8` 已发布后补充的索引迁移，已有数据库升级时需开启 `FLYWAY_OUT_OF_ORDER=true`；不得删除或改写 `flyway_schema_history`。
 
@@ -11,7 +11,7 @@
 
 ## 0. 实施进度快照（2026-09-22）
 
-当前增量交付 Phase 3B 的最小只读 Agent 工具调用闭环，不开放写工具或 MCP 入口。
+当前增量交付 Phase 3B 的只读 Agent 回复可观测体验，不开放写工具或 MCP 入口。
 
 已完成：
 
@@ -32,10 +32,12 @@
 - 修复新会话首条回答继续修改非响应式原始对象的问题；“正在思考…”和后续假打字机内容无需刷新即可显示，并加入独立浏览器回归。
 - 增加 V13 `agent_session`、`agent_message` 表和用户隔离的 JDBC 会话服务；首页现将同一前端会话的 `sessionId` 发送到后端，模型每轮加载最近 20 条 user/assistant 消息，并在最终回答后持久化本轮问答。
 - 上下文有长度上限和消息长度校验；实时账本/工时数据仍要求重新调用只读工具，历史回答不能替代事实查询。不存在的或其他用户的会话 ID 不会被接受。
+- DeepSeek OpenAI-compatible 响应中的输入、输出、总 Token 以及缓存命中/未命中用量现由网关解析；`AgentOrchestrator` 汇总一次用户 turn 中的多轮模型用量、总耗时以及每次工具的名称、状态、摘要和耗时，并返回前端。
+- 首页助手消息现显示消息时间、工具调用明细、Token 用量和总耗时；用户与助手消息均可复制。元数据会随本地会话一同保存，刷新后仍可查看。
 
 本次明确未实施：
 
-- SSE、turn 状态、Agent trace、动态表单和完整首页 Agent UI；当前已持久化文本上下文，但仍不能恢复进行中的 turn，也没有服务端会话列表/消息 API。
+- SSE、turn 状态、持久化 Agent trace、动态表单和完整服务端会话 UI；当前可展示本次响应的工具/Token/耗时，但这些 trace 元数据尚未写入服务端表，也仍不能恢复进行中的 turn。
 - 账本真实写工具、工时修改/删除、revision 冲突展示和相关领域审计扩展。
 - MCP Server、PAT/OAuth、scope、站内审批与外部客户端兼容验证。
 - 文件、向量库和 RAG。
@@ -50,7 +52,7 @@
 - `cd backend && mvn -pl app -am -Dtest=ArchitectureBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false test` 成功；架构边界测试 7/7 通过。
 - `cd backend && mvn test` 已运行至 app 的 Testcontainers 阶段；Docker 客户端连接成功，但 Ryuk 容器持续停在启动状态且未出现在 `docker ps`。使用 `TESTCONTAINERS_RYUK_DISABLED=true` 复测后，目标 `mysql:8.0.36` 容器也停在相同状态，两次测试进程均已人工终止。真实 MySQL 门禁仍标记为未完成，不能用本次结果宣称通过。
 
-当前判定：本增量仍未满足阶段 2 的完整退出门禁。首页真实模型已能自主选择只读工具并保留最近文本上下文，但尚无 SSE、turn 状态、断流恢复和自动中文评测；下一增量优先建设会话列表/消息查询与 SSE，不启动 MCP。
+当前判定：本增量仍未满足阶段 2 的完整退出门禁。首页真实模型已能自主选择只读工具、保留最近文本上下文并显示工具/Token/耗时，但尚无 SSE、turn 状态、断流恢复和自动中文评测；下一增量优先建设服务端会话列表/消息查询与 turn 状态，再接入 SSE，不启动 MCP。
 
 ### 本地手动验证
 

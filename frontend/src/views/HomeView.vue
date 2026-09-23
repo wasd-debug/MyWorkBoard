@@ -53,6 +53,29 @@
                 <span v-for="file in item.attachments" :key="file.id"><ImageIcon v-if="file.type === 'image'" /><Mic v-else-if="file.type === 'audio'" /><Paperclip v-else />{{ file.name }}</span>
               </div>
               <button v-if="item.route && !item.typing" class="message-route" type="button" @click="router.push(item.route)">进入{{ item.routeLabel }}<ArrowUpRight /></button>
+              <div v-if="!item.typing" class="message-meta">
+                <time v-if="item.createdAt" :datetime="new Date(item.createdAt).toISOString()"><Clock3 />{{ formatMessageTime(item.createdAt) }}</time>
+                <details v-if="item.role === 'assistant' && item.toolExecutions?.length" class="tool-call-details" @toggle="handleMetaToggle">
+                  <summary><Wrench />已调用 {{ item.toolExecutions.length }} 个工具</summary>
+                  <div class="tool-call-list">
+                    <div v-for="tool in item.toolExecutions" :key="`${tool.name}-${tool.durationMs}`" class="tool-call-item">
+                      <span class="tool-status" :class="tool.status?.toLowerCase()"><Check v-if="tool.status === 'COMPLETED'" /><X v-else /></span>
+                      <div><b>{{ toolLabel(tool.name) }}</b><small>{{ tool.summary }}</small></div>
+                      <em>{{ formatDuration(tool.durationMs) }}</em>
+                    </div>
+                  </div>
+                </details>
+                <details v-if="item.role === 'assistant' && item.usage?.totalTokens" class="token-details" @toggle="handleMetaToggle">
+                  <summary><Database />{{ formatNumber(item.usage.totalTokens) }} Tokens</summary>
+                  <div class="token-popover">
+                    <p><span>输入</span><b>{{ formatNumber(item.usage.inputTokens) }}</b></p>
+                    <p><span>输出</span><b>{{ formatNumber(item.usage.outputTokens) }}</b></p>
+                    <p v-if="item.usage.cacheHitTokens"><span>缓存命中</span><b>{{ formatNumber(item.usage.cacheHitTokens) }}</b></p>
+                  </div>
+                </details>
+                <span v-if="item.role === 'assistant' && item.durationMs != null"><TimerReset />{{ formatDuration(item.durationMs) }}</span>
+                <button type="button" :title="copiedId === item.id ? '已复制' : '复制消息'" :aria-label="copiedId === item.id ? '消息已复制' : '复制消息'" @click="copyMessage(item)"><Check v-if="copiedId === item.id" /><Copy v-else />{{ copiedId === item.id ? '已复制' : '复制' }}</button>
+              </div>
             </div>
           </article>
         </div>
@@ -88,7 +111,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import { ArrowDown, ArrowUp, ArrowUpRight, Image as ImageIcon, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, Paperclip, Sparkles, Square, SquarePen, Trash2, X } from 'lucide-vue-next'
+import { ArrowDown, ArrowUp, ArrowUpRight, Check, Clock3, Copy, Database, Image as ImageIcon, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, Paperclip, Sparkles, Square, SquarePen, TimerReset, Trash2, Wrench, X } from 'lucide-vue-next'
 import { Calendar, List, Timer, Wallet } from '../icons.js'
 import { message } from '../services/message.js'
 import { useAppStore } from '../stores/app'
@@ -106,6 +129,7 @@ const imageInput = ref(null)
 const messageViewport = ref(null)
 const recording = ref(false)
 const autoFollow = ref(true)
+const copiedId = ref('')
 let mediaRecorder = null
 let mediaStream = null
 let recordingStartedAt = 0
@@ -136,6 +160,47 @@ function newConversation() { activeId.value = ''; prompt.value = ''; attachments
 function openConversation(id) { activeId.value = id; autoFollow.value = true; if (window.innerWidth < 900) sidebarOpen.value = false; scrollToBottom(true) }
 function deleteConversation(id) { conversations.value = conversations.value.filter(item => item.id !== id); if (activeId.value === id) activeId.value = conversations.value[0]?.id || ''; persist() }
 function formatTime(value) { return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) }
+function formatMessageTime(value) { return new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(new Date(value)) }
+function formatNumber(value) { return new Intl.NumberFormat('zh-CN').format(Number(value || 0)) }
+function formatDuration(value) {
+  const milliseconds = Math.max(0, Number(value || 0))
+  if (milliseconds < 1000) return `${milliseconds}ms`
+  if (milliseconds < 60_000) return `${(milliseconds / 1000).toFixed(milliseconds < 10_000 ? 1 : 0)}s`
+  return `${Math.floor(milliseconds / 60_000)}m ${Math.round((milliseconds % 60_000) / 1000)}s`
+}
+function toolLabel(name) {
+  const labels = {
+    'ledger.books.list': '查询账本', 'ledger.overview': '查询账本概览',
+    'ledger.transactions.search': '查询账本流水', 'ledger.reports.summary': '生成账本报表',
+    'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置',
+    'worktime.records.search': '查询工时记录',
+  }
+  return labels[name] || name
+}
+async function copyMessage(item) {
+  const text = item.content || ''
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    textarea.remove()
+  }
+  copiedId.value = item.id
+  window.setTimeout(() => { if (copiedId.value === item.id) copiedId.value = '' }, 1600)
+}
+function handleMetaToggle(event) {
+  const current = event.currentTarget
+  if (!current.open) return
+  current.closest('.message-meta')?.querySelectorAll('details[open]').forEach(detail => {
+    if (detail !== current) detail.open = false
+  })
+}
 function openCard(card) { if (card.planned) { prompt.value = `打开${card.title}`; submitPrompt(); return } router.push(card.route) }
 function addFiles(event, type) {
   attachments.value.push(...Array.from(event.target.files || []).map(file => ({ id: uid(), type, name: file.name, size: file.size })))
@@ -154,7 +219,7 @@ function handleMessageScroll() {
   autoFollow.value = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 48
 }
 function createReplyPlaceholder(conversation) {
-  const assistantMessage = { id: uid(), role: 'assistant', content: '正在思考…', typing: true }
+  const assistantMessage = { id: uid(), role: 'assistant', content: '正在思考…', createdAt: Date.now(), typing: true }
   conversation.messages.push(assistantMessage)
   persist()
   scrollToBottom()
@@ -164,6 +229,9 @@ function typeReply(assistantMessage, reply) {
   assistantMessage.content = ''
   assistantMessage.route = reply.route
   assistantMessage.routeLabel = reply.routeLabel
+  assistantMessage.usage = reply.usage
+  assistantMessage.durationMs = reply.durationMs
+  assistantMessage.toolExecutions = reply.toolExecutions
   let index = 0
   const timer = window.setInterval(() => {
     assistantMessage.content = reply.content.slice(0, index + 1)
@@ -196,7 +264,7 @@ async function submitPrompt() {
     conversations.value.unshift(conversation)
     activeId.value = conversation.id
   }
-  conversation.messages.push({ id: uid(), role: 'user', content: text || '请分析这些附件', attachments: attachments.value.map(item => ({ ...item })) })
+  conversation.messages.push({ id: uid(), role: 'user', content: text || '请分析这些附件', createdAt: now, attachments: attachments.value.map(item => ({ ...item })) })
   conversation.updatedAt = now
   conversations.value = [conversation, ...conversations.value.filter(item => item.id !== conversation.id)]
   prompt.value = ''
@@ -210,6 +278,9 @@ async function submitPrompt() {
     const result = await apiChatWithAssistant(text || '请分析这些附件', conversation.id)
     const reply = {
       content: result?.content || '模型没有返回可显示的内容，请稍后重试。',
+      usage: result?.usage,
+      durationMs: result?.durationMs,
+      toolExecutions: result?.toolExecutions || [],
       ...inferRoute(text),
     }
     if (result?.configured === false) {

@@ -33,7 +33,8 @@ class LlmGatewayTest {
             byte[] response = """
                     {"choices":[{"message":{"role":"assistant","content":"","tool_calls":[
                       {"id":"call-2","type":"function","function":{"name":"ledger__overview","arguments":"{\\"bookId\\":\\"book-1\\"}"}}
-                    ]}}]}
+                    ]}}],"usage":{"prompt_tokens":120,"completion_tokens":8,"total_tokens":128,
+                    "prompt_cache_hit_tokens":80,"prompt_cache_miss_tokens":40}}
                     """.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, response.length);
@@ -65,6 +66,9 @@ class LlmGatewayTest {
         assertEquals("call-2", turn.toolCalls().get(0).id());
         assertEquals("ledger__overview", turn.toolCalls().get(0).name());
         assertEquals("{\"bookId\":\"book-1\"}", turn.toolCalls().get(0).arguments());
+        assertEquals(120, turn.usage().inputTokens());
+        assertEquals(8, turn.usage().outputTokens());
+        assertEquals(80, turn.usage().cacheHitTokens());
     }
 
     @Test

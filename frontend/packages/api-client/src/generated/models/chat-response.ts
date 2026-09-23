@@ -13,10 +13,19 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { TokenUsage } from './token-usage.ts';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { ToolExecution } from './tool-execution.ts';
 
 export interface ChatResponse {
     'content'?: string;
     'provider'?: string;
     'configured'?: boolean;
     'sessionId'?: string;
+    'usage'?: TokenUsage;
+    'durationMs'?: number;
+    'toolExecutions'?: Array<ToolExecution>;
 }

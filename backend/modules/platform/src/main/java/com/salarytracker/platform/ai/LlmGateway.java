@@ -79,7 +79,14 @@ public class LlmGateway {
                         call.path("function").path("name").asText(),
                         call.path("function").path("arguments").asText("{}")));
             }
-            return new AgentTurn(message.path("content").asText(""), List.copyOf(calls), endpoint, true);
+            JsonNode usage = mapper.readTree(body).path("usage");
+            TokenUsage tokenUsage = new TokenUsage(
+                    usage.path("prompt_tokens").asLong(0),
+                    usage.path("completion_tokens").asLong(0),
+                    usage.path("total_tokens").asLong(0),
+                    usage.path("prompt_cache_hit_tokens").asLong(0),
+                    usage.path("prompt_cache_miss_tokens").asLong(0));
+            return new AgentTurn(message.path("content").asText(""), List.copyOf(calls), endpoint, true, tokenUsage);
         } catch (Exception exception) {
             throw new IllegalStateException("DeepSeek 返回了无法解析的 Agent 响应", exception);
         }
@@ -159,10 +166,32 @@ public class LlmGateway {
         }
     }
 
-    public record ChatResponse(String content, String provider, boolean configured, String sessionId) {
+    public record ChatResponse(String content, String provider, boolean configured, String sessionId,
+                               TokenUsage usage, long durationMs, List<ToolExecution> toolExecutions) {
         public ChatResponse(String content, String provider, boolean configured) {
-            this(content, provider, configured, null);
+            this(content, provider, configured, null, TokenUsage.empty(), 0, List.of());
         }
+
+        public ChatResponse(String content, String provider, boolean configured, String sessionId) {
+            this(content, provider, configured, sessionId, TokenUsage.empty(), 0, List.of());
+        }
+    }
+
+    public record TokenUsage(long inputTokens, long outputTokens, long totalTokens,
+                             long cacheHitTokens, long cacheMissTokens) {
+        public static TokenUsage empty() {
+            return new TokenUsage(0, 0, 0, 0, 0);
+        }
+
+        public TokenUsage plus(TokenUsage other) {
+            if (other == null) return this;
+            return new TokenUsage(inputTokens + other.inputTokens, outputTokens + other.outputTokens,
+                    totalTokens + other.totalTokens, cacheHitTokens + other.cacheHitTokens,
+                    cacheMissTokens + other.cacheMissTokens);
+        }
+    }
+
+    public record ToolExecution(String name, String status, String summary, long durationMs) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -204,7 +233,11 @@ public class LlmGateway {
     public record AgentToolCall(String id, String name, String arguments) {
     }
 
-    public record AgentTurn(String content, List<AgentToolCall> toolCalls, String provider, boolean configured) {
+    public record AgentTurn(String content, List<AgentToolCall> toolCalls, String provider, boolean configured,
+                            TokenUsage usage) {
+        public AgentTurn(String content, List<AgentToolCall> toolCalls, String provider, boolean configured) {
+            this(content, toolCalls, provider, configured, TokenUsage.empty());
+        }
     }
 
     public record ProviderToolCall(String id, String type, ProviderFunctionCall function) {

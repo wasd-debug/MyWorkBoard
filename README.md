@@ -34,7 +34,7 @@
 ### 后续阶段
 
 - **Phase 2 任务管理：未启动。** 计划包含清单、任务、日历、提醒、番茄钟、习惯和倒数日。
-- **Phase 3A-D Agent/MCP：Phase 3A/3B 部分实现。** 已建立 AI 物理模块、七个内部 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit、V13 会话消息持久化和最小受控 REST 入口；首页真实 DeepSeek 已能选择当前用户可见的只读工具，并支持同一会话连续追问。SSE、turn 恢复、受控写入和 MCP 尚未实现。
+- **Phase 3A-D Agent/MCP：Phase 3A/3B 部分实现。** 已建立 AI 物理模块、七个内部 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit、V13 会话消息持久化和最小受控 REST 入口；首页真实 DeepSeek 已能选择当前用户可见的只读工具、连续追问，并展示工具调用、Token、耗时、消息时间和复制操作。SSE、turn 恢复、受控写入和 MCP 尚未实现。
 - **Phase 4 文件/RAG：未启动。** 计划在 Agent/MCP 稳定后建设文件域、向量库和知识库。
 - **Phase 5 跨域洞察：未启动。** 计划通过领域事件生成日/周/月/年报。
 - **Phase 6 持续打磨：部分能力提前实现。** 响应式布局、主题和共享账本已存在；PWA、搜索和可观测体系尚未实现。
@@ -175,6 +175,8 @@ npm run test:e2e
 ```
 
 2026-09-22 Agent 上下文增量验证：目标 Reactor AI 31/31 通过，真实 MySQL `AgentConversationIntegrationTest` 通过并执行 V1-V13 迁移；前端生产构建、OpenAPI 生成检查和 TypeScript 编译通过，已加入同一 sessionId 连续追问的浏览器回归。上一轮真实 DeepSeek 账本/工时查询与写入边界验证继续有效。
+
+2026-09-23 Agent 回复可观测增量验证：AI 目标 Reactor 测试通过，DeepSeek Token usage 解析测试覆盖缓存字段；前端生产构建与 OpenAPI 生成检查通过，Agent 专项 E2E 在桌面 Chromium 和 375px 移动端 8/8 通过，并使用真实本地 DeepSeek 对话验证工具明细、Token、耗时、消息时间与复制入口。
 
 ## 服务器部署
 

@@ -72,7 +72,7 @@
 ### Phase 2-6
 
 - **Phase 2 任务管理：未启动。** 导航只有禁用占位，没有 task/file/notification 模块或表结构。
-- **Phase 3A-D Agent/MCP：Phase 3A/3B 部分实现。** 已新增 AI 物理模块、七个内部 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit、V13 会话消息持久化和最小受控 REST 入口；首页真实 DeepSeek 已能选择当前用户可见的只读工具，并支持同一会话连续追问。SSE、turn 恢复、受控确认 UI 和 MCP Server 尚未完成。
+- **Phase 3A-D Agent/MCP：Phase 3A/3B 部分实现。** 已新增 AI 物理模块、七个内部 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit、V13 会话消息持久化和最小受控 REST 入口；首页真实 DeepSeek 已能选择当前用户可见的只读工具、连续追问，并显示工具调用、Token、耗时、消息时间和复制操作。SSE、turn 恢复、服务端 trace、受控确认 UI 和 MCP Server 尚未完成。
 - **Phase 4 文件/RAG：未启动。** 尚无 MinIO/NAS 文件域、Tika、Qdrant 和知识库。
 - **Phase 5 跨域洞察：未启动。** 只有 `domain_event` 预留表，无事件发布/消费、`report_fact`、`report_snapshot` 或洞察页面。
 - **Phase 6 持续打磨：部分能力提前实现。** 已有响应式布局、主题、共享账本和可重复恢复演练；PWA、全局搜索和完整可观测体系尚未实现。
