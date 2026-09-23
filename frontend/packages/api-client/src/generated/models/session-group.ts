@@ -14,12 +14,10 @@
 
 
 
-export interface SessionSummary {
+export interface SessionGroup {
     'id'?: string;
-    'title'?: string;
-    'groupId'?: string;
+    'name'?: string;
+    'sortOrder'?: number;
     'createdAt'?: string;
     'updatedAt'?: string;
-    'archivedAt'?: string;
-    'pinnedAt'?: string;
 }

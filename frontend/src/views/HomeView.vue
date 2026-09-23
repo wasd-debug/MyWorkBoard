@@ -6,25 +6,71 @@
         <strong>历史会话</strong>
         <button class="chat-icon-button" type="button" title="收起侧栏" aria-label="收起侧栏" @click="sidebarOpen = false"><PanelLeftClose /></button>
       </div>
-      <button class="new-chat-button" type="button" @click="newConversation"><SquarePen /><span>新对话</span></button>
+      <div class="conversation-create-actions">
+        <button class="new-chat-button" type="button" @click="newConversation"><SquarePen /><span>新对话</span></button>
+        <button type="button" title="新建分组" aria-label="新建会话分组" @click="showGroupDialog('create')"><FolderPlus /></button>
+      </div>
       <nav class="conversation-list" aria-label="会话列表">
         <p v-if="!conversations.length" class="conversation-empty">还没有历史会话</p>
-        <div v-for="item in conversations" :key="item.id" :class="{ active: item.id === activeId }" @contextmenu.prevent="openConversationMenu($event, item)">
-          <button class="conversation-open" type="button" :aria-current="item.id === activeId ? 'page' : undefined" @click="openConversation(item.id)">
-            <MessageSquareText aria-hidden="true" />
-            <span><b>{{ item.title }}</b><small>{{ formatTime(item.updatedAt) }}</small></span>
-          </button>
-          <button type="button" title="更多会话操作" :aria-label="`${item.title}的更多操作`" aria-haspopup="menu" :aria-expanded="conversationMenu.item?.id === item.id" @click.stop="openConversationMenu($event, item, true)"><Ellipsis /></button>
-        </div>
+        <section
+          v-for="section in conversationSections"
+          :key="section.id"
+          class="conversation-group"
+          :class="{ 'conversation-drop-target': conversationDropTarget === section.id }"
+          :data-group-id="section.id"
+          @dragover.prevent="handleConversationDragOver($event, section)"
+          @dragleave="handleConversationDragLeave($event, section)"
+          @drop.prevent="dropConversation(section)"
+        >
+          <header>
+            <button type="button" :aria-label="`${section.name}${collapsedGroups[section.id] ? '展开' : '收起'}`" :aria-expanded="!collapsedGroups[section.id]" @click="toggleGroup(section.id)"><ChevronDown :class="{ collapsed: collapsedGroups[section.id] }" />{{ section.name }}<small>{{ section.items.length }}</small></button>
+            <button v-if="section.group" class="conversation-group-actions" type="button" :aria-label="`${section.name}分组操作`" @click="openGroupMenu($event, section.group)"><Ellipsis /></button>
+          </header>
+          <Transition name="conversation-group-collapse">
+            <div v-if="!collapsedGroups[section.id]" class="conversation-group-body">
+              <div
+                v-for="item in section.items"
+                :key="item.id"
+                :class="{ active: item.id === activeId, dragging: draggedConversationId === item.id }"
+                draggable="true"
+                :data-session-id="item.id"
+                @dragstart="startConversationDrag($event, item)"
+                @dragend="endConversationDrag"
+                @contextmenu.prevent="openConversationMenu($event, item)"
+              >
+                <button class="conversation-open" type="button" :aria-current="item.id === activeId ? 'page' : undefined" @click="openConversation(item.id)">
+                  <Pin v-if="item.pinnedAt" aria-hidden="true" />
+                  <MessageSquareText v-else aria-hidden="true" />
+                  <span><b>{{ item.title }}</b><small>{{ formatTime(item.updatedAt) }}</small></span>
+                </button>
+                <button type="button" title="更多会话操作" :aria-label="`${item.title}的更多操作`" aria-haspopup="menu" :aria-expanded="conversationMenu.item?.id === item.id" @click.stop="openConversationMenu($event, item, true)"><Ellipsis /></button>
+              </div>
+              <p v-if="!section.items.length" class="conversation-group-empty">拖入会话</p>
+            </div>
+          </Transition>
+        </section>
       </nav>
       <div class="chat-sidebar-foot"><span class="status-dot" :class="{ online: store.dbMode }"></span>{{ store.dbMode ? '数据已同步' : '本地会话' }}</div>
     </aside>
 
     <div v-if="conversationMenu.item" ref="conversationMenuEl" class="conversation-context-menu" :style="conversationMenuStyle" role="menu" :aria-label="`${conversationMenu.item.title}的会话操作`" @keydown="handleConversationMenuKeydown">
+      <button type="button" role="menuitem" @click="togglePinned(conversationMenu.item)"><PinOff v-if="conversationMenu.item.pinnedAt" /><Pin v-else /><span>{{ conversationMenu.item.pinnedAt ? '取消置顶' : '置顶' }}</span></button>
       <button type="button" role="menuitem" @click="showRenameDialog(conversationMenu.item)"><Pencil /><span>重命名</span></button>
+      <details class="conversation-move-menu">
+        <summary><FolderInput /><span>移动到分组</span><ChevronRight /></summary>
+        <div>
+          <button type="button" role="menuitem" @click="moveConversation(conversationMenu.item, null)"><Inbox /><span>未分组</span></button>
+          <button v-for="group in sessionGroups" :key="group.id" type="button" role="menuitem" @click="moveConversation(conversationMenu.item, group.id)"><Folder /><span>{{ group.name }}</span></button>
+        </div>
+      </details>
       <button type="button" role="menuitem" @click="archiveConversation(conversationMenu.item)"><Archive /><span>归档</span></button>
       <hr />
       <button class="danger" type="button" role="menuitem" @click="showDeleteDialog(conversationMenu.item)"><Trash2 /><span>删除</span></button>
+    </div>
+
+    <div v-if="groupMenu.item" ref="groupMenuEl" class="conversation-context-menu" :style="groupMenuStyle" role="menu" :aria-label="`${groupMenu.item.name}分组操作菜单`">
+      <button type="button" role="menuitem" @click="showGroupDialog('rename', groupMenu.item)"><Pencil /><span>重命名分组</span></button>
+      <button class="danger" type="button" role="menuitem" @click="deleteSessionGroup(groupMenu.item)"><Trash2 /><span>删除分组</span></button>
     </div>
 
     <div v-if="conversationDialog.type" class="conversation-dialog-backdrop" role="presentation" @pointerdown.self="closeConversationDialog">
@@ -37,10 +83,18 @@
             <footer><button type="button" @click="closeConversationDialog">取消</button><button class="primary" type="submit" :disabled="!renameTitle.trim()">保存</button></footer>
           </form>
         </template>
-        <template v-else>
+        <template v-else-if="conversationDialog.type === 'delete'">
           <header><h2 id="conversation-delete-title">删除会话？</h2><button type="button" aria-label="关闭" @click="closeConversationDialog"><X /></button></header>
           <p>“{{ conversationDialog.item?.title }}”将被永久删除，此操作无法撤销。</p>
           <footer><button type="button" @click="closeConversationDialog">取消</button><button class="danger" type="button" @click="deleteConversation(conversationDialog.item?.id)">删除</button></footer>
+        </template>
+        <template v-else>
+          <header><h2 :id="`conversation-${conversationDialog.type}-title`">{{ conversationDialog.type === 'group-create' ? '新建分组' : '重命名分组' }}</h2><button type="button" aria-label="关闭" @click="closeConversationDialog"><X /></button></header>
+          <form @submit.prevent="saveSessionGroup">
+            <label for="conversation-group-name">分组名称</label>
+            <input id="conversation-group-name" ref="groupNameInput" v-model="groupName" maxlength="80" autocomplete="off" />
+            <footer><button type="button" @click="closeConversationDialog">取消</button><button class="primary" type="submit" :disabled="!groupName.trim()">保存</button></footer>
+          </form>
         </template>
       </section>
     </div>
@@ -131,8 +185,8 @@
         <section v-if="activeQueuedPrompts.length" class="prompt-queue" aria-label="待发送消息队列">
           <header><span><ListOrdered />等待发送 {{ activeQueuedPrompts.length }} 条</span><button type="button" @click="clearPromptQueue(activeId)">清空</button></header>
           <ol>
-            <li v-for="(item, index) in activeQueuedPrompts" :key="item.id">
-              <span>{{ index + 1 }}</span><p>{{ item.text }}</p><button type="button" :aria-label="`移除队列消息：${item.text}`" @click="removeQueuedPrompt(item.id)"><X /></button>
+            <li v-for="(item, index) in activeQueuedPrompts" :key="item.id" :class="{ dragging: draggedQueueId === item.id, 'drag-over': queueDropIndex === index }" draggable="true" @dragstart="startQueueDrag($event, item)" @dragover.prevent="queueDropIndex = index" @drop.prevent="dropQueuedPrompt(index)" @dragend="endQueueDrag">
+              <GripVertical aria-label="拖拽排序" /><span>{{ index + 1 }}</span><p>{{ item.text }}</p><button type="button" :aria-label="`移除队列消息：${item.text}`" @click="removeQueuedPrompt(item.id)"><X /></button>
             </li>
           </ol>
         </section>
@@ -163,18 +217,21 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import { Archive, ArrowDown, ArrowUp, ArrowUpRight, Check, Clock3, Copy, Database, Ellipsis, Image as ImageIcon, ListOrdered, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, Paperclip, Pencil, Sparkles, Square, SquarePen, TimerReset, Trash2, Wrench, X } from 'lucide-vue-next'
+import { Archive, ArrowDown, ArrowUp, ArrowUpRight, Check, ChevronDown, ChevronRight, Clock3, Copy, Database, Ellipsis, Folder, FolderInput, FolderPlus, GripVertical, Image as ImageIcon, Inbox, ListOrdered, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, Paperclip, Pencil, Pin, PinOff, Sparkles, Square, SquarePen, TimerReset, Trash2, Wrench, X } from 'lucide-vue-next'
 import { Calendar, List, Timer, Wallet } from '../icons.js'
 import { message } from '../services/message.js'
 import { useAppStore } from '../stores/app'
-import { apiArchiveAgentSession, apiChatWithAssistant, apiCreateAgentSession, apiDeleteAgentSession, apiGetAgentTurn, apiListAgentMessages, apiListAgentSessions, apiStreamAgentTurn, apiUpdateAgentSession } from '../../packages/api-client/src/index.js'
+import { apiArchiveAgentSession, apiChatWithAssistant, apiCreateAgentSession, apiCreateAgentSessionGroup, apiDeleteAgentSession, apiDeleteAgentSessionGroup, apiGetAgentTurn, apiListAgentMessages, apiListAgentSessionGroups, apiListAgentSessions, apiMoveAgentSession, apiRenameAgentSessionGroup, apiStreamAgentTurn, apiUpdateAgentSession } from '../../packages/api-client/src/index.js'
 
 const router = useRouter(), store = useAppStore()
 const sidebarOpen = ref(true), conversations = ref([]), activeId = ref(''), prompt = ref(''), attachments = ref([])
 const fileInput = ref(null), imageInput = ref(null), messageViewport = ref(null), recording = ref(false), autoFollow = ref(true), copiedId = ref('')
 const conversationMenu = ref({ item: null, x: 0, y: 0 }), conversationMenuEl = ref(null)
+const groupMenu = ref({ item: null, x: 0, y: 0 }), groupMenuEl = ref(null)
 const conversationDialog = ref({ type: '', item: null }), renameTitle = ref(''), renameInput = ref(null)
-const queuedPrompts = ref([]), turnRunning = ref(false)
+const sessionGroups = ref([]), collapsedGroups = ref({}), groupName = ref(''), groupNameInput = ref(null)
+const queuedPrompts = ref([]), turnRunning = ref(false), draggedQueueId = ref(''), queueDropIndex = ref(-1)
+const draggedConversationId = ref(''), conversationDropTarget = ref('')
 let mediaRecorder = null, mediaStream = null, recordingStartedAt = 0, activeTurnController = null, conversationCreationPromise = null, lastMessageScrollTop = 0, programmaticScroll = false, userPausedFollow = false
 const historyKey = computed(() => `workspace_ai_conversations_v1:${store.accountScope || 'local'}`)
 const displayName = computed(() => store.authUser?.nickname || store.authUser?.username || '建胜')
@@ -183,6 +240,17 @@ const activeMessages = computed(() => activeConversation.value?.messages || [])
 const canSubmit = computed(() => Boolean(prompt.value.trim() || attachments.value.length))
 const activeQueuedPrompts = computed(() => queuedPrompts.value.filter(item => item.conversationId === activeId.value))
 const conversationMenuStyle = computed(() => ({ left: `${conversationMenu.value.x}px`, top: `${conversationMenu.value.y}px` }))
+const groupMenuStyle = computed(() => ({ left: `${groupMenu.value.x}px`, top: `${groupMenu.value.y}px` }))
+const conversationSections = computed(() => {
+  const pinned = conversations.value.filter(item => item.pinnedAt)
+  const normal = conversations.value.filter(item => !item.pinnedAt)
+  const sections = []
+  if (pinned.length) sections.push({ id: 'pinned', name: '置顶', items: pinned, group: null })
+  for (const group of sessionGroups.value) sections.push({ id: group.id, name: group.name, items: normal.filter(item => item.groupId === group.id), group })
+  const ungrouped = normal.filter(item => !item.groupId || !sessionGroups.value.some(group => group.id === item.groupId))
+  sections.push({ id: 'ungrouped', name: '未分组', items: ungrouped, group: null })
+  return sections
+})
 const cards = [
   { key: 'ledger', title: '账本', description: '记账、流水与报表', route: '/ledger', icon: Wallet, tone: 'yellow' },
   { key: 'knowledge', title: '知识库', description: '整理与连接知识', icon: Calendar, tone: 'cyan', planned: true },
@@ -197,8 +265,9 @@ function responseFields(value = {}) { return { usage: value.usage, durationMs: v
 function inferRoute(text) { if (/工时|打卡|上班|下班/.test(text)) return { route: '/punch', routeLabel: '工时' }; if (/报表/.test(text)) return { route: '/ledger/reports', routeLabel: '账本报表' }; if (/流水/.test(text)) return { route: '/ledger/transactions', routeLabel: '账本流水' }; if (/记账|支出|收入|账本/.test(text)) return { route: '/ledger', routeLabel: '账本' }; return {} }
 function loadLocalConversations() { try { conversations.value = JSON.parse(localStorage.getItem(historyKey.value) || '[]').map(item => ({ ...item, messages: (item.messages || []).map(row => ({ ...row, typing: false })) })) } catch { conversations.value = [] }; activeId.value = conversations.value[0]?.id || '' }
 async function loadMessages(id) { const target = conversations.value.find(item => item.id === id); if (!target) return; const rows = await apiListAgentMessages(id); target.messages = (rows || []).map(row => ({ id: `server-${row.id}`, turnId: row.turnId, role: row.role, content: row.content, createdAt: row.createdAt, typing: false, ...responseFields(row.role === 'assistant' ? parseMetadata(row.metadataJson) : {}), ...inferRoute(row.content) })); persist(); await scrollToBottom(true) }
-async function loadConversations() { if (!store.authUser || store.offlineSession) return loadLocalConversations(); try { conversations.value = (await apiListAgentSessions() || []).map(item => ({ ...item, messages: [] })); activeId.value = conversations.value[0]?.id || ''; if (activeId.value) await loadMessages(activeId.value) } catch { loadLocalConversations() } }
+async function loadConversations() { if (!store.authUser || store.offlineSession) return loadLocalConversations(); try { const [sessions, groups] = await Promise.all([apiListAgentSessions(), apiListAgentSessionGroups()]); conversations.value = (sessions || []).map(item => ({ ...item, messages: [] })); sessionGroups.value = groups || []; activeId.value = conversations.value[0]?.id || ''; if (activeId.value) await loadMessages(activeId.value) } catch { loadLocalConversations() } }
 function closeConversationMenu() { conversationMenu.value = { item: null, x: 0, y: 0 } }
+function closeGroupMenu() { groupMenu.value = { item: null, x: 0, y: 0 } }
 async function openConversationMenu(event, item, fromButton = false) {
   const width = 190, height = 146, margin = 8
   const anchor = fromButton ? event.currentTarget.getBoundingClientRect() : null
@@ -208,6 +277,8 @@ async function openConversationMenu(event, item, fromButton = false) {
   await nextTick()
   conversationMenuEl.value?.querySelector('button')?.focus()
 }
+function openGroupMenu(event, item) { closeConversationMenu(); const rect = event.currentTarget.getBoundingClientRect(); groupMenu.value = { item, x: Math.max(8, Math.min(rect.right - 190, window.innerWidth - 198)), y: Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 112)) } }
+function toggleGroup(id) { collapsedGroups.value = { ...collapsedGroups.value, [id]: !collapsedGroups.value[id] } }
 function handleConversationMenuKeydown(event) {
   if (event.key === 'Escape') { event.preventDefault(); closeConversationMenu(); return }
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
@@ -218,15 +289,37 @@ function handleConversationMenuKeydown(event) {
   const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
   items[next].focus()
 }
-function closeConversationDialog() { conversationDialog.value = { type: '', item: null }; renameTitle.value = '' }
+function closeConversationDialog() { conversationDialog.value = { type: '', item: null }; renameTitle.value = ''; groupName.value = '' }
 async function showRenameDialog(item) { closeConversationMenu(); conversationDialog.value = { type: 'rename', item }; renameTitle.value = item.title; await nextTick(); renameInput.value?.focus(); renameInput.value?.select() }
 function showDeleteDialog(item) { closeConversationMenu(); conversationDialog.value = { type: 'delete', item } }
+async function showGroupDialog(mode, item = null) { closeGroupMenu(); conversationDialog.value = { type: mode === 'create' ? 'group-create' : 'group-rename', item }; groupName.value = item?.name || ''; await nextTick(); groupNameInput.value?.focus(); groupNameInput.value?.select() }
 function removeConversationFromList(id) { conversations.value = conversations.value.filter(item => item.id !== id); if (activeId.value === id) activeId.value = conversations.value[0]?.id || ''; persist() }
 function newConversation() { closeConversationMenu(); activeId.value = ''; prompt.value = ''; attachments.value = []; autoFollow.value = true; if (window.innerWidth < 900) sidebarOpen.value = false }
 async function openConversation(id) { closeConversationMenu(); activeId.value = id; autoFollow.value = true; const target = activeConversation.value; if (store.authUser && !store.offlineSession && target && !target.messages?.length) try { await loadMessages(id) } catch { message.error('历史消息加载失败') }; if (window.innerWidth < 900) sidebarOpen.value = false; scrollToBottom(true) }
 async function archiveConversation(item) { closeConversationMenu(); if (!store.authUser || store.offlineSession) return message.warning('本地会话暂不支持归档'); try { await apiArchiveAgentSession(item.id); removeConversationFromList(item.id); message.success('会话已归档') } catch { message.error('归档会话失败') } }
 async function deleteConversation(id) { if (!id) return; if (store.authUser && !store.offlineSession) try { await apiDeleteAgentSession(id) } catch { return message.error('删除会话失败') }; removeConversationFromList(id); closeConversationDialog(); message.success('会话已删除') }
 async function renameConversation() { const item = conversationDialog.value.item, title = renameTitle.value.trim(); if (!item || !title || title === item.title) return closeConversationDialog(); try { const updated = store.authUser && !store.offlineSession ? await apiUpdateAgentSession(item.id, { title }) : { title }; item.title = updated?.title || title; item.updatedAt = updated?.updatedAt || item.updatedAt; persist(); closeConversationDialog(); message.success('会话已重命名') } catch { message.error('修改标题失败') } }
+async function togglePinned(item) { closeConversationMenu(); try { const updated = await apiUpdateAgentSession(item.id, { pinned: !item.pinnedAt }); Object.assign(item, updated); message.success(item.pinnedAt ? '会话已置顶' : '已取消置顶') } catch { message.error('更新置顶状态失败') } }
+async function moveConversation(item, groupId) { closeConversationMenu(); try { const updated = await apiMoveAgentSession(item.id, groupId); Object.assign(item, updated); message.success(groupId ? '会话已移动' : '会话已移至未分组') } catch { message.error('移动会话失败') } }
+function startConversationDrag(event, item) { draggedConversationId.value = item.id; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', item.id) }
+function handleConversationDragOver(event, section) { if (!draggedConversationId.value || section.id === 'pinned') return; event.dataTransfer.dropEffect = 'move'; conversationDropTarget.value = section.id }
+function handleConversationDragLeave(event, section) { if (!event.currentTarget.contains(event.relatedTarget) && conversationDropTarget.value === section.id) conversationDropTarget.value = '' }
+async function dropConversation(section) {
+  const item = conversations.value.find(session => session.id === draggedConversationId.value)
+  const groupId = section.id === 'ungrouped' ? null : section.group?.id
+  if (!item || section.id === 'pinned' || item.groupId === groupId) return endConversationDrag()
+  try {
+    const updated = await apiMoveAgentSession(item.id, groupId)
+    Object.assign(item, updated)
+    if (item.pinnedAt) Object.assign(item, await apiUpdateAgentSession(item.id, { pinned: false }))
+    message.success(groupId ? `已移入“${section.name}”` : '已移出分组')
+  }
+  catch { message.error('移动会话失败') }
+  finally { endConversationDrag() }
+}
+function endConversationDrag() { draggedConversationId.value = ''; conversationDropTarget.value = '' }
+async function saveSessionGroup() { const name = groupName.value.trim(), item = conversationDialog.value.item; if (!name) return; try { if (conversationDialog.value.type === 'group-create') sessionGroups.value.push(await apiCreateAgentSessionGroup({ id: uid(), name })); else Object.assign(item, await apiRenameAgentSessionGroup(item.id, { name })); closeConversationDialog(); message.success('分组已保存') } catch { message.error('保存分组失败') } }
+async function deleteSessionGroup(item) { closeGroupMenu(); if (!window.confirm(`删除分组“${item.name}”？其中的会话会移到未分组。`)) return; try { await apiDeleteAgentSessionGroup(item.id); conversations.value.forEach(session => { if (session.groupId === item.id) session.groupId = null }); sessionGroups.value = sessionGroups.value.filter(group => group.id !== item.id); message.success('分组已删除') } catch { message.error('删除分组失败') } }
 function formatTime(value) { return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) }
 function formatMessageTime(value) { return new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(new Date(value)) }
 function formatNumber(value) { return new Intl.NumberFormat('zh-CN').format(Number(value || 0)) }
@@ -236,12 +329,29 @@ function cacheHitRate(usage) { const hit = Number(usage?.cacheHitTokens || 0), m
 function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledger.overview': '查询账本概览', 'ledger.transactions.search': '查询账本流水', 'ledger.reports.summary': '生成账本报表', 'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置', 'worktime.records.search': '查询工时记录' })[name] || name }
 async function copyMessage(item) { try { await navigator.clipboard.writeText(item.content || '') } catch { const area = document.createElement('textarea'); area.value = item.content || ''; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove() }; copiedId.value = item.id; window.setTimeout(() => { if (copiedId.value === item.id) copiedId.value = '' }, 1600) }
 function handleMetaToggle(event) { const current = event.currentTarget; if (!current.open) return; current.closest('.message-meta')?.querySelectorAll('details[open]').forEach(detail => { if (detail !== current) detail.open = false }) }
-function closeMetaPopovers(event) { document.querySelectorAll('.message-meta details[open]').forEach(detail => { if (!detail.contains(event.target)) detail.open = false }); if (conversationMenu.value.item && !conversationMenuEl.value?.contains(event.target) && !event.target.closest?.('[aria-haspopup="menu"]')) closeConversationMenu() }
+function closeMetaPopovers(event) {
+  document.querySelectorAll('.message-meta details[open]').forEach(detail => { if (!detail.contains(event.target)) detail.open = false })
+  const insideMenu = event.target.closest?.('.conversation-context-menu')
+  const menuTrigger = event.target.closest?.('[aria-haspopup="menu"]')
+  if (conversationMenu.value.item && !insideMenu && !menuTrigger) closeConversationMenu()
+  if (groupMenu.value.item && !insideMenu && !event.target.closest?.('[aria-label$="分组操作"]')) closeGroupMenu()
+}
 function openCard(card) { if (card.planned) { prompt.value = `打开${card.title}`; submitPrompt(); return }; router.push(card.route) }
 function addFiles(event, type) { attachments.value.push(...Array.from(event.target.files || []).map(file => ({ id: uid(), type, name: file.name, size: file.size }))); event.target.value = '' }
 function removeAttachment(id) { attachments.value = attachments.value.filter(item => item.id !== id) }
 function removeQueuedPrompt(id) { queuedPrompts.value = queuedPrompts.value.filter(item => item.id !== id) }
 function clearPromptQueue(conversationId) { queuedPrompts.value = queuedPrompts.value.filter(item => item.conversationId !== conversationId) }
+function startQueueDrag(event, item) { draggedQueueId.value = item.id; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', item.id) }
+function dropQueuedPrompt(targetIndex) {
+  const visible = activeQueuedPrompts.value, dragged = visible.find(item => item.id === draggedQueueId.value)
+  if (!dragged) return endQueueDrag()
+  const reordered = visible.filter(item => item.id !== dragged.id)
+  reordered.splice(Math.min(targetIndex, reordered.length), 0, dragged)
+  let cursor = 0
+  queuedPrompts.value = queuedPrompts.value.map(item => item.conversationId === activeId.value ? reordered[cursor++] : item)
+  endQueueDrag()
+}
+function endQueueDrag() { draggedQueueId.value = ''; queueDropIndex.value = -1 }
 function renderMarkdown(content) { return DOMPurify.sanitize(marked.parse(content || '', { breaks: true }), { ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'a', 'hr'], ALLOWED_ATTR: ['href', 'title'] }) }
 function handleMessageWheel(event) { if (event.deltaY < 0) { userPausedFollow = true; autoFollow.value = false } }
 function handleMessageScroll() {

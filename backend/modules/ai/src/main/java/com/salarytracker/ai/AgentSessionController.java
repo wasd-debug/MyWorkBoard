@@ -66,7 +66,44 @@ public class AgentSessionController {
     @Operation(operationId = "updateAgentSession")
     public ApiResponse<AgentConversationService.SessionSummary> update(@PathVariable String sessionId,
                                                                        @RequestBody SessionCommand command) {
+        if (command != null && command.pinned() != null) {
+            return ApiResponse.ok(conversations.setPinned(sessionId, command.pinned()));
+        }
         return ApiResponse.ok(conversations.rename(sessionId, command == null ? "新对话" : command.title()));
+    }
+
+    @PatchMapping(value = "/sessions/{sessionId}/group", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(operationId = "moveAgentSessionToGroup")
+    public ApiResponse<AgentConversationService.SessionSummary> moveToGroup(@PathVariable String sessionId,
+                                                                            @RequestBody MoveGroupCommand command) {
+        return ApiResponse.ok(conversations.moveToGroup(sessionId, command == null ? null : command.groupId()));
+    }
+
+    @GetMapping("/session-groups")
+    @Operation(operationId = "listAgentSessionGroups")
+    public ApiResponse<List<AgentConversationService.SessionGroup>> groups() {
+        return ApiResponse.ok(conversations.groups());
+    }
+
+    @PostMapping(value = "/session-groups", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(operationId = "createAgentSessionGroup")
+    public ApiResponse<AgentConversationService.SessionGroup> createGroup(@RequestBody GroupCommand command) {
+        return ApiResponse.ok(conversations.createGroup(command == null ? null : command.id(),
+                command == null ? null : command.name()));
+    }
+
+    @PatchMapping(value = "/session-groups/{groupId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(operationId = "renameAgentSessionGroup")
+    public ApiResponse<AgentConversationService.SessionGroup> renameGroup(@PathVariable String groupId,
+                                                                          @RequestBody GroupCommand command) {
+        return ApiResponse.ok(conversations.renameGroup(groupId, command == null ? null : command.name()));
+    }
+
+    @DeleteMapping("/session-groups/{groupId}")
+    @Operation(operationId = "deleteAgentSessionGroup")
+    public ApiResponse<Map<String, Boolean>> deleteGroup(@PathVariable String groupId) {
+        conversations.deleteGroup(groupId);
+        return ApiResponse.ok(Map.of("deleted", true));
     }
 
     @PostMapping("/sessions/{sessionId}/archive")
@@ -112,7 +149,13 @@ public class AgentSessionController {
         return ApiResponse.ok(turns.cancel(turnId));
     }
 
-    public record SessionCommand(String id, String title) {
+    public record SessionCommand(String id, String title, Boolean pinned) {
+    }
+
+    public record GroupCommand(String id, String name) {
+    }
+
+    public record MoveGroupCommand(String groupId) {
     }
 
     public record TurnCommand(String clientRequestId, String message) {

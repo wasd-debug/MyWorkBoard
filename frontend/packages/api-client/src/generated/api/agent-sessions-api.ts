@@ -28,11 +28,19 @@ import type { ApiResponseAgentTurnView } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseListMessageView } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseListSessionGroup } from '../models/index.ts';
+// @ts-ignore
 import type { ApiResponseListSessionSummary } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseMapStringBoolean } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseSessionGroup } from '../models/index.ts';
+// @ts-ignore
 import type { ApiResponseSessionSummary } from '../models/index.ts';
+// @ts-ignore
+import type { GroupCommand } from '../models/index.ts';
+// @ts-ignore
+import type { MoveGroupCommand } from '../models/index.ts';
 // @ts-ignore
 import type { SessionCommand } from '../models/index.ts';
 // @ts-ignore
@@ -146,6 +154,40 @@ export const AgentSessionsApiAxiosParamCreator = function (configuration?: Confi
         },
         /**
          *
+         * @param {GroupCommand} groupCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createAgentSessionGroup: async (groupCommand: GroupCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'groupCommand' is not null or undefined
+            assertParamExists('createAgentSessionGroup', 'groupCommand', groupCommand)
+            const localVarPath = `/api/v1/agent/session-groups`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(groupCommand, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {string} sessionId
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -155,6 +197,39 @@ export const AgentSessionsApiAxiosParamCreator = function (configuration?: Confi
             assertParamExists('deleteAgentSession', 'sessionId', sessionId)
             const localVarPath = `/api/v1/agent/sessions/{sessionId}`
                 .replace('{sessionId}', encodeURIComponent(String(sessionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'DELETE', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} groupId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteAgentSessionGroup: async (groupId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'groupId' is not null or undefined
+            assertParamExists('deleteAgentSessionGroup', 'groupId', groupId)
+            const localVarPath = `/api/v1/agent/session-groups/{groupId}`
+                .replace('{groupId}', encodeURIComponent(String(groupId)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
@@ -245,6 +320,35 @@ export const AgentSessionsApiAxiosParamCreator = function (configuration?: Confi
         },
         /**
          *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listAgentSessionGroups: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/agent/session-groups`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {boolean} [archived]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -271,6 +375,82 @@ export const AgentSessionsApiAxiosParamCreator = function (configuration?: Confi
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} sessionId
+         * @param {MoveGroupCommand} moveGroupCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        moveAgentSessionToGroup: async (sessionId: string, moveGroupCommand: MoveGroupCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sessionId' is not null or undefined
+            assertParamExists('moveAgentSessionToGroup', 'sessionId', sessionId)
+            // verify required parameter 'moveGroupCommand' is not null or undefined
+            assertParamExists('moveAgentSessionToGroup', 'moveGroupCommand', moveGroupCommand)
+            const localVarPath = `/api/v1/agent/sessions/{sessionId}/group`
+                .replace('{sessionId}', encodeURIComponent(String(sessionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'PATCH', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(moveGroupCommand, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} groupId
+         * @param {GroupCommand} groupCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        renameAgentSessionGroup: async (groupId: string, groupCommand: GroupCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'groupId' is not null or undefined
+            assertParamExists('renameAgentSessionGroup', 'groupId', groupId)
+            // verify required parameter 'groupCommand' is not null or undefined
+            assertParamExists('renameAgentSessionGroup', 'groupCommand', groupCommand)
+            const localVarPath = `/api/v1/agent/session-groups/{groupId}`
+                .replace('{groupId}', encodeURIComponent(String(groupId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'PATCH', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(groupCommand, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -400,6 +580,18 @@ export const AgentSessionsApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {GroupCommand} groupCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async createAgentSessionGroup(groupCommand: GroupCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseSessionGroup>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createAgentSessionGroup(groupCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.createAgentSessionGroup']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {string} sessionId
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -408,6 +600,18 @@ export const AgentSessionsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.deleteAgentSession(sessionId, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.deleteAgentSession']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} groupId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async deleteAgentSessionGroup(groupId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseMapStringBoolean>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.deleteAgentSessionGroup(groupId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.deleteAgentSessionGroup']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -436,6 +640,17 @@ export const AgentSessionsApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listAgentSessionGroups(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseListSessionGroup>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listAgentSessionGroups(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.listAgentSessionGroups']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {boolean} [archived]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -444,6 +659,32 @@ export const AgentSessionsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.listAgentSessions(archived, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.listAgentSessions']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} sessionId
+         * @param {MoveGroupCommand} moveGroupCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async moveAgentSessionToGroup(sessionId: string, moveGroupCommand: MoveGroupCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseSessionSummary>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.moveAgentSessionToGroup(sessionId, moveGroupCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.moveAgentSessionToGroup']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} groupId
+         * @param {GroupCommand} groupCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async renameAgentSessionGroup(groupId: string, groupCommand: GroupCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseSessionGroup>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.renameAgentSessionGroup(groupId, groupCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.renameAgentSessionGroup']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -510,12 +751,30 @@ export const AgentSessionsApiFactory = function (configuration?: Configuration, 
         },
         /**
          *
+         * @param {AgentSessionsApiCreateAgentSessionGroupRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createAgentSessionGroup(requestParameters: AgentSessionsApiCreateAgentSessionGroupRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseSessionGroup> {
+            return localVarFp.createAgentSessionGroup(requestParameters.groupCommand, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {AgentSessionsApiDeleteAgentSessionRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
         deleteAgentSession(requestParameters: AgentSessionsApiDeleteAgentSessionRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseMapStringBoolean> {
             return localVarFp.deleteAgentSession(requestParameters.sessionId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {AgentSessionsApiDeleteAgentSessionGroupRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteAgentSessionGroup(requestParameters: AgentSessionsApiDeleteAgentSessionGroupRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseMapStringBoolean> {
+            return localVarFp.deleteAgentSessionGroup(requestParameters.groupId, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -537,12 +796,38 @@ export const AgentSessionsApiFactory = function (configuration?: Configuration, 
         },
         /**
          *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listAgentSessionGroups(options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseListSessionGroup> {
+            return localVarFp.listAgentSessionGroups(options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {AgentSessionsApiListAgentSessionsRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
         listAgentSessions(requestParameters: AgentSessionsApiListAgentSessionsRequest = {}, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseListSessionSummary> {
             return localVarFp.listAgentSessions(requestParameters.archived, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {AgentSessionsApiMoveAgentSessionToGroupRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        moveAgentSessionToGroup(requestParameters: AgentSessionsApiMoveAgentSessionToGroupRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseSessionSummary> {
+            return localVarFp.moveAgentSessionToGroup(requestParameters.sessionId, requestParameters.moveGroupCommand, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {AgentSessionsApiRenameAgentSessionGroupRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        renameAgentSessionGroup(requestParameters: AgentSessionsApiRenameAgentSessionGroupRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseSessionGroup> {
+            return localVarFp.renameAgentSessionGroup(requestParameters.groupId, requestParameters.groupCommand, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -587,10 +872,24 @@ export interface AgentSessionsApiCreateAgentSessionRequest {
 }
 
 /**
+ * Request parameters for createAgentSessionGroup operation in AgentSessionsApi.
+ */
+export interface AgentSessionsApiCreateAgentSessionGroupRequest {
+    readonly groupCommand: GroupCommand
+}
+
+/**
  * Request parameters for deleteAgentSession operation in AgentSessionsApi.
  */
 export interface AgentSessionsApiDeleteAgentSessionRequest {
     readonly sessionId: string
+}
+
+/**
+ * Request parameters for deleteAgentSessionGroup operation in AgentSessionsApi.
+ */
+export interface AgentSessionsApiDeleteAgentSessionGroupRequest {
+    readonly groupId: string
 }
 
 /**
@@ -612,6 +911,24 @@ export interface AgentSessionsApiListAgentMessagesRequest {
  */
 export interface AgentSessionsApiListAgentSessionsRequest {
     readonly archived?: boolean
+}
+
+/**
+ * Request parameters for moveAgentSessionToGroup operation in AgentSessionsApi.
+ */
+export interface AgentSessionsApiMoveAgentSessionToGroupRequest {
+    readonly sessionId: string
+
+    readonly moveGroupCommand: MoveGroupCommand
+}
+
+/**
+ * Request parameters for renameAgentSessionGroup operation in AgentSessionsApi.
+ */
+export interface AgentSessionsApiRenameAgentSessionGroupRequest {
+    readonly groupId: string
+
+    readonly groupCommand: GroupCommand
 }
 
 /**
@@ -668,12 +985,32 @@ export class AgentSessionsApi extends BaseAPI {
 
     /**
      *
+     * @param {AgentSessionsApiCreateAgentSessionGroupRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public createAgentSessionGroup(requestParameters: AgentSessionsApiCreateAgentSessionGroupRequest, options?: RawAxiosRequestConfig) {
+        return AgentSessionsApiFp(this.configuration).createAgentSessionGroup(requestParameters.groupCommand, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
      * @param {AgentSessionsApiDeleteAgentSessionRequest} requestParameters Request parameters.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
     public deleteAgentSession(requestParameters: AgentSessionsApiDeleteAgentSessionRequest, options?: RawAxiosRequestConfig) {
         return AgentSessionsApiFp(this.configuration).deleteAgentSession(requestParameters.sessionId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {AgentSessionsApiDeleteAgentSessionGroupRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public deleteAgentSessionGroup(requestParameters: AgentSessionsApiDeleteAgentSessionGroupRequest, options?: RawAxiosRequestConfig) {
+        return AgentSessionsApiFp(this.configuration).deleteAgentSessionGroup(requestParameters.groupId, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -698,12 +1035,41 @@ export class AgentSessionsApi extends BaseAPI {
 
     /**
      *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listAgentSessionGroups(options?: RawAxiosRequestConfig) {
+        return AgentSessionsApiFp(this.configuration).listAgentSessionGroups(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
      * @param {AgentSessionsApiListAgentSessionsRequest} requestParameters Request parameters.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
     public listAgentSessions(requestParameters: AgentSessionsApiListAgentSessionsRequest = {}, options?: RawAxiosRequestConfig) {
         return AgentSessionsApiFp(this.configuration).listAgentSessions(requestParameters.archived, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {AgentSessionsApiMoveAgentSessionToGroupRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public moveAgentSessionToGroup(requestParameters: AgentSessionsApiMoveAgentSessionToGroupRequest, options?: RawAxiosRequestConfig) {
+        return AgentSessionsApiFp(this.configuration).moveAgentSessionToGroup(requestParameters.sessionId, requestParameters.moveGroupCommand, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {AgentSessionsApiRenameAgentSessionGroupRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public renameAgentSessionGroup(requestParameters: AgentSessionsApiRenameAgentSessionGroupRequest, options?: RawAxiosRequestConfig) {
+        return AgentSessionsApiFp(this.configuration).renameAgentSessionGroup(requestParameters.groupId, requestParameters.groupCommand, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

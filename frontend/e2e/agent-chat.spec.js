@@ -13,7 +13,33 @@ async function setupAgent(page, name, options = {}) {
   const auth = await registerUser(page.request, name)
   await markSessionBeforeLoad(page, auth.user.id)
   let sessions = options.sessions || []
+  let groups = options.groups || []
   const messages = options.messages || []
+  await page.route('**/api/v1/agent/session-groups', async route => {
+    const method = route.request().method()
+    if (method === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: groups }) })
+    if (method === 'POST') {
+      const body = route.request().postDataJSON()
+      const group = { id: body.id, name: body.name, sortOrder: groups.length, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+      groups = [...groups, group]
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: group }) })
+    }
+    return route.fallback()
+  })
+  await page.route('**/api/v1/agent/session-groups/*', async route => {
+    const groupId = new URL(route.request().url()).pathname.split('/').at(-1)
+    if (route.request().method() === 'PATCH') {
+      const group = groups.find(item => item.id === groupId)
+      if (group) Object.assign(group, route.request().postDataJSON(), { updatedAt: new Date().toISOString() })
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: group }) })
+    }
+    if (route.request().method() === 'DELETE') {
+      groups = groups.filter(item => item.id !== groupId)
+      sessions.forEach(item => { if (item.groupId === groupId) item.groupId = null })
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { deleted: true } }) })
+    }
+    return route.fallback()
+  })
   await page.route('**/api/v1/agent/sessions?*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: sessions }) }))
   await page.route('**/api/v1/agent/sessions', async route => {
     if (route.request().method() !== 'POST') return route.fallback()
@@ -25,11 +51,18 @@ async function setupAgent(page, name, options = {}) {
   await page.route('**/api/v1/agent/sessions/**', async route => {
     const url = new URL(route.request().url())
     const parts = url.pathname.split('/')
-    const sessionId = parts.at(-1) === 'archive' ? parts.at(-2) : parts.at(-1)
+    const sessionId = ['archive', 'group'].includes(parts.at(-1)) ? parts.at(-2) : parts.at(-1)
     if (route.request().method() === 'PATCH') {
       const body = route.request().postDataJSON()
       const session = sessions.find(item => item.id === sessionId)
-      if (session) Object.assign(session, body, { updatedAt: new Date().toISOString() })
+      if (session) {
+        if (parts.at(-1) === 'group') session.groupId = body.groupId || null
+        else {
+          if (body.pinned !== undefined) session.pinnedAt = body.pinned ? new Date().toISOString() : null
+          if (body.title !== undefined) session.title = body.title
+        }
+        session.updatedAt = new Date().toISOString()
+      }
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: session }) })
     }
     if (route.request().method() === 'POST' && parts.at(-1) === 'archive') {
@@ -126,7 +159,7 @@ test('opens GPT-style conversation actions from right click and more button', as
   })
   await page.goto('/')
 
-  const firstRow = page.locator('.conversation-list > div').filter({ hasText: '账本查询' })
+  const firstRow = page.locator('[data-session-id="session-1"]')
   if (testInfo.project.name.startsWith('mobile')) {
     await page.getByRole('button', { name: '展开历史会话' }).click()
     await page.getByRole('button', { name: '账本查询的更多操作' }).click()
@@ -159,6 +192,57 @@ test('opens GPT-style conversation actions from right click and more button', as
   await expect(page.getByRole('dialog', { name: '删除会话？' })).toBeVisible()
   await page.getByRole('dialog', { name: '删除会话？' }).getByRole('button', { name: '删除' }).click()
   await expect(page.locator('.conversation-list').getByText('九月账本复盘', { exact: true })).toBeHidden()
+})
+
+test('keeps conversation group headers on one compact line', async ({ page }, testInfo) => {
+  const now = new Date().toISOString()
+  await setupAgent(page, 'agent-group-layout-e2e', {
+    sessions: [{ id: 'session-1', title: '账本查询', groupId: null, pinnedAt: null, createdAt: now, updatedAt: now, archivedAt: null }],
+    groups: [{ id: 'group-1', name: '工作', sortOrder: 0, createdAt: now, updatedAt: now }],
+  })
+  await page.goto('/')
+  if (testInfo.project.name.startsWith('mobile')) await page.getByRole('button', { name: '展开历史会话' }).click()
+  for (const label of ['工作收起', '未分组收起']) {
+    const header = page.getByRole('button', { name: label })
+    await expect(header).toBeVisible()
+    const box = await header.boundingBox()
+    expect(box.width).toBeGreaterThan(80)
+    expect(await header.evaluate(element => getComputedStyle(element).whiteSpace)).toBe('nowrap')
+    expect(await header.evaluate(element => element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight)).toBeTruthy()
+  }
+})
+
+test('creates groups, pins sessions, and drags sessions into and out of groups', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name.startsWith('mobile'), 'HTML drag and drop is desktop-only; the move menu covers mobile.')
+  const now = new Date().toISOString()
+  await setupAgent(page, 'agent-groups-e2e', {
+    sessions: [
+      { id: 'session-1', title: '账本查询', groupId: null, pinnedAt: null, createdAt: now, updatedAt: now, archivedAt: null },
+      { id: 'session-2', title: '工时查询', groupId: null, pinnedAt: null, createdAt: now, updatedAt: now, archivedAt: null },
+    ],
+  })
+  await page.goto('/')
+
+  await page.getByRole('button', { name: '新建会话分组' }).click()
+  await page.getByLabel('分组名称').fill('工作')
+  await page.getByRole('dialog', { name: '新建分组' }).getByRole('button', { name: '保存' }).click()
+  const workGroup = page.getByRole('button', { name: '工作收起' }).locator('xpath=../..')
+  await expect(workGroup).toBeVisible()
+  await expect(workGroup.getByText('拖入会话')).toBeVisible()
+
+  await page.getByRole('button', { name: '账本查询的更多操作' }).click()
+  await page.getByRole('menuitem', { name: '置顶' }).click()
+  await expect(page.locator('[data-group-id="pinned"]')).toContainText('账本查询')
+
+  await page.locator('[data-session-id="session-1"]').dragTo(workGroup)
+  await expect(workGroup).toContainText('账本查询')
+  await expect(page.locator('[data-group-id="pinned"]')).toHaveCount(0)
+
+  await page.locator('[data-session-id="session-1"]').dragTo(page.locator('[data-group-id="ungrouped"]'))
+  await expect(page.locator('[data-group-id="ungrouped"]')).toContainText('账本查询')
+  await page.reload()
+  await expect(page.locator('[data-group-id="ungrouped"]')).toContainText('账本查询')
+  await expect(page.getByRole('button', { name: '工作收起' })).toBeVisible()
 })
 
 test('queues follow-up messages and stops following as soon as the user scrolls up', async ({ page }) => {
@@ -200,4 +284,36 @@ test('queues follow-up messages and stops following as soon as the user scrolls 
   expect(await viewport.evaluate(element => element.scrollTop)).toBe(before)
   await page.getByRole('button', { name: '滚动到底部并继续跟随' }).click()
   await expect(page.getByRole('button', { name: '滚动到底部并继续跟随' })).toBeHidden()
+})
+
+test('reorders queued messages by dragging before they execute', async ({ page }) => {
+  await setupAgent(page, 'agent-queue-order-e2e')
+  const executionOrder = []
+  await page.route('**/api/v1/agent/sessions/*/turns', async route => {
+    const body = route.request().postDataJSON()
+    executionOrder.push(body.message)
+    if (body.message === '第一条消息') await new Promise(resolve => setTimeout(resolve, 900))
+    const turnResponse = { ...response, content: `已处理：${body.message}` }
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: [
+        `event: turn.received\ndata: ${JSON.stringify({ turnId: `turn-${executionOrder.length}`, status: 'RECEIVED', replayed: false })}\n\n`,
+        `event: assistant.delta\ndata: ${JSON.stringify({ content: turnResponse.content })}\n\n`,
+        `event: turn.completed\ndata: ${JSON.stringify({ response: turnResponse })}\n\n`,
+      ].join(''),
+    })
+  })
+
+  await page.goto('/')
+  const composer = page.getByLabel('给 AI 发送消息')
+  for (const content of ['第一条消息', '第二条消息', '第三条消息']) {
+    await composer.fill(content)
+    await page.getByRole('button', { name: '发送' }).click()
+  }
+  await expect(page.getByText('等待发送 2 条')).toBeVisible()
+  await page.locator('.prompt-queue li').filter({ hasText: '第三条消息' }).dragTo(page.locator('.prompt-queue li').filter({ hasText: '第二条消息' }))
+  await expect(page.getByText('已处理：第三条消息')).toBeVisible()
+  await expect(page.getByText('已处理：第二条消息')).toBeVisible()
+  expect(executionOrder).toEqual(['第一条消息', '第三条消息', '第二条消息'])
 })

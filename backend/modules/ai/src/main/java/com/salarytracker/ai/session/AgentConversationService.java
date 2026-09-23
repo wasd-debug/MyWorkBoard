@@ -14,6 +14,7 @@ import java.time.Instant;
 public class AgentConversationService {
     static final int CONTEXT_MESSAGE_LIMIT = 20;
     private static final int MAX_MESSAGE_LENGTH = 8_000;
+    private static final int MAX_GROUP_NAME_LENGTH = 80;
     private static final Pattern SESSION_ID = Pattern.compile("[A-Za-z0-9_-]{1,64}");
 
     private final AgentSessionRepository repository;
@@ -76,6 +77,36 @@ public class AgentConversationService {
         return repository.findSession(sessionId, userId).orElseThrow();
     }
 
+    public SessionSummary setPinned(String sessionId, boolean pinned) {
+        long userId = currentUser.id();
+        requireOwned(sessionId, userId);
+        repository.setPinned(sessionId, userId, pinned);
+        return repository.findSession(sessionId, userId).orElseThrow();
+    }
+
+    public SessionSummary moveToGroup(String sessionId, String groupId) {
+        long userId = currentUser.id();
+        requireOwned(sessionId, userId);
+        repository.moveToGroup(sessionId, userId, normalizeOptionalGroupId(groupId));
+        return repository.findSession(sessionId, userId).orElseThrow();
+    }
+
+    public List<SessionGroup> groups() {
+        return repository.listGroups(currentUser.id());
+    }
+
+    public SessionGroup createGroup(String requestedId, String name) {
+        return repository.createGroup(normalizeSessionId(requestedId), currentUser.id(), groupName(name));
+    }
+
+    public SessionGroup renameGroup(String groupId, String name) {
+        return repository.renameGroup(normalizeSessionId(groupId), currentUser.id(), groupName(name));
+    }
+
+    public void deleteGroup(String groupId) {
+        repository.deleteGroup(normalizeSessionId(groupId), currentUser.id());
+    }
+
     public void archive(String sessionId) {
         long userId = currentUser.id();
         requireOwned(sessionId, userId);
@@ -115,6 +146,17 @@ public class AgentConversationService {
         return value;
     }
 
+    private String normalizeOptionalGroupId(String groupId) {
+        return groupId == null || groupId.isBlank() ? null : normalizeSessionId(groupId);
+    }
+
+    private String groupName(String name) {
+        String value = name == null ? "" : name.trim().replaceAll("\\s+", " ");
+        if (value.isBlank()) throw new IllegalArgumentException("分组名称不能为空");
+        if (value.length() > MAX_GROUP_NAME_LENGTH) throw new IllegalArgumentException("分组名称不能超过 80 个字符");
+        return value;
+    }
+
     private String title(String message) {
         String value = validateMessage(message).replaceAll("\\s+", " ");
         return value.substring(0, Math.min(value.length(), 80));
@@ -123,7 +165,11 @@ public class AgentConversationService {
     public record StoredMessage(String role, String content) {
     }
 
-    public record SessionSummary(String id, String title, Instant createdAt, Instant updatedAt, Instant archivedAt) {
+    public record SessionSummary(String id, String title, String groupId, Instant createdAt, Instant updatedAt,
+                                 Instant archivedAt, Instant pinnedAt) {
+    }
+
+    public record SessionGroup(String id, String name, int sortOrder, Instant createdAt, Instant updatedAt) {
     }
 
     public record MessageView(long id, String turnId, String role, String content, String metadataJson,

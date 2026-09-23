@@ -14,12 +14,6 @@
 
 
 
-export interface SessionSummary {
-    'id'?: string;
-    'title'?: string;
+export interface MoveGroupCommand {
     'groupId'?: string;
-    'createdAt'?: string;
-    'updatedAt'?: string;
-    'archivedAt'?: string;
-    'pinnedAt'?: string;
 }

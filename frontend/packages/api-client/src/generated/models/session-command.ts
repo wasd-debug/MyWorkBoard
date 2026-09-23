@@ -17,4 +17,5 @@
 export interface SessionCommand {
     'id'?: string;
     'title'?: string;
+    'pinned'?: boolean;
 }

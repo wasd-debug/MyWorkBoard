@@ -13,13 +13,11 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { SessionGroup } from './session-group.ts';
 
-export interface SessionSummary {
-    'id'?: string;
-    'title'?: string;
-    'groupId'?: string;
-    'createdAt'?: string;
-    'updatedAt'?: string;
-    'archivedAt'?: string;
-    'pinnedAt'?: string;
+export interface ApiResponseSessionGroup {
+    'data'?: SessionGroup;
+    'traceId'?: string;
 }

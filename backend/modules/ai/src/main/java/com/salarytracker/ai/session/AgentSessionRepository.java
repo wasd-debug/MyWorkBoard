@@ -24,6 +24,18 @@ public interface AgentSessionRepository {
 
     void rename(String sessionId, long userId, String title);
 
+    void setPinned(String sessionId, long userId, boolean pinned);
+
+    void moveToGroup(String sessionId, long userId, String groupId);
+
+    List<AgentConversationService.SessionGroup> listGroups(long userId);
+
+    AgentConversationService.SessionGroup createGroup(String groupId, long userId, String name);
+
+    AgentConversationService.SessionGroup renameGroup(String groupId, long userId, String name);
+
+    void deleteGroup(String groupId, long userId);
+
     void archive(String sessionId, long userId);
 
     void delete(String sessionId, long userId);

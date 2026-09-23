@@ -51,6 +51,19 @@ class AgentConversationIntegrationTest extends MySqlIntegrationTestSupport {
         assertEquals(0, repository.messages(sessionId, secondUser).size());
         repository.rename(sessionId, firstUser, "新标题");
         assertEquals("新标题", repository.findSession(sessionId, firstUser).orElseThrow().title());
+        repository.setPinned(sessionId, firstUser, true);
+        assertTrue(repository.findSession(sessionId, firstUser).orElseThrow().pinnedAt() != null);
+        var group = repository.createGroup("group-1", firstUser, "工作");
+        assertEquals("工作", group.name());
+        assertEquals(0, repository.listGroups(secondUser).size());
+        repository.moveToGroup(sessionId, firstUser, group.id());
+        assertEquals(group.id(), repository.findSession(sessionId, firstUser).orElseThrow().groupId());
+        assertThrows(IllegalArgumentException.class,
+                () -> repository.moveToGroup(sessionId, firstUser, "other-users-group"));
+        repository.renameGroup(group.id(), firstUser, "重要工作");
+        assertEquals("重要工作", repository.listGroups(firstUser).get(0).name());
+        repository.deleteGroup(group.id(), firstUser);
+        assertEquals(null, repository.findSession(sessionId, firstUser).orElseThrow().groupId());
         assertThrows(IllegalArgumentException.class, () -> repository.rename(sessionId, secondUser, "越权"));
         repository.archive(sessionId, firstUser);
         assertEquals(1, repository.listSessions(firstUser, true).size());

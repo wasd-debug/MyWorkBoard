@@ -24,8 +24,13 @@ export async function apiCreateAgentSession(payload) { return data(await api.pos
 export async function apiListAgentSessions(archived = false) { return data(await api.get('/api/v1/agent/sessions', { params: { archived } })) }
 export async function apiListAgentMessages(sessionId) { return data(await api.get(`/api/v1/agent/sessions/${sessionId}/messages`)) }
 export async function apiUpdateAgentSession(sessionId, payload) { return data(await api.patch(`/api/v1/agent/sessions/${sessionId}`, payload)) }
+export async function apiMoveAgentSession(sessionId, groupId) { return data(await api.patch(`/api/v1/agent/sessions/${sessionId}/group`, { groupId })) }
 export async function apiArchiveAgentSession(sessionId) { return data(await api.post(`/api/v1/agent/sessions/${sessionId}/archive`)) }
 export async function apiDeleteAgentSession(sessionId) { return data(await api.delete(`/api/v1/agent/sessions/${sessionId}`)) }
+export async function apiListAgentSessionGroups() { return data(await api.get('/api/v1/agent/session-groups')) }
+export async function apiCreateAgentSessionGroup(payload) { return data(await api.post('/api/v1/agent/session-groups', payload)) }
+export async function apiRenameAgentSessionGroup(groupId, payload) { return data(await api.patch(`/api/v1/agent/session-groups/${groupId}`, payload)) }
+export async function apiDeleteAgentSessionGroup(groupId) { return data(await api.delete(`/api/v1/agent/session-groups/${groupId}`)) }
 export async function apiGetAgentTurn(turnId) { return data(await api.get(`/api/v1/agent/turns/${turnId}`)) }
 export async function apiCancelAgentTurn(turnId) { return data(await api.post(`/api/v1/agent/turns/${turnId}/cancel`)) }
 

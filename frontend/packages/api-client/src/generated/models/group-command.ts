@@ -14,12 +14,7 @@
 
 
 
-export interface SessionSummary {
+export interface GroupCommand {
     'id'?: string;
-    'title'?: string;
-    'groupId'?: string;
-    'createdAt'?: string;
-    'updatedAt'?: string;
-    'archivedAt'?: string;
-    'pinnedAt'?: string;
+    'name'?: string;
 }
