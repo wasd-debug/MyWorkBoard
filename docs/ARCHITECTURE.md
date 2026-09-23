@@ -12,7 +12,7 @@
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
 | Phase 2 任务 | 未启动 | 只有禁用导航占位，无领域模块、数据表和页面 |
-| Phase 3A-D Agent/MCP | Phase 3A/3B 部分实现 | AI 物理模块、7 个 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit、V15 会话/消息/turn、基础 SSE 与断流查询已落地；首页可恢复历史并展示真实增量、TTFT、模型/工具耗时和 Token 细分，完整 trace、受控写入和 MCP 尚未实现 |
+| Phase 3A-D Agent/MCP | Phase 3A/3B 部分实现 | AI 物理模块、7 个 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit、V15 会话/消息/turn、基础 SSE 与断流查询已落地；首页可恢复历史并展示真实增量、TTFT、模型/工具耗时和 Token 细分，支持会话右键管理、页面内消息队列和严格滚动跟随，完整 trace、队列持久化、受控写入和 MCP 尚未实现 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
 | Phase 6 打磨 | 部分提前实现 | 已有响应式布局、主题、共享账本、自动视觉/无障碍和恢复演练；PWA、搜索及完整可观测体系未实现 |
@@ -630,7 +630,7 @@ Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后
 ### Phase 3B —— Web 工作台 Agent
 
 - [~] 首页已接入真实 DeepSeek 和最小只读 Agent 编排；模型只看到当前用户可用的 R0/R1 工具，单轮最多执行 4 次，R2-R4 不暴露
-- [~] 服务端会话 CRUD、消息元数据、同一 sessionId 连续追问、用户隔离、turn 状态/幂等、基础 SSE 和断流恢复已实现；结构化表单、确认弹窗和写入结果链路待完成
+- [~] 服务端会话 CRUD、消息元数据、同一 sessionId 连续追问、用户隔离、turn 状态/幂等、基础 SSE 和断流恢复已实现；前端支持右键/更多菜单、改名/归档/删除确认、页面内 FIFO 消息队列和严格底部跟随；服务端队列恢复、结构化表单、确认弹窗和写入结果链路待完成
 - [ ] 先开放只读查询，再开放记账/记工时，最后接入修改、删除和管理工具
 - [ ] Agent 在线写入后触发账本增量同步，不改变传统页面 local-first 主链
 - [ ] agent trace、ai usage、模型/提示词/工具版本评测和功能开关

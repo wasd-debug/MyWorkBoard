@@ -1,6 +1,6 @@
 # 个人工作台项目总览
 
-> 状态日期：2026-09-22
+> 状态日期：2026-09-23
 > 当前主线：Phase 3B 增量实施中，真实 DeepSeek 已能通过最小编排循环调用七个只读 Domain Tool；仍按“现有功能 Agent 化 → MCP → 文件/RAG”顺序推进
 
 ## 项目定位
@@ -72,7 +72,7 @@
 ### Phase 2-6
 
 - **Phase 2 任务管理：未启动。** 导航只有禁用占位，没有 task/file/notification 模块或表结构。
-- **Phase 3A-D Agent/MCP：Phase 3A/3B 部分实现。** V15 已增加服务端会话 CRUD、消息元数据和 `agent_turn`；首页使用真实 SSE 增量呈现文本与工具状态，支持刷新恢复、请求幂等、断流后按 `turnId` 对账，并展示首字时延、各轮模型调用、各工具耗时和 Token 细分。服务端完整 trace、受控确认 UI 和 MCP Server 尚未完成。
+- **Phase 3A-D Agent/MCP：Phase 3A/3B 部分实现。** V15 已增加服务端会话 CRUD、消息元数据和 `agent_turn`；首页使用真实 SSE 增量呈现文本与工具状态，支持刷新恢复、请求幂等、断流后按 `turnId` 对账，并展示首字时延、各轮模型调用、各工具耗时和 Token 细分。会话列表现支持右键/更多菜单、改名、归档和删除确认；生成中可继续发送并管理页面内 FIFO 队列，用户向上滚动会立即停止自动跟随。服务端完整 trace、队列持久化、受控确认 UI 和 MCP Server 尚未完成。
 - **Phase 4 文件/RAG：未启动。** 尚无 MinIO/NAS 文件域、Tika、Qdrant 和知识库。
 - **Phase 5 跨域洞察：未启动。** 只有 `domain_event` 预留表，无事件发布/消费、`report_fact`、`report_snapshot` 或洞察页面。
 - **Phase 6 持续打磨：部分能力提前实现。** 已有响应式布局、主题、共享账本和可重复恢复演练；PWA、全局搜索和完整可观测体系尚未实现。
@@ -84,6 +84,7 @@
 - AI/身份相关 Reactor 测试通过；真实 MySQL `AgentConversationIntegrationTest` 3/3 通过并执行 V1-V15，覆盖会话恢复、用户隔离、turn 幂等和终态保护。
 - OpenAPI 重新生成、客户端一致性检查、TypeScript 严格编译和前端生产构建通过。
 - Agent 专项 E2E 在桌面 Chromium、桌面 WebKit 与 375px 移动 Chromium共 9/9 通过；WebKit 验证复制状态，Chromium 额外验证剪贴板内容。
+- 会话交互增量完成：桌面右键与全端“更多”菜单提供改名、归档、删除；回复生成期间后续消息进入可管理队列；自动跟随只在严格底部状态启用。前端构建通过，Chromium 新增聚焦 E2E 2/2 通过。
 - 本地 Compose 后端 schema 已到 v15；真实 DeepSeek SSE、Token/TTFT/工具耗时展示及异步安全分派日志修正完成。
 
 2026-09-22 本轮 Agent 后端验证与既有基线：
