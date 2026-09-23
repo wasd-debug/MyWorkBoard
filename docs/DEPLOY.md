@@ -242,6 +242,17 @@ unset VERIFY_DB_PASSWORD
 
 ## 健康检查与配置
 
+### 2026-09-23 Agent 受控写入与峰谷计价生产发布记录
+
+- 应用提交：`fd08695`，发布目录：`/home/ubuntu/salary-tracker/releases/fd08695`；后端和前端均在服务器上从提交归档构建为 `amd64` 镜像 `salary-backend:fd08695` 与 `salary-frontend:fd08695`。
+- 发布前完成逻辑备份：`backups/salary-before-fd08695-20260923-175716.sql.gz`，使用 `mysqldump --no-tablespaces --single-transaction` 并通过 `gzip -t` 校验；旧镜像保留为 `salary-backend:pre-fd08695` 和 `salary-frontend:pre-fd08695`。
+- 生产环境原有 `DEEPSEEK_API_KEY` 保持不变；为 V18 用户模型凭据加密功能在服务器本地生成并写入了 `AI_CREDENTIAL_KEY`，密钥值未输出、未上传且未进入 Git。
+- 仅执行 `up -d --no-deps --force-recreate backend frontend`，MySQL 容器和数据卷未重建。Flyway 从 v14 连续成功应用 v15、v16、v17、v18、v19，当前 schema 为 v19。
+- 首次切换后的健康检查脚本因字符串匹配条件过严，在接口已经持续返回 HTTP 200 时产生误判并触发旧镜像回滚；确认 Flyway 已到 v19 后立即重新切换 `fd08695`，改用 HTTP 状态码和 JSON 解析验收，第 6 次探测恢复健康。最终运行容器的镜像 ID 与 `fd08695` 标签完全一致。
+- 发布前后核心数据数量一致：`app_user=3`、`work_record=42`、`ledger_book=5`、`ledger_transaction=16460`；发布后已有 `agent_session=5`，新建 `agent_turn` 初始为空。
+- 内网和公网首页、`GET /api/health`、`/v3/api-docs` 均返回 HTTP 200；未认证访问 Agent 会话、模型配置、工具列表、账本和工时设置接口均返回 HTTP 401。线上 OpenAPI 已包含 action 查询、补参、批准、拒绝和提交接口。
+- 后端精确错误日志扫描未发现 `ERROR`、启动失败或 Flyway 失败；公网桌面浏览器烟测正常，登录页成功加载本次前端资源，未捕获 4xx/5xx 请求。
+
 ### 2026-09-23 本地 Agent SSE 增量说明
 
 - 本地后端启动会由 Flyway 从 v14 升级至 v15，新增 `agent_turn`、会话归档字段和消息元数据；不得改写或忽略已应用迁移。
