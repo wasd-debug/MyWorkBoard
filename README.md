@@ -178,6 +178,8 @@ npm run test:e2e
 
 2026-09-23 Agent 回复可观测增量验证：AI 目标 Reactor 测试通过，DeepSeek Token usage 解析测试覆盖缓存字段；前端生产构建与 OpenAPI 生成检查通过，Agent 专项 E2E 在桌面 Chromium 和 375px 移动端 8/8 通过，并使用真实本地 DeepSeek 对话验证工具明细、Token、耗时、消息时间与复制入口。
 
+2026-09-23 Agent 元数据弹层交互修正：工具调用与 Token 明细支持点击弹层外区域自动收起，并保持同一消息内互斥展开；前端生产构建和专项 Chromium E2E 通过。
+
 ## 服务器部署
 
 所有 SSH 连接必须使用仓库根目录的 `workboard.pem`，禁止密码认证：

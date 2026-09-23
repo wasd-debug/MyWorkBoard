@@ -201,6 +201,11 @@ function handleMetaToggle(event) {
     if (detail !== current) detail.open = false
   })
 }
+function closeMetaPopovers(event) {
+  document.querySelectorAll('.message-meta details[open]').forEach(detail => {
+    if (!detail.contains(event.target)) detail.open = false
+  })
+}
 function openCard(card) { if (card.planned) { prompt.value = `打开${card.title}`; submitPrompt(); return } router.push(card.route) }
 function addFiles(event, type) {
   attachments.value.push(...Array.from(event.target.files || []).map(file => ({ id: uid(), type, name: file.name, size: file.size })))
@@ -320,8 +325,14 @@ async function toggleRecording() {
   } catch { message.warning('无法使用麦克风，请检查浏览器权限') }
 }
 
-onMounted(() => { loadConversations(); sidebarOpen.value = window.innerWidth >= 900; scrollToBottom(true) })
+onMounted(() => {
+  loadConversations()
+  sidebarOpen.value = window.innerWidth >= 900
+  document.addEventListener('pointerdown', closeMetaPopovers)
+  scrollToBottom(true)
+})
 onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', closeMetaPopovers)
   typingTimers.forEach(timer => window.clearInterval(timer))
   typingTimers.clear()
   if (mediaRecorder?.state === 'recording') mediaRecorder.stop()
