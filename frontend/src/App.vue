@@ -39,6 +39,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowLeft, Connection, House, Setting } from './icons.js'
+import { ledgerNavigation, navigationItemIsActive, worktimeNavigation } from './config/moduleNavigation.js'
 import { message } from './services/message.js'
 import { useAppStore } from './stores/app'
 import { useWorktimeStore } from './stores/worktime.js'
@@ -63,25 +64,10 @@ const palettes = [
 ]
 const currentPalette = computed(() => palettes.find(item => item.key === store.accent) || palettes[0])
 const userInitial = computed(() => String(store.authUser?.nickname || store.authUser?.username || '我').slice(0, 1))
-const workNav = [{ key: 'punch', to: '/punch', label: '打卡' }, { key: 'records', to: '/records', label: '记录' }, { key: 'stats', to: '/stats', label: '统计' }]
-const ledgerNav = [
-  { key: 'overview', to: '/ledger', label: '总览' }, { key: 'transactions', to: '/ledger/transactions', label: '流水' },
-  { key: 'accounts', to: { path: '/ledger/manage', query: { view: 'accounts' } }, label: '账户' }, { key: 'reports', to: '/ledger/reports', label: '报表' },
-  { key: 'scheduled', to: '/ledger/scheduled-tasks', label: '定时任务' },
-  { key: 'manage', to: { path: '/ledger/manage', query: { view: 'categories' } }, label: '管理', views: ['categories', 'merchants', 'projects', 'books'] },
-  { key: 'members', to: { path: '/ledger/manage', query: { view: 'members' } }, label: '成员与权限' },
-  { key: 'recycle', to: { path: '/ledger/manage', query: { view: 'recycle' } }, label: '回收站' },
-  { key: 'audit', to: { path: '/ledger/manage', query: { view: 'audit' } }, label: '操作日志' }
-]
 const isLedger = computed(() => route.path.startsWith('/ledger'))
 const moduleLabel = computed(() => isLedger.value ? '账本' : route.path === '/settings' ? '设置' : '工时')
-const moduleNav = computed(() => isLedger.value ? ledgerNav : route.path === '/settings' ? [] : workNav)
-function isNavActive(item) {
-  const target = typeof item.to === 'string' ? { path: item.to } : item.to
-  if (route.path !== target.path) return false
-  if (item.views) return item.views.includes(String(route.query.view || 'categories'))
-  return target.query?.view ? route.query.view === target.query.view : true
-}
+const moduleNav = computed(() => isLedger.value ? ledgerNavigation : route.path === '/settings' ? [] : worktimeNavigation)
+function isNavActive(item) { return navigationItemIsActive(route, item) }
 function selectPalette(key) { store.setAccent(key); themeMenuOpen.value = false }
 function clearNavigationTimers() { window.clearTimeout(navigationFinishTimer); window.clearTimeout(navigationSafetyTimer) }
 function finishNavigationLoading(delay = 0) { clearNavigationTimers(); if (delay) navigationFinishTimer = window.setTimeout(() => { navigationLoading.value = false }, delay); else navigationLoading.value = false }

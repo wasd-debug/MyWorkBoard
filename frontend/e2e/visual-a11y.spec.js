@@ -158,3 +158,86 @@ test('stable visual baselines cover desktop settings and mobile reports', async 
     maxDiffPixelRatio: 0.0005
   })
 })
+
+test('tablet bottom navigation follows the current module and adapts its capacity', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'visual-1024-chromium')
+  const auth = await registerUser(page.request, 'tablet-navigation-e2e')
+  const { book } = await bootstrapTemplateLedger(page.request, auth)
+  await selectLedgerBeforeLoad(page, auth.user.id, book.id)
+  await page.goto('/ledger')
+  await expect(page.locator('h1').filter({ hasText: '账本' })).toBeVisible()
+  await expectPageSettled(page)
+
+  const ledgerNav = page.getByRole('navigation', { name: '账本移动端二级导航' })
+  await expect(ledgerNav).toBeVisible()
+  await expect(ledgerNav.locator('.mobile-module-name')).toHaveCount(0)
+  await expect(ledgerNav.getByRole('button', { name: '总览' })).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('navigation', { name: '账本二级导航' })).toBeHidden()
+
+  const directLedgerCount = await ledgerNav.locator('.module-bottom-nav > .bottom-nav-item:not(.bottom-nav-more)').count()
+  expect(directLedgerCount).toBeGreaterThan(3)
+  expect(directLedgerCount).toBeLessThanOrEqual(9)
+  if (directLedgerCount < 9) {
+    await ledgerNav.getByRole('button', { name: '更多' }).click()
+    const orderPanel = page.getByRole('region', { name: '二级菜单排序' })
+    for (const label of ['总览', '流水', '账户', '报表', '定时任务', '管理', '成员与权限', '回收站', '操作日志']) {
+      await expect(orderPanel.getByRole('button', { name: new RegExp(`^${label}`) }).first()).toBeVisible()
+    }
+    await page.getByRole('button', { name: '关闭更多菜单' }).click()
+  } else {
+    await expect(ledgerNav.getByRole('button', { name: '更多' })).toHaveCount(0)
+  }
+
+  await page.goto('/records')
+  await expect(page.locator('h1').filter({ hasText: '记录' })).toBeVisible()
+  const worktimeNav = page.getByRole('navigation', { name: '工时移动端二级导航' })
+  await expect(worktimeNav).toBeVisible()
+  await expect(worktimeNav.getByRole('button', { name: '打卡' })).toBeVisible()
+  await expect(worktimeNav.getByRole('button', { name: '记录' })).toHaveAttribute('aria-current', 'page')
+  await expect(worktimeNav.getByRole('button', { name: '统计' })).toBeVisible()
+  await expect(worktimeNav.getByRole('button', { name: '流水' })).toHaveCount(0)
+  await expect(worktimeNav.getByRole('button', { name: '更多' })).toHaveCount(0)
+})
+
+test('mobile module menu order persists and active overflow items stay reachable', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile-375-chromium')
+  const auth = await registerUser(page.request, 'mobile-navigation-order-e2e')
+  const { book } = await bootstrapTemplateLedger(page.request, auth)
+  await selectLedgerBeforeLoad(page, auth.user.id, book.id)
+  await page.goto('/ledger')
+  const nav = page.getByRole('navigation', { name: '账本移动端二级导航' })
+  await expect(nav).toBeVisible()
+  await expect(nav.locator('.mobile-module-name')).toHaveCount(0)
+  const directCount = await nav.locator('.module-bottom-nav > .bottom-nav-item:not(.bottom-nav-more)').count()
+  expect(directCount).toBeGreaterThanOrEqual(1)
+  expect(directCount).toBeLessThan(9)
+  await expect(nav.locator('.module-bottom-nav > .bottom-nav-item:not(.bottom-nav-more) svg')).toHaveCount(directCount)
+
+  await nav.getByRole('button', { name: '更多' }).click()
+  const panel = page.getByRole('region', { name: '二级菜单排序' })
+  await expect(panel.locator('.mobile-order-link svg')).toHaveCount(9)
+  const closeAlignment = await panel.getByRole('button', { name: '关闭' }).evaluate(button => {
+    const icon = button.querySelector('svg')
+    const buttonRect = button.getBoundingClientRect()
+    const iconRect = icon.getBoundingClientRect()
+    return {
+      buttonWidth: buttonRect.width,
+      buttonHeight: buttonRect.height,
+      deltaX: Math.abs((buttonRect.left + buttonRect.width / 2) - (iconRect.left + iconRect.width / 2)),
+      deltaY: Math.abs((buttonRect.top + buttonRect.height / 2) - (iconRect.top + iconRect.height / 2))
+    }
+  })
+  expect(closeAlignment.buttonWidth).toBe(44)
+  expect(closeAlignment.buttonHeight).toBe(44)
+  expect(closeAlignment.deltaX).toBeLessThanOrEqual(1)
+  expect(closeAlignment.deltaY).toBeLessThanOrEqual(1)
+  const transactions = panel.locator('li').filter({ hasText: '流水' })
+  await transactions.getByRole('button', { name: '流水上移' }).click()
+  await page.reload()
+  await nav.getByRole('button', { name: '更多' }).click()
+  const labels = await panel.locator('.mobile-order-link span').allTextContents()
+  expect(labels.indexOf('流水')).toBeLessThan(labels.indexOf('总览'))
+
+  await page.goto('/ledger/manage?view=audit')
+  await expect(page.getByRole('navigation', { name: '账本移动端二级导航' }).getByRole('button', { name: '操作日志' })).toHaveAttribute('aria-current', 'page')
+})
