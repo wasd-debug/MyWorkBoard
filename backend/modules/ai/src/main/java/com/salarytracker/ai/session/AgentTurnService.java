@@ -2,6 +2,8 @@ package com.salarytracker.ai.session;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.salarytracker.ai.AgentOrchestrator;
+import com.salarytracker.ai.model.AiModelConnectionService;
+import com.salarytracker.ai.trace.AgentTraceService;
 import com.salarytracker.identity.AuthService;
 import com.salarytracker.identity.CurrentUser;
 import com.salarytracker.identity.CurrentUserResolver;
@@ -31,6 +33,8 @@ public class AgentTurnService {
     private final CurrentUserResolver currentUser;
     private final AuthService authService;
     private final ObjectMapper mapper;
+    private final AiModelConnectionService models;
+    private final AgentTraceService traces;
     private final ExecutorService executor = Executors.newCachedThreadPool(runnable -> {
         Thread thread = new Thread(runnable, "agent-turn");
         thread.setDaemon(true);
@@ -42,13 +46,16 @@ public class AgentTurnService {
 
     public AgentTurnService(AgentTurnRepository turns, AgentConversationService conversations,
                             AgentOrchestrator orchestrator, CurrentUserResolver currentUser,
-                            AuthService authService, ObjectMapper mapper) {
+                            AuthService authService, ObjectMapper mapper, AiModelConnectionService models,
+                            AgentTraceService traces) {
         this.turns = turns;
         this.conversations = conversations;
         this.orchestrator = orchestrator;
         this.currentUser = currentUser;
         this.authService = authService;
         this.mapper = mapper;
+        this.models = models;
+        this.traces = traces;
     }
 
     public TurnStart start(String sessionId, String clientRequestId, String message, TurnEvents events) {
@@ -178,6 +185,8 @@ public class AgentTurnService {
                     new UsernamePasswordAuthenticationToken(user, null, authorities));
             turns.markPlanning(turn.id(), userId);
             events.status(turn.id(), AgentTurnStatus.PLANNING);
+            AiModelConnectionService.RuntimeConnection model = models.resolveForTurn(turn.id(), turn.sessionId(), userId);
+            try { traces.bindModel(turn, model); } catch (Exception ignored) { /* trace must not block replies */ }
             LlmGateway.ChatResponse response = orchestrator.chatStreamingForUser(turn.sessionId(), userId,
                     turn.userMessage(), new AgentOrchestrator.StreamListener() {
                         @Override public void delta(String content) { events.delta(turn.id(), content); }
@@ -185,8 +194,9 @@ public class AgentTurnService {
                         @Override public void toolCompleted(LlmGateway.ToolExecution execution) {
                             events.toolCompleted(turn.id(), execution);
                         }
-                    });
+                    }, model);
             String json = mapper.writeValueAsString(response);
+            try { traces.persist(turn, model, response); } catch (Exception ignored) { /* trace must not block replies */ }
             if (turns.complete(turn.id(), userId, response.content(), json)) {
                 conversations.complete(conversations.openOwned(userId, turn.sessionId(), turn.userMessage()),
                         turn.id(), turn.userMessage(), response.content(), json);

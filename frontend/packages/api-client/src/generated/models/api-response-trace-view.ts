@@ -13,10 +13,11 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { TraceView } from './trace-view.ts';
 
-export interface SessionCommand {
-    'id'?: string;
-    'title'?: string;
-    'pinned'?: boolean;
-    'modelConnectionId'?: string;
+export interface ApiResponseTraceView {
+    'data'?: TraceView;
+    'traceId'?: string;
 }

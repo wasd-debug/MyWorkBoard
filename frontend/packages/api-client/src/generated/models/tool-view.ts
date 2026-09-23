@@ -14,9 +14,10 @@
 
 
 
-export interface SessionCommand {
-    'id'?: string;
-    'title'?: string;
-    'pinned'?: boolean;
-    'modelConnectionId'?: string;
+export interface ToolView {
+    'sequence'?: number;
+    'name'?: string;
+    'status'?: string;
+    'summary'?: string;
+    'durationMs'?: number;
 }

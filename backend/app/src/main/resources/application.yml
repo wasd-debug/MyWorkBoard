@@ -42,3 +42,5 @@ app:
     endpoint: ${LLM_ENDPOINT:https://api.deepseek.com/chat/completions}
     model: ${LLM_MODEL:deepseek-flash}
     api-key: ${DEEPSEEK_API_KEY:${LLM_API_KEY:}}
+    credential-key: ${AI_CREDENTIAL_KEY:}
+    allow-private-network: ${AI_ALLOW_PRIVATE_NETWORK:false}

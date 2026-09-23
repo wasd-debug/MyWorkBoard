@@ -18,6 +18,7 @@ export interface SessionSummary {
     'id'?: string;
     'title'?: string;
     'groupId'?: string;
+    'modelConnectionId'?: string;
     'createdAt'?: string;
     'updatedAt'?: string;
     'archivedAt'?: string;

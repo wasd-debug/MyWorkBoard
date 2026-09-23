@@ -103,6 +103,9 @@
       <header class="chat-workspace-head">
         <button v-if="!sidebarOpen" class="chat-icon-button" type="button" title="展开历史会话" aria-label="展开历史会话" @click="sidebarOpen = true"><PanelLeftOpen /></button>
         <div><b>{{ activeConversation?.title || '新对话' }}</b><small>AI 个人工作台</small></div>
+        <select v-if="store.authUser && !store.offlineSession" class="chat-model-select" :value="activeConversation?.modelConnectionId || defaultModelId" aria-label="当前会话模型" :disabled="turnRunning || activeQueuedPrompts.length > 0" @change="changeConversationModel">
+          <option v-for="item in modelConnections" :key="item.id" :value="item.id">{{ item.displayName }}{{ item.isDefault ? ' · 默认' : '' }}</option>
+        </select>
       </header>
 
       <div ref="messageViewport" class="chat-message-viewport" @scroll.passive="handleMessageScroll" @wheel.passive="handleMessageWheel">
@@ -160,6 +163,8 @@
                     <small>输入缓存命中率 {{ cacheHitRate(item.usage) }}%</small>
                   </div>
                 </details>
+                <span v-if="item.role === 'assistant' && item.modelName" class="message-model"><Sparkles />{{ item.modelName }}</span>
+                <span v-if="item.role === 'assistant' && item.estimatedCost != null" class="message-cost">≈ {{ formatCost(item.estimatedCost, item.currency) }}</span>
                 <details v-if="item.role === 'assistant' && item.durationMs != null" class="timing-details" @toggle="handleMetaToggle">
                   <summary><TimerReset />{{ formatDuration(item.durationMs) }}</summary>
                   <div class="timing-popover">
@@ -222,7 +227,7 @@ import { Archive, ArrowDown, ArrowUp, ArrowUpRight, Check, ChevronDown, ChevronR
 import { Calendar, List, Timer, Wallet } from '../icons.js'
 import { message } from '../services/message.js'
 import { useAppStore } from '../stores/app'
-import { apiArchiveAgentSession, apiCancelAgentTurn, apiChatWithAssistant, apiCreateAgentSession, apiCreateAgentSessionGroup, apiDeleteAgentSession, apiDeleteAgentSessionGroup, apiEnqueueAgentTurn, apiGetAgentTurn, apiListAgentMessages, apiListAgentQueue, apiListAgentSessionGroups, apiListAgentSessions, apiMoveAgentSession, apiRemoveQueuedAgentTurn, apiRenameAgentSessionGroup, apiReorderAgentQueue, apiRetryAgentTurn, apiStreamAgentTurn, apiUpdateAgentSession } from '../../packages/api-client/src/index.js'
+import { apiArchiveAgentSession, apiCancelAgentTurn, apiChangeAgentSessionModel, apiChatWithAssistant, apiCreateAgentSession, apiCreateAgentSessionGroup, apiDeleteAgentSession, apiDeleteAgentSessionGroup, apiEnqueueAgentTurn, apiGetAgentTrace, apiGetAgentTurn, apiListAgentMessages, apiListAgentModelConnections, apiListAgentQueue, apiListAgentSessionGroups, apiListAgentSessions, apiMoveAgentSession, apiRemoveQueuedAgentTurn, apiRenameAgentSessionGroup, apiReorderAgentQueue, apiRetryAgentTurn, apiStreamAgentTurn, apiUpdateAgentSession } from '../../packages/api-client/src/index.js'
 
 const router = useRouter(), store = useAppStore()
 const sidebarOpen = ref(true), conversations = ref([]), activeId = ref(''), prompt = ref(''), attachments = ref([])
@@ -232,6 +237,7 @@ const groupMenu = ref({ item: null, x: 0, y: 0 }), groupMenuEl = ref(null)
 const conversationDialog = ref({ type: '', item: null }), renameTitle = ref(''), renameInput = ref(null)
 const sessionGroups = ref([]), collapsedGroups = ref({}), groupName = ref(''), groupNameInput = ref(null)
 const queuedPrompts = ref([]), queueRevisions = ref({}), turnRunning = ref(false), draggedQueueId = ref(''), queueDropIndex = ref(-1)
+const modelConnections = ref([])
 const draggedConversationId = ref(''), conversationDropTarget = ref('')
 let mediaRecorder = null, mediaStream = null, recordingStartedAt = 0, activeTurnController = null, conversationCreationPromise = null, queuePollTimer = null, lastMessageScrollTop = 0, programmaticScroll = false, userPausedFollow = false
 const queuePresence = new Map()
@@ -241,6 +247,7 @@ const activeConversation = computed(() => conversations.value.find(item => item.
 const activeMessages = computed(() => activeConversation.value?.messages || [])
 const canSubmit = computed(() => Boolean(prompt.value.trim() || attachments.value.length))
 const activeQueuedPrompts = computed(() => queuedPrompts.value.filter(item => item.conversationId === activeId.value))
+const defaultModelId = computed(() => modelConnections.value.find(item => item.isDefault)?.id || modelConnections.value[0]?.id || '')
 const conversationMenuStyle = computed(() => ({ left: `${conversationMenu.value.x}px`, top: `${conversationMenu.value.y}px` }))
 const groupMenuStyle = computed(() => ({ left: `${groupMenu.value.x}px`, top: `${groupMenu.value.y}px` }))
 const conversationSections = computed(() => {
@@ -269,7 +276,8 @@ function loadLocalConversations() { try { conversations.value = JSON.parse(local
 async function loadMessages(id, forceScroll = false) { const target = conversations.value.find(item => item.id === id); if (!target) return; const rows = await apiListAgentMessages(id); target.messages = (rows || []).map(row => { const metadata = row.role === 'assistant' ? parseMetadata(row.metadataJson) : {}; return { id: `server-${row.id}`, turnId: row.turnId, role: row.role, content: row.content, createdAt: row.createdAt, typing: false, status: metadata.status || 'COMPLETED', ...responseFields(metadata), ...inferRoute(row.content) } }); persist(); if (forceScroll) await scrollToBottom(true); else await scrollToBottom() }
 function normalizeQueueItem(item) { return { id: item.id, conversationId: item.sessionId, text: item.userMessage, status: item.status, createdAt: item.createdAt, retryOfTurnId: item.retryOfTurnId } }
 async function loadQueue(id) { if (!id || !store.authUser || store.offlineSession) return; const queue = await apiListAgentQueue(id); queueRevisions.value = { ...queueRevisions.value, [id]: Number(queue?.revision || 0) }; const others = queuedPrompts.value.filter(item => item.conversationId !== id); queuedPrompts.value = [...others, ...(queue?.items || []).map(normalizeQueueItem)]; if (id === activeId.value) turnRunning.value = activeQueuedPrompts.value.some(item => item.status !== 'QUEUED') }
-async function loadConversations() { if (!store.authUser || store.offlineSession) return loadLocalConversations(); try { const [sessions, groups] = await Promise.all([apiListAgentSessions(), apiListAgentSessionGroups()]); conversations.value = (sessions || []).map(item => ({ ...item, messages: [] })); sessionGroups.value = groups || []; activeId.value = conversations.value[0]?.id || ''; if (activeId.value) await Promise.all([loadMessages(activeId.value, true), loadQueue(activeId.value)]) } catch { loadLocalConversations() } }
+async function loadConversations() { if (!store.authUser || store.offlineSession) return loadLocalConversations(); try { const [sessions, groups, models] = await Promise.all([apiListAgentSessions(), apiListAgentSessionGroups(), apiListAgentModelConnections()]); conversations.value = (sessions || []).map(item => ({ ...item, messages: [] })); sessionGroups.value = groups || []; modelConnections.value = models || []; activeId.value = conversations.value[0]?.id || ''; if (activeId.value) await Promise.all([loadMessages(activeId.value, true), loadQueue(activeId.value)]) } catch { loadLocalConversations() } }
+async function changeConversationModel(event) { const id = event.target.value; if (!activeConversation.value || !id) return; try { const updated = await apiChangeAgentSessionModel(activeConversation.value.id, id); Object.assign(activeConversation.value, updated); message.success('当前会话模型已切换') } catch (error) { event.target.value = activeConversation.value.modelConnectionId || defaultModelId.value; message.error(error?.response?.data?.detail || '切换模型失败') } }
 function closeConversationMenu() { conversationMenu.value = { item: null, x: 0, y: 0 } }
 function closeGroupMenu() { groupMenu.value = { item: null, x: 0, y: 0 } }
 async function openConversationMenu(event, item, fromButton = false) {
@@ -328,6 +336,7 @@ function formatTime(value) { return new Intl.DateTimeFormat('zh-CN', { month: 'n
 function formatMessageTime(value) { return new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(new Date(value)) }
 function formatNumber(value) { return new Intl.NumberFormat('zh-CN').format(Number(value || 0)) }
 function formatDuration(value) { const ms = Math.max(0, Number(value || 0)); if (ms < 1000) return `${ms}ms`; if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`; return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s` }
+function formatCost(value, currency = 'CNY') { const amount = Number(value || 0); return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: currency || 'CNY', minimumFractionDigits: amount < 0.01 ? 6 : 2, maximumFractionDigits: 8 }).format(amount) }
 function replyTokens(usage) { return Math.max(0, Number(usage?.outputTokens || 0) - Number(usage?.reasoningTokens || 0)) }
 function cacheHitRate(usage) { const hit = Number(usage?.cacheHitTokens || 0), miss = Number(usage?.cacheMissTokens || 0); return hit + miss ? Math.round(hit / (hit + miss) * 100) : 0 }
 function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledger.overview': '查询账本概览', 'ledger.transactions.search': '查询账本流水', 'ledger.reports.summary': '生成账本报表', 'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置', 'worktime.records.search': '查询工时记录' })[name] || name }
@@ -375,7 +384,8 @@ function handleMessageScroll() {
   lastMessageScrollTop = viewport.scrollTop
 }
 function createReplyPlaceholder(conversation) { const reply = { id: uid(), role: 'assistant', content: '', createdAt: Date.now(), typing: true, status: 'RECEIVED', toolExecutions: [] }; conversation.messages.push(reply); persist(); scrollToBottom(); return conversation.messages.at(-1) }
-function applyReply(target, response) { Object.assign(target, responseFields(response), inferRoute(response.content || ''), { content: response.content || '模型没有返回可显示的内容，请稍后重试。', typing: false, status: 'COMPLETED' }); persist(); scrollToBottom() }
+async function hydrateTrace(target) { if (!target?.turnId || !store.authUser || store.offlineSession) return; try { const trace = await apiGetAgentTrace(target.turnId); const usage = (trace.modelExecutions || []).reduce((sum, row) => ({ inputTokens: sum.inputTokens + Number(row.inputTokens || 0), outputTokens: sum.outputTokens + Number(row.outputTokens || 0), cacheHitTokens: sum.cacheHitTokens + Number(row.cacheHitTokens || 0), cacheMissTokens: sum.cacheMissTokens + Number(row.cacheMissTokens || 0), reasoningTokens: sum.reasoningTokens + Number(row.reasoningTokens || 0), totalTokens: sum.totalTokens + Number(row.totalTokens || 0) }), { inputTokens: 0, outputTokens: 0, cacheHitTokens: 0, cacheMissTokens: 0, reasoningTokens: 0, totalTokens: 0 }); Object.assign(target, { usage, durationMs: trace.totalDurationMs, firstTokenMs: trace.firstTokenMs, modelName: trace.modelName, providerType: trace.providerType, currency: trace.currency, estimatedCost: trace.estimatedCost, modelExecutions: trace.modelExecutions || [], toolExecutions: trace.toolExecutions || [] }); persist() } catch { /* Trace is optional and must never hide the answer. */ } }
+function applyReply(target, response) { Object.assign(target, responseFields(response), inferRoute(response.content || ''), { content: response.content || '模型没有返回可显示的内容，请稍后重试。', typing: false, status: 'COMPLETED' }); persist(); hydrateTrace(target); scrollToBottom() }
 async function recoverTurn(target) { for (let attempt = 0; attempt < 4; attempt++) { try { const turn = await apiGetAgentTurn(target.turnId); target.status = turn.status; if (turn.status === 'COMPLETED' && turn.responseJson) { applyReply(target, parseMetadata(turn.responseJson)); return true }; if (['FAILED', 'CANCELLED'].includes(turn.status)) { target.content = turn.errorMessage || (turn.status === 'CANCELLED' ? '本轮对话已取消。' : 'Agent 执行失败。'); target.typing = false; persist(); return true } } catch { /* bounded recovery */ }; await new Promise(resolve => window.setTimeout(resolve, 500 * (attempt + 1))) }; target.content ||= '响应连接已中断，后台仍可能在执行。刷新页面后可恢复已完成消息。'; target.typing = false; persist(); return false }
 async function ensureConversation(text, pendingAttachments) {
   let conversation = activeConversation.value
@@ -383,7 +393,7 @@ async function ensureConversation(text, pendingAttachments) {
   if (conversationCreationPromise) return conversationCreationPromise
   conversationCreationPromise = (async () => {
     const now = Date.now(), draft = { id: uid(), title: text.slice(0, 24) || pendingAttachments[0]?.name || '新对话', updatedAt: now, messages: [] }
-    if (store.authUser && !store.offlineSession) try { conversation = { ...(await apiCreateAgentSession({ id: draft.id, title: draft.title })), messages: [] } } catch { message.error('无法创建服务端会话'); return null }
+    if (store.authUser && !store.offlineSession) try { conversation = { ...(await apiCreateAgentSession({ id: draft.id, title: draft.title, modelConnectionId: defaultModelId.value || null })), messages: [] } } catch { message.error('无法创建服务端会话'); return null }
     else conversation = draft
     conversations.value.unshift(conversation); activeId.value = conversation.id
     return conversation

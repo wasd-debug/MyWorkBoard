@@ -39,6 +39,8 @@ services:
       FLYWAY_OUT_OF_ORDER: ${FLYWAY_OUT_OF_ORDER:-true}
       LEGACY_ADMIN_PASSWORD: ${LEGACY_ADMIN_PASSWORD:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      AI_CREDENTIAL_KEY: ${AI_CREDENTIAL_KEY:-}
+      AI_ALLOW_PRIVATE_NETWORK: ${AI_ALLOW_PRIVATE_NETWORK:-false}
       LLM_ENDPOINT: ${LLM_ENDPOINT:-https://api.deepseek.com/chat/completions}
       LLM_MODEL: ${LLM_MODEL:-deepseek-flash}
       TZ: Asia/Shanghai

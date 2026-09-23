@@ -13,10 +13,14 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { TokenUsage } from './token-usage.ts';
 
-export interface SessionCommand {
-    'id'?: string;
-    'title'?: string;
-    'pinned'?: boolean;
-    'modelConnectionId'?: string;
+export interface TestResult {
+    'success'?: boolean;
+    'status'?: string;
+    'modelName'?: string;
+    'durationMs'?: number;
+    'usage'?: TokenUsage;
 }

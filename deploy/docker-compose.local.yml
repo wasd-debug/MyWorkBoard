@@ -50,6 +50,8 @@ services:
       SPRING_FLYWAY_IGNORE_MIGRATION_PATTERNS: "*:pending"
       FLYWAY_OUT_OF_ORDER: "true"
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      AI_CREDENTIAL_KEY: ${AI_CREDENTIAL_KEY:-}
+      AI_ALLOW_PRIVATE_NETWORK: ${AI_ALLOW_PRIVATE_NETWORK:-false}
       LLM_ENDPOINT: ${LLM_ENDPOINT:-https://api.deepseek.com/chat/completions}
       LLM_MODEL: ${LLM_MODEL:-deepseek-flash}
     ports:

@@ -58,11 +58,41 @@
       <Textarea v-model="ioArea" :rows="5" aria-label="工时数据导入导出文本" placeholder="点击「导出」查看全部数据 JSON；粘贴后点「导入」可恢复（会覆盖现有数据）" class="io-area" />
     </div>
 
+    <div class="card set-group model-config">
+      <h2>Agent 模型与成本</h2>
+      <p class="hint">API Key 只在本次表单中使用，服务端会加密保存；页面不会写入 localStorage 或返回完整密钥。</p>
+      <div class="model-toolbar">
+        <select v-model="selectedModelId" aria-label="选择模型配置" @change="selectModel">
+          <option v-for="item in modelConnections" :key="item.id" :value="item.id">{{ item.displayName }}{{ item.isDefault ? '（默认）' : '' }}</option>
+          <option value="">新建模型配置</option>
+        </select>
+        <Button size="sm" variant="ghost" @click="loadModels">刷新</Button>
+      </div>
+      <div class="model-grid">
+        <label>显示名称<input v-model="modelForm.displayName" maxlength="120" placeholder="例如 DeepSeek 主模型" /></label>
+        <label>供应商<select v-model="modelForm.providerType"><option value="DEEPSEEK">DeepSeek</option><option value="OPENAI_COMPATIBLE">OpenAI Compatible</option></select></label>
+        <label class="wide">Endpoint<input v-model="modelForm.baseUrl" type="url" placeholder="https://api.deepseek.com/chat/completions" /></label>
+        <label>模型<input v-model="modelForm.modelName" placeholder="deepseek-chat" /></label>
+        <label>API Key<input v-model="modelForm.apiKey" type="password" autocomplete="new-password" placeholder="不修改请留空" /></label>
+        <label>输入 / 1M Token<input v-model.number="modelForm.pricing.inputPerMillion" type="number" min="0" step="0.000001" /></label>
+        <label>输出 / 1M Token<input v-model.number="modelForm.pricing.outputPerMillion" type="number" min="0" step="0.000001" /></label>
+        <label>缓存命中 / 1M<input v-model.number="modelForm.pricing.cacheHitPerMillion" type="number" min="0" step="0.000001" /></label>
+        <label>超时（毫秒）<input v-model.number="modelForm.timeoutMs" type="number" min="5000" max="120000" step="1000" /></label>
+      </div>
+      <div class="io-row model-actions">
+        <Button v-if="selectedModelId !== 'system-environment'" size="sm" @click="saveModel">{{ selectedModelId ? '保存配置' : '创建配置' }}</Button>
+        <Button v-if="selectedModelId" size="sm" variant="ghost" @click="testModel">测试连接</Button>
+        <Button v-if="selectedModelId" size="sm" variant="ghost" @click="makeDefault">设为默认</Button>
+        <Button v-if="selectedModelId && selectedModelId !== 'system-environment'" size="sm" variant="danger" @click="removeModel">删除</Button>
+        <span v-if="modelStatus" class="hint">{{ modelStatus }}</span>
+      </div>
+    </div>
+
   </section>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { message } from '../services/message.js'
 import Button from '../components/ui/Button.vue'
 import Input from '../components/ui/Input.vue'
@@ -70,6 +100,7 @@ import Textarea from '../components/ui/Textarea.vue'
 import { useAppStore } from '../stores/app'
 import { DEFAULT_WORKTIME_SETTINGS as DEFAULTS, useWorktimeStore } from '../stores/worktime.js'
 import { CALC } from '../utils/calc'
+import { apiCreateAgentModelConnection, apiDeleteAgentModelConnection, apiListAgentModelConnections, apiSetDefaultAgentModelConnection, apiTestAgentModelConnection, apiUpdateAgentModelConnection } from '../../packages/api-client/src/index.js'
 
 const appStore = useAppStore()
 const store = useWorktimeStore()
@@ -82,6 +113,9 @@ const accents = [
   { key: 'night', label: '暗夜', color: '#242933' }
 ]
 const ioArea = ref('')
+const modelConnections = ref([]), selectedModelId = ref(''), modelStatus = ref('')
+const blankModel = () => ({ displayName: '', providerType: 'DEEPSEEK', baseUrl: 'https://api.deepseek.com/chat/completions', modelName: 'deepseek-chat', apiKey: '', timeoutMs: 60000, pricing: { currency: 'CNY', inputPerMillion: 0, outputPerMillion: 0, cacheHitPerMillion: 0, cacheMissPerMillion: 0, reasoningPerMillion: 0 } })
+const modelForm = ref(blankModel())
 const curMonthKey = CALC.dateKey(new Date()).slice(0, 7)
 const curMonthLabel = `${Number(curMonthKey.slice(5, 7))} 月`
 const monthDays = computed(() => CALC.monthWorkdays(curMonthKey, appStore.holidays, store.records, store.settings))
@@ -93,6 +127,12 @@ const setHint = computed(() => {
 })
 
 async function set(key, value) { await store.saveSettings({ [key]: value }) }
+async function loadModels() { try { modelConnections.value = await apiListAgentModelConnections(); selectedModelId.value = modelConnections.value.find(item => item.isDefault)?.id || modelConnections.value[0]?.id || ''; selectModel() } catch { modelStatus.value = '模型配置加载失败，请确认已登录' } }
+function selectModel() { const found = modelConnections.value.find(item => item.id === selectedModelId.value); if (!found) { modelForm.value = blankModel(); return }; modelForm.value = { ...blankModel(), ...found, apiKey: '', pricing: { ...blankModel().pricing, ...(found.pricing || {}) } }; modelStatus.value = found.apiKeyConfigured ? `已配置密钥（${found.apiKeyMask}）` : '尚未配置 API Key' }
+async function saveModel() { try { const payload = { ...modelForm.value, pricing: modelForm.value.pricing }; const result = selectedModelId.value ? await apiUpdateAgentModelConnection(selectedModelId.value, { ...payload, revision: modelConnections.value.find(item => item.id === selectedModelId.value)?.revision }) : await apiCreateAgentModelConnection(payload); modelStatus.value = '模型配置已保存'; await loadModels(); selectedModelId.value = result?.id || selectedModelId.value; selectModel() } catch (error) { modelStatus.value = error?.response?.data?.detail || '模型配置保存失败' } }
+async function testModel() { try { const result = await apiTestAgentModelConnection(selectedModelId.value); modelStatus.value = result.success ? `连接成功，耗时 ${result.durationMs}ms` : `连接失败：${result.status}` } catch { modelStatus.value = '连接测试失败' } }
+async function makeDefault() { try { await apiSetDefaultAgentModelConnection(selectedModelId.value); await loadModels(); modelStatus.value = '已设为默认模型' } catch { modelStatus.value = '设置默认模型失败' } }
+async function removeModel() { if (!window.confirm('删除此模型配置？')) return; try { await apiDeleteAgentModelConnection(selectedModelId.value); await loadModels(); modelStatus.value = '模型配置已删除' } catch { modelStatus.value = '删除模型配置失败' } }
 function setNumber(key, value, fallback) {
   const number = Number(value)
   set(key, Number.isFinite(number) ? number : fallback)
@@ -116,4 +156,5 @@ async function doClear() {
   await store.clearResources(DEFAULTS)
   message.success('已清空')
 }
+onMounted(loadModels)
 </script>

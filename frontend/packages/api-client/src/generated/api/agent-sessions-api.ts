@@ -40,7 +40,11 @@ import type { ApiResponseSessionGroup } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseSessionSummary } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseTraceView } from '../models/index.ts';
+// @ts-ignore
 import type { GroupCommand } from '../models/index.ts';
+// @ts-ignore
+import type { ModelCommand } from '../models/index.ts';
 // @ts-ignore
 import type { MoveGroupCommand } from '../models/index.ts';
 // @ts-ignore
@@ -118,6 +122,44 @@ export const AgentSessionsApiAxiosParamCreator = function (configuration?: Confi
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} sessionId
+         * @param {ModelCommand} modelCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        changeAgentSessionModel: async (sessionId: string, modelCommand: ModelCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sessionId' is not null or undefined
+            assertParamExists('changeAgentSessionModel', 'sessionId', sessionId)
+            // verify required parameter 'modelCommand' is not null or undefined
+            assertParamExists('changeAgentSessionModel', 'modelCommand', modelCommand)
+            const localVarPath = `/api/v1/agent/sessions/{sessionId}/model`
+                .replace('{sessionId}', encodeURIComponent(String(sessionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'PATCH', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(modelCommand, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -306,6 +348,39 @@ export const AgentSessionsApiAxiosParamCreator = function (configuration?: Confi
             // verify required parameter 'turnId' is not null or undefined
             assertParamExists('getAgentTurn', 'turnId', turnId)
             const localVarPath = `/api/v1/agent/turns/{turnId}`
+                .replace('{turnId}', encodeURIComponent(String(turnId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} turnId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getAgentTurnTrace: async (turnId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'turnId' is not null or undefined
+            assertParamExists('getAgentTurnTrace', 'turnId', turnId)
+            const localVarPath = `/api/v1/agent/turns/{turnId}/trace`
                 .replace('{turnId}', encodeURIComponent(String(turnId)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -754,6 +829,19 @@ export const AgentSessionsApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {string} sessionId
+         * @param {ModelCommand} modelCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async changeAgentSessionModel(sessionId: string, modelCommand: ModelCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseSessionSummary>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.changeAgentSessionModel(sessionId, modelCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.changeAgentSessionModel']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {SessionCommand} sessionCommand
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -823,6 +911,18 @@ export const AgentSessionsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.getAgentTurn(turnId, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.getAgentTurn']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} turnId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getAgentTurnTrace(turnId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTraceView>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getAgentTurnTrace(turnId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.getAgentTurnTrace']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -991,6 +1091,15 @@ export const AgentSessionsApiFactory = function (configuration?: Configuration, 
         },
         /**
          *
+         * @param {AgentSessionsApiChangeAgentSessionModelRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        changeAgentSessionModel(requestParameters: AgentSessionsApiChangeAgentSessionModelRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseSessionSummary> {
+            return localVarFp.changeAgentSessionModel(requestParameters.sessionId, requestParameters.modelCommand, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {AgentSessionsApiCreateAgentSessionRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -1042,6 +1151,15 @@ export const AgentSessionsApiFactory = function (configuration?: Configuration, 
          */
         getAgentTurn(requestParameters: AgentSessionsApiGetAgentTurnRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseAgentTurnView> {
             return localVarFp.getAgentTurn(requestParameters.turnId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {AgentSessionsApiGetAgentTurnTraceRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getAgentTurnTrace(requestParameters: AgentSessionsApiGetAgentTurnTraceRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTraceView> {
+            return localVarFp.getAgentTurnTrace(requestParameters.turnId, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -1159,6 +1277,15 @@ export interface AgentSessionsApiCancelAgentTurnRequest {
 }
 
 /**
+ * Request parameters for changeAgentSessionModel operation in AgentSessionsApi.
+ */
+export interface AgentSessionsApiChangeAgentSessionModelRequest {
+    readonly sessionId: string
+
+    readonly modelCommand: ModelCommand
+}
+
+/**
  * Request parameters for createAgentSession operation in AgentSessionsApi.
  */
 export interface AgentSessionsApiCreateAgentSessionRequest {
@@ -1199,6 +1326,13 @@ export interface AgentSessionsApiEnqueueAgentTurnRequest {
  * Request parameters for getAgentTurn operation in AgentSessionsApi.
  */
 export interface AgentSessionsApiGetAgentTurnRequest {
+    readonly turnId: string
+}
+
+/**
+ * Request parameters for getAgentTurnTrace operation in AgentSessionsApi.
+ */
+export interface AgentSessionsApiGetAgentTurnTraceRequest {
     readonly turnId: string
 }
 
@@ -1310,6 +1444,16 @@ export class AgentSessionsApi extends BaseAPI {
 
     /**
      *
+     * @param {AgentSessionsApiChangeAgentSessionModelRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public changeAgentSessionModel(requestParameters: AgentSessionsApiChangeAgentSessionModelRequest, options?: RawAxiosRequestConfig) {
+        return AgentSessionsApiFp(this.configuration).changeAgentSessionModel(requestParameters.sessionId, requestParameters.modelCommand, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
      * @param {AgentSessionsApiCreateAgentSessionRequest} requestParameters Request parameters.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -1366,6 +1510,16 @@ export class AgentSessionsApi extends BaseAPI {
      */
     public getAgentTurn(requestParameters: AgentSessionsApiGetAgentTurnRequest, options?: RawAxiosRequestConfig) {
         return AgentSessionsApiFp(this.configuration).getAgentTurn(requestParameters.turnId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {AgentSessionsApiGetAgentTurnTraceRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public getAgentTurnTrace(requestParameters: AgentSessionsApiGetAgentTurnTraceRequest, options?: RawAxiosRequestConfig) {
+        return AgentSessionsApiFp(this.configuration).getAgentTurnTrace(requestParameters.turnId, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

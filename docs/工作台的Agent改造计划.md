@@ -1,7 +1,7 @@
 # 工作台 Agent 与 MCP 改造计划
 
-> 版本：v1.9（2026-09-23）
-> 状态：实施中（阶段 2 已完成真实 DeepSeek、R0/R1 Domain Tool、服务端会话恢复、基础 turn/SSE、服务端队列恢复、取消/重试和回复可观测元数据；持久化完整 trace、自动评测和受控写入仍按后续增量建设）
+> 版本：v2.0（2026-09-23）
+> 状态：实施中（阶段 2 已完成真实模型、R0/R1 Domain Tool、服务端会话/队列/SSE、模型连接切换、Trace/Usage 与估算成本；自动评测和受控写入仍按后续增量建设）
 
 > 运维修正：迁移 `V8.1` 是在 `V8` 已发布后补充的索引迁移，已有数据库升级时需开启 `FLYWAY_OUT_OF_ORDER=true`；不得删除或改写 `flyway_schema_history`。
 
@@ -11,7 +11,7 @@
 
 ## 0. 实施进度快照（2026-09-23）
 
-当前增量完成 Phase 3B 的服务端队列恢复、任务取消和失败重试，不开放写工具或 MCP 入口。
+当前增量完成 Phase 3B 的模型连接管理、执行 Trace、Token Usage 与估算成本，不开放新的写工具或 MCP 入口。
 
 已完成：
 
@@ -43,10 +43,14 @@
 - 会话侧栏提供置顶区域、可折叠分组、空分组投放区和右键/更多菜单的“移动到分组”。桌面端可把会话拖入任意分组或拖回“未分组”；从置顶区拖入分组时自动取消置顶。移动端和键盘场景继续使用菜单完成同一操作。
 - 等待队列支持拖拽排序，客户端提交当前 revision 与完整等待项 ID；服务端使用乐观并发拒绝陈旧排序，并保持执行中 turn 固定在队首区域。
 - 自动跟随改为严格底部判定：用户任何向上滚轮或实际向上滚动都会立即关闭跟随，只有真正滚动到 2px 内的底部或主动点击“滚动到底部并继续跟随”才重新开启，避免增量输出与用户上拉争抢滚动位置。
+- 新增 V18：`ai_model_connection`、`ai_model_pricing`、`ai_usage`、`agent_tool_call`、`agent_prompt_version`，并为 session/turn 增加模型连接与模型快照字段。每轮模型调用、工具调用、TTFT、耗时、Token 与价格版本均按用户隔离持久化。
+- 新增模型连接 CRUD、连接测试、设为默认和会话级模型切换。环境变量模型继续作为只读兜底；用户模型 API Key 仅在浏览器临时表单中出现，服务端使用独立 `AI_CREDENTIAL_KEY` 进行 AES-GCM 加密，响应和 Trace 只返回掩码或指纹。
+- 模型端点默认只允许 HTTPS/443，拒绝 URL 凭据、回环/链路本地/私网地址，并在保存和实际调用前重新解析校验。私网兼容必须显式开启 `AI_ALLOW_PRIVATE_NETWORK=true`。
+- 首页消息完成后按 `turnId` 加载服务端 Trace，展示模型、逐轮 Token/TTFT/耗时、逐工具耗时和按版本价格计算的估算成本；Trace 失败不影响正常答案展示。
 
 本次明确未实施：
 
-- 持久化完整 Agent trace、动态表单和受控写入 UI；当前已能恢复会话、已完成消息、进行中 turn 和等待队列，但尚未建设独立 trace/usage 表。
+- 自动中文评测、失败回放、动态表单和受控写入 UI；Trace/Usage 已持久化，但尚未建设聚合成本告警和运营仪表盘。
 - 账本真实写工具、工时修改/删除、revision 冲突展示和相关领域审计扩展。
 - MCP Server、PAT/OAuth、scope、站内审批与外部客户端兼容验证。
 - 文件、向量库和 RAG。
@@ -60,6 +64,7 @@
 - 2026-09-23 会话组织增量：新增 V16 分组/置顶迁移和用户隔离集成测试；真实 MySQL `AgentConversationIntegrationTest` 3/3 通过并从空库执行到 V16。Agent 专项在桌面 Chromium、桌面 WebKit 与 375px 移动 Chromium 共 23 项通过、1 项移动端原生拖拽按设计跳过，覆盖分组创建、置顶、会话拖入/拖出、刷新恢复、队列拖拽排序、窄侧栏布局和严格滚动跟随。`npm run build` 与 `npm run api:check` 通过。
 - 会话组织 UI 修正：分组标题在移动端保持单行且不溢出；侧栏宽度/位移和分组内容展开收起增加平滑过渡。发现本地 `8080` 曾运行未包含 V16 接口的旧镜像，已重建后端并确认 Flyway 升级到 v16，分组保存恢复。
 - 2026-09-23 服务端队列恢复增量：V17 从空库迁移成功；AI 模块测试 31/31 通过，真实 MySQL `AgentConversationIntegrationTest` 4/4 通过，覆盖 revision 排序、原子领取、重试幂等和用户隔离。前端生产构建通过；Agent 专项 E2E 在桌面 Chromium 10/10、桌面 WebKit 10/10、375px 移动 Chromium 9/9 通过，1 项移动端原生会话拖拽按设计跳过。覆盖刷新恢复队列、服务端排序、执行中取消、失败重试和用户上滚停止跟随。
+- 2026-09-23 模型配置与 Trace 增量：AI Reactor 35/35、前端 Node/契约 46/46、生产构建和 `npm run api:check` 通过；真实 MySQL 从空库及旧 fixture 成功迁移到 V18，`AgentConversationIntegrationTest` 4/4、`FlywayMigrationIntegrationTest` 2/2 通过。测试覆盖 AES-GCM 往返、无独立凭据密钥拒绝、HTTPS/私网端点策略和 V18 新表存在性。
 - 本地 Compose 后端已迁移至 v15 并健康运行；真实 DeepSeek 手动验证“我有哪些账本？”和“查询我的工时设置”均通过 SSE 返回。修复 ASYNC 二次分派权限后，完成响应不再产生 `AccessDeniedException` 日志。
 
 - `cd backend && mvn -pl modules/ai -am test` 成功；目标 Reactor 共执行 75 项，74 项通过、1 项账本 Excel fixture 跳过；其中 platform 1/1、AI 模块 27/27 通过。新增测试覆盖只读工具暴露、R2 隔离、参数校验、4 次调用上限及 DeepSeek 工具协议序列化/解析。
@@ -70,7 +75,7 @@
 - `cd backend && mvn -pl app -am -Dtest=ArchitectureBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false test` 成功；架构边界测试 7/7 通过。
 - `cd backend && mvn test` 已运行至 app 的 Testcontainers 阶段；Docker 客户端连接成功，但 Ryuk 容器持续停在启动状态且未出现在 `docker ps`。使用 `TESTCONTAINERS_RYUK_DISABLED=true` 复测后，目标 `mysql:8.0.36` 容器也停在相同状态，两次测试进程均已人工终止。真实 MySQL 门禁仍标记为未完成，不能用本次结果宣称通过。
 
-当前判定：本增量已完成阶段 2 的服务端队列恢复、取消与重试链路，但仍未满足完整退出门禁。首页真实模型已能通过 SSE 增量输出、恢复服务端历史与队列、展示 turn 与详细性能元数据，并在断流后对账；下一增量优先补自动中文评测、trace/usage 持久化和稳定性门禁，不启动 MCP。
+当前判定：本增量已完成阶段 2 的模型连接、执行 Trace、Usage 与估算成本链路，但仍未满足完整退出门禁。下一增量优先引入现有功能模块的第一批受控写工具：先工时新增、再账本记账，全部使用 prepare/commit、动态补参和明确确认；暂不启动 MCP 写入。
 
 ### 本地手动验证
 
@@ -83,6 +88,7 @@
 7. 在历史会话上右键，确认可重命名、归档和删除；删除需二次确认，点击菜单外或按 Esc 可关闭。移动端使用行尾“更多”按钮进入同一菜单。
 8. 新建“工作”分组，将会话拖入该分组，再拖回“未分组”；刷新后确认位置保留。将会话置顶后再拖入分组，确认自动取消置顶。
 9. 回复生成期间再发送至少两条消息，在等待队列中拖拽改变顺序，刷新后确认顺序保留；停止执行中消息后下一条应自动开始，失败或取消的回复应出现重试入口。
+10. 在“设置 → Agent 模型与成本”中新建 HTTPS 模型连接，配置模型名、API Key 与 Token 单价并测试连接；设为默认后回到首页，新建会话并确认顶部模型选择器和消息成本信息生效。不要在截图、日志或问题描述中粘贴完整 API Key。
 
 ## 1. 背景与目标
 

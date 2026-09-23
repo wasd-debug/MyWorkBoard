@@ -165,8 +165,8 @@ public class AgentConversationService {
     public record StoredMessage(String role, String content) {
     }
 
-    public record SessionSummary(String id, String title, String groupId, Instant createdAt, Instant updatedAt,
-                                 Instant archivedAt, Instant pinnedAt) {
+    public record SessionSummary(String id, String title, String groupId, String modelConnectionId,
+                                 Instant createdAt, Instant updatedAt, Instant archivedAt, Instant pinnedAt) {
     }
 
     public record SessionGroup(String id, String name, int sortOrder, Instant createdAt, Instant updatedAt) {

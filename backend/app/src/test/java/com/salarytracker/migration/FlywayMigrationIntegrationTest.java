@@ -34,7 +34,7 @@ class FlywayMigrationIntegrationTest {
         flyway.migrate();
         flyway.validate();
 
-        assertEquals("14", flyway.info().current().getVersion().getVersion());
+        assertEquals("18", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement()) {
@@ -43,6 +43,9 @@ class FlywayMigrationIntegrationTest {
             assertTrue(tableExists(connection, "ledger_transaction"));
             assertTrue(tableExists(connection, "ledger_sync_oplog"));
             assertTrue(tableExists(connection, "ledger_scheduled_task"));
+            assertTrue(tableExists(connection, "ai_model_connection"));
+            assertTrue(tableExists(connection, "ai_usage"));
+            assertTrue(tableExists(connection, "agent_tool_call"));
             assertTrue(indexExists(connection, "ledger_transaction", "idx_ledger_transaction_book_date"));
         }
     }
@@ -72,7 +75,7 @@ class FlywayMigrationIntegrationTest {
         flyway.migrate();
         flyway.validate();
 
-        assertEquals("14", flyway.info().current().getVersion().getVersion());
+        assertEquals("18", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement()) {

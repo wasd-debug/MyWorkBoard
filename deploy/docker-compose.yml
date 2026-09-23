@@ -43,6 +43,8 @@ services:
       LLM_ENDPOINT: ${LLM_ENDPOINT:-https://api.deepseek.com/chat/completions}
       LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      AI_CREDENTIAL_KEY: ${AI_CREDENTIAL_KEY:-}
+      AI_ALLOW_PRIVATE_NETWORK: ${AI_ALLOW_PRIVATE_NETWORK:-false}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     depends_on:

@@ -23,7 +23,15 @@ export async function apiChatWithAssistant(message, sessionId) {
 export async function apiCreateAgentSession(payload) { return data(await api.post('/api/v1/agent/sessions', payload)) }
 export async function apiListAgentSessions(archived = false) { return data(await api.get('/api/v1/agent/sessions', { params: { archived } })) }
 export async function apiListAgentMessages(sessionId) { return data(await api.get(`/api/v1/agent/sessions/${sessionId}/messages`)) }
+export async function apiGetAgentTrace(turnId) { return data(await api.get(`/api/v1/agent/turns/${turnId}/trace`)) }
+export async function apiListAgentModelConnections() { return data(await api.get('/api/v1/agent/model-connections')) }
+export async function apiCreateAgentModelConnection(payload) { return data(await api.post('/api/v1/agent/model-connections', payload)) }
+export async function apiUpdateAgentModelConnection(id, payload) { return data(await api.put(`/api/v1/agent/model-connections/${id}`, payload)) }
+export async function apiDeleteAgentModelConnection(id) { return data(await api.delete(`/api/v1/agent/model-connections/${id}`)) }
+export async function apiTestAgentModelConnection(id) { return data(await api.post(`/api/v1/agent/model-connections/${id}/test`)) }
+export async function apiSetDefaultAgentModelConnection(id) { return data(await api.post(`/api/v1/agent/model-connections/${id}/set-default`)) }
 export async function apiUpdateAgentSession(sessionId, payload) { return data(await api.patch(`/api/v1/agent/sessions/${sessionId}`, payload)) }
+export async function apiChangeAgentSessionModel(sessionId, modelConnectionId) { return data(await api.patch(`/api/v1/agent/sessions/${sessionId}/model`, { modelConnectionId })) }
 export async function apiMoveAgentSession(sessionId, groupId) { return data(await api.patch(`/api/v1/agent/sessions/${sessionId}/group`, { groupId })) }
 export async function apiArchiveAgentSession(sessionId) { return data(await api.post(`/api/v1/agent/sessions/${sessionId}/archive`)) }
 export async function apiDeleteAgentSession(sessionId) { return data(await api.delete(`/api/v1/agent/sessions/${sessionId}`)) }

@@ -3,6 +3,7 @@ package com.salarytracker.ai;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.salarytracker.ai.tool.DomainToolRegistry;
+import com.salarytracker.ai.model.AiModelConnectionService;
 import com.salarytracker.ai.session.AgentConversationService;
 import com.salarytracker.ai.tool.ToolDefinition;
 import com.salarytracker.ai.tool.ToolResult;
@@ -30,19 +31,26 @@ public class AgentOrchestrator {
     private final ObjectMapper mapper;
     private final Clock clock;
     private final AgentConversationService conversations;
+    private final AiModelConnectionService modelConnections;
 
     @Autowired
     public AgentOrchestrator(DomainToolRegistry tools, LlmGateway model, ObjectMapper mapper,
-                             AgentConversationService conversations) {
-        this(tools, model, mapper, conversations, Clock.system(BUSINESS_ZONE));
+                             AgentConversationService conversations, AiModelConnectionService modelConnections) {
+        this(tools, model, mapper, conversations, modelConnections, Clock.system(BUSINESS_ZONE));
     }
 
     AgentOrchestrator(DomainToolRegistry tools, LlmGateway model, ObjectMapper mapper,
-                      AgentConversationService conversations, Clock clock) {
+                      AgentConversationService conversations) {
+        this(tools, model, mapper, conversations, null, Clock.system(BUSINESS_ZONE));
+    }
+
+    AgentOrchestrator(DomainToolRegistry tools, LlmGateway model, ObjectMapper mapper,
+                      AgentConversationService conversations, AiModelConnectionService modelConnections, Clock clock) {
         this.tools = tools;
         this.model = model;
         this.mapper = mapper;
         this.conversations = conversations;
+        this.modelConnections = modelConnections;
         this.clock = clock;
     }
 
@@ -123,12 +131,22 @@ public class AgentOrchestrator {
 
     public LlmGateway.ChatResponse chatStreamingForUser(String sessionId, long userId, String message,
                                                         StreamListener listener) {
-        return chatStreaming(conversations.openOwned(userId, sessionId, message), message, listener);
+        AiModelConnectionService.RuntimeConnection connection = modelConnections == null
+                ? null : modelConnections.resolveForSession(sessionId, userId);
+        return chatStreaming(conversations.openOwned(userId, sessionId, message), message, listener, connection);
     }
 
     private LlmGateway.ChatResponse chatStreaming(AgentConversationService.SessionContext context, String message,
                                                   StreamListener listener) {
-        if (!model.configured()) return model.chat(message);
+        return chatStreaming(context, message, listener, null);
+    }
+
+    private LlmGateway.ChatResponse chatStreaming(AgentConversationService.SessionContext context, String message,
+                                                  StreamListener listener,
+                                                  AiModelConnectionService.RuntimeConnection connection) {
+        // A session-bound connection is authoritative; only fall back to the
+        // process environment when no runtime connection was resolved.
+        if (connection == null && !model.configured()) return model.chat(message);
         long startedAt = System.nanoTime();
         long firstTokenMs = 0;
         LlmGateway.TokenUsage usage = LlmGateway.TokenUsage.empty();
@@ -147,7 +165,9 @@ public class AgentOrchestrator {
             Consumer<String> consumer = part -> {
                 if (!part.isEmpty()) listener.delta(part);
             };
-            LlmGateway.AgentTurn turn = model.agentTurnStreaming(messages,
+            LlmGateway.AgentTurn turn = connection == null
+                    ? model.agentTurnStreaming(messages, finalRound ? List.of() : modelTools, consumer)
+                    : model.agentTurnStreaming(connection.gatewayConfig(), messages,
                     finalRound ? List.of() : modelTools, consumer);
             provider = turn.provider();
             usage = usage.plus(turn.usage());
@@ -196,6 +216,12 @@ public class AgentOrchestrator {
                 context.sessionId(), usage, elapsedMs(startedAt), Math.max(0, firstTokenMs),
                 List.copyOf(modelExecutions), List.copyOf(executions));
         return response;
+    }
+
+    public LlmGateway.ChatResponse chatStreamingForUser(String sessionId, long userId, String message,
+                                                        StreamListener listener,
+                                                        AiModelConnectionService.RuntimeConnection connection) {
+        return chatStreaming(conversations.openOwned(userId, sessionId, message), message, listener, connection);
     }
 
     private LlmGateway.ChatResponse response(AgentConversationService.SessionContext context, String userMessage,

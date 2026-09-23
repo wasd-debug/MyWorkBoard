@@ -13,10 +13,11 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { ConnectionView } from './connection-view.ts';
 
-export interface SessionCommand {
-    'id'?: string;
-    'title'?: string;
-    'pinned'?: boolean;
-    'modelConnectionId'?: string;
+export interface ApiResponseConnectionView {
+    'data'?: ConnectionView;
+    'traceId'?: string;
 }

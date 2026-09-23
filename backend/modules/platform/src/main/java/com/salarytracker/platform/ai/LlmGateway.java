@@ -109,11 +109,17 @@ public class LlmGateway {
 
     public AgentTurn agentTurnStreaming(List<AgentMessage> messages, List<AgentTool> tools,
                                         Consumer<String> contentConsumer) {
-        if (!configured()) {
+        return agentTurnStreaming(new RuntimeConfig(endpoint, model, apiKey, 0.1, 60_000), messages, tools,
+                contentConsumer);
+    }
+
+    public AgentTurn agentTurnStreaming(RuntimeConfig config, List<AgentMessage> messages, List<AgentTool> tools,
+                                        Consumer<String> contentConsumer) {
+        if (config == null || !config.configured()) {
             return new AgentTurn("DeepSeek 尚未配置。请设置 DEEPSEEK_API_KEY 后重启后端。",
                     List.of(), "not-configured", false);
         }
-        ChatCompletionRequest payload = new ChatCompletionRequest(model, messages, 0.1, null,
+        ChatCompletionRequest payload = new ChatCompletionRequest(config.model(), messages, config.temperature(), null,
                 tools.isEmpty() ? null : tools, tools.isEmpty() ? null : "auto", true,
                 new StreamOptions(true));
         long startedAt = System.nanoTime();
@@ -122,11 +128,11 @@ public class LlmGateway {
         Map<Integer, ToolCallBuilder> calls = new LinkedHashMap<>();
         TokenUsage usage = TokenUsage.empty();
         try {
-            HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(endpoint))
-                    .timeout(Duration.ofSeconds(60))
+            HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(config.endpoint()))
+                    .timeout(Duration.ofMillis(config.timeoutMs()))
                     .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload)));
-            if (apiKey != null && !apiKey.isBlank()) request.header("Authorization", "Bearer " + apiKey);
+            if (config.apiKey() != null && !config.apiKey().isBlank()) request.header("Authorization", "Bearer " + config.apiKey());
             HttpResponse<java.io.InputStream> response = streamingClient.send(request.build(),
                     HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
@@ -160,7 +166,7 @@ public class LlmGateway {
                 }
             }
             List<AgentToolCall> toolCalls = calls.values().stream().map(ToolCallBuilder::build).toList();
-            return new AgentTurn(content.toString(), toolCalls, endpoint, true, usage,
+            return new AgentTurn(content.toString(), toolCalls, config.endpoint(), true, usage,
                     elapsedMs(startedAt), firstTokenMs);
         } catch (IllegalStateException exception) {
             throw exception;
@@ -290,6 +296,13 @@ public class LlmGateway {
     }
 
     public record ToolExecution(String name, String status, String summary, long durationMs) {
+    }
+
+    public record RuntimeConfig(String endpoint, String model, String apiKey, double temperature, int timeoutMs) {
+        public boolean configured() {
+            return endpoint != null && !endpoint.isBlank() && model != null && !model.isBlank()
+                    && apiKey != null && !apiKey.isBlank();
+        }
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.salarytracker.ai.session.AgentConversationService;
 import com.salarytracker.ai.session.AgentTurnRepository;
 import com.salarytracker.ai.session.AgentTurnService;
+import com.salarytracker.ai.model.AiModelConnectionService;
+import com.salarytracker.ai.trace.AgentTraceService;
 import com.salarytracker.platform.ApiResponse;
 import com.salarytracker.platform.ai.LlmGateway;
 import io.swagger.v3.oas.annotations.Operation;
@@ -35,19 +37,31 @@ public class AgentSessionController {
     private final AgentConversationService conversations;
     private final AgentTurnService turns;
     private final ObjectMapper mapper;
+    private final AiModelConnectionService models;
+    private final AgentTraceService traces;
 
     public AgentSessionController(AgentConversationService conversations, AgentTurnService turns,
-                                  ObjectMapper mapper) {
+                                  ObjectMapper mapper, AiModelConnectionService models,
+                                  AgentTraceService traces) {
         this.conversations = conversations;
         this.turns = turns;
         this.mapper = mapper;
+        this.models = models;
+        this.traces = traces;
     }
 
     @PostMapping(value = "/sessions", consumes = MediaType.APPLICATION_JSON_VALUE)
     @Operation(operationId = "createAgentSession")
     public ApiResponse<AgentConversationService.SessionSummary> create(@RequestBody SessionCommand command) {
-        return ApiResponse.ok(conversations.create(command == null ? null : command.id(),
-                command == null ? "新对话" : command.title()));
+        AgentConversationService.SessionSummary session = conversations.create(command == null ? null : command.id(),
+                command == null ? "新对话" : command.title());
+        if (command != null && command.modelConnectionId() != null) {
+            String sessionId = session.id();
+            models.bindSession(sessionId, command.modelConnectionId());
+            session = conversations.list(false).stream().filter(item -> item.id().equals(sessionId))
+                    .findFirst().orElse(session);
+        }
+        return ApiResponse.ok(session);
     }
 
     @GetMapping("/sessions")
@@ -144,6 +158,22 @@ public class AgentSessionController {
         return ApiResponse.ok(turns.get(turnId));
     }
 
+    @GetMapping("/turns/{turnId}/trace")
+    @Operation(operationId = "getAgentTurnTrace")
+    public ApiResponse<AgentTraceService.TraceView> trace(@PathVariable String turnId) {
+        return ApiResponse.ok(traces.get(turnId));
+    }
+
+    @PatchMapping(value = "/sessions/{sessionId}/model", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(operationId = "changeAgentSessionModel")
+    public ApiResponse<AgentConversationService.SessionSummary> changeModel(@PathVariable String sessionId,
+                                                                            @RequestBody ModelCommand command) {
+        if (!turns.queue(sessionId).items().isEmpty()) throw new IllegalStateException("队列非空时不能切换模型");
+        models.bindSession(sessionId, command == null ? null : command.modelConnectionId());
+        return ApiResponse.ok(conversations.list(false).stream().filter(item -> item.id().equals(sessionId))
+                .findFirst().orElseThrow());
+    }
+
     @PostMapping("/turns/{turnId}/cancel")
     @Operation(operationId = "cancelAgentTurn")
     public ApiResponse<AgentTurnRepository.AgentTurnView> cancel(@PathVariable String turnId) {
@@ -185,7 +215,7 @@ public class AgentSessionController {
         return ApiResponse.ok(turns.retry(turnId, command == null ? null : command.clientRequestId()));
     }
 
-    public record SessionCommand(String id, String title, Boolean pinned) {
+    public record SessionCommand(String id, String title, Boolean pinned, String modelConnectionId) {
     }
 
     public record GroupCommand(String id, String name) {
@@ -202,6 +232,8 @@ public class AgentSessionController {
 
     public record RetryCommand(String clientRequestId) {
     }
+
+    public record ModelCommand(String modelConnectionId) { }
 
     private static final class SseTurnEvents implements AgentTurnService.TurnEvents {
         private final SseEmitter emitter;

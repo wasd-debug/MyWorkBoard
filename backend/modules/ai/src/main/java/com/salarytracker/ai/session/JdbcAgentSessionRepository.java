@@ -68,7 +68,7 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
     @Override
     public List<AgentConversationService.SessionSummary> listSessions(long userId, boolean archived) {
         return jdbc.query("""
-                        SELECT id,title,group_id,created_at,updated_at,archived_at,pinned_at
+                        SELECT id,title,group_id,model_connection_id,created_at,updated_at,archived_at,pinned_at
                         FROM agent_session WHERE user_id=? AND (archived_at IS NOT NULL)=?
                         ORDER BY (pinned_at IS NULL), pinned_at DESC, updated_at DESC LIMIT 100
                         """,
@@ -78,7 +78,7 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
     @Override
     public Optional<AgentConversationService.SessionSummary> findSession(String sessionId, long userId) {
         List<AgentConversationService.SessionSummary> rows = jdbc.query("""
-                        SELECT id,title,group_id,created_at,updated_at,archived_at,pinned_at
+                        SELECT id,title,group_id,model_connection_id,created_at,updated_at,archived_at,pinned_at
                         FROM agent_session WHERE id=? AND user_id=?
                         """, (result, rowNum) -> session(result), sessionId, userId);
         return rows.stream().findFirst();
@@ -170,7 +170,7 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
         java.sql.Timestamp archived = result.getTimestamp("archived_at");
         java.sql.Timestamp pinned = result.getTimestamp("pinned_at");
         return new AgentConversationService.SessionSummary(result.getString("id"), result.getString("title"),
-                result.getString("group_id"),
+                result.getString("group_id"), result.getString("model_connection_id"),
                 result.getTimestamp("created_at").toInstant(), result.getTimestamp("updated_at").toInstant(),
                 archived == null ? null : archived.toInstant(), pinned == null ? null : pinned.toInstant());
     }

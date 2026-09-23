@@ -14,9 +14,11 @@
 
 
 
-export interface SessionCommand {
-    'id'?: string;
-    'title'?: string;
-    'pinned'?: boolean;
-    'modelConnectionId'?: string;
+export interface PricingCommand {
+    'currency'?: string;
+    'inputPerMillion'?: number;
+    'outputPerMillion'?: number;
+    'cacheHitPerMillion'?: number;
+    'cacheMissPerMillion'?: number;
+    'reasoningPerMillion'?: number;
 }

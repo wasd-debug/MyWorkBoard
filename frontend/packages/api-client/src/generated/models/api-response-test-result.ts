@@ -13,10 +13,11 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { TestResult } from './test-result.ts';
 
-export interface SessionCommand {
-    'id'?: string;
-    'title'?: string;
-    'pinned'?: boolean;
-    'modelConnectionId'?: string;
+export interface ApiResponseTestResult {
+    'data'?: TestResult;
+    'traceId'?: string;
 }
