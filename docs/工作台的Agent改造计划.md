@@ -400,6 +400,8 @@ diff
 
 本轮本地验收：platform 5/5、AI 41/41、工时 11/11、账本 37 通过（1 个既有 Excel fixture 跳过）；前端生产构建通过；Agent 桌面 Chromium 覆盖费用恢复、可搜索账户/分类及取消卡片，375px Chromium 覆盖移动端全局顶部入口，用户已在本地环境确认交互可用。
 
+2026-09-23 18:39（UTC+8）生产部署记录：提交 `4d22641` 已推送并部署，后端使用 `salary-backend:4d22641`，前端使用 `salary-frontend:4d22641`。本次没有新增数据库迁移，生产 Flyway 仍为 v19，21 条迁移校验通过且无待执行迁移；部署前备份为 `backups/salary-before-4d22641-20260923-183636.sql.gz`。部署后 `/api/health`、首页和 `/v3/api-docs` 均验证通过，OpenAPI 已包含 `pricingTier`。容器切换启动期间出现约 8 秒的短暂 502，随后自动恢复且真实业务请求返回 200。需要回滚时使用 `salary-backend:pre-4d22641` 和 `salary-frontend:pre-4d22641`，数据库备份保留用于异常恢复核验。
+
 action 刷新恢复读取终态时保持原最终状态；`COMPLETED`、`CONFLICT`、`DENIED`、`FAILED`、`CANCELLED` 和 `EXPIRED` 即使超过有效期也不得再次转换，只有仍在等待或执行链中的非终态 action 才自动过期。
 
 ## 6. 工时工具覆盖
