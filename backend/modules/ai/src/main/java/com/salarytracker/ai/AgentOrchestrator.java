@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 @Service
 public class AgentOrchestrator {
@@ -55,6 +56,7 @@ public class AgentOrchestrator {
         long startedAt = System.nanoTime();
         LlmGateway.TokenUsage usage = LlmGateway.TokenUsage.empty();
         List<LlmGateway.ToolExecution> executions = new ArrayList<>();
+        List<LlmGateway.ModelExecution> modelExecutions = new ArrayList<>();
 
         AgentConversationService.SessionContext context = conversations.open(sessionId, message);
 
@@ -77,15 +79,18 @@ public class AgentOrchestrator {
             LlmGateway.AgentTurn turn = model.agentTurn(messages,
                     callCount >= MAX_TOOL_CALLS ? List.of() : modelTools);
             usage = usage.plus(turn.usage());
+            modelExecutions.add(new LlmGateway.ModelExecution(round + 1, turn.durationMs(),
+                    turn.firstTokenMs(), turn.usage()));
             if (!turn.configured()) return response(context, message, turn.content(), turn.provider(), false,
-                    usage, executions, startedAt);
+                    usage, modelExecutions, executions, startedAt, 0);
             if (turn.toolCalls().isEmpty()) {
                 String content = turn.content().isBlank() ? "模型没有返回可显示的内容，请稍后重试。" : turn.content();
-                return response(context, message, content, turn.provider(), true, usage, executions, startedAt);
+                return response(context, message, content, turn.provider(), true, usage, modelExecutions,
+                        executions, startedAt, 0);
             }
             if (callCount >= MAX_TOOL_CALLS) {
                 return response(context, message, "本轮查询需要的工具调用过多，请缩小问题范围后重试。",
-                        turn.provider(), true, usage, executions, startedAt);
+                        turn.provider(), true, usage, modelExecutions, executions, startedAt, 0);
             }
 
             messages.add(LlmGateway.AgentMessage.assistant(turn.content(), turn.toolCalls()));
@@ -108,17 +113,120 @@ public class AgentOrchestrator {
             }
         }
         return response(context, message, "本轮查询未能在限制步骤内完成，请缩小问题范围后重试。",
-                "agent-limit", true, usage, executions, startedAt);
+                "agent-limit", true, usage, modelExecutions, executions, startedAt, 0);
+    }
+
+    public LlmGateway.ChatResponse chatStreaming(String sessionId, String message, StreamListener listener) {
+        AgentConversationService.SessionContext context = conversations.open(sessionId, message);
+        return chatStreaming(context, message, listener);
+    }
+
+    public LlmGateway.ChatResponse chatStreamingForUser(String sessionId, long userId, String message,
+                                                        StreamListener listener) {
+        return chatStreaming(conversations.openOwned(userId, sessionId, message), message, listener);
+    }
+
+    private LlmGateway.ChatResponse chatStreaming(AgentConversationService.SessionContext context, String message,
+                                                  StreamListener listener) {
+        if (!model.configured()) return model.chat(message);
+        long startedAt = System.nanoTime();
+        long firstTokenMs = 0;
+        LlmGateway.TokenUsage usage = LlmGateway.TokenUsage.empty();
+        List<LlmGateway.ModelExecution> modelExecutions = new ArrayList<>();
+        List<LlmGateway.ToolExecution> executions = new ArrayList<>();
+        Map<String, ToolDefinition> exposed = exposedTools();
+        List<LlmGateway.AgentTool> modelTools = exposed.entrySet().stream()
+                .map(entry -> LlmGateway.AgentTool.function(entry.getKey(),
+                        entry.getValue().description(), entry.getValue().inputSchema())).toList();
+        List<LlmGateway.AgentMessage> messages = messages(context, message);
+        int callCount = 0;
+        String provider = "agent-limit";
+        String finalContent = "";
+        for (int round = 0; round <= MAX_TOOL_CALLS + 1; round++) {
+            boolean finalRound = callCount >= MAX_TOOL_CALLS;
+            Consumer<String> consumer = part -> {
+                if (!part.isEmpty()) listener.delta(part);
+            };
+            LlmGateway.AgentTurn turn = model.agentTurnStreaming(messages,
+                    finalRound ? List.of() : modelTools, consumer);
+            provider = turn.provider();
+            usage = usage.plus(turn.usage());
+            modelExecutions.add(new LlmGateway.ModelExecution(round + 1, turn.durationMs(),
+                    turn.firstTokenMs(), turn.usage()));
+            if (firstTokenMs == 0 && turn.firstTokenMs() > 0) {
+                firstTokenMs = elapsedMs(startedAt) - turn.durationMs() + turn.firstTokenMs();
+            }
+            if (!turn.configured()) {
+                finalContent = turn.content();
+                break;
+            }
+            if (turn.toolCalls().isEmpty()) {
+                finalContent = turn.content().isBlank() ? "模型没有返回可显示的内容，请稍后重试。" : turn.content();
+                break;
+            }
+            if (callCount >= MAX_TOOL_CALLS) {
+                finalContent = "本轮查询需要的工具调用过多，请缩小问题范围后重试。";
+                listener.delta(finalContent);
+                break;
+            }
+            messages.add(LlmGateway.AgentMessage.assistant(turn.content(), turn.toolCalls()));
+            for (LlmGateway.AgentToolCall call : turn.toolCalls()) {
+                long toolStartedAt = System.nanoTime();
+                ToolDefinition definition = exposed.get(call.name());
+                String toolName = definition == null ? call.name().replace("__", ".") : definition.name();
+                listener.toolStarted(toolName);
+                ToolResult result;
+                if (definition == null) {
+                    result = ToolResult.failed("模型请求了未授权或不存在的工具", mapper.createObjectNode(), null);
+                } else if (callCount >= MAX_TOOL_CALLS) {
+                    result = ToolResult.failed("本轮工具调用次数已达到上限", mapper.createObjectNode(), null);
+                } else {
+                    callCount++;
+                    result = invoke(definition.name(), call.arguments());
+                }
+                LlmGateway.ToolExecution execution = new LlmGateway.ToolExecution(toolName,
+                        result.status().name(), result.summary(), elapsedMs(toolStartedAt));
+                executions.add(execution);
+                listener.toolCompleted(execution);
+                messages.add(LlmGateway.AgentMessage.tool(call.id(), write(result)));
+            }
+        }
+        if (finalContent.isBlank()) finalContent = "本轮查询未能在限制步骤内完成，请缩小问题范围后重试。";
+        LlmGateway.ChatResponse response = new LlmGateway.ChatResponse(finalContent, provider, true,
+                context.sessionId(), usage, elapsedMs(startedAt), Math.max(0, firstTokenMs),
+                List.copyOf(modelExecutions), List.copyOf(executions));
+        return response;
     }
 
     private LlmGateway.ChatResponse response(AgentConversationService.SessionContext context, String userMessage,
                                              String content, String provider, boolean configured,
                                              LlmGateway.TokenUsage usage,
+                                             List<LlmGateway.ModelExecution> modelExecutions,
                                              List<LlmGateway.ToolExecution> executions,
-                                             long startedAt) {
+                                             long startedAt, long firstTokenMs) {
         conversations.complete(context, userMessage, content);
         return new LlmGateway.ChatResponse(content, provider, configured, context.sessionId(), usage,
-                elapsedMs(startedAt), List.copyOf(executions));
+                elapsedMs(startedAt), firstTokenMs, List.copyOf(modelExecutions), List.copyOf(executions));
+    }
+
+    private List<LlmGateway.AgentMessage> messages(AgentConversationService.SessionContext context, String message) {
+        List<LlmGateway.AgentMessage> messages = new ArrayList<>();
+        messages.add(LlmGateway.AgentMessage.system(systemPrompt()));
+        for (AgentConversationService.StoredMessage stored : context.history()) {
+            messages.add("assistant".equals(stored.role())
+                    ? LlmGateway.AgentMessage.assistant(stored.content(), List.of())
+                    : LlmGateway.AgentMessage.user(stored.content()));
+        }
+        messages.add(LlmGateway.AgentMessage.user(message == null ? "" : message));
+        return messages;
+    }
+
+    public interface StreamListener {
+        void delta(String content);
+
+        void toolStarted(String name);
+
+        void toolCompleted(LlmGateway.ToolExecution execution);
     }
 
     private long elapsedMs(long startedAt) {

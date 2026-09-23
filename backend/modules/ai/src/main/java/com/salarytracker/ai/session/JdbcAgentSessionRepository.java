@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.OptionalLong;
+import java.util.Optional;
 
 @Repository
 public class JdbcAgentSessionRepository implements AgentSessionRepository {
@@ -49,11 +50,76 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
     @Override
     @Transactional
     public void appendExchange(String sessionId, long userId, String userMessage, String assistantMessage) {
-        jdbc.batchUpdate("INSERT INTO agent_message(session_id,user_id,role,content) VALUES(?,?,?,?)",
+        appendExchange(sessionId, userId, null, userMessage, assistantMessage, null);
+    }
+
+    @Override
+    @Transactional
+    public void appendExchange(String sessionId, long userId, String turnId, String userMessage,
+                               String assistantMessage, String metadataJson) {
+        jdbc.batchUpdate("INSERT INTO agent_message(session_id,user_id,turn_id,role,content,metadata_json) VALUES(?,?,?,?,?,?)",
                 List.of(
-                        new Object[]{sessionId, userId, "user", userMessage},
-                        new Object[]{sessionId, userId, "assistant", assistantMessage}));
+                        new Object[]{sessionId, userId, turnId, "user", userMessage, null},
+                        new Object[]{sessionId, userId, turnId, "assistant", assistantMessage, metadataJson}));
         jdbc.update("UPDATE agent_session SET updated_at=CURRENT_TIMESTAMP(6) WHERE id=? AND user_id=?",
                 sessionId, userId);
+    }
+
+    @Override
+    public List<AgentConversationService.SessionSummary> listSessions(long userId, boolean archived) {
+        return jdbc.query("""
+                        SELECT id,title,created_at,updated_at,archived_at
+                        FROM agent_session WHERE user_id=? AND (archived_at IS NOT NULL)=?
+                        ORDER BY updated_at DESC LIMIT 100
+                        """,
+                (result, rowNum) -> session(result), userId, archived);
+    }
+
+    @Override
+    public Optional<AgentConversationService.SessionSummary> findSession(String sessionId, long userId) {
+        List<AgentConversationService.SessionSummary> rows = jdbc.query("""
+                        SELECT id,title,created_at,updated_at,archived_at
+                        FROM agent_session WHERE id=? AND user_id=?
+                        """, (result, rowNum) -> session(result), sessionId, userId);
+        return rows.stream().findFirst();
+    }
+
+    @Override
+    public List<AgentConversationService.MessageView> messages(String sessionId, long userId) {
+        return jdbc.query("""
+                        SELECT id,turn_id,role,content,metadata_json,created_at
+                        FROM agent_message WHERE session_id=? AND user_id=? ORDER BY id
+                        """, (result, rowNum) -> new AgentConversationService.MessageView(
+                        result.getLong("id"), result.getString("turn_id"), result.getString("role"),
+                        result.getString("content"), result.getString("metadata_json"),
+                        result.getTimestamp("created_at").toInstant()), sessionId, userId);
+    }
+
+    @Override
+    public void rename(String sessionId, long userId, String title) {
+        requireChanged(jdbc.update("UPDATE agent_session SET title=? WHERE id=? AND user_id=?",
+                title, sessionId, userId));
+    }
+
+    @Override
+    public void archive(String sessionId, long userId) {
+        requireChanged(jdbc.update("UPDATE agent_session SET archived_at=CURRENT_TIMESTAMP(6) WHERE id=? AND user_id=?",
+                sessionId, userId));
+    }
+
+    @Override
+    public void delete(String sessionId, long userId) {
+        requireChanged(jdbc.update("DELETE FROM agent_session WHERE id=? AND user_id=?", sessionId, userId));
+    }
+
+    private AgentConversationService.SessionSummary session(java.sql.ResultSet result) throws java.sql.SQLException {
+        java.sql.Timestamp archived = result.getTimestamp("archived_at");
+        return new AgentConversationService.SessionSummary(result.getString("id"), result.getString("title"),
+                result.getTimestamp("created_at").toInstant(), result.getTimestamp("updated_at").toInstant(),
+                archived == null ? null : archived.toInstant());
+    }
+
+    private void requireChanged(int changed) {
+        if (changed != 1) throw new IllegalArgumentException("会话不存在");
     }
 }

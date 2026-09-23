@@ -14,11 +14,7 @@
 
 
 
-export interface TokenUsage {
-    'inputTokens'?: number;
-    'outputTokens'?: number;
-    'totalTokens'?: number;
-    'cacheHitTokens'?: number;
-    'cacheMissTokens'?: number;
-    'reasoningTokens'?: number;
+export interface ApiResponseMapStringBoolean {
+    'data'?: { [key: string]: boolean; };
+    'traceId'?: string;
 }

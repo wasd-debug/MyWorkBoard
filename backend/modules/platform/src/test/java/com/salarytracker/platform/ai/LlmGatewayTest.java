@@ -11,6 +11,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.ArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -78,5 +79,35 @@ class LlmGatewayTest {
         assertEquals("assistant", message.path("role").asText());
         assertEquals("历史回答", message.path("content").asText());
         assertTrue(message.path("tool_calls").isMissingNode());
+    }
+
+    @Test
+    void streamsTextToolArgumentsAndUsage() throws Exception {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/chat", exchange -> {
+            byte[] response = ("data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\n"
+                    + "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",\"function\":{\"name\":\"ledger__overview\",\"arguments\":\"{\\\"bookId\\\":\"}}]}}]}\n\n"
+                    + "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"book-1\\\"}\"}}]}}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":4,\"total_tokens\":14,\"prompt_cache_hit_tokens\":6,\"prompt_cache_miss_tokens\":4,\"completion_tokens_details\":{\"reasoning_tokens\":2}}}\n\n"
+                    + "data: [DONE]\n\n").getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        LlmGateway gateway = new LlmGateway(mapper, RestClient.builder(),
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/chat", "deepseek-chat", "test-key");
+        List<String> deltas = new ArrayList<>();
+
+        LlmGateway.AgentTurn turn = gateway.agentTurnStreaming(List.of(LlmGateway.AgentMessage.user("查询")),
+                List.of(), deltas::add);
+
+        assertEquals(List.of("你好"), deltas);
+        assertEquals("你好", turn.content());
+        assertEquals("ledger__overview", turn.toolCalls().get(0).name());
+        assertEquals("{\"bookId\":\"book-1\"}", turn.toolCalls().get(0).arguments());
+        assertEquals(14, turn.usage().totalTokens());
+        assertEquals(2, turn.usage().reasoningTokens());
+        assertTrue(turn.durationMs() >= 0);
     }
 }

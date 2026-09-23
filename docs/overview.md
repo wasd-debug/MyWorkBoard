@@ -72,12 +72,19 @@
 ### Phase 2-6
 
 - **Phase 2 任务管理：未启动。** 导航只有禁用占位，没有 task/file/notification 模块或表结构。
-- **Phase 3A-D Agent/MCP：Phase 3A/3B 部分实现。** 已新增 AI 物理模块、七个内部 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit、V13 会话消息持久化和最小受控 REST 入口；首页真实 DeepSeek 已能选择当前用户可见的只读工具、连续追问，并显示工具调用、Token、耗时、消息时间和复制操作。SSE、turn 恢复、服务端 trace、受控确认 UI 和 MCP Server 尚未完成。
+- **Phase 3A-D Agent/MCP：Phase 3A/3B 部分实现。** V15 已增加服务端会话 CRUD、消息元数据和 `agent_turn`；首页使用真实 SSE 增量呈现文本与工具状态，支持刷新恢复、请求幂等、断流后按 `turnId` 对账，并展示首字时延、各轮模型调用、各工具耗时和 Token 细分。服务端完整 trace、受控确认 UI 和 MCP Server 尚未完成。
 - **Phase 4 文件/RAG：未启动。** 尚无 MinIO/NAS 文件域、Tika、Qdrant 和知识库。
 - **Phase 5 跨域洞察：未启动。** 只有 `domain_event` 预留表，无事件发布/消费、`report_fact`、`report_snapshot` 或洞察页面。
 - **Phase 6 持续打磨：部分能力提前实现。** 已有响应式布局、主题、共享账本和可重复恢复演练；PWA、全局搜索和完整可观测体系尚未实现。
 
 ## 当前验证基线
+
+2026-09-23 服务端会话恢复与基础 SSE 增量：
+
+- AI/身份相关 Reactor 测试通过；真实 MySQL `AgentConversationIntegrationTest` 3/3 通过并执行 V1-V15，覆盖会话恢复、用户隔离、turn 幂等和终态保护。
+- OpenAPI 重新生成、客户端一致性检查、TypeScript 严格编译和前端生产构建通过。
+- Agent 专项 E2E 在桌面 Chromium、桌面 WebKit 与 375px 移动 Chromium共 9/9 通过；WebKit 验证复制状态，Chromium 额外验证剪贴板内容。
+- 本地 Compose 后端 schema 已到 v15；真实 DeepSeek SSE、Token/TTFT/工具耗时展示及异步安全分派日志修正完成。
 
 2026-09-22 本轮 Agent 后端验证与既有基线：
 
@@ -103,7 +110,7 @@
 1. 完成 Android Chrome 与 iOS Safari 真机验收记录。
 2. 确认 MoneyWiz 与外部账单源范围。
 3. 将恢复脚本纳入季度生产运维并持续留存发布/回滚记录。
-4. 继续 [工作台的 Agent 改造计划](工作台的Agent改造计划.md) Phase 3B：在现有文本上下文之上建设会话列表/消息查询、turn 状态和 SSE，再接入受控表单。
+4. 继续 [工作台的 Agent 改造计划](工作台的Agent改造计划.md) Phase 3B：在已完成的会话恢复、turn 和基础 SSE 上补齐取消交互、自动评测与稳定性门禁，再接入受控表单。
 5. Phase 2 任务域与现有工时/账本 Agent 可分别推进；任务能力完成后再注册为新的 Domain Tool，不阻塞 Phase 3A-D。
 
 ## 文档约定

@@ -14,11 +14,7 @@
 
 
 
-export interface TokenUsage {
-    'inputTokens'?: number;
-    'outputTokens'?: number;
-    'totalTokens'?: number;
-    'cacheHitTokens'?: number;
-    'cacheMissTokens'?: number;
-    'reasoningTokens'?: number;
+export interface SessionCommand {
+    'id'?: string;
+    'title'?: string;
 }

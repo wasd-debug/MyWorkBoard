@@ -2,6 +2,8 @@ package com.salarytracker.ai;
 
 import com.salarytracker.ai.session.AgentConversationService;
 import com.salarytracker.ai.session.JdbcAgentSessionRepository;
+import com.salarytracker.ai.session.JdbcAgentTurnRepository;
+import com.salarytracker.ai.session.AgentTurnStatus;
 import com.salarytracker.integration.MySqlIntegrationTestSupport;
 import org.junit.jupiter.api.Test;
 
@@ -9,6 +11,8 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AgentConversationIntegrationTest extends MySqlIntegrationTestSupport {
     @Test
@@ -29,5 +33,55 @@ class AgentConversationIntegrationTest extends MySqlIntegrationTestSupport {
                 messages.stream().map(AgentConversationService.StoredMessage::role).toList());
         assertEquals("它有几条流水？", messages.get(2).content());
         assertEquals(0, repository.recentMessages(sessionId, userId + 1, 20).size());
+    }
+
+    @Test
+    void supportsSessionRecoveryLifecycleAndUserIsolation() {
+        long firstUser = createUser("agent-session-a-");
+        long secondUser = createUser("agent-session-b-");
+        JdbcAgentSessionRepository repository = new JdbcAgentSessionRepository(jdbc);
+        String sessionId = UUID.randomUUID().toString();
+        repository.create(sessionId, firstUser, "原始标题");
+        new JdbcAgentTurnRepository(jdbc).createOrFind("turn-1", sessionId, firstUser, "request-1", "问题");
+        repository.appendExchange(sessionId, firstUser, "turn-1", "问题", "回答", "{\"durationMs\":18}");
+
+        assertEquals(1, repository.listSessions(firstUser, false).size());
+        assertEquals(0, repository.listSessions(secondUser, false).size());
+        assertEquals("turn-1", repository.messages(sessionId, firstUser).get(0).turnId());
+        assertEquals(0, repository.messages(sessionId, secondUser).size());
+        repository.rename(sessionId, firstUser, "新标题");
+        assertEquals("新标题", repository.findSession(sessionId, firstUser).orElseThrow().title());
+        assertThrows(IllegalArgumentException.class, () -> repository.rename(sessionId, secondUser, "越权"));
+        repository.archive(sessionId, firstUser);
+        assertEquals(1, repository.listSessions(firstUser, true).size());
+        repository.delete(sessionId, firstUser);
+        assertTrue(repository.findSession(sessionId, firstUser).isEmpty());
+    }
+
+    @Test
+    void keepsTurnsIdempotentAndTerminalStatesStable() {
+        long userId = createUser("agent-turn-");
+        JdbcAgentSessionRepository sessions = new JdbcAgentSessionRepository(jdbc);
+        JdbcAgentTurnRepository turns = new JdbcAgentTurnRepository(jdbc);
+        String sessionId = UUID.randomUUID().toString();
+        sessions.create(sessionId, userId, "turn 测试");
+
+        var original = turns.createOrFind("turn-a", sessionId, userId, "request-a", "问题");
+        var replay = turns.createOrFind("turn-b", sessionId, userId, "request-a", "问题");
+        assertEquals(original.id(), replay.id());
+        assertThrows(IllegalArgumentException.class,
+                () -> turns.createOrFind("turn-c", UUID.randomUUID().toString(), userId, "request-a", "问题"));
+        turns.markPlanning(original.id(), userId);
+        assertEquals(AgentTurnStatus.PLANNING, turns.find(original.id(), userId).orElseThrow().status());
+        assertTrue(turns.cancel(original.id(), userId));
+        assertTrue(!turns.complete(original.id(), userId, "不应覆盖", "{}"));
+        assertEquals(AgentTurnStatus.CANCELLED, turns.find(original.id(), userId).orElseThrow().status());
+        assertTrue(turns.find(original.id(), userId + 1).isEmpty());
+    }
+
+    private long createUser(String prefix) {
+        String username = prefix + UUID.randomUUID();
+        jdbc.update("INSERT INTO app_user(username,password_hash,nickname) VALUES(?, '!', 'agent')", username);
+        return jdbc.queryForObject("SELECT id FROM app_user WHERE username=?", Long.class, username);
     }
 }

@@ -20,6 +20,62 @@ export async function apiChatWithAssistant(message, sessionId) {
   return data(await api.post('/api/v1/ai/chat', { sessionId, message }, { timeout: 60_000 }))
 }
 
+export async function apiCreateAgentSession(payload) { return data(await api.post('/api/v1/agent/sessions', payload)) }
+export async function apiListAgentSessions(archived = false) { return data(await api.get('/api/v1/agent/sessions', { params: { archived } })) }
+export async function apiListAgentMessages(sessionId) { return data(await api.get(`/api/v1/agent/sessions/${sessionId}/messages`)) }
+export async function apiUpdateAgentSession(sessionId, payload) { return data(await api.patch(`/api/v1/agent/sessions/${sessionId}`, payload)) }
+export async function apiArchiveAgentSession(sessionId) { return data(await api.post(`/api/v1/agent/sessions/${sessionId}/archive`)) }
+export async function apiDeleteAgentSession(sessionId) { return data(await api.delete(`/api/v1/agent/sessions/${sessionId}`)) }
+export async function apiGetAgentTurn(turnId) { return data(await api.get(`/api/v1/agent/turns/${turnId}`)) }
+export async function apiCancelAgentTurn(turnId) { return data(await api.post(`/api/v1/agent/turns/${turnId}/cancel`)) }
+
+export async function apiStreamAgentTurn(sessionId, payload, onEvent, signal) {
+  const request = () => fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/turns`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+      ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
+    },
+    body: JSON.stringify(payload),
+    signal,
+  })
+  let response = await request()
+  if (response.status === 401 && !signal?.aborted) {
+    await apiRefresh()
+    response = await request()
+  }
+  if (!response.ok || !response.body) {
+    const error = new Error(`SSE 请求失败 (${response.status})`)
+    error.status = response.status
+    throw error
+  }
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (true) {
+    const { value, done } = await reader.read()
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+    const blocks = buffer.split(/\r?\n\r?\n/)
+    buffer = blocks.pop() || ''
+    for (const block of blocks) {
+      let event = 'message'
+      const data = []
+      for (const line of block.split(/\r?\n/)) {
+        if (line.startsWith('event:')) event = line.slice(6).trim()
+        if (line.startsWith('data:')) data.push(line.slice(5).trim())
+      }
+      if (!data.length) continue
+      const raw = data.join('\n')
+      let parsed = raw
+      try { parsed = JSON.parse(raw) } catch { /* text event */ }
+      await onEvent(event, parsed)
+    }
+    if (done) break
+  }
+}
+
 export async function apiLogin(credentials) { const result = data(await auth.login({ credentials })); setAccessToken(result?.accessToken); return result }
 export async function apiRegister(credentials) { const result = data(await auth.register({ credentials })); setAccessToken(result?.accessToken); return result }
 export async function apiRefresh() { const result = data(await auth.refreshAccessToken({ refreshRequest: {} })); setAccessToken(result?.accessToken); return result }

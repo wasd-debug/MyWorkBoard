@@ -242,6 +242,13 @@ unset VERIFY_DB_PASSWORD
 
 ## 健康检查与配置
 
+### 2026-09-23 本地 Agent SSE 增量说明
+
+- 本地后端启动会由 Flyway 从 v14 升级至 v15，新增 `agent_turn`、会话归档字段和消息元数据；不得改写或忽略已应用迁移。
+- 本轮只刷新本地开发服务，不执行生产部署。升级后应确认日志显示 schema 为 v15，并检查 `/api/v1/agent/sessions` 与流式 turn 接口可用。
+- SSE 客户端断开不会终止后台只读 turn；客户端通过 `GET /api/v1/agent/turns/{turnId}` 查询最终状态。若 SSE 在收到首个事件前不可用，首页才降级到普通 `/api/v1/ai/chat`。
+- 回滚应用代码前必须确认旧版本是否能容忍 v15 新增表和列；迁移本身只增加结构，不删除现有会话、工时或账本数据。
+
 - 健康检查：`GET /api/health`，成功响应包含 `{"ok": true}`。
 - 后端端口由 `PORT` 控制，默认 `8080`；Compose 内部由 Nginx 代理，无需直接暴露。
 - 数据库连接由 `DB_URL`、`DB_USER`、`DB_PASSWORD` 控制。

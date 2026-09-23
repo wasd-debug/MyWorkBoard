@@ -13,6 +13,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import jakarta.servlet.DispatcherType;
 
 @Configuration
 @EnableMethodSecurity
@@ -43,6 +44,7 @@ public class SecurityConfig {
                                     ApiProblem.of(HttpStatus.FORBIDDEN, "FORBIDDEN", "没有执行此操作的权限", request, null));
                         }))
                 .authorizeHttpRequests(auth -> auth
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/api/health", "/api/v1/auth/**", "/api/v1/holidays", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/api/data", "/api/auth/**", "/api/worktime/**", "/api/ledger/**", "/api/holidays").permitAll()
                         .anyRequest().authenticated())

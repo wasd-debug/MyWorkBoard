@@ -14,11 +14,11 @@
 
 
 
-export interface TokenUsage {
-    'inputTokens'?: number;
-    'outputTokens'?: number;
-    'totalTokens'?: number;
-    'cacheHitTokens'?: number;
-    'cacheMissTokens'?: number;
-    'reasoningTokens'?: number;
+export interface MessageView {
+    'id'?: number;
+    'turnId'?: string;
+    'role'?: string;
+    'content'?: string;
+    'metadataJson'?: string;
+    'createdAt'?: string;
 }

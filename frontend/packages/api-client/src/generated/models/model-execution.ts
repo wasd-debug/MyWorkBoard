@@ -15,22 +15,11 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { ModelExecution } from './model-execution.ts';
-// May contain unused imports in some cases
-// @ts-ignore
 import type { TokenUsage } from './token-usage.ts';
-// May contain unused imports in some cases
-// @ts-ignore
-import type { ToolExecution } from './tool-execution.ts';
 
-export interface ChatResponse {
-    'content'?: string;
-    'provider'?: string;
-    'configured'?: boolean;
-    'sessionId'?: string;
-    'usage'?: TokenUsage;
+export interface ModelExecution {
+    'round'?: number;
     'durationMs'?: number;
     'firstTokenMs'?: number;
-    'modelExecutions'?: Array<ModelExecution>;
-    'toolExecutions'?: Array<ToolExecution>;
+    'usage'?: TokenUsage;
 }

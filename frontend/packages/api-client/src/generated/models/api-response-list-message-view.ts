@@ -13,12 +13,11 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { MessageView } from './message-view.ts';
 
-export interface TokenUsage {
-    'inputTokens'?: number;
-    'outputTokens'?: number;
-    'totalTokens'?: number;
-    'cacheHitTokens'?: number;
-    'cacheMissTokens'?: number;
-    'reasoningTokens'?: number;
+export interface ApiResponseListMessageView {
+    'data'?: Array<MessageView>;
+    'traceId'?: string;
 }

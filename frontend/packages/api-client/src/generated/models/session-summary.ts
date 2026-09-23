@@ -14,11 +14,10 @@
 
 
 
-export interface TokenUsage {
-    'inputTokens'?: number;
-    'outputTokens'?: number;
-    'totalTokens'?: number;
-    'cacheHitTokens'?: number;
-    'cacheMissTokens'?: number;
-    'reasoningTokens'?: number;
+export interface SessionSummary {
+    'id'?: string;
+    'title'?: string;
+    'createdAt'?: string;
+    'updatedAt'?: string;
+    'archivedAt'?: string;
 }

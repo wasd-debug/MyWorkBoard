@@ -13,12 +13,11 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { AgentTurnView } from './agent-turn-view.ts';
 
-export interface TokenUsage {
-    'inputTokens'?: number;
-    'outputTokens'?: number;
-    'totalTokens'?: number;
-    'cacheHitTokens'?: number;
-    'cacheMissTokens'?: number;
-    'reasoningTokens'?: number;
+export interface ApiResponseAgentTurnView {
+    'data'?: AgentTurnView;
+    'traceId'?: string;
 }

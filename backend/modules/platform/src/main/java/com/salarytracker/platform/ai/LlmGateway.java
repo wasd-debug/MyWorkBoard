@@ -13,6 +13,17 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.function.Consumer;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 @Service
 public class LlmGateway {
@@ -21,6 +32,7 @@ public class LlmGateway {
     private final String endpoint;
     private final String model;
     private final String apiKey;
+    private final HttpClient streamingClient;
 
     public LlmGateway(ObjectMapper mapper,
                       RestClient.Builder builder,
@@ -35,6 +47,7 @@ public class LlmGateway {
         this.endpoint = endpoint;
         this.model = model;
         this.apiKey = apiKey;
+        this.streamingClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     }
 
     public ChatResponse chat(String message) {
@@ -85,11 +98,87 @@ public class LlmGateway {
                     usage.path("completion_tokens").asLong(0),
                     usage.path("total_tokens").asLong(0),
                     usage.path("prompt_cache_hit_tokens").asLong(0),
-                    usage.path("prompt_cache_miss_tokens").asLong(0));
-            return new AgentTurn(message.path("content").asText(""), List.copyOf(calls), endpoint, true, tokenUsage);
+                    usage.path("prompt_cache_miss_tokens").asLong(0),
+                    usage.path("completion_tokens_details").path("reasoning_tokens").asLong(0));
+            return new AgentTurn(message.path("content").asText(""), List.copyOf(calls), endpoint, true,
+                    tokenUsage, 0, 0);
         } catch (Exception exception) {
             throw new IllegalStateException("DeepSeek 返回了无法解析的 Agent 响应", exception);
         }
+    }
+
+    public AgentTurn agentTurnStreaming(List<AgentMessage> messages, List<AgentTool> tools,
+                                        Consumer<String> contentConsumer) {
+        if (!configured()) {
+            return new AgentTurn("DeepSeek 尚未配置。请设置 DEEPSEEK_API_KEY 后重启后端。",
+                    List.of(), "not-configured", false);
+        }
+        ChatCompletionRequest payload = new ChatCompletionRequest(model, messages, 0.1, null,
+                tools.isEmpty() ? null : tools, tools.isEmpty() ? null : "auto", true,
+                new StreamOptions(true));
+        long startedAt = System.nanoTime();
+        long firstTokenMs = 0;
+        StringBuilder content = new StringBuilder();
+        Map<Integer, ToolCallBuilder> calls = new LinkedHashMap<>();
+        TokenUsage usage = TokenUsage.empty();
+        try {
+            HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(endpoint))
+                    .timeout(Duration.ofSeconds(60))
+                    .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload)));
+            if (apiKey != null && !apiKey.isBlank()) request.header("Authorization", "Bearer " + apiKey);
+            HttpResponse<java.io.InputStream> response = streamingClient.send(request.build(),
+                    HttpResponse.BodyHandlers.ofInputStream());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                String body = new String(response.body().readAllBytes(), StandardCharsets.UTF_8);
+                throw upstreamError(body, response.statusCode());
+            }
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (!line.startsWith("data:")) continue;
+                    String data = line.substring(5).trim();
+                    if (data.isEmpty() || "[DONE]".equals(data)) continue;
+                    JsonNode chunk = mapper.readTree(data);
+                    JsonNode usageNode = chunk.path("usage");
+                    if (!usageNode.isMissingNode() && !usageNode.isNull()) usage = tokenUsage(usageNode);
+                    JsonNode delta = chunk.path("choices").path(0).path("delta");
+                    String part = delta.path("content").asText("");
+                    if (!part.isEmpty()) {
+                        if (firstTokenMs == 0) firstTokenMs = elapsedMs(startedAt);
+                        content.append(part);
+                        contentConsumer.accept(part);
+                    }
+                    for (JsonNode call : delta.path("tool_calls")) {
+                        int index = call.path("index").asInt(calls.size());
+                        ToolCallBuilder builder = calls.computeIfAbsent(index, ignored -> new ToolCallBuilder());
+                        if (!call.path("id").asText("").isEmpty()) builder.id.append(call.path("id").asText());
+                        JsonNode function = call.path("function");
+                        if (!function.path("name").asText("").isEmpty()) builder.name.append(function.path("name").asText());
+                        if (!function.path("arguments").asText("").isEmpty()) builder.arguments.append(function.path("arguments").asText());
+                    }
+                }
+            }
+            List<AgentToolCall> toolCalls = calls.values().stream().map(ToolCallBuilder::build).toList();
+            return new AgentTurn(content.toString(), toolCalls, endpoint, true, usage,
+                    elapsedMs(startedAt), firstTokenMs);
+        } catch (IllegalStateException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalStateException("DeepSeek 流式响应失败，请稍后重试", exception);
+        }
+    }
+
+    private TokenUsage tokenUsage(JsonNode usage) {
+        return new TokenUsage(usage.path("prompt_tokens").asLong(0),
+                usage.path("completion_tokens").asLong(0), usage.path("total_tokens").asLong(0),
+                usage.path("prompt_cache_hit_tokens").asLong(0),
+                usage.path("prompt_cache_miss_tokens").asLong(0),
+                usage.path("completion_tokens_details").path("reasoning_tokens").asLong(0));
+    }
+
+    private long elapsedMs(long startedAt) {
+        return Math.max(0, (System.nanoTime() - startedAt) / 1_000_000);
     }
 
     public boolean configured() {
@@ -167,28 +256,37 @@ public class LlmGateway {
     }
 
     public record ChatResponse(String content, String provider, boolean configured, String sessionId,
-                               TokenUsage usage, long durationMs, List<ToolExecution> toolExecutions) {
+                               TokenUsage usage, long durationMs, long firstTokenMs,
+                               List<ModelExecution> modelExecutions, List<ToolExecution> toolExecutions) {
         public ChatResponse(String content, String provider, boolean configured) {
-            this(content, provider, configured, null, TokenUsage.empty(), 0, List.of());
+            this(content, provider, configured, null, TokenUsage.empty(), 0, 0, List.of(), List.of());
         }
 
         public ChatResponse(String content, String provider, boolean configured, String sessionId) {
-            this(content, provider, configured, sessionId, TokenUsage.empty(), 0, List.of());
+            this(content, provider, configured, sessionId, TokenUsage.empty(), 0, 0, List.of(), List.of());
         }
     }
 
     public record TokenUsage(long inputTokens, long outputTokens, long totalTokens,
-                             long cacheHitTokens, long cacheMissTokens) {
+                             long cacheHitTokens, long cacheMissTokens, long reasoningTokens) {
+        public TokenUsage(long inputTokens, long outputTokens, long totalTokens,
+                          long cacheHitTokens, long cacheMissTokens) {
+            this(inputTokens, outputTokens, totalTokens, cacheHitTokens, cacheMissTokens, 0);
+        }
+
         public static TokenUsage empty() {
-            return new TokenUsage(0, 0, 0, 0, 0);
+            return new TokenUsage(0, 0, 0, 0, 0, 0);
         }
 
         public TokenUsage plus(TokenUsage other) {
             if (other == null) return this;
             return new TokenUsage(inputTokens + other.inputTokens, outputTokens + other.outputTokens,
                     totalTokens + other.totalTokens, cacheHitTokens + other.cacheHitTokens,
-                    cacheMissTokens + other.cacheMissTokens);
+                    cacheMissTokens + other.cacheMissTokens, reasoningTokens + other.reasoningTokens);
         }
+    }
+
+    public record ModelExecution(int round, long durationMs, long firstTokenMs, TokenUsage usage) {
     }
 
     public record ToolExecution(String name, String status, String summary, long durationMs) {
@@ -234,9 +332,24 @@ public class LlmGateway {
     }
 
     public record AgentTurn(String content, List<AgentToolCall> toolCalls, String provider, boolean configured,
-                            TokenUsage usage) {
+                            TokenUsage usage, long durationMs, long firstTokenMs) {
         public AgentTurn(String content, List<AgentToolCall> toolCalls, String provider, boolean configured) {
-            this(content, toolCalls, provider, configured, TokenUsage.empty());
+            this(content, toolCalls, provider, configured, TokenUsage.empty(), 0, 0);
+        }
+
+        public AgentTurn(String content, List<AgentToolCall> toolCalls, String provider, boolean configured,
+                         TokenUsage usage) {
+            this(content, toolCalls, provider, configured, usage, 0, 0);
+        }
+    }
+
+    private static final class ToolCallBuilder {
+        private final StringBuilder id = new StringBuilder();
+        private final StringBuilder name = new StringBuilder();
+        private final StringBuilder arguments = new StringBuilder();
+
+        private AgentToolCall build() {
+            return new AgentToolCall(id.toString(), name.toString(), arguments.isEmpty() ? "{}" : arguments.toString());
         }
     }
 
@@ -270,14 +383,24 @@ public class LlmGateway {
     private record ResponseFormat(String type) {
     }
 
+    private record StreamOptions(@JsonProperty("include_usage") boolean includeUsage) {
+    }
+
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private record ChatCompletionRequest(String model, List<?> messages, double temperature,
                                          @JsonProperty("response_format") ResponseFormat responseFormat,
                                          List<AgentTool> tools,
-                                         @JsonProperty("tool_choice") String toolChoice) {
+                                         @JsonProperty("tool_choice") String toolChoice,
+                                         Boolean stream,
+                                         @JsonProperty("stream_options") StreamOptions streamOptions) {
         private ChatCompletionRequest(String model, List<?> messages, double temperature,
                                       ResponseFormat responseFormat) {
-            this(model, messages, temperature, responseFormat, null, null);
+            this(model, messages, temperature, responseFormat, null, null, null, null);
+        }
+
+        private ChatCompletionRequest(String model, List<?> messages, double temperature,
+                                      ResponseFormat responseFormat, List<AgentTool> tools, String toolChoice) {
+            this(model, messages, temperature, responseFormat, tools, toolChoice, null, null);
         }
     }
 }

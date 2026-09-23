@@ -34,7 +34,7 @@
 ### 后续阶段
 
 - **Phase 2 任务管理：未启动。** 计划包含清单、任务、日历、提醒、番茄钟、习惯和倒数日。
-- **Phase 3A-D Agent/MCP：Phase 3A/3B 部分实现。** 已建立 AI 物理模块、七个内部 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit、V13 会话消息持久化和最小受控 REST 入口；首页真实 DeepSeek 已能选择当前用户可见的只读工具、连续追问，并展示工具调用、Token、耗时、消息时间和复制操作。SSE、turn 恢复、受控写入和 MCP 尚未实现。
+- **Phase 3A-D Agent/MCP：Phase 3A/3B 部分实现。** 已建立 AI 物理模块、七个内部 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit，以及 V15 服务端会话/消息/turn 持久化；首页通过真实 SSE 展示模型增量文本和工具状态，刷新可恢复历史消息，断流可按 `turnId` 查询最终状态，并展示首字、模型轮次、工具耗时和 Token 细分。受控写入和 MCP 尚未开放。
 - **Phase 4 文件/RAG：未启动。** 计划在 Agent/MCP 稳定后建设文件域、向量库和知识库。
 - **Phase 5 跨域洞察：未启动。** 计划通过领域事件生成日/周/月/年报。
 - **Phase 6 持续打磨：部分能力提前实现。** 响应式布局、主题和共享账本已存在；PWA、搜索和可观测体系尚未实现。
@@ -179,6 +179,8 @@ npm run test:e2e
 2026-09-23 Agent 回复可观测增量验证：AI 目标 Reactor 测试通过，DeepSeek Token usage 解析测试覆盖缓存字段；前端生产构建与 OpenAPI 生成检查通过，Agent 专项 E2E 在桌面 Chromium 和 375px 移动端 8/8 通过，并使用真实本地 DeepSeek 对话验证工具明细、Token、耗时、消息时间与复制入口。
 
 2026-09-23 Agent 元数据弹层交互修正：工具调用与 Token 明细支持点击弹层外区域自动收起，并保持同一消息内互斥展开；前端生产构建和专项 Chromium E2E 通过。
+
+2026-09-23 Agent 会话恢复与基础 SSE 增量：新增服务端会话 CRUD、`agent_turn` 状态与幂等请求、真实 DeepSeek 流式输出、断流状态查询及详细 TTFT/模型/工具/Token 元数据；普通 `/api/v1/ai/chat` 保留为 SSE 建连失败时的降级路径。
 
 ## 服务器部署
 

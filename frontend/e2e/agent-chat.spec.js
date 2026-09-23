@@ -1,138 +1,97 @@
 import { test, expect } from '@playwright/test'
 import { markSessionBeforeLoad, registerUser } from './helpers.js'
 
-test('agent chat displays the first reply in a new conversation without refresh', async ({ page }) => {
-  const auth = await registerUser(page.request, 'agent-first-reply-e2e')
+const response = {
+  content: '已查询到一个**默认账本**。', provider: 'test', configured: true, sessionId: 'session-1',
+  durationMs: 1834, firstTokenMs: 212,
+  usage: { inputTokens: 1250, outputTokens: 86, totalTokens: 1336, cacheHitTokens: 900, cacheMissTokens: 350, reasoningTokens: 26 },
+  modelExecutions: [{ round: 1, durationMs: 1600, firstTokenMs: 190, usage: { totalTokens: 1336 } }],
+  toolExecutions: [{ name: 'ledger.books.list', status: 'COMPLETED', summary: '当前可访问 1 个账本', durationMs: 21 }],
+}
+
+async function setupAgent(page, name, options = {}) {
+  const auth = await registerUser(page.request, name)
   await markSessionBeforeLoad(page, auth.user.id)
-  await page.route('**/api/v1/ai/chat', async route => {
-    await new Promise(resolve => setTimeout(resolve, 300))
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: { content: '**默认账本** 可以正常访问。', provider: 'test', configured: true } }),
-    })
-  })
-
-  await page.goto('/')
-  await page.getByLabel('给 AI 发送消息').fill('我有哪些账本？')
-  await page.getByRole('button', { name: '发送' }).click()
-
-  await expect(page.getByText('正在思考…')).toBeAttached()
-  await expect(page.locator('.message-markdown strong')).toHaveText('默认账本')
-  await expect(page.getByText('可以正常访问。', { exact: false })).toBeVisible()
-})
-
-test('agent chat reuses one session id for follow-up questions', async ({ page }) => {
-  const auth = await registerUser(page.request, 'agent-context-e2e')
-  await markSessionBeforeLoad(page, auth.user.id)
-  const requests = []
-  await page.route('**/api/v1/ai/chat', async route => {
+  let sessions = options.sessions || []
+  const messages = options.messages || []
+  await page.route('**/api/v1/agent/sessions?*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: sessions }) }))
+  await page.route('**/api/v1/agent/sessions', async route => {
+    if (route.request().method() !== 'POST') return route.fallback()
     const body = route.request().postDataJSON()
-    requests.push(body)
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: {
-        content: requests.length === 1 ? '你有一个账本。' : '它叫默认账本。',
-        provider: 'test',
-        configured: true,
-        sessionId: body.sessionId,
-      } }),
-    })
+    const session = { id: body.id, title: body.title, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), archivedAt: null }
+    sessions = [session, ...sessions]
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: session }) })
   })
+  await page.route('**/api/v1/agent/sessions/*/messages', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: messages }) }))
+  await page.route('**/api/v1/agent/sessions/*/turns', route => route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: [
+      `event: turn.received\ndata: ${JSON.stringify({ turnId: 'turn-1', status: 'RECEIVED', replayed: false })}\n\n`,
+      `event: turn.status\ndata: ${JSON.stringify({ turnId: 'turn-1', status: 'PLANNING' })}\n\n`,
+      `event: tool.started\ndata: ${JSON.stringify({ turnId: 'turn-1', name: 'ledger.books.list' })}\n\n`,
+      `event: assistant.delta\ndata: ${JSON.stringify({ turnId: 'turn-1', content: '已查询到一个' })}\n\n`,
+      `event: assistant.delta\ndata: ${JSON.stringify({ turnId: 'turn-1', content: '**默认账本**。' })}\n\n`,
+      `event: tool.completed\ndata: ${JSON.stringify({ turnId: 'turn-1', execution: response.toolExecutions[0] })}\n\n`,
+      `event: turn.completed\ndata: ${JSON.stringify({ turnId: 'turn-1', response })}\n\n`,
+    ].join(''),
+  }))
+  return auth
+}
 
-  await page.goto('/')
-  await page.getByLabel('给 AI 发送消息').fill('我有几个账本？')
-  await page.getByRole('button', { name: '发送' }).click()
-  await expect(page.getByText('你有一个账本。')).toBeVisible()
-  await page.getByLabel('给 AI 发送消息').fill('它叫什么？')
-  await page.getByRole('button', { name: '发送' }).click()
-  await expect(page.getByText('它叫默认账本。')).toBeVisible()
-
-  expect(requests).toHaveLength(2)
-  expect(requests[0].sessionId).toBeTruthy()
-  expect(requests[1].sessionId).toBe(requests[0].sessionId)
-})
-
-test('agent reply shows tools tokens duration time and supports copying', async ({ page, context }) => {
-  const auth = await registerUser(page.request, 'agent-observability-e2e')
-  await markSessionBeforeLoad(page, auth.user.id)
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:14173' })
-  await page.route('**/api/v1/ai/chat', async route => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: {
-        content: '已查询到一个默认账本。', provider: 'test', configured: true,
-        durationMs: 1834,
-        usage: { inputTokens: 1250, outputTokens: 86, totalTokens: 1336, cacheHitTokens: 900, cacheMissTokens: 350 },
-        toolExecutions: [{ name: 'ledger.books.list', status: 'COMPLETED', summary: '当前可访问 1 个账本', durationMs: 21 }],
-      } }),
-    })
-  })
-
+test('streams the first reply and exposes detailed observability', async ({ page, context, browserName }) => {
+  await setupAgent(page, 'agent-sse-e2e')
+  if (browserName === 'chromium') {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:14173' })
+  }
   await page.goto('/')
   await page.getByLabel('给 AI 发送消息').fill('我有哪些账本？')
   await page.getByRole('button', { name: '发送' }).click()
-
-  await expect(page.getByText('已查询到一个默认账本。')).toBeVisible()
+  await expect(page.locator('.message-markdown strong')).toHaveText('默认账本')
   await expect(page.getByText('1,336 Tokens')).toBeVisible()
-  await expect(page.getByText('1.8s')).toBeVisible()
-  await page.getByText('已调用 1 个工具').click()
-  await expect(page.getByText('查询账本')).toBeVisible()
-  await expect(page.getByText('当前可访问 1 个账本')).toBeVisible()
-  await page.locator('.chat-workspace-head').click()
-  await expect(page.getByText('当前可访问 1 个账本')).toBeHidden()
   await page.getByText('1,336 Tokens').click()
-  await expect(page.getByText('缓存命中')).toBeVisible()
+  await expect(page.getByText('缓存未命中')).toBeVisible()
+  await expect(page.getByText('思考过程')).toBeVisible()
+  await expect(page.getByText('输入缓存命中率 72%')).toBeVisible()
+  await page.locator('.timing-details > summary').click()
+  await expect(page.getByText('首字时延')).toBeVisible()
+  await expect(page.getByText('模型调用 1')).toBeVisible()
+  await expect(page.locator('.timing-popover').getByText('查询账本', { exact: true })).toBeVisible()
   await page.locator('.chat-workspace-head').click()
-  await expect(page.getByText('缓存命中')).toBeHidden()
+  await expect(page.getByText('首字时延')).toBeHidden()
   await page.getByRole('button', { name: '复制消息' }).last().click()
   await expect(page.getByRole('button', { name: '消息已复制' })).toBeVisible()
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('已查询到一个默认账本。')
+  if (browserName === 'chromium') {
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('已查询到一个**默认账本**。')
+  }
   await expect(page.locator('.message-meta time')).toHaveCount(2)
 })
 
-test('agent chat renders markdown and exposes controllable bottom following', async ({ page }) => {
-  const auth = await registerUser(page.request, 'agent-chat-e2e')
-  await markSessionBeforeLoad(page, auth.user.id)
-  await page.addInitScript(userId => {
-    const messages = Array.from({ length: 24 }, (_, index) => ({
-      id: `history-${index}`,
-      role: index % 2 ? 'assistant' : 'user',
-      content: `历史消息 ${index + 1}\n\n用于验证长会话滚动。`,
-      typing: false,
-    }))
-    localStorage.setItem(`workspace_ai_conversations_v1:id-${userId}`, JSON.stringify([{
-      id: 'scroll-test',
-      title: '滚动测试',
-      updatedAt: Date.now(),
-      messages,
-    }]))
-  }, auth.user.id)
-  await page.route('**/api/v1/ai/chat', async route => {
-    await new Promise(resolve => setTimeout(resolve, 600))
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: { content: '## 测试标题\n\n- 第一项\n- 第二项\n\n`safe-code`', provider: 'test', configured: true } }),
-    })
+test('restores server sessions and completed messages after refresh', async ({ page }) => {
+  const now = new Date().toISOString()
+  await setupAgent(page, 'agent-restore-e2e', {
+    sessions: [{ id: 'session-1', title: '历史账本查询', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [
+      { id: 1, turnId: 'turn-old', role: 'user', content: '我有哪些账本？', metadataJson: null, createdAt: now },
+      { id: 2, turnId: 'turn-old', role: 'assistant', content: response.content, metadataJson: JSON.stringify(response), createdAt: now },
+    ],
   })
-
   await page.goto('/')
-  const viewport = page.locator('.chat-message-viewport')
-  await expect(page.getByText('历史消息 24')).toBeVisible()
-  await viewport.evaluate(element => { element.scrollTop = 0 })
-  await expect(page.getByRole('button', { name: '滚动到底部并继续跟随' })).toBeVisible()
+  await expect(page.locator('.chat-workspace-head').getByText('历史账本查询', { exact: true })).toBeVisible()
+  await expect(page.locator('.message-markdown strong')).toHaveText('默认账本')
+  await page.reload()
+  await expect(page.locator('.chat-workspace-head').getByText('历史账本查询', { exact: true })).toBeVisible()
+  await expect(page.getByText('1,336 Tokens')).toBeVisible()
+})
 
-  await page.getByLabel('给 AI 发送消息').fill('测试 Markdown')
+test('falls back before the first SSE event', async ({ page }) => {
+  await setupAgent(page, 'agent-fallback-e2e')
+  await page.route('**/api/v1/agent/sessions/*/turns', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }))
+  await page.route('**/api/v1/ai/chat', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ...response, content: '已通过降级路径完成查询。', firstTokenMs: 0 } }) }))
+  await page.goto('/')
+  await page.getByLabel('给 AI 发送消息').fill('降级测试')
   await page.getByRole('button', { name: '发送' }).click()
-  await expect(page.getByText('正在思考…')).toBeAttached()
-  await expect(page.getByRole('heading', { name: '测试标题' })).toBeAttached()
-  await expect(page.locator('.message-markdown li')).toHaveCount(2)
-  await expect(page.locator('.message-markdown code')).toHaveText('safe-code')
-  await expect(page.getByRole('button', { name: '滚动到底部并继续跟随' })).toBeVisible()
-
-  await page.getByRole('button', { name: '滚动到底部并继续跟随' }).click()
-  await expect(page.getByRole('button', { name: '滚动到底部并继续跟随' })).toBeHidden()
+  await expect(page.getByText('已通过降级路径完成查询。')).toBeVisible()
+  await page.locator('.timing-details > summary').click()
+  await expect(page.getByText('未采集').first()).toBeVisible()
 })
