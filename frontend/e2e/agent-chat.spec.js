@@ -14,7 +14,10 @@ async function setupAgent(page, name, options = {}) {
   await markSessionBeforeLoad(page, auth.user.id)
   let sessions = options.sessions || []
   let groups = options.groups || []
-  const messages = options.messages || []
+  let messages = options.messages || []
+  let queue = options.queue || []
+  let queueRevision = 0
+  const queueRequests = []
   await page.route('**/api/v1/agent/session-groups', async route => {
     const method = route.request().method()
     if (method === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: groups }) })
@@ -76,20 +79,75 @@ async function setupAgent(page, name, options = {}) {
     return route.fallback()
   })
   await page.route('**/api/v1/agent/sessions/*/messages', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: messages }) }))
-  await page.route('**/api/v1/agent/sessions/*/turns', route => route.fulfill({
-    status: 200,
-    contentType: 'text/event-stream',
-    body: [
-      `event: turn.received\ndata: ${JSON.stringify({ turnId: 'turn-1', status: 'RECEIVED', replayed: false })}\n\n`,
-      `event: turn.status\ndata: ${JSON.stringify({ turnId: 'turn-1', status: 'PLANNING' })}\n\n`,
-      `event: tool.started\ndata: ${JSON.stringify({ turnId: 'turn-1', name: 'ledger.books.list' })}\n\n`,
-      `event: assistant.delta\ndata: ${JSON.stringify({ turnId: 'turn-1', content: '已查询到一个' })}\n\n`,
-      `event: assistant.delta\ndata: ${JSON.stringify({ turnId: 'turn-1', content: '**默认账本**。' })}\n\n`,
-      `event: tool.completed\ndata: ${JSON.stringify({ turnId: 'turn-1', execution: response.toolExecutions[0] })}\n\n`,
-      `event: turn.completed\ndata: ${JSON.stringify({ turnId: 'turn-1', response })}\n\n`,
-    ].join(''),
-  }))
-  return auth
+  await page.route('**/api/v1/agent/sessions/*/turns', async route => {
+    const body = route.request().postDataJSON()
+    const createdAt = new Date().toISOString()
+    messages = [
+      ...messages,
+      { id: messages.length + 1, turnId: 'turn-1', role: 'user', content: body.message, metadataJson: null, createdAt },
+      { id: messages.length + 2, turnId: 'turn-1', role: 'assistant', content: response.content, metadataJson: JSON.stringify(response), createdAt },
+    ]
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: [
+        `event: turn.received\ndata: ${JSON.stringify({ turnId: 'turn-1', status: 'RECEIVED', replayed: false })}\n\n`,
+        `event: turn.status\ndata: ${JSON.stringify({ turnId: 'turn-1', status: 'PLANNING' })}\n\n`,
+        `event: tool.started\ndata: ${JSON.stringify({ turnId: 'turn-1', name: 'ledger.books.list' })}\n\n`,
+        `event: assistant.delta\ndata: ${JSON.stringify({ turnId: 'turn-1', content: '已查询到一个' })}\n\n`,
+        `event: assistant.delta\ndata: ${JSON.stringify({ turnId: 'turn-1', content: '**默认账本**。' })}\n\n`,
+        `event: tool.completed\ndata: ${JSON.stringify({ turnId: 'turn-1', execution: response.toolExecutions[0] })}\n\n`,
+        `event: turn.completed\ndata: ${JSON.stringify({ turnId: 'turn-1', response })}\n\n`,
+      ].join(''),
+    })
+  })
+  await page.route('**/api/v1/agent/sessions/*/queue/order', async route => {
+    const body = route.request().postDataJSON()
+    queueRequests.push({ type: 'reorder', turnIds: body.turnIds })
+    if (body.revision !== queueRevision) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: '队列版本冲突，请刷新后重试' }) })
+    queue = body.turnIds.map(id => queue.find(item => item.id === id)).filter(Boolean)
+    queueRevision += 1
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { revision: queueRevision, items: queue } }) })
+  })
+  await page.route('**/api/v1/agent/sessions/*/queue', async route => {
+    if (route.request().method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { revision: queueRevision, items: queue } }) })
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON()
+      const sessionId = new URL(route.request().url()).pathname.split('/').at(-2)
+      const item = { id: `queued-${body.clientRequestId}`, sessionId, clientRequestId: body.clientRequestId, status: 'QUEUED', userMessage: body.message, createdAt: new Date().toISOString() }
+      queue = [...queue, item]
+      queueRevision += 1
+      queueRequests.push({ type: 'enqueue', text: body.message, id: item.id })
+      options.onQueueChange?.({ queue, queueRevision, queueRequests, setQueue: next => { queue = next; queueRevision += 1 }, setMessages: next => { messages = next } }, item)
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: item }) })
+    }
+    return route.fallback()
+  })
+  await page.route('**/api/v1/agent/queue/*', async route => {
+    const turnId = new URL(route.request().url()).pathname.split('/').at(-1)
+    queue = queue.filter(item => item.id !== turnId)
+    queueRevision += 1
+    queueRequests.push({ type: 'remove', id: turnId })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { id: turnId, status: 'CANCELLED' } }) })
+  })
+  await page.route('**/api/v1/agent/turns/*/cancel', async route => {
+    const turnId = new URL(route.request().url()).pathname.split('/').at(-2)
+    queue = queue.filter(item => item.id !== turnId)
+    queueRevision += 1
+    queueRequests.push({ type: 'cancel', id: turnId })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { id: turnId, status: 'CANCELLED' } }) })
+  })
+  await page.route('**/api/v1/agent/turns/*/retry', async route => {
+    const originalId = new URL(route.request().url()).pathname.split('/').at(-2)
+    const body = route.request().postDataJSON()
+    const original = options.failedTurns?.[originalId] || { sessionId: sessions[0]?.id || 'session-1', userMessage: '重试消息' }
+    const existing = queue.find(item => item.retryOfTurnId === originalId)
+    const item = existing || { id: `retry-${originalId}`, sessionId: original.sessionId, clientRequestId: body.clientRequestId, retryOfTurnId: originalId, status: 'QUEUED', userMessage: original.userMessage, createdAt: new Date().toISOString() }
+    if (!existing) { queue = [...queue, item]; queueRevision += 1 }
+    queueRequests.push({ type: 'retry', id: item.id, originalId })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: item }) })
+  })
+  return { ...auth, queueState: { get queue() { return queue }, get revision() { return queueRevision }, queueRequests, setQueue(next) { queue = next; queueRevision += 1 }, setMessages(next) { messages = next } } }
 }
 
 test('streams the first reply and exposes detailed observability', async ({ page, context, browserName }) => {
@@ -138,9 +196,17 @@ test('restores server sessions and completed messages after refresh', async ({ p
 })
 
 test('falls back before the first SSE event', async ({ page }) => {
-  await setupAgent(page, 'agent-fallback-e2e')
+  const state = await setupAgent(page, 'agent-fallback-e2e')
   await page.route('**/api/v1/agent/sessions/*/turns', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }))
-  await page.route('**/api/v1/ai/chat', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ...response, content: '已通过降级路径完成查询。', firstTokenMs: 0 } }) }))
+  await page.route('**/api/v1/ai/chat', route => {
+    const createdAt = new Date().toISOString()
+    const fallback = { ...response, content: '已通过降级路径完成查询。', firstTokenMs: 0 }
+    state.queueState.setMessages([
+      { id: 1, turnId: 'fallback-turn', role: 'user', content: '降级测试', metadataJson: null, createdAt },
+      { id: 2, turnId: 'fallback-turn', role: 'assistant', content: fallback.content, metadataJson: JSON.stringify(fallback), createdAt },
+    ])
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: fallback }) })
+  })
   await page.goto('/')
   await page.getByLabel('给 AI 发送消息').fill('降级测试')
   await page.getByRole('button', { name: '发送' }).click()
@@ -245,21 +311,33 @@ test('creates groups, pins sessions, and drags sessions into and out of groups',
   await expect(page.getByRole('button', { name: '工作收起' })).toBeVisible()
 })
 
-test('queues follow-up messages and stops following as soon as the user scrolls up', async ({ page }) => {
-  await setupAgent(page, 'agent-queue-e2e')
-  let turnCount = 0
+test('restores a server queued follow-up and stops following as soon as the user scrolls up', async ({ page }) => {
+  const now = new Date().toISOString()
+  let serverState
+  await setupAgent(page, 'agent-queue-e2e', {
+    onQueueChange(state, item) {
+      serverState = state
+      setTimeout(() => {
+        state.setQueue([])
+        state.setMessages([
+          { id: 1, turnId: 'turn-1', role: 'user', content: '第一条消息', metadataJson: null, createdAt: now },
+          { id: 2, turnId: 'turn-1', role: 'assistant', content: '第一条回答\n\n'.repeat(80), metadataJson: JSON.stringify(response), createdAt: now },
+          { id: 3, turnId: item.id, role: 'user', content: item.userMessage, metadataJson: null, createdAt: now },
+          { id: 4, turnId: item.id, role: 'assistant', content: '第二条排队回答', metadataJson: JSON.stringify({ ...response, content: '第二条排队回答' }), createdAt: now },
+        ])
+      }, 900)
+    },
+  })
   await page.route('**/api/v1/agent/sessions/*/turns', async route => {
-    turnCount += 1
-    const current = turnCount
-    if (current === 1) await new Promise(resolve => setTimeout(resolve, 700))
-    const turnResponse = { ...response, content: current === 1 ? '第一条回答\n\n'.repeat(80) : '第二条排队回答' }
+    await new Promise(resolve => setTimeout(resolve, 700))
+    const turnResponse = { ...response, content: '第一条回答\n\n'.repeat(80) }
     await route.fulfill({
       status: 200,
       contentType: 'text/event-stream',
       body: [
-        `event: turn.received\ndata: ${JSON.stringify({ turnId: `turn-${current}`, status: 'RECEIVED', replayed: false })}\n\n`,
-        `event: assistant.delta\ndata: ${JSON.stringify({ turnId: `turn-${current}`, content: turnResponse.content })}\n\n`,
-        `event: turn.completed\ndata: ${JSON.stringify({ turnId: `turn-${current}`, response: turnResponse })}\n\n`,
+        `event: turn.received\ndata: ${JSON.stringify({ turnId: 'turn-1', status: 'RECEIVED', replayed: false })}\n\n`,
+        `event: assistant.delta\ndata: ${JSON.stringify({ turnId: 'turn-1', content: turnResponse.content })}\n\n`,
+        `event: turn.completed\ndata: ${JSON.stringify({ turnId: 'turn-1', response: turnResponse })}\n\n`,
       ].join(''),
     })
   })
@@ -270,10 +348,13 @@ test('queues follow-up messages and stops following as soon as the user scrolls 
   await page.getByRole('button', { name: '发送' }).click()
   await composer.fill('第二条消息')
   await page.getByRole('button', { name: '发送' }).click()
-  await expect(page.getByText('等待发送 1 条')).toBeVisible()
+  await expect(page.getByText('队列 1 条')).toBeVisible()
   await expect(page.getByText('第二条消息', { exact: true })).toBeVisible()
-  await expect(page.getByText('第二条排队回答', { exact: true })).toBeVisible()
-  await expect(page.getByText('等待发送 1 条')).toBeHidden()
+  expect(serverState).toBeTruthy()
+  await page.reload()
+  await expect(page.getByText('第二条消息', { exact: true })).toBeVisible()
+  await expect(page.getByText('第二条排队回答', { exact: true })).toBeVisible({ timeout: 5_000 })
+  await expect(page.getByText('队列 1 条')).toBeHidden()
 
   const viewport = page.locator('.chat-message-viewport')
   await viewport.evaluate(element => { element.scrollTop = Math.max(0, element.scrollHeight - element.clientHeight - 1) })
@@ -287,20 +368,17 @@ test('queues follow-up messages and stops following as soon as the user scrolls 
 })
 
 test('reorders queued messages by dragging before they execute', async ({ page }) => {
-  await setupAgent(page, 'agent-queue-order-e2e')
-  const executionOrder = []
+  const state = await setupAgent(page, 'agent-queue-order-e2e')
   await page.route('**/api/v1/agent/sessions/*/turns', async route => {
-    const body = route.request().postDataJSON()
-    executionOrder.push(body.message)
-    if (body.message === '第一条消息') await new Promise(resolve => setTimeout(resolve, 900))
-    const turnResponse = { ...response, content: `已处理：${body.message}` }
+    await new Promise(resolve => setTimeout(resolve, 1200))
+    const turnResponse = { ...response, content: '已处理：第一条消息' }
     await route.fulfill({
       status: 200,
       contentType: 'text/event-stream',
       body: [
-        `event: turn.received\ndata: ${JSON.stringify({ turnId: `turn-${executionOrder.length}`, status: 'RECEIVED', replayed: false })}\n\n`,
-        `event: assistant.delta\ndata: ${JSON.stringify({ content: turnResponse.content })}\n\n`,
-        `event: turn.completed\ndata: ${JSON.stringify({ response: turnResponse })}\n\n`,
+        `event: turn.received\ndata: ${JSON.stringify({ turnId: 'turn-running', status: 'RECEIVED', replayed: false })}\n\n`,
+        `event: assistant.delta\ndata: ${JSON.stringify({ turnId: 'turn-running', content: turnResponse.content })}\n\n`,
+        `event: turn.completed\ndata: ${JSON.stringify({ turnId: 'turn-running', response: turnResponse })}\n\n`,
       ].join(''),
     })
   })
@@ -311,9 +389,47 @@ test('reorders queued messages by dragging before they execute', async ({ page }
     await composer.fill(content)
     await page.getByRole('button', { name: '发送' }).click()
   }
-  await expect(page.getByText('等待发送 2 条')).toBeVisible()
+  await expect(page.getByText('队列 2 条')).toBeVisible()
   await page.locator('.prompt-queue li').filter({ hasText: '第三条消息' }).dragTo(page.locator('.prompt-queue li').filter({ hasText: '第二条消息' }))
-  await expect(page.getByText('已处理：第三条消息')).toBeVisible()
-  await expect(page.getByText('已处理：第二条消息')).toBeVisible()
-  expect(executionOrder).toEqual(['第一条消息', '第三条消息', '第二条消息'])
+  await expect.poll(() => state.queueState.queueRequests.filter(item => item.type === 'reorder').at(-1)?.turnIds).toEqual([
+    state.queueState.queue.find(item => item.userMessage === '第三条消息')?.id,
+    state.queueState.queue.find(item => item.userMessage === '第二条消息')?.id,
+  ])
+  await page.reload()
+  const queueRows = page.locator('.prompt-queue li p')
+  await expect(queueRows.nth(0)).toContainText('第三条消息')
+  await expect(queueRows.nth(1)).toContainText('第二条消息')
+})
+
+test('cancels a running server turn from the queue', async ({ page }) => {
+  const now = new Date().toISOString()
+  const state = await setupAgent(page, 'agent-cancel-e2e', {
+    sessions: [{ id: 'session-1', title: '取消测试', createdAt: now, updatedAt: now, archivedAt: null }],
+    queue: [{ id: 'turn-running', sessionId: 'session-1', clientRequestId: 'request-running', status: 'PLANNING', userMessage: '正在处理的问题', createdAt: now }],
+  })
+  await page.goto('/')
+  await expect(page.locator('.prompt-queue li').filter({ hasText: '正在处理的问题' })).toBeVisible()
+  await page.getByRole('button', { name: '停止生成' }).click()
+  await expect.poll(() => state.queueState.queueRequests.some(item => item.type === 'cancel' && item.id === 'turn-running')).toBeTruthy()
+  await expect(page.locator('.prompt-queue li').filter({ hasText: '正在处理的问题' })).toBeHidden()
+})
+
+test('retries a failed restored turn only once', async ({ page }) => {
+  const now = new Date().toISOString()
+  const state = await setupAgent(page, 'agent-retry-e2e', {
+    sessions: [{ id: 'session-1', title: '重试测试', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [
+      { id: 1, turnId: 'turn-failed', role: 'user', content: '失败的问题', metadataJson: null, createdAt: now },
+      { id: 2, turnId: 'turn-failed', role: 'assistant', content: '模型暂时不可用', metadataJson: JSON.stringify({ status: 'FAILED' }), createdAt: now },
+    ],
+    failedTurns: { 'turn-failed': { sessionId: 'session-1', userMessage: '失败的问题' } },
+  })
+  await page.goto('/')
+  const retry = page.getByRole('button', { name: '重试这条消息' })
+  await expect(retry).toBeVisible()
+  await retry.click()
+  await expect(page.getByText('失败的问题', { exact: true }).last()).toBeVisible()
+  await retry.click()
+  await expect.poll(() => state.queueState.queue.filter(item => item.retryOfTurnId === 'turn-failed').length).toBe(1)
+  expect(state.queueState.queueRequests.filter(item => item.type === 'retry')).toHaveLength(2)
 })

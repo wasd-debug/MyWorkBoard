@@ -33,6 +33,11 @@ export async function apiRenameAgentSessionGroup(groupId, payload) { return data
 export async function apiDeleteAgentSessionGroup(groupId) { return data(await api.delete(`/api/v1/agent/session-groups/${groupId}`)) }
 export async function apiGetAgentTurn(turnId) { return data(await api.get(`/api/v1/agent/turns/${turnId}`)) }
 export async function apiCancelAgentTurn(turnId) { return data(await api.post(`/api/v1/agent/turns/${turnId}/cancel`)) }
+export async function apiListAgentQueue(sessionId) { return data(await api.get(`/api/v1/agent/sessions/${sessionId}/queue`)) }
+export async function apiEnqueueAgentTurn(sessionId, payload) { return data(await api.post(`/api/v1/agent/sessions/${sessionId}/queue`, payload)) }
+export async function apiReorderAgentQueue(sessionId, payload) { return data(await api.put(`/api/v1/agent/sessions/${sessionId}/queue/order`, payload)) }
+export async function apiRemoveQueuedAgentTurn(turnId) { return data(await api.delete(`/api/v1/agent/queue/${turnId}`)) }
+export async function apiRetryAgentTurn(turnId, clientRequestId) { return data(await api.post(`/api/v1/agent/turns/${turnId}/retry`, { clientRequestId })) }
 
 export async function apiStreamAgentTurn(sessionId, payload, onEvent, signal) {
   const request = () => fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/turns`, {

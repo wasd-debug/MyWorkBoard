@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -149,6 +150,41 @@ public class AgentSessionController {
         return ApiResponse.ok(turns.cancel(turnId));
     }
 
+    @GetMapping("/sessions/{sessionId}/queue")
+    @Operation(operationId = "listAgentQueue")
+    public ApiResponse<AgentTurnRepository.QueueView> queue(@PathVariable String sessionId) {
+        return ApiResponse.ok(turns.queue(sessionId));
+    }
+
+    @PostMapping(value = "/sessions/{sessionId}/queue", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(operationId = "enqueueAgentTurn")
+    public ApiResponse<AgentTurnRepository.AgentTurnView> enqueue(@PathVariable String sessionId,
+                                                                  @RequestBody TurnCommand command) {
+        return ApiResponse.ok(turns.enqueue(sessionId, command == null ? null : command.clientRequestId(),
+                command == null ? "" : command.message()));
+    }
+
+    @PutMapping(value = "/sessions/{sessionId}/queue/order", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(operationId = "reorderAgentQueue")
+    public ApiResponse<AgentTurnRepository.QueueView> reorder(@PathVariable String sessionId,
+                                                               @RequestBody QueueOrderCommand command) {
+        return ApiResponse.ok(turns.reorder(sessionId, command == null ? -1 : command.revision(),
+                command == null ? List.of() : command.turnIds()));
+    }
+
+    @DeleteMapping("/queue/{turnId}")
+    @Operation(operationId = "removeQueuedAgentTurn")
+    public ApiResponse<AgentTurnRepository.AgentTurnView> removeQueued(@PathVariable String turnId) {
+        return ApiResponse.ok(turns.removeQueued(turnId));
+    }
+
+    @PostMapping(value = "/turns/{turnId}/retry", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(operationId = "retryAgentTurn")
+    public ApiResponse<AgentTurnRepository.AgentTurnView> retry(@PathVariable String turnId,
+                                                                @RequestBody RetryCommand command) {
+        return ApiResponse.ok(turns.retry(turnId, command == null ? null : command.clientRequestId()));
+    }
+
     public record SessionCommand(String id, String title, Boolean pinned) {
     }
 
@@ -159,6 +195,12 @@ public class AgentSessionController {
     }
 
     public record TurnCommand(String clientRequestId, String message) {
+    }
+
+    public record QueueOrderCommand(long revision, List<String> turnIds) {
+    }
+
+    public record RetryCommand(String clientRequestId) {
     }
 
     private static final class SseTurnEvents implements AgentTurnService.TurnEvents {
@@ -192,6 +234,9 @@ public class AgentSessionController {
         @Override public void failed(String turnId, String message) {
             send("turn.failed", Map.of("turnId", turnId, "message", message));
         }
+        @Override public void cancelled(String turnId) {
+            send("turn.cancelled", Map.of("turnId", turnId, "status", "CANCELLED"));
+        }
         @Override public void replay(AgentTurnRepository.AgentTurnView turn) {
             if (turn.status() == com.salarytracker.ai.session.AgentTurnStatus.COMPLETED && turn.responseJson() != null) {
                 try {
@@ -202,6 +247,8 @@ public class AgentSessionController {
                 }
             } else if (turn.status() == com.salarytracker.ai.session.AgentTurnStatus.FAILED) {
                 failed(turn.id(), turn.errorMessage());
+            } else if (turn.status() == com.salarytracker.ai.session.AgentTurnStatus.CANCELLED) {
+                cancelled(turn.id());
             } else {
                 status(turn.id(), turn.status());
             }

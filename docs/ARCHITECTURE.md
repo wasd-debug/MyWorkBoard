@@ -1,6 +1,6 @@
 # 个人效率中枢 · 整体架构设计与长期发展规划
 
-> 版本：v1.8（2026-09-23）
+> 版本：v1.9（2026-09-23）
 > 范围：基于现有 salary-sync（加班时长与时薪计算）系统，规划"工时 + 账本 + 任务 + AI"一体化个人效率平台的整体架构与演进路线。
 
 > 实施状态：Phase 0/Phase 1 自动化收口已完成，真机验收和周期生产运维按发布记录持续执行。本文同时包含目标架构与实施计划；除明确标注“当前实现”的内容外，其余技术组件和阶段能力均为目标状态，不代表已经上线。
@@ -12,7 +12,7 @@
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
 | Phase 2 任务 | 未启动 | 只有禁用导航占位，无领域模块、数据表和页面 |
-| Phase 3A-D Agent/MCP | Phase 3A/3B 部分实现 | AI 物理模块、7 个 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit、V15 会话/消息/turn、V16 分组/置顶、基础 SSE 与断流查询已落地；首页可恢复历史并展示真实增量、TTFT、模型/工具耗时和 Token 细分，支持会话右键管理、拖拽进出分组、页面内队列重排和严格滚动跟随，完整 trace、队列持久化、受控写入和 MCP 尚未实现 |
+| Phase 3A-D Agent/MCP | Phase 3A/3B 部分实现 | AI 物理模块、7 个 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit、V15 会话/消息/turn、V16 分组/置顶、V17 服务端队列/重试、基础 SSE 与断流查询已落地；首页可恢复历史与队列并展示真实增量、TTFT、模型/工具耗时和 Token 细分，支持会话右键管理、拖拽进出分组、队列重排、取消/重试和严格滚动跟随，完整 trace、自动评测、受控写入和 MCP 尚未实现 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
 | Phase 6 打磨 | 部分提前实现 | 已有响应式布局、主题、共享账本、自动视觉/无障碍和恢复演练；PWA、搜索及完整可观测体系未实现 |
@@ -46,7 +46,7 @@
 |---|---|---|
 | 前端 | Vue 3 + Vite + Pinia + Vue Router + ECharts + Tailwind/token + Reka UI + Lucide；Element Plus 已移除 | 工时使用生成客户端访问资源 API；账本六类资源使用 IndexedDB/oplog local-first，在线命令由 store facade 统一管理 |
 | 后端 | Java 17 + Spring Boot 3.2；platform/identity/worktime/ledger/ai/app 六个 Maven 模块 | 业务源码和单测已物理归属对应模块，app 仅装配应用、迁移资源和跨模块测试；AI 当前只含原有网关和领域工具基础 |
-| 数据库 | MySQL 8 + Flyway V1-V16；用户、工时、账本、同步、定时任务、审计、AI 会话、分组和 turn 表 | 多用户和账本数据模型已落地；事件、任务、文件、RAG 和洞察读模型仍未落地 |
+| 数据库 | MySQL 8 + Flyway V1-V17；用户、工时、账本、同步、定时任务、审计、AI 会话、分组、turn 和持久队列字段 | 多用户和账本数据模型已落地；事件、任务、文件、RAG 和洞察读模型仍未落地 |
 | 鉴权 | Spring Security + JWT access token + HttpOnly refresh cookie；用户、角色和权限表 | 已替换静态 AccessCode；仍需限流、安全集成测试和更完整的会话运维能力 |
 | 部署 | Docker Compose（Nginx + Spring Boot + MySQL），源码/预构建镜像/本地产物三种模式 | 当前仍是三服务单机部署；Redis、MinIO、Qdrant、监控等按后续阶段引入 |
 
@@ -632,7 +632,7 @@ Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后
 ### Phase 3B —— Web 工作台 Agent
 
 - [~] 首页已接入真实 DeepSeek 和最小只读 Agent 编排；模型只看到当前用户可用的 R0/R1 工具，单轮最多执行 4 次，R2-R4 不暴露
-- [~] 服务端会话 CRUD、消息元数据、同一 sessionId 连续追问、用户隔离、turn 状态/幂等、基础 SSE、断流恢复、分组和置顶已实现；前端支持右键/更多菜单、分组管理、拖拽进出分组、可重排的页面内 FIFO 队列和严格底部跟随；服务端队列恢复、结构化表单、确认弹窗和写入结果链路待完成
+- [~] 服务端会话 CRUD、消息元数据、同一 sessionId 连续追问、用户隔离、turn 状态/幂等、基础 SSE、断流恢复、分组/置顶和持久队列已实现；前端支持右键/更多菜单、分组管理、拖拽进出分组、带 revision 的 FIFO 队列重排、取消/重试和严格底部跟随；结构化表单、确认弹窗、完整 trace/usage 和写入结果链路待完成
 - [ ] 先开放只读查询，再开放记账/记工时，最后接入修改、删除和管理工具
 - [ ] Agent 在线写入后触发账本增量同步，不改变传统页面 local-first 主链
 - [ ] agent trace、ai usage、模型/提示词/工具版本评测和功能开关
@@ -723,7 +723,7 @@ Phase 0 地基 → Phase 1 账本 ─┬→ Phase 2 任务核心 ─────
 当前实现事实：
 
 - 后端为 Maven 父工程 + `platform`/`identity`/`worktime`/`ledger`/`app`，业务源码已物理迁入所属模块，app 只做组装。
-- Flyway V1-V16 管理用户、工时、账本、同步、定时任务、审计、Agent 会话、分组和 turn 结构，并通过 V14 统一回算历史工时口径、V15 增加恢复与幂等数据结构、V16 增加会话分组与置顶；`spring.sql.init.mode=never`。
+- Flyway V1-V17 管理用户、工时、账本、同步、定时任务、审计、Agent 会话、分组、turn 和服务端队列结构，并通过 V14 统一回算历史工时口径、V15 增加恢复与幂等数据结构、V16 增加会话分组与置顶、V17 增加队列 revision/position 与重试关联；`spring.sql.init.mode=never`。
 - Spring Security + JWT 已替换 AccessCode；账本共享权限由服务端逐请求校验。
 - 工时前端使用 settings/records 资源 API；账本六类离线资源写入使用 IndexedDB/oplog，跨资源命令由在线 store facade 管理。
 - 任务、文件/RAG 和洞察模块尚未进入实现阶段。

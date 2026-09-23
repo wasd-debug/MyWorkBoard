@@ -34,7 +34,7 @@
 ### 后续阶段
 
 - **Phase 2 任务管理：未启动。** 计划包含清单、任务、日历、提醒、番茄钟、习惯和倒数日。
-- **Phase 3A-D Agent/MCP：Phase 3A/3B 部分实现。** 已建立 AI 物理模块、七个内部 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit，以及 V15 服务端会话/消息/turn、V16 会话分组/置顶持久化；首页通过真实 SSE 展示模型增量文本和工具状态，刷新可恢复历史消息，断流可按 `turnId` 查询最终状态，并展示首字、模型轮次、工具耗时和 Token 细分。会话支持右键/更多菜单、置顶、分组及桌面拖拽进出分组；生成期间的页面内消息队列可拖拽排序，用户上滚会立即停止自动跟随。受控写入、队列服务端恢复和 MCP 尚未开放。
+- **Phase 3A-D Agent/MCP：Phase 3A/3B 部分实现。** 已建立 AI 物理模块、七个内部 R1 查询工具、action JDBC 持久化、首个工时 prepare/commit，以及 V15 服务端会话/消息/turn、V16 会话分组/置顶、V17 服务端队列/重试持久化；首页通过真实 SSE 展示模型增量文本和工具状态，刷新可恢复历史消息与队列，断流可按 `turnId` 查询最终状态，并展示首字、模型轮次、工具耗时和 Token 细分。会话支持右键/更多菜单、置顶、分组及桌面拖拽进出分组；服务端 FIFO 队列可重排、删除、取消和重试，用户上滚会立即停止自动跟随。受控写入、完整 trace/评测和 MCP 尚未开放。
 - **Phase 4 文件/RAG：未启动。** 计划在 Agent/MCP 稳定后建设文件域、向量库和知识库。
 - **Phase 5 跨域洞察：未启动。** 计划通过领域事件生成日/周/月/年报。
 - **Phase 6 持续打磨：部分能力提前实现。** 响应式布局、主题和共享账本已存在；PWA、搜索和可观测体系尚未实现。
@@ -47,7 +47,7 @@
 |---|---|---|
 | 前端 | Vue 3、Vite、Pinia、Vue Router、ECharts、Tailwind CSS 4、Reka UI、Lucide、OpenAPI 生成客户端 | PWA，并把 local-first 模式扩展到后续领域 |
 | 后端 | Java 17、Spring Boot 3.2、Spring Security、Spring Modulith、JDBC/MyBatis-Plus、Flyway、EasyExcel、ShedLock；platform/identity/worktime/ledger/ai/app 物理模块 | 按阶段引入 Agent 会话、MCP、文件、RAG 和洞察能力 |
-| 数据库 | MySQL 8，Flyway V1-V16 | 后续按需增加 Redis、MinIO/NAS、Qdrant 和搜索服务 |
+| 数据库 | MySQL 8，Flyway V1-V17 | 后续按需增加 Redis、MinIO/NAS、Qdrant 和搜索服务 |
 | 部署 | Docker Compose、Nginx、Spring Boot、MySQL | 健康检查、备份恢复和可观测体系持续完善 |
 
 当前请求关系：
@@ -185,6 +185,8 @@ npm run test:e2e
 2026-09-23 Agent 会话组织增量：新增 V16 会话分组/置顶和对应服务端接口；侧栏支持分组创建/改名/删除、置顶、折叠、右键移动及桌面拖拽进出分组，页面内待发送队列支持拖拽重排。真实 MySQL 集成测试 3/3 通过；Agent 专项跨桌面 Chromium、桌面 WebKit 与 375px 移动 Chromium 共 23 项通过、1 项移动端原生拖拽按设计跳过，前端构建和 OpenAPI 客户端检查通过。
 
 同日修正窄侧栏分组标题换行与生硬收起问题，加入侧栏和分组折叠动画；本地 Compose 后端已重建并迁移至 V16，分组保存接口恢复。
+
+2026-09-23 Agent 服务端队列恢复增量：V17 增加会话队列 revision、turn 排序位置与重试关联；同一会话由服务端串行执行，刷新或应用重启可恢复等待项和遗留 turn，支持排序冲突回读、等待项删除、执行中取消和失败/取消重试。AI 模块测试 31/31、真实 MySQL 集成 4/4、前端生产构建通过；桌面 Chromium 10/10、桌面 WebKit 10/10、375px 移动 Chromium 9/9，1 项移动端会话原生拖拽按设计跳过。
 
 移动/平板导航断点统一为 1024px 及以下：底栏只显示当前模块的二级菜单，工时为打卡/记录/统计，账本为总览、流水、账户、报表、定时任务、管理、成员与权限、回收站、操作日志。每项以图标为主要识别、文字为辅助说明；底栏按实际宽度动态容纳入口，溢出项进入“更多”，并支持按模块保存自定义顺序。
 

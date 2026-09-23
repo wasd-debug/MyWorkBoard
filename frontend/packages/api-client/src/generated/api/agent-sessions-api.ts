@@ -34,6 +34,8 @@ import type { ApiResponseListSessionSummary } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseMapStringBoolean } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseQueueView } from '../models/index.ts';
+// @ts-ignore
 import type { ApiResponseSessionGroup } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseSessionSummary } from '../models/index.ts';
@@ -41,6 +43,10 @@ import type { ApiResponseSessionSummary } from '../models/index.ts';
 import type { GroupCommand } from '../models/index.ts';
 // @ts-ignore
 import type { MoveGroupCommand } from '../models/index.ts';
+// @ts-ignore
+import type { QueueOrderCommand } from '../models/index.ts';
+// @ts-ignore
+import type { RetryCommand } from '../models/index.ts';
 // @ts-ignore
 import type { SessionCommand } from '../models/index.ts';
 // @ts-ignore
@@ -254,6 +260,44 @@ export const AgentSessionsApiAxiosParamCreator = function (configuration?: Confi
         },
         /**
          *
+         * @param {string} sessionId
+         * @param {TurnCommand} turnCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        enqueueAgentTurn: async (sessionId: string, turnCommand: TurnCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sessionId' is not null or undefined
+            assertParamExists('enqueueAgentTurn', 'sessionId', sessionId)
+            // verify required parameter 'turnCommand' is not null or undefined
+            assertParamExists('enqueueAgentTurn', 'turnCommand', turnCommand)
+            const localVarPath = `/api/v1/agent/sessions/{sessionId}/queue`
+                .replace('{sessionId}', encodeURIComponent(String(sessionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(turnCommand, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {string} turnId
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -295,6 +339,39 @@ export const AgentSessionsApiAxiosParamCreator = function (configuration?: Confi
             // verify required parameter 'sessionId' is not null or undefined
             assertParamExists('listAgentMessages', 'sessionId', sessionId)
             const localVarPath = `/api/v1/agent/sessions/{sessionId}/messages`
+                .replace('{sessionId}', encodeURIComponent(String(sessionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} sessionId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listAgentQueue: async (sessionId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sessionId' is not null or undefined
+            assertParamExists('listAgentQueue', 'sessionId', sessionId)
+            const localVarPath = `/api/v1/agent/sessions/{sessionId}/queue`
                 .replace('{sessionId}', encodeURIComponent(String(sessionId)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -421,6 +498,39 @@ export const AgentSessionsApiAxiosParamCreator = function (configuration?: Confi
         },
         /**
          *
+         * @param {string} turnId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        removeQueuedAgentTurn: async (turnId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'turnId' is not null or undefined
+            assertParamExists('removeQueuedAgentTurn', 'turnId', turnId)
+            const localVarPath = `/api/v1/agent/queue/{turnId}`
+                .replace('{turnId}', encodeURIComponent(String(turnId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'DELETE', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {string} groupId
          * @param {GroupCommand} groupCommand
          * @param {*} [options] Override http request option.
@@ -451,6 +561,82 @@ export const AgentSessionsApiAxiosParamCreator = function (configuration?: Confi
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
             localVarRequestOptions.data = serializeDataIfNeeded(groupCommand, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} sessionId
+         * @param {QueueOrderCommand} queueOrderCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        reorderAgentQueue: async (sessionId: string, queueOrderCommand: QueueOrderCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sessionId' is not null or undefined
+            assertParamExists('reorderAgentQueue', 'sessionId', sessionId)
+            // verify required parameter 'queueOrderCommand' is not null or undefined
+            assertParamExists('reorderAgentQueue', 'queueOrderCommand', queueOrderCommand)
+            const localVarPath = `/api/v1/agent/sessions/{sessionId}/queue/order`
+                .replace('{sessionId}', encodeURIComponent(String(sessionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'PUT', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(queueOrderCommand, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} turnId
+         * @param {RetryCommand} retryCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        retryAgentTurn: async (turnId: string, retryCommand: RetryCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'turnId' is not null or undefined
+            assertParamExists('retryAgentTurn', 'turnId', turnId)
+            // verify required parameter 'retryCommand' is not null or undefined
+            assertParamExists('retryAgentTurn', 'retryCommand', retryCommand)
+            const localVarPath = `/api/v1/agent/turns/{turnId}/retry`
+                .replace('{turnId}', encodeURIComponent(String(turnId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(retryCommand, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -616,6 +802,19 @@ export const AgentSessionsApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {string} sessionId
+         * @param {TurnCommand} turnCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async enqueueAgentTurn(sessionId: string, turnCommand: TurnCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseAgentTurnView>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.enqueueAgentTurn(sessionId, turnCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.enqueueAgentTurn']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {string} turnId
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -636,6 +835,18 @@ export const AgentSessionsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.listAgentMessages(sessionId, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.listAgentMessages']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} sessionId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listAgentQueue(sessionId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseQueueView>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listAgentQueue(sessionId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.listAgentQueue']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -676,6 +887,18 @@ export const AgentSessionsApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {string} turnId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async removeQueuedAgentTurn(turnId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseAgentTurnView>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.removeQueuedAgentTurn(turnId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.removeQueuedAgentTurn']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {string} groupId
          * @param {GroupCommand} groupCommand
          * @param {*} [options] Override http request option.
@@ -685,6 +908,32 @@ export const AgentSessionsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.renameAgentSessionGroup(groupId, groupCommand, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.renameAgentSessionGroup']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} sessionId
+         * @param {QueueOrderCommand} queueOrderCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async reorderAgentQueue(sessionId: string, queueOrderCommand: QueueOrderCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseQueueView>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.reorderAgentQueue(sessionId, queueOrderCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.reorderAgentQueue']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} turnId
+         * @param {RetryCommand} retryCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async retryAgentTurn(turnId: string, retryCommand: RetryCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseAgentTurnView>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.retryAgentTurn(turnId, retryCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentSessionsApi.retryAgentTurn']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -778,6 +1027,15 @@ export const AgentSessionsApiFactory = function (configuration?: Configuration, 
         },
         /**
          *
+         * @param {AgentSessionsApiEnqueueAgentTurnRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        enqueueAgentTurn(requestParameters: AgentSessionsApiEnqueueAgentTurnRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseAgentTurnView> {
+            return localVarFp.enqueueAgentTurn(requestParameters.sessionId, requestParameters.turnCommand, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {AgentSessionsApiGetAgentTurnRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -793,6 +1051,15 @@ export const AgentSessionsApiFactory = function (configuration?: Configuration, 
          */
         listAgentMessages(requestParameters: AgentSessionsApiListAgentMessagesRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseListMessageView> {
             return localVarFp.listAgentMessages(requestParameters.sessionId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {AgentSessionsApiListAgentQueueRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listAgentQueue(requestParameters: AgentSessionsApiListAgentQueueRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseQueueView> {
+            return localVarFp.listAgentQueue(requestParameters.sessionId, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -822,12 +1089,39 @@ export const AgentSessionsApiFactory = function (configuration?: Configuration, 
         },
         /**
          *
+         * @param {AgentSessionsApiRemoveQueuedAgentTurnRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        removeQueuedAgentTurn(requestParameters: AgentSessionsApiRemoveQueuedAgentTurnRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseAgentTurnView> {
+            return localVarFp.removeQueuedAgentTurn(requestParameters.turnId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {AgentSessionsApiRenameAgentSessionGroupRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
         renameAgentSessionGroup(requestParameters: AgentSessionsApiRenameAgentSessionGroupRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseSessionGroup> {
             return localVarFp.renameAgentSessionGroup(requestParameters.groupId, requestParameters.groupCommand, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {AgentSessionsApiReorderAgentQueueRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        reorderAgentQueue(requestParameters: AgentSessionsApiReorderAgentQueueRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseQueueView> {
+            return localVarFp.reorderAgentQueue(requestParameters.sessionId, requestParameters.queueOrderCommand, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {AgentSessionsApiRetryAgentTurnRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        retryAgentTurn(requestParameters: AgentSessionsApiRetryAgentTurnRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseAgentTurnView> {
+            return localVarFp.retryAgentTurn(requestParameters.turnId, requestParameters.retryCommand, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -893,6 +1187,15 @@ export interface AgentSessionsApiDeleteAgentSessionGroupRequest {
 }
 
 /**
+ * Request parameters for enqueueAgentTurn operation in AgentSessionsApi.
+ */
+export interface AgentSessionsApiEnqueueAgentTurnRequest {
+    readonly sessionId: string
+
+    readonly turnCommand: TurnCommand
+}
+
+/**
  * Request parameters for getAgentTurn operation in AgentSessionsApi.
  */
 export interface AgentSessionsApiGetAgentTurnRequest {
@@ -903,6 +1206,13 @@ export interface AgentSessionsApiGetAgentTurnRequest {
  * Request parameters for listAgentMessages operation in AgentSessionsApi.
  */
 export interface AgentSessionsApiListAgentMessagesRequest {
+    readonly sessionId: string
+}
+
+/**
+ * Request parameters for listAgentQueue operation in AgentSessionsApi.
+ */
+export interface AgentSessionsApiListAgentQueueRequest {
     readonly sessionId: string
 }
 
@@ -923,12 +1233,37 @@ export interface AgentSessionsApiMoveAgentSessionToGroupRequest {
 }
 
 /**
+ * Request parameters for removeQueuedAgentTurn operation in AgentSessionsApi.
+ */
+export interface AgentSessionsApiRemoveQueuedAgentTurnRequest {
+    readonly turnId: string
+}
+
+/**
  * Request parameters for renameAgentSessionGroup operation in AgentSessionsApi.
  */
 export interface AgentSessionsApiRenameAgentSessionGroupRequest {
     readonly groupId: string
 
     readonly groupCommand: GroupCommand
+}
+
+/**
+ * Request parameters for reorderAgentQueue operation in AgentSessionsApi.
+ */
+export interface AgentSessionsApiReorderAgentQueueRequest {
+    readonly sessionId: string
+
+    readonly queueOrderCommand: QueueOrderCommand
+}
+
+/**
+ * Request parameters for retryAgentTurn operation in AgentSessionsApi.
+ */
+export interface AgentSessionsApiRetryAgentTurnRequest {
+    readonly turnId: string
+
+    readonly retryCommand: RetryCommand
 }
 
 /**
@@ -1015,6 +1350,16 @@ export class AgentSessionsApi extends BaseAPI {
 
     /**
      *
+     * @param {AgentSessionsApiEnqueueAgentTurnRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public enqueueAgentTurn(requestParameters: AgentSessionsApiEnqueueAgentTurnRequest, options?: RawAxiosRequestConfig) {
+        return AgentSessionsApiFp(this.configuration).enqueueAgentTurn(requestParameters.sessionId, requestParameters.turnCommand, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
      * @param {AgentSessionsApiGetAgentTurnRequest} requestParameters Request parameters.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -1031,6 +1376,16 @@ export class AgentSessionsApi extends BaseAPI {
      */
     public listAgentMessages(requestParameters: AgentSessionsApiListAgentMessagesRequest, options?: RawAxiosRequestConfig) {
         return AgentSessionsApiFp(this.configuration).listAgentMessages(requestParameters.sessionId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {AgentSessionsApiListAgentQueueRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listAgentQueue(requestParameters: AgentSessionsApiListAgentQueueRequest, options?: RawAxiosRequestConfig) {
+        return AgentSessionsApiFp(this.configuration).listAgentQueue(requestParameters.sessionId, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -1064,12 +1419,42 @@ export class AgentSessionsApi extends BaseAPI {
 
     /**
      *
+     * @param {AgentSessionsApiRemoveQueuedAgentTurnRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public removeQueuedAgentTurn(requestParameters: AgentSessionsApiRemoveQueuedAgentTurnRequest, options?: RawAxiosRequestConfig) {
+        return AgentSessionsApiFp(this.configuration).removeQueuedAgentTurn(requestParameters.turnId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
      * @param {AgentSessionsApiRenameAgentSessionGroupRequest} requestParameters Request parameters.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
     public renameAgentSessionGroup(requestParameters: AgentSessionsApiRenameAgentSessionGroupRequest, options?: RawAxiosRequestConfig) {
         return AgentSessionsApiFp(this.configuration).renameAgentSessionGroup(requestParameters.groupId, requestParameters.groupCommand, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {AgentSessionsApiReorderAgentQueueRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public reorderAgentQueue(requestParameters: AgentSessionsApiReorderAgentQueueRequest, options?: RawAxiosRequestConfig) {
+        return AgentSessionsApiFp(this.configuration).reorderAgentQueue(requestParameters.sessionId, requestParameters.queueOrderCommand, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {AgentSessionsApiRetryAgentTurnRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public retryAgentTurn(requestParameters: AgentSessionsApiRetryAgentTurnRequest, options?: RawAxiosRequestConfig) {
+        return AgentSessionsApiFp(this.configuration).retryAgentTurn(requestParameters.turnId, requestParameters.retryCommand, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

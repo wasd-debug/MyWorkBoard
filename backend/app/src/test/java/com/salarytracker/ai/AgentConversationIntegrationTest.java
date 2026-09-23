@@ -42,7 +42,7 @@ class AgentConversationIntegrationTest extends MySqlIntegrationTestSupport {
         JdbcAgentSessionRepository repository = new JdbcAgentSessionRepository(jdbc);
         String sessionId = UUID.randomUUID().toString();
         repository.create(sessionId, firstUser, "原始标题");
-        new JdbcAgentTurnRepository(jdbc).createOrFind("turn-1", sessionId, firstUser, "request-1", "问题");
+        new JdbcAgentTurnRepository(jdbc).enqueue("turn-1", sessionId, firstUser, "request-1", "问题", null);
         repository.appendExchange(sessionId, firstUser, "turn-1", "问题", "回答", "{\"durationMs\":18}");
 
         assertEquals(1, repository.listSessions(firstUser, false).size());
@@ -79,17 +79,48 @@ class AgentConversationIntegrationTest extends MySqlIntegrationTestSupport {
         String sessionId = UUID.randomUUID().toString();
         sessions.create(sessionId, userId, "turn 测试");
 
-        var original = turns.createOrFind("turn-a", sessionId, userId, "request-a", "问题");
-        var replay = turns.createOrFind("turn-b", sessionId, userId, "request-a", "问题");
+        var original = turns.enqueue("turn-a", sessionId, userId, "request-a", "问题", null);
+        var replay = turns.enqueue("turn-b", sessionId, userId, "request-a", "问题", null);
         assertEquals(original.id(), replay.id());
         assertThrows(IllegalArgumentException.class,
-                () -> turns.createOrFind("turn-c", UUID.randomUUID().toString(), userId, "request-a", "问题"));
+                () -> turns.enqueue("turn-c", UUID.randomUUID().toString(), userId, "request-a", "问题", null));
+        assertEquals(AgentTurnStatus.QUEUED, original.status());
+        assertEquals(original.id(), turns.claimNext(sessionId, userId).orElseThrow().id());
         turns.markPlanning(original.id(), userId);
         assertEquals(AgentTurnStatus.PLANNING, turns.find(original.id(), userId).orElseThrow().status());
         assertTrue(turns.cancel(original.id(), userId));
         assertTrue(!turns.complete(original.id(), userId, "不应覆盖", "{}"));
         assertEquals(AgentTurnStatus.CANCELLED, turns.find(original.id(), userId).orElseThrow().status());
         assertTrue(turns.find(original.id(), userId + 1).isEmpty());
+    }
+
+    @Test
+    void persistsQueueOrderRevisionAndSingleRetry() {
+        long userId = createUser("agent-queue-");
+        JdbcAgentSessionRepository sessions = new JdbcAgentSessionRepository(jdbc);
+        JdbcAgentTurnRepository turns = new JdbcAgentTurnRepository(jdbc);
+        String sessionId = UUID.randomUUID().toString();
+        sessions.create(sessionId, userId, "queue 测试");
+
+        var first = turns.enqueue("queue-a", sessionId, userId, "queue-request-a", "第一条", null);
+        var second = turns.enqueue("queue-b", sessionId, userId, "queue-request-b", "第二条", null);
+        long revision = turns.queueRevision(sessionId, userId);
+        long reordered = turns.reorder(sessionId, userId, revision, List.of(second.id(), first.id()));
+        assertEquals(List.of(second.id(), first.id()), turns.listQueue(sessionId, userId).stream()
+                .map(com.salarytracker.ai.session.AgentTurnRepository.AgentTurnView::id).toList());
+        assertThrows(IllegalStateException.class,
+                () -> turns.reorder(sessionId, userId, revision, List.of(first.id(), second.id())));
+
+        var claimed = turns.claimNext(sessionId, userId).orElseThrow();
+        assertEquals(second.id(), claimed.id());
+        assertTrue(turns.claimNext(sessionId, userId).isEmpty());
+        turns.markPlanning(second.id(), userId);
+        assertTrue(turns.fail(second.id(), userId, "模拟失败"));
+        var retry = turns.enqueue("queue-retry-a", sessionId, userId, "queue-retry-request-a", "第二条", second.id());
+        var duplicateRetry = turns.enqueue("queue-retry-b", sessionId, userId, "queue-retry-request-b", "第二条", second.id());
+        assertEquals(retry.id(), duplicateRetry.id());
+        assertTrue(turns.queueRevision(sessionId, userId) > reordered);
+        assertTrue(turns.find(retry.id(), userId + 1).isEmpty());
     }
 
     private long createUser(String prefix) {

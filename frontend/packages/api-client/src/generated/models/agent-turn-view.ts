@@ -17,8 +17,11 @@
 export interface AgentTurnView {
     'id'?: string;
     'sessionId'?: string;
+    'userId'?: number;
     'clientRequestId'?: string;
+    'retryOfTurnId'?: string;
     'status'?: AgentTurnViewStatusEnum;
+    'queuePosition'?: number;
     'userMessage'?: string;
     'assistantContent'?: string;
     'responseJson'?: string;
@@ -29,6 +32,7 @@ export interface AgentTurnView {
 }
 
 export enum AgentTurnViewStatusEnum {
+    QUEUED = 'QUEUED',
     RECEIVED = 'RECEIVED',
     PLANNING = 'PLANNING',
     COMPLETED = 'COMPLETED',
