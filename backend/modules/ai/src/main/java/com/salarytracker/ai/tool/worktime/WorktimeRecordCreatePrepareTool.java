@@ -71,13 +71,24 @@ public class WorktimeRecordCreatePrepareTool implements DomainTool {
                 !missing.isEmpty(), Duration.ofMinutes(15));
         if (!missing.isEmpty()) {
             ObjectNode content = mapper.createObjectNode();
+            content.put("actionType", "worktime.record.create");
             content.set("missingFields", missing);
             content.set("input", normalized);
+            ArrayNode fields = content.putArray("fields");
+            if (date == null) field(fields, "date", "日期", "date", true);
+            if (start == null) field(fields, "start", "开始时间", "time", true);
+            field(fields, "end", "结束时间", "time", false);
+            field(fields, "rest", "额外休息（分钟）", "number", false);
+            field(fields, "note", "备注", "textarea", false);
             return ToolResult.needsInput("请补充工时日期和开始时间", content,
                     action.id(), action.expiresAt().toString());
         }
         RecordPreview preview = worktime.previewCreateRecord(new RecordCommand(date, start, end, rest, note));
-        return ToolResult.needsConfirmation("请确认新增工时记录", mapper.valueToTree(preview),
+        ObjectNode content = mapper.valueToTree(preview);
+        content.put("actionType", "worktime.record.create");
+        content.set("preview", mapper.valueToTree(preview));
+        content.set("input", normalized);
+        return ToolResult.needsConfirmation("请确认新增工时记录", content,
                 action.id(), action.expiresAt().toString());
     }
 
@@ -94,5 +105,13 @@ public class WorktimeRecordCreatePrepareTool implements DomainTool {
 
     private void put(ObjectNode target, String field, String value) {
         if (value == null) target.putNull(field); else target.put(field, value);
+    }
+
+    private void field(ArrayNode fields, String name, String label, String type, boolean required) {
+        ObjectNode field = fields.addObject();
+        field.put("name", name);
+        field.put("label", label);
+        field.put("type", type);
+        field.put("required", required);
     }
 }

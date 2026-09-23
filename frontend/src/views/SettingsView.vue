@@ -74,13 +74,29 @@
         <label class="wide">Endpoint<input v-model="modelForm.baseUrl" type="url" placeholder="https://api.deepseek.com/chat/completions" /></label>
         <label>模型<input v-model="modelForm.modelName" placeholder="deepseek-chat" /></label>
         <label>API Key<input v-model="modelForm.apiKey" type="password" autocomplete="new-password" placeholder="不修改请留空" /></label>
-        <label>输入 / 1M Token<input v-model.number="modelForm.pricing.inputPerMillion" type="number" min="0" step="0.000001" /></label>
-        <label>输出 / 1M Token<input v-model.number="modelForm.pricing.outputPerMillion" type="number" min="0" step="0.000001" /></label>
-        <label>缓存命中 / 1M<input v-model.number="modelForm.pricing.cacheHitPerMillion" type="number" min="0" step="0.000001" /></label>
+        <label>计价模式<select v-model="modelForm.pricing.pricingMode"><option value="FLAT">固定单价</option><option value="DEEPSEEK_PEAK_OFFPEAK">DeepSeek 峰谷时段</option></select></label>
+        <label>计价币种<select v-model="modelForm.pricing.currency"><option value="CNY">CNY 人民币</option><option value="USD">USD 美元</option></select></label>
+        <template v-if="modelForm.pricing.pricingMode === 'DEEPSEEK_PEAK_OFFPEAK'">
+          <p class="pricing-note wide">北京时间工作日 09:00–12:00、14:00–18:00 为高峰，其余为空闲。以下单价均为每 1M Token，可按供应商最新价格自行修改。</p>
+          <h3 class="pricing-heading wide">高峰单价</h3>
+        </template>
+        <label>{{ modelForm.pricing.pricingMode === 'DEEPSEEK_PEAK_OFFPEAK' ? '高峰' : '' }}普通输入 / 1M<input v-model.number="modelForm.pricing.inputPerMillion" type="number" min="0" step="0.000001" /></label>
+        <label>{{ modelForm.pricing.pricingMode === 'DEEPSEEK_PEAK_OFFPEAK' ? '高峰' : '' }}输出 / 1M<input v-model.number="modelForm.pricing.outputPerMillion" type="number" min="0" step="0.000001" /></label>
+        <label>{{ modelForm.pricing.pricingMode === 'DEEPSEEK_PEAK_OFFPEAK' ? '高峰' : '' }}缓存命中 / 1M<input v-model.number="modelForm.pricing.cacheHitPerMillion" type="number" min="0" step="0.000001" /></label>
+        <label>{{ modelForm.pricing.pricingMode === 'DEEPSEEK_PEAK_OFFPEAK' ? '高峰' : '' }}缓存未命中 / 1M<input v-model.number="modelForm.pricing.cacheMissPerMillion" type="number" min="0" step="0.000001" /></label>
+        <label>{{ modelForm.pricing.pricingMode === 'DEEPSEEK_PEAK_OFFPEAK' ? '高峰' : '' }}思考过程 / 1M<input v-model.number="modelForm.pricing.reasoningPerMillion" type="number" min="0" step="0.000001" /></label>
+        <template v-if="modelForm.pricing.pricingMode === 'DEEPSEEK_PEAK_OFFPEAK'">
+          <h3 class="pricing-heading wide">空闲单价</h3>
+          <label>空闲普通输入 / 1M<input v-model.number="modelForm.pricing.offPeakInputPerMillion" type="number" min="0" step="0.000001" /></label>
+          <label>空闲输出 / 1M<input v-model.number="modelForm.pricing.offPeakOutputPerMillion" type="number" min="0" step="0.000001" /></label>
+          <label>空闲缓存命中 / 1M<input v-model.number="modelForm.pricing.offPeakCacheHitPerMillion" type="number" min="0" step="0.000001" /></label>
+          <label>空闲缓存未命中 / 1M<input v-model.number="modelForm.pricing.offPeakCacheMissPerMillion" type="number" min="0" step="0.000001" /></label>
+          <label>空闲思考过程 / 1M<input v-model.number="modelForm.pricing.offPeakReasoningPerMillion" type="number" min="0" step="0.000001" /></label>
+        </template>
         <label>超时（毫秒）<input v-model.number="modelForm.timeoutMs" type="number" min="5000" max="120000" step="1000" /></label>
       </div>
       <div class="io-row model-actions">
-        <Button v-if="selectedModelId !== 'system-environment'" size="sm" @click="saveModel">{{ selectedModelId ? '保存配置' : '创建配置' }}</Button>
+        <Button size="sm" @click="saveModel">{{ selectedModelId === 'system-environment' ? '保存成本配置' : selectedModelId ? '保存配置' : '创建配置' }}</Button>
         <Button v-if="selectedModelId" size="sm" variant="ghost" @click="testModel">测试连接</Button>
         <Button v-if="selectedModelId" size="sm" variant="ghost" @click="makeDefault">设为默认</Button>
         <Button v-if="selectedModelId && selectedModelId !== 'system-environment'" size="sm" variant="danger" @click="removeModel">删除</Button>
@@ -114,7 +130,7 @@ const accents = [
 ]
 const ioArea = ref('')
 const modelConnections = ref([]), selectedModelId = ref(''), modelStatus = ref('')
-const blankModel = () => ({ displayName: '', providerType: 'DEEPSEEK', baseUrl: 'https://api.deepseek.com/chat/completions', modelName: 'deepseek-chat', apiKey: '', timeoutMs: 60000, pricing: { currency: 'CNY', inputPerMillion: 0, outputPerMillion: 0, cacheHitPerMillion: 0, cacheMissPerMillion: 0, reasoningPerMillion: 0 } })
+const blankModel = () => ({ displayName: '', providerType: 'DEEPSEEK', baseUrl: 'https://api.deepseek.com/chat/completions', modelName: 'deepseek-chat', apiKey: '', timeoutMs: 60000, pricing: { currency: 'CNY', pricingMode: 'FLAT', inputPerMillion: 0, outputPerMillion: 0, cacheHitPerMillion: 0, cacheMissPerMillion: 0, reasoningPerMillion: 0, offPeakInputPerMillion: 0, offPeakOutputPerMillion: 0, offPeakCacheHitPerMillion: 0, offPeakCacheMissPerMillion: 0, offPeakReasoningPerMillion: 0 } })
 const modelForm = ref(blankModel())
 const curMonthKey = CALC.dateKey(new Date()).slice(0, 7)
 const curMonthLabel = `${Number(curMonthKey.slice(5, 7))} 月`

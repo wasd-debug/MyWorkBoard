@@ -1,5 +1,6 @@
 package com.salarytracker.ai.session;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.salarytracker.identity.CurrentUserResolver;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -68,6 +69,14 @@ public class AgentConversationService {
     public List<MessageView> messages(String sessionId) {
         requireOwned(sessionId, currentUser.id());
         return repository.messages(sessionId, currentUser.id());
+    }
+
+    @Transactional
+    public void replaceAction(String previousActionId, JsonNode replacement) {
+        if (previousActionId == null || previousActionId.isBlank() || replacement == null || !replacement.isObject()) {
+            throw new IllegalArgumentException("action 替换参数不正确");
+        }
+        repository.replaceAction(currentUser.id(), previousActionId, replacement);
     }
 
     public SessionSummary rename(String sessionId, String title) {

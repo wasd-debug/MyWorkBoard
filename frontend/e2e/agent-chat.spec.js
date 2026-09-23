@@ -159,6 +159,8 @@ test('streams the first reply and exposes detailed observability', async ({ page
   await page.getByLabel('给 AI 发送消息').fill('我有哪些账本？')
   await page.getByRole('button', { name: '发送' }).click()
   await expect(page.locator('.message-markdown strong')).toHaveText('默认账本')
+  await expect(page.locator('.chat-message.user').getByRole('button', { name: /进入/ })).toHaveCount(0)
+  await expect(page.locator('.chat-message.assistant').getByRole('button', { name: '进入账本' })).toBeVisible()
   await expect(page.getByText('1,336 Tokens')).toBeVisible()
   await page.getByText('1,336 Tokens').click()
   await expect(page.getByText('缓存未命中')).toBeVisible()
@@ -190,9 +192,12 @@ test('restores server sessions and completed messages after refresh', async ({ p
   await page.goto('/')
   await expect(page.locator('.chat-workspace-head').getByText('历史账本查询', { exact: true })).toBeVisible()
   await expect(page.locator('.message-markdown strong')).toHaveText('默认账本')
+  await expect(page.locator('.chat-message.user').getByRole('button', { name: /进入/ })).toHaveCount(0)
+  await expect(page.locator('.chat-message.assistant').getByRole('button', { name: '进入账本' })).toBeVisible()
   await page.reload()
   await expect(page.locator('.chat-workspace-head').getByText('历史账本查询', { exact: true })).toBeVisible()
   await expect(page.getByText('1,336 Tokens')).toBeVisible()
+  await expect(page.locator('.chat-message.user').getByRole('button', { name: /进入/ })).toHaveCount(0)
 })
 
 test('falls back before the first SSE event', async ({ page }) => {

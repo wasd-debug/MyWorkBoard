@@ -194,6 +194,12 @@ public class AgentTurnService {
                         @Override public void toolCompleted(LlmGateway.ToolExecution execution) {
                             events.toolCompleted(turn.id(), execution);
                         }
+                        @Override public void inputRequired(com.salarytracker.ai.tool.ToolResult result) {
+                            events.inputRequired(turn.id(), result);
+                        }
+                        @Override public void confirmationRequired(com.salarytracker.ai.tool.ToolResult result) {
+                            events.confirmationRequired(turn.id(), result);
+                        }
                     }, model);
             String json = mapper.writeValueAsString(response);
             try { traces.persist(turn, model, response); } catch (Exception ignored) { /* trace must not block replies */ }
@@ -251,6 +257,8 @@ public class AgentTurnService {
         default void delta(String turnId, String content) { }
         default void toolStarted(String turnId, String name) { }
         default void toolCompleted(String turnId, LlmGateway.ToolExecution execution) { }
+        default void inputRequired(String turnId, com.salarytracker.ai.tool.ToolResult result) { }
+        default void confirmationRequired(String turnId, com.salarytracker.ai.tool.ToolResult result) { }
         default void completed(String turnId, LlmGateway.ChatResponse response) { }
         default void failed(String turnId, String message) { }
         default void cancelled(String turnId) { }

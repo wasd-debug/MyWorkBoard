@@ -1,5 +1,7 @@
 package com.salarytracker.ai.session;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
 import java.util.List;
 import java.util.OptionalLong;
 import java.util.Optional;
@@ -21,6 +23,8 @@ public interface AgentSessionRepository {
     Optional<AgentConversationService.SessionSummary> findSession(String sessionId, long userId);
 
     List<AgentConversationService.MessageView> messages(String sessionId, long userId);
+
+    void replaceAction(long userId, String previousActionId, JsonNode replacement);
 
     void rename(String sessionId, long userId, String title);
 

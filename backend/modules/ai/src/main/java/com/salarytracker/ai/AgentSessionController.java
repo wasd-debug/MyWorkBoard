@@ -260,6 +260,12 @@ public class AgentSessionController {
         @Override public void toolCompleted(String turnId, LlmGateway.ToolExecution execution) {
             send("tool.completed", Map.of("turnId", turnId, "execution", execution));
         }
+        @Override public void inputRequired(String turnId, com.salarytracker.ai.tool.ToolResult result) {
+            send("input.required", Map.of("turnId", turnId, "action", result));
+        }
+        @Override public void confirmationRequired(String turnId, com.salarytracker.ai.tool.ToolResult result) {
+            send("confirmation.required", Map.of("turnId", turnId, "action", result));
+        }
         @Override public void completed(String turnId, LlmGateway.ChatResponse response) {
             send("turn.completed", Map.of("turnId", turnId, "response", response));
         }

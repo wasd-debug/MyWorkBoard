@@ -1,5 +1,7 @@
 package com.salarytracker.ai.session;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -14,6 +16,7 @@ import java.util.Optional;
 @Repository
 public class JdbcAgentSessionRepository implements AgentSessionRepository {
     private final JdbcTemplate jdbc;
+    private final ObjectMapper mapper = new ObjectMapper();
 
     public JdbcAgentSessionRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
@@ -92,7 +95,41 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
                         """, (result, rowNum) -> new AgentConversationService.MessageView(
                         result.getLong("id"), result.getString("turn_id"), result.getString("role"),
                         result.getString("content"), result.getString("metadata_json"),
-                        result.getTimestamp("created_at").toInstant()), sessionId, userId);
+                result.getTimestamp("created_at").toInstant()), sessionId, userId);
+    }
+
+    @Override
+    @Transactional
+    public void replaceAction(long userId, String previousActionId, JsonNode replacement) {
+        List<MessageMetadata> candidates = jdbc.query("""
+                        SELECT id,metadata_json FROM agent_message
+                        WHERE user_id=? AND role='assistant' AND metadata_json IS NOT NULL
+                          AND metadata_json LIKE ?
+                        """, (result, rowNum) -> new MessageMetadata(
+                        result.getLong("id"), result.getString("metadata_json")),
+                userId, "%\"" + previousActionId + "\"%");
+        for (MessageMetadata candidate : candidates) {
+            try {
+                JsonNode metadata = mapper.readTree(candidate.json());
+                JsonNode actionNodes = metadata.path("actions");
+                if (!actionNodes.isArray()) continue;
+                boolean changed = false;
+                com.fasterxml.jackson.databind.node.ArrayNode array =
+                        (com.fasterxml.jackson.databind.node.ArrayNode) actionNodes;
+                for (int index = 0; index < array.size(); index++) {
+                    if (previousActionId.equals(array.get(index).path("actionId").asText())) {
+                        array.set(index, replacement.deepCopy());
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    jdbc.update("UPDATE agent_message SET metadata_json=? WHERE id=? AND user_id=?",
+                            mapper.writeValueAsString(metadata), candidate.id(), userId);
+                }
+            } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
+                throw new IllegalStateException("无法更新会话 action 元数据", exception);
+            }
+        }
     }
 
     @Override
@@ -191,4 +228,6 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
     private void requireChanged(int changed) {
         if (changed != 1) throw new IllegalArgumentException("会话不存在");
     }
+
+    private record MessageMetadata(long id, String json) { }
 }

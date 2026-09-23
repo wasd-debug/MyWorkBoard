@@ -40,6 +40,11 @@ export async function apiCreateAgentSessionGroup(payload) { return data(await ap
 export async function apiRenameAgentSessionGroup(groupId, payload) { return data(await api.patch(`/api/v1/agent/session-groups/${groupId}`, payload)) }
 export async function apiDeleteAgentSessionGroup(groupId) { return data(await api.delete(`/api/v1/agent/session-groups/${groupId}`)) }
 export async function apiGetAgentTurn(turnId) { return data(await api.get(`/api/v1/agent/turns/${turnId}`)) }
+export async function apiAnswerAgentAction(actionId, payload) { return data(await api.post(`/api/v1/agent/actions/${actionId}/answer`, payload)) }
+export async function apiGetAgentAction(actionId) { return data(await api.get(`/api/v1/agent/actions/${actionId}`)) }
+export async function apiApproveAgentAction(actionId) { return data(await api.post(`/api/v1/agent/actions/${actionId}/approve`)) }
+export async function apiRejectAgentAction(actionId) { return data(await api.post(`/api/v1/agent/actions/${actionId}/reject`)) }
+export async function apiCommitAgentAction(actionId) { return data(await api.post(`/api/v1/agent/actions/${actionId}/commit`)) }
 export async function apiCancelAgentTurn(turnId) { return data(await api.post(`/api/v1/agent/turns/${turnId}/cancel`)) }
 export async function apiListAgentQueue(sessionId) { return data(await api.get(`/api/v1/agent/sessions/${sessionId}/queue`)) }
 export async function apiEnqueueAgentTurn(sessionId, payload) { return data(await api.post(`/api/v1/agent/sessions/${sessionId}/queue`, payload)) }

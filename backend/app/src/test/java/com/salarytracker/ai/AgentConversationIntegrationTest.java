@@ -1,5 +1,6 @@
 package com.salarytracker.ai;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.salarytracker.ai.session.AgentConversationService;
 import com.salarytracker.ai.session.JdbcAgentSessionRepository;
 import com.salarytracker.ai.session.JdbcAgentTurnRepository;
@@ -69,6 +70,28 @@ class AgentConversationIntegrationTest extends MySqlIntegrationTestSupport {
         assertEquals(1, repository.listSessions(firstUser, true).size());
         repository.delete(sessionId, firstUser);
         assertTrue(repository.findSession(sessionId, firstUser).isEmpty());
+    }
+
+    @Test
+    void replacesPreparedActionInStoredAssistantMetadataForRefreshRecovery() throws Exception {
+        long userId = createUser("agent-action-recovery-");
+        JdbcAgentSessionRepository repository = new JdbcAgentSessionRepository(jdbc);
+        String sessionId = UUID.randomUUID().toString();
+        repository.create(sessionId, userId, "记工时");
+        repository.appendExchange(sessionId, userId, "帮我记工时", "请补充");
+        jdbc.update("UPDATE agent_message SET metadata_json=? WHERE session_id=? AND user_id=? AND role='assistant'", """
+                {"actions":[{"status":"NEEDS_INPUT","actionId":"old-action","summary":"请补充"}]}
+                """, sessionId, userId);
+
+        ObjectMapper mapper = new ObjectMapper();
+        repository.replaceAction(userId, "old-action", mapper.readTree("""
+                {"status":"NEEDS_CONFIRMATION","actionId":"new-action","summary":"请确认"}
+                """));
+
+        String metadata = repository.messages(sessionId, userId).get(1).metadataJson();
+        assertEquals("new-action", mapper.readTree(metadata).path("actions").get(0).path("actionId").asText());
+        assertEquals("NEEDS_CONFIRMATION", mapper.readTree(metadata).path("actions").get(0).path("status").asText());
+        assertEquals(0, repository.messages(sessionId, userId + 1).size());
     }
 
     @Test

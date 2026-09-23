@@ -33,6 +33,13 @@ public final class ToolSchemas {
         property.put("maximum", maximum);
     }
 
+    public static void numberProperty(ObjectNode schema, String name, String description, double minimum) {
+        ObjectNode property = properties(schema).putObject(name);
+        property.put("type", "number");
+        property.put("description", description);
+        property.put("exclusiveMinimum", minimum);
+    }
+
     public static ObjectNode required(ObjectNode schema, String... names) {
         var required = schema.putArray("required");
         for (String name : names) required.add(name);

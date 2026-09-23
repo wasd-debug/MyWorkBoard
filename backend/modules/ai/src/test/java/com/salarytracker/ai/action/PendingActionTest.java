@@ -55,6 +55,19 @@ class PendingActionTest {
     }
 
     @Test
+    void serviceKeepsExpiredTerminalActionsInTheirFinalState() {
+        MemoryRepository repository = new MemoryRepository();
+        PendingActionService service = new PendingActionService(repository, new ObjectMapper(), new InteractionPolicy());
+        for (ActionStatus status : Set.of(ActionStatus.COMPLETED, ActionStatus.CONFLICT,
+                ActionStatus.DENIED, ActionStatus.FAILED, ActionStatus.CANCELLED, ActionStatus.EXPIRED)) {
+            PendingAction action = new PendingAction(status.name(), 7L, "ledger.transaction.create", 1,
+                    "{}", null, status, Instant.now().minusSeconds(1), Instant.now().minusSeconds(2));
+            repository.insert(action);
+            assertEquals(status, service.getForUser(action.id(), 7L).status());
+        }
+    }
+
+    @Test
     void prepareRequiresApprovalAndCommitCanStartOnlyOnce() {
         PendingActionService service = service();
         ObjectMapper mapper = new ObjectMapper();

@@ -12,7 +12,7 @@
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
 | Phase 2 任务 | 未启动 | 只有禁用导航占位，无领域模块、数据表和页面 |
-| Phase 3A-D Agent/MCP | Phase 3A/3B 部分实现 | AI 物理模块、7 个 R1 查询工具、action JDBC、V15-V17 会话/分组/turn/队列，以及 V18 模型连接、价格、Usage、工具 Trace 和模型快照已落地；首页支持真实 SSE、恢复、队列管理、会话级模型切换和成本展示，自动评测、受控写入和 MCP 尚未实现 |
+| Phase 3A-D Agent/MCP | Phase 3A/3B 增量实施 | 7 个 R1 查询工具、action JDBC、会话/队列/SSE、模型连接与 Trace 已落地；新增工时和单笔收入/支出已支持 R2 prepare、动态补参、站内确认与 commit，自动评测、修改删除和 MCP 尚未实现 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
 | Phase 6 打磨 | 部分提前实现 | 已有响应式布局、主题、共享账本、自动视觉/无障碍和恢复演练；PWA、搜索及完整可观测体系未实现 |
@@ -46,7 +46,7 @@
 |---|---|---|
 | 前端 | Vue 3 + Vite + Pinia + Vue Router + ECharts + Tailwind/token + Reka UI + Lucide；Element Plus 已移除 | 工时使用生成客户端访问资源 API；账本六类资源使用 IndexedDB/oplog local-first，在线命令由 store facade 统一管理 |
 | 后端 | Java 17 + Spring Boot 3.2；platform/identity/worktime/ledger/ai/app 六个 Maven 模块 | 业务源码和单测已物理归属对应模块，app 仅装配应用、迁移资源和跨模块测试；AI 当前只含原有网关和领域工具基础 |
-| 数据库 | MySQL 8 + Flyway V1-V18；用户、工时、账本、同步、定时任务、审计、AI 会话/队列、模型连接、Usage 与 Trace | 多用户和账本数据模型已落地；事件、任务、文件、RAG 和洞察读模型仍未落地 |
+| 数据库 | MySQL 8 + Flyway V1-V19；用户、工时、账本、同步、定时任务、审计、AI 会话/队列、模型连接、Usage、Trace 与峰谷计价 | 多用户和账本数据模型已落地；事件、任务、文件、RAG 和洞察读模型仍未落地 |
 | 鉴权 | Spring Security + JWT access token + HttpOnly refresh cookie；用户、角色和权限表 | 已替换静态 AccessCode；仍需限流、安全集成测试和更完整的会话运维能力 |
 | 部署 | Docker Compose（Nginx + Spring Boot + MySQL），源码/预构建镜像/本地产物三种模式 | 当前仍是三服务单机部署；Redis、MinIO、Qdrant、监控等按后续阶段引入 |
 
@@ -650,6 +650,7 @@ Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后
 
 - [ ] 覆盖所有用户级工时和账本功能，排除同步、物化等内部维护接口
 - [ ] 模型回归评测、失败回放、成本告警、客户端熔断和数据清理任务
+- [x] V19 支持用户模型及系统环境模型的固定价/DeepSeek 峰谷价格配置；服务端按请求开始时刻选择高峰或空闲档位并将档位、版本和估算费用写入 Usage Trace
 - [ ] 灰度开放 MCP 写入并固化运行手册、指标、告警和回滚步骤
 - **验收**：功能覆盖矩阵无缺项，连续灰度周期无 P0/P1 数据事故，关键链路均可审计和关闭。
 

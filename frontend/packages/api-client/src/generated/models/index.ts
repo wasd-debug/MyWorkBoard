@@ -1,5 +1,6 @@
 export * from './account.ts';
 export * from './account-command.ts';
+export * from './action-request.ts';
 export * from './action-response.ts';
 export * from './action-result.ts';
 export * from './actor.ts';

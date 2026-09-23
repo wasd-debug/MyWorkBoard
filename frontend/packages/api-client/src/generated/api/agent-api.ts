@@ -37,6 +37,42 @@ export const AgentApiAxiosParamCreator = function (configuration?: Configuration
         /**
          *
          * @param {string} actionId
+         * @param {object} [body]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        answerAgentAction: async (actionId: string, body?: object, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'actionId' is not null or undefined
+            assertParamExists('answerAgentAction', 'actionId', actionId)
+            const localVarPath = `/api/v1/agent/actions/{actionId}/answer`
+                .replace('{actionId}', encodeURIComponent(String(actionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(body, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} actionId
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -86,6 +122,39 @@ export const AgentApiAxiosParamCreator = function (configuration?: Configuration
             }
 
             const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} actionId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getAgentAction: async (actionId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'actionId' is not null or undefined
+            assertParamExists('getAgentAction', 'actionId', actionId)
+            const localVarPath = `/api/v1/agent/actions/{actionId}`
+                .replace('{actionId}', encodeURIComponent(String(actionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
 
@@ -210,6 +279,19 @@ export const AgentApiFp = function(configuration?: Configuration) {
         /**
          *
          * @param {string} actionId
+         * @param {object} [body]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async answerAgentAction(actionId: string, body?: object, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseToolResult>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.answerAgentAction(actionId, body, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentApi.answerAgentAction']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} actionId
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -229,6 +311,18 @@ export const AgentApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.commitAgentAction(actionId, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['AgentApi.commitAgentAction']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} actionId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getAgentAction(actionId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseActionResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getAgentAction(actionId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentApi.getAgentAction']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -278,6 +372,15 @@ export const AgentApiFactory = function (configuration?: Configuration, basePath
     return {
         /**
          *
+         * @param {AgentApiAnswerAgentActionRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        answerAgentAction(requestParameters: AgentApiAnswerAgentActionRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseToolResult> {
+            return localVarFp.answerAgentAction(requestParameters.actionId, requestParameters.body, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {AgentApiApproveAgentActionRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -293,6 +396,15 @@ export const AgentApiFactory = function (configuration?: Configuration, basePath
          */
         commitAgentAction(requestParameters: AgentApiCommitAgentActionRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseToolResult> {
             return localVarFp.commitAgentAction(requestParameters.actionId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {AgentApiGetAgentActionRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getAgentAction(requestParameters: AgentApiGetAgentActionRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseActionResponse> {
+            return localVarFp.getAgentAction(requestParameters.actionId, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -324,6 +436,15 @@ export const AgentApiFactory = function (configuration?: Configuration, basePath
 };
 
 /**
+ * Request parameters for answerAgentAction operation in AgentApi.
+ */
+export interface AgentApiAnswerAgentActionRequest {
+    readonly actionId: string
+
+    readonly body?: object
+}
+
+/**
  * Request parameters for approveAgentAction operation in AgentApi.
  */
 export interface AgentApiApproveAgentActionRequest {
@@ -334,6 +455,13 @@ export interface AgentApiApproveAgentActionRequest {
  * Request parameters for commitAgentAction operation in AgentApi.
  */
 export interface AgentApiCommitAgentActionRequest {
+    readonly actionId: string
+}
+
+/**
+ * Request parameters for getAgentAction operation in AgentApi.
+ */
+export interface AgentApiGetAgentActionRequest {
     readonly actionId: string
 }
 
@@ -359,6 +487,16 @@ export interface AgentApiRejectAgentActionRequest {
 export class AgentApi extends BaseAPI {
     /**
      *
+     * @param {AgentApiAnswerAgentActionRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public answerAgentAction(requestParameters: AgentApiAnswerAgentActionRequest, options?: RawAxiosRequestConfig) {
+        return AgentApiFp(this.configuration).answerAgentAction(requestParameters.actionId, requestParameters.body, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
      * @param {AgentApiApproveAgentActionRequest} requestParameters Request parameters.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -375,6 +513,16 @@ export class AgentApi extends BaseAPI {
      */
     public commitAgentAction(requestParameters: AgentApiCommitAgentActionRequest, options?: RawAxiosRequestConfig) {
         return AgentApiFp(this.configuration).commitAgentAction(requestParameters.actionId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {AgentApiGetAgentActionRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public getAgentAction(requestParameters: AgentApiGetAgentActionRequest, options?: RawAxiosRequestConfig) {
+        return AgentApiFp(this.configuration).getAgentAction(requestParameters.actionId, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

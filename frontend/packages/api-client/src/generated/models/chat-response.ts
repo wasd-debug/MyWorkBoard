@@ -15,6 +15,9 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
+import type { ActionRequest } from './action-request.ts';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { ModelExecution } from './model-execution.ts';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -33,4 +36,5 @@ export interface ChatResponse {
     'firstTokenMs'?: number;
     'modelExecutions'?: Array<ModelExecution>;
     'toolExecutions'?: Array<ToolExecution>;
+    'actions'?: Array<ActionRequest>;
 }

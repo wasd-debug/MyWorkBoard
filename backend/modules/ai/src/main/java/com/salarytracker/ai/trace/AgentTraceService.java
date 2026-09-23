@@ -10,6 +10,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DayOfWeek;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 
 @Service
@@ -44,14 +48,14 @@ public class AgentTraceService {
                                    AiModelConnectionService.RuntimeConnection model,
                                    LlmGateway.ChatResponse response) {
         for (LlmGateway.ModelExecution execution : response.modelExecutions()) {
-            Cost cost = cost(execution.usage(), model.pricing());
+            Cost cost = cost(execution.usage(), model.pricing(), turn.startedAt());
             jdbc.update("""
                     INSERT INTO ai_usage(turn_id,session_id,user_id,model_connection_id,provider_type,model_name,round_no,
                       input_tokens,output_tokens,cache_hit_tokens,cache_miss_tokens,reasoning_tokens,total_tokens,
-                      first_token_ms,duration_ms,pricing_version,currency,input_unit_price,output_unit_price,
+                      first_token_ms,duration_ms,pricing_version,currency,pricing_tier,input_unit_price,output_unit_price,
                       cache_hit_unit_price,cache_miss_unit_price,reasoning_unit_price,estimated_input_cost,
                       estimated_output_cost,estimated_cache_cost,estimated_reasoning_cost,estimated_total_cost)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     ON DUPLICATE KEY UPDATE duration_ms=VALUES(duration_ms),first_token_ms=VALUES(first_token_ms)
                     """, turn.id(), turn.sessionId(), turn.userId(),
                     AiModelConnectionService.ENVIRONMENT_ID.equals(model.id()) ? null : model.id(),
@@ -59,7 +63,7 @@ public class AgentTraceService {
                     execution.usage().outputTokens(), execution.usage().cacheHitTokens(),
                     execution.usage().cacheMissTokens(), execution.usage().reasoningTokens(),
                     execution.usage().totalTokens(), execution.firstTokenMs(), execution.durationMs(),
-                    model.pricing() == null ? null : model.pricing().version(), cost.currency(), cost.inputUnit(),
+                    model.pricing() == null ? null : model.pricing().version(), cost.currency(), cost.tier(), cost.inputUnit(),
                     cost.outputUnit(), cost.cacheHitUnit(), cost.cacheMissUnit(), cost.reasoningUnit(), cost.input(),
                     cost.output(), cost.cache(), cost.reasoning(), cost.total());
         }
@@ -105,19 +109,33 @@ public class AgentTraceService {
                 tokens, currency, estimatedCost, usage, tools);
     }
 
-    private Cost cost(LlmGateway.TokenUsage usage, AiModelConnectionService.Pricing pricing) {
+    private Cost cost(LlmGateway.TokenUsage usage, AiModelConnectionService.Pricing pricing, Instant startedAt) {
         if (pricing == null) return Cost.none();
+        boolean offPeak = "DEEPSEEK_PEAK_OFFPEAK".equals(pricing.pricingMode()) && !deepSeekPeak(startedAt);
+        BigDecimal inputUnit = offPeak ? pricing.offPeakInputPerMillion() : pricing.inputPerMillion();
+        BigDecimal outputUnit = offPeak ? pricing.offPeakOutputPerMillion() : pricing.outputPerMillion();
+        BigDecimal cacheHitUnit = offPeak ? pricing.offPeakCacheHitPerMillion() : pricing.cacheHitPerMillion();
+        BigDecimal cacheMissUnit = offPeak ? pricing.offPeakCacheMissPerMillion() : pricing.cacheMissPerMillion();
+        BigDecimal reasoningUnit = offPeak ? pricing.offPeakReasoningPerMillion() : pricing.reasoningPerMillion();
         long input = Math.max(0, usage.inputTokens() - usage.cacheHitTokens() - usage.cacheMissTokens());
         long output = Math.max(0, usage.outputTokens() - usage.reasoningTokens());
-        BigDecimal inputCost = amount(input, pricing.inputPerMillion());
-        BigDecimal outputCost = amount(output, pricing.outputPerMillion());
-        BigDecimal cacheCost = amount(usage.cacheHitTokens(), pricing.cacheHitPerMillion())
-                .add(amount(usage.cacheMissTokens(), pricing.cacheMissPerMillion()));
-        BigDecimal reasoningCost = amount(usage.reasoningTokens(), pricing.reasoningPerMillion());
-        return new Cost(pricing.currency(), pricing.inputPerMillion(), pricing.outputPerMillion(),
-                pricing.cacheHitPerMillion(), pricing.cacheMissPerMillion(), pricing.reasoningPerMillion(),
+        BigDecimal inputCost = amount(input, inputUnit);
+        BigDecimal outputCost = amount(output, outputUnit);
+        BigDecimal cacheCost = amount(usage.cacheHitTokens(), cacheHitUnit)
+                .add(amount(usage.cacheMissTokens(), cacheMissUnit));
+        BigDecimal reasoningCost = amount(usage.reasoningTokens(), reasoningUnit);
+        return new Cost(pricing.currency(), offPeak ? "OFF_PEAK" : "PEAK", inputUnit, outputUnit,
+                cacheHitUnit, cacheMissUnit, reasoningUnit,
                 inputCost, outputCost, cacheCost, reasoningCost,
                 inputCost.add(outputCost).add(cacheCost).add(reasoningCost));
+    }
+
+    static boolean deepSeekPeak(Instant instant) {
+        ZonedDateTime china = (instant == null ? Instant.now() : instant).atZone(ZoneId.of("Asia/Shanghai"));
+        DayOfWeek day = china.getDayOfWeek();
+        if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) return false;
+        int minute = china.getHour() * 60 + china.getMinute();
+        return (minute >= 9 * 60 && minute < 12 * 60) || (minute >= 14 * 60 && minute < 18 * 60);
     }
 
     private BigDecimal amount(long tokens, BigDecimal price) {
@@ -129,11 +147,11 @@ public class AgentTraceService {
     }
 
     private record TurnHeader(String id, String status, String providerType, String modelName) { }
-    private record Cost(String currency, BigDecimal inputUnit, BigDecimal outputUnit,
+    private record Cost(String currency, String tier, BigDecimal inputUnit, BigDecimal outputUnit,
                         BigDecimal cacheHitUnit, BigDecimal cacheMissUnit, BigDecimal reasoningUnit,
                         BigDecimal input, BigDecimal output, BigDecimal cache, BigDecimal reasoning,
                         BigDecimal total) {
-        private static Cost none() { return new Cost(null, null, null, null, null, null, null, null, null, null, null); }
+        private static Cost none() { return new Cost(null, null, null, null, null, null, null, null, null, null, null, null); }
     }
 
     public record ModelUsageView(int round, long durationMs, long firstTokenMs, long inputTokens,

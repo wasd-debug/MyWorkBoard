@@ -50,7 +50,7 @@ public class PendingActionService {
     @Transactional
     public PendingAction getForUser(String id, long userId) {
         PendingAction action = required(id, userId);
-        if (action.expiresAt().isBefore(Instant.now()) && action.status() != ActionStatus.EXPIRED) {
+        if (action.expiresAt().isBefore(Instant.now()) && !action.isTerminal()) {
             return transition(id, userId, ActionStatus.EXPIRED);
         }
         return action;

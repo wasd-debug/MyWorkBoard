@@ -64,7 +64,8 @@ class AgentOrchestratorTest {
         verify(model, org.mockito.Mockito.atLeastOnce()).agentTurn(any(), captor.capture());
         @SuppressWarnings("unchecked")
         List<LlmGateway.AgentTool> exposed = (List<LlmGateway.AgentTool>) captor.getAllValues().get(0);
-        assertEquals(List.of("ledger__books__list"), exposed.stream().map(tool -> tool.function().name()).toList());
+        assertEquals(List.of("ledger__books__list", "worktime__record__create__prepare"),
+                exposed.stream().map(tool -> tool.function().name()).toList());
     }
 
     @Test

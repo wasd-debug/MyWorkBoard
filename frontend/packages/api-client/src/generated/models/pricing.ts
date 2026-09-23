@@ -17,9 +17,15 @@
 export interface Pricing {
     'version'?: number;
     'currency'?: string;
+    'pricingMode'?: string;
     'inputPerMillion'?: number;
     'outputPerMillion'?: number;
     'cacheHitPerMillion'?: number;
     'cacheMissPerMillion'?: number;
     'reasoningPerMillion'?: number;
+    'offPeakInputPerMillion'?: number;
+    'offPeakOutputPerMillion'?: number;
+    'offPeakCacheHitPerMillion'?: number;
+    'offPeakCacheMissPerMillion'?: number;
+    'offPeakReasoningPerMillion'?: number;
 }

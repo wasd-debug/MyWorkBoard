@@ -25,7 +25,7 @@ public record PendingAction(String id, long userId, String toolName, int toolVer
     }
 
     public PendingAction transition(ActionStatus next, Instant now) {
-        if (now.isAfter(expiresAt) && !terminal(status)) {
+        if (now.isAfter(expiresAt) && !isTerminal()) {
             next = ActionStatus.EXPIRED;
         }
         if (!allowed(status, next)) {
@@ -33,6 +33,10 @@ public record PendingAction(String id, long userId, String toolName, int toolVer
         }
         return new PendingAction(id, userId, toolName, toolVersion, inputSnapshot, expectedRevision,
                 next, expiresAt, now);
+    }
+
+    public boolean isTerminal() {
+        return terminal(status);
     }
 
     private static boolean allowed(ActionStatus from, ActionStatus to) {

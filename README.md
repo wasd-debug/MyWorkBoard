@@ -34,7 +34,7 @@
 ### 后续阶段
 
 - **Phase 2 任务管理：未启动。** 计划包含清单、任务、日历、提醒、番茄钟、习惯和倒数日。
-- **Phase 3A-D Agent/MCP：Phase 3A/3B 部分实现。** 已建立七个 R1 工具、action JDBC、V15-V17 会话/分组/turn/队列，以及 V18 模型连接、价格、Usage 和工具 Trace。设置页可配置 HTTPS 模型端点、加密 API Key 和 Token 单价；首页支持会话级模型切换并展示模型、TTFT、逐轮/逐工具耗时、Token 与估算成本。受控写入、自动评测和 MCP 尚未开放。
+- **Phase 3A-D Agent/MCP：Phase 3A/3B 增量实施。** 七个 R1 查询工具、会话/队列/SSE、模型连接和 Trace 已落地；首页现支持新增工时和单笔收入/支出的 R2 prepare、动态补参、站内确认和幂等 commit。修改删除、自动评测和 MCP 尚未开放。
 - **Phase 4 文件/RAG：未启动。** 计划在 Agent/MCP 稳定后建设文件域、向量库和知识库。
 - **Phase 5 跨域洞察：未启动。** 计划通过领域事件生成日/周/月/年报。
 - **Phase 6 持续打磨：部分能力提前实现。** 响应式布局、主题和共享账本已存在；PWA、搜索和可观测体系尚未实现。
@@ -47,7 +47,7 @@
 |---|---|---|
 | 前端 | Vue 3、Vite、Pinia、Vue Router、ECharts、Tailwind CSS 4、Reka UI、Lucide、OpenAPI 生成客户端 | PWA，并把 local-first 模式扩展到后续领域 |
 | 后端 | Java 17、Spring Boot 3.2、Spring Security、Spring Modulith、JDBC/MyBatis-Plus、Flyway、EasyExcel、ShedLock；platform/identity/worktime/ledger/ai/app 物理模块 | 按阶段引入 Agent 会话、MCP、文件、RAG 和洞察能力 |
-| 数据库 | MySQL 8，Flyway V1-V18 | 后续按需增加 Redis、MinIO/NAS、Qdrant 和搜索服务 |
+| 数据库 | MySQL 8，Flyway V1-V19 | 后续按需增加 Redis、MinIO/NAS、Qdrant 和搜索服务 |
 | 部署 | Docker Compose、Nginx、Spring Boot、MySQL | 健康检查、备份恢复和可观测体系持续完善 |
 
 当前请求关系：
@@ -189,6 +189,8 @@ npm run test:e2e
 2026-09-23 Agent 服务端队列恢复增量：V17 增加会话队列 revision、turn 排序位置与重试关联；同一会话由服务端串行执行，刷新或应用重启可恢复等待项和遗留 turn，支持排序冲突回读、等待项删除、执行中取消和失败/取消重试。AI 模块测试 31/31、真实 MySQL 集成 4/4、前端生产构建通过；桌面 Chromium 10/10、桌面 WebKit 10/10、375px 移动 Chromium 9/9，1 项移动端会话原生拖拽按设计跳过。
 
 2026-09-23 Agent 模型配置与 Trace 增量：V18 新增用户模型连接、版本化 Token 价格、逐轮 Usage、工具 Trace 和 session/turn 模型快照。API Key 使用独立 `AI_CREDENTIAL_KEY` AES-GCM 加密，模型端点默认仅允许公共 HTTPS/443；前端提供连接测试、默认模型、会话切换及成本展示。AI Reactor 35/35、真实 MySQL 6/6、前端 46/46、生产构建和 OpenAPI 检查通过。
+
+2026-09-23 首批受控写入与成本体验增量：工时新增、单笔收入/支出已接入 `prepare → 补参 → 站内确认 → 幂等 commit`；补参后的 action 会同步更新历史消息元数据，刷新后可恢复最新终态。V19 支持固定价和 DeepSeek 峰谷计价，首页费用入口显示逐轮档位，模型选择器移入输入框工具区，用户消息不再显示业务导航按钮。
 
 移动/平板导航断点统一为 1024px 及以下：底栏只显示当前模块的二级菜单，工时为打卡/记录/统计，账本为总览、流水、账户、报表、定时任务、管理、成员与权限、回收站、操作日志。每项以图标为主要识别、文字为辅助说明；底栏按实际宽度动态容纳入口，溢出项进入“更多”，并支持按模块保存自定义顺序。
 

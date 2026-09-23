@@ -53,4 +53,15 @@ class WorktimeCalculatorTest {
         assertEquals(690, result.actualMin());
         assertEquals(690, result.overtimeMin());
     }
+
+    @Test
+    void neverPersistsNegativeOvertimeForShortWorkdays() {
+        WorktimeCalculator.Result result = WorktimeCalculator.calculate(
+                "09:00", "18:00", 90, 90,
+                "09:00", "18:00",
+                new BigDecimal("8700"), new BigDecimal("21.75"), false);
+
+        assertEquals(360, result.actualMin());
+        assertEquals(0, result.overtimeMin());
+    }
 }

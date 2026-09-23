@@ -26,7 +26,7 @@ final class WorktimeCalculator {
         long standardElapsed = Duration.between(workStart, workEnd).toMinutes();
         if (standardElapsed < 0) standardElapsed += 24 * 60;
         int standardMin = Math.max(0, (int) standardElapsed - lunchMin);
-        int overtimeMin = actualMin == 0 ? 0 : offDay ? actualMin : actualMin - standardMin;
+        int overtimeMin = actualMin == 0 ? 0 : offDay ? actualMin : Math.max(0, actualMin - standardMin);
         BigDecimal realHourlyWage = actualMin > 0 && salary.signum() > 0 && daysPerMonth.signum() > 0
                 ? salary.divide(daysPerMonth, 8, RoundingMode.HALF_UP)
                         .divide(BigDecimal.valueOf(actualMin).divide(BigDecimal.valueOf(60), 8, RoundingMode.HALF_UP), 2, RoundingMode.HALF_UP)

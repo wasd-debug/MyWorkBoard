@@ -263,15 +263,19 @@ public class LlmGateway {
 
     public record ChatResponse(String content, String provider, boolean configured, String sessionId,
                                TokenUsage usage, long durationMs, long firstTokenMs,
-                               List<ModelExecution> modelExecutions, List<ToolExecution> toolExecutions) {
+                               List<ModelExecution> modelExecutions, List<ToolExecution> toolExecutions,
+                               List<ActionRequest> actions) {
         public ChatResponse(String content, String provider, boolean configured) {
-            this(content, provider, configured, null, TokenUsage.empty(), 0, 0, List.of(), List.of());
+            this(content, provider, configured, null, TokenUsage.empty(), 0, 0, List.of(), List.of(), List.of());
         }
 
         public ChatResponse(String content, String provider, boolean configured, String sessionId) {
-            this(content, provider, configured, sessionId, TokenUsage.empty(), 0, 0, List.of(), List.of());
+            this(content, provider, configured, sessionId, TokenUsage.empty(), 0, 0, List.of(), List.of(), List.of());
         }
     }
+
+    public record ActionRequest(String status, String summary, JsonNode structuredContent,
+                                String actionId, String expiresAt) { }
 
     public record TokenUsage(long inputTokens, long outputTokens, long totalTokens,
                              long cacheHitTokens, long cacheMissTokens, long reasoningTokens) {
