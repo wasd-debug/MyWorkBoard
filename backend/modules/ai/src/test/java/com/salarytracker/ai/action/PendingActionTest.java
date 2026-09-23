@@ -38,6 +38,19 @@ class PendingActionTest {
     }
 
     @Test
+    void waitingInputCanBeCancelledButNotDenied() {
+        PendingAction action = PendingAction.create(7L, "ledger.transaction.create", 1, "{}", null,
+                Instant.now().plusSeconds(60));
+        PendingAction waiting = action.transition(ActionStatus.PLANNING, Instant.now())
+                .transition(ActionStatus.WAITING_INPUT, Instant.now());
+
+        assertEquals(ActionStatus.CANCELLED,
+                waiting.transition(ActionStatus.CANCELLED, Instant.now()).status());
+        assertThrows(IllegalStateException.class,
+                () -> waiting.transition(ActionStatus.DENIED, Instant.now()));
+    }
+
+    @Test
     void expiresBeforeAnyFurtherTransition() {
         PendingAction action = PendingAction.create(7L, "ledger.transaction.create", 1, "{}", null,
                 Instant.now().minusSeconds(1));

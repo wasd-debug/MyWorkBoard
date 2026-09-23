@@ -25,5 +25,6 @@ export interface ModelUsageView {
     'reasoningTokens'?: number;
     'totalTokens'?: number;
     'currency'?: string;
+    'pricingTier'?: string;
     'estimatedCost'?: number;
 }

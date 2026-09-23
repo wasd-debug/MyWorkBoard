@@ -74,7 +74,10 @@ public class PendingActionService {
 
     @Transactional
     public PendingAction reject(String id, long userId) {
-        return transition(id, userId, ActionStatus.DENIED);
+        PendingAction current = getForUser(id, userId);
+        ActionStatus next = current.status() == ActionStatus.WAITING_INPUT
+                ? ActionStatus.CANCELLED : ActionStatus.DENIED;
+        return transition(id, userId, next);
     }
 
     @Transactional

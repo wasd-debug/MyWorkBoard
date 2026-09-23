@@ -135,16 +135,24 @@
                     <em>{{ actionStatusLabel(action) }}</em>
                   </header>
                   <form v-if="action.status === 'NEEDS_INPUT' && !action.uiStatus" class="agent-action-form" @submit.prevent="answerAction(item, action)">
-                    <label v-for="field in action.structuredContent?.fields || []" :key="field.name">
+                    <label v-for="field in action.structuredContent?.fields || []" :key="field.name" :class="{ 'entity-picker-field': field.type === 'entity-picker' }">
                       <span>{{ field.label }}<i v-if="field.required">必填</i></span>
-                      <select v-if="['select', 'entity-picker'].includes(field.type)" :value="actionFieldValue(action, field.name)" :required="field.required" @change="setActionField(action, field.name, $event.target.value)">
+                      <select v-if="field.type === 'select'" :value="actionFieldValue(action, field.name)" :required="field.required" @change="setActionField(action, field.name, $event.target.value)">
                         <option value="">请选择</option>
                         <option v-for="option in field.options || []" :key="option.value" :value="option.value">{{ option.label }}</option>
                       </select>
+                      <div v-else-if="field.type === 'entity-picker'" class="agent-entity-picker" @keydown.esc="closeEntityPicker(action, field)">
+                        <input type="search" autocomplete="off" :placeholder="`输入${field.label}名称筛选`" :value="entityPickerText(action, field)" :required="field.required && !actionFieldValue(action, field.name)" role="combobox" :aria-label="`${field.label}筛选`" aria-autocomplete="list" :aria-expanded="isEntityPickerOpen(action, field)" @focus="openEntityPicker(action, field)" @input="searchEntityPicker(action, field, $event.target.value)" />
+                        <button v-if="actionFieldValue(action, field.name)" type="button" :aria-label="`清除${field.label}`" @click="clearEntityPicker(action, field)"><X /></button>
+                        <div v-if="isEntityPickerOpen(action, field)" class="agent-entity-options" role="listbox" :aria-label="`${field.label}候选项`">
+                          <button v-for="option in filteredEntityOptions(action, field)" :key="option.value" type="button" role="option" :aria-selected="actionFieldValue(action, field.name) === option.value" @pointerdown.prevent="selectEntityOption(action, field, option)"><Check v-if="actionFieldValue(action, field.name) === option.value" /><span>{{ option.label }}</span></button>
+                          <p v-if="!filteredEntityOptions(action, field).length">没有匹配项</p>
+                        </div>
+                      </div>
                       <textarea v-else-if="field.type === 'textarea'" :value="actionFieldValue(action, field.name)" rows="2" :required="field.required" @input="setActionField(action, field.name, $event.target.value)"></textarea>
                       <input v-else :type="actionInputType(field.type)" :step="field.type === 'money' ? '0.01' : field.type === 'number' ? '1' : undefined" :min="field.type === 'money' ? '0.01' : undefined" :value="actionFieldValue(action, field.name)" :required="field.required" @input="setActionField(action, field.name, $event.target.value)" />
                     </label>
-                    <footer><button type="button" @click="rejectAction(action)">取消</button><button class="primary" type="submit" :disabled="action.busy">{{ action.busy ? '正在生成预览…' : '生成预览' }}</button></footer>
+                    <footer><button type="button" @click="rejectAction(action)">取消</button><button class="primary" type="submit" :disabled="action.busy || !actionFormComplete(action)">{{ action.busy ? '正在生成预览…' : '生成预览' }}</button></footer>
                   </form>
                   <div v-else-if="action.status === 'NEEDS_CONFIRMATION' && !action.uiStatus" class="agent-confirmation-summary">
                     <dl>
@@ -242,8 +250,9 @@
             <button class="chat-icon-button" type="button" title="上传图片" aria-label="上传图片" @click="imageInput?.click()"><ImageIcon /></button>
             <button class="chat-icon-button" :class="{ recording }" type="button" :title="recording ? '停止录音' : '语音输入'" :aria-label="recording ? '停止录音' : '语音输入'" @click="toggleRecording"><Square v-if="recording" /><Mic v-else /></button>
             <span v-if="recording" class="recording-label"><i></i>正在录音</span>
-            <label v-if="store.authUser && !store.offlineSession" class="composer-model-picker" :title="turnRunning || activeQueuedPrompts.length ? '队列非空时不能切换模型' : '切换当前会话模型'">
+            <label v-if="store.authUser && !store.offlineSession" class="composer-model-picker" :title="turnRunning || activeQueuedPrompts.length ? '队列非空时不能切换模型' : `当前模型：${activeModelName}`">
               <Sparkles aria-hidden="true" />
+              <span aria-hidden="true">{{ compactModelName(activeModelName) }}</span>
               <select :value="activeConversation?.modelConnectionId || defaultModelId" aria-label="当前会话模型" :disabled="turnRunning || activeQueuedPrompts.length > 0" @change="changeConversationModel">
                 <option v-for="item in modelConnections" :key="item.id" :value="item.id">{{ item.displayName }}{{ item.isDefault ? ' · 默认' : '' }}</option>
               </select>
@@ -283,6 +292,7 @@ const sessionGroups = ref([]), collapsedGroups = ref({}), groupName = ref(''), g
 const queuedPrompts = ref([]), queueRevisions = ref({}), turnRunning = ref(false), draggedQueueId = ref(''), queueDropIndex = ref(-1)
 const modelConnections = ref([])
 const draggedConversationId = ref(''), conversationDropTarget = ref('')
+const entityPickerState = ref({})
 let mediaRecorder = null, mediaStream = null, recordingStartedAt = 0, activeTurnController = null, conversationCreationPromise = null, queuePollTimer = null, lastMessageScrollTop = 0, programmaticScroll = false, userPausedFollow = false
 const queuePresence = new Map()
 const historyKey = computed(() => `workspace_ai_conversations_v1:${store.accountScope || 'local'}`)
@@ -292,6 +302,7 @@ const activeMessages = computed(() => activeConversation.value?.messages || [])
 const canSubmit = computed(() => Boolean(prompt.value.trim() || attachments.value.length))
 const activeQueuedPrompts = computed(() => queuedPrompts.value.filter(item => item.conversationId === activeId.value))
 const defaultModelId = computed(() => modelConnections.value.find(item => item.isDefault)?.id || modelConnections.value[0]?.id || '')
+const activeModelName = computed(() => modelConnections.value.find(item => item.id === (activeConversation.value?.modelConnectionId || defaultModelId.value))?.displayName || '选择模型')
 const conversationMenuStyle = computed(() => ({ left: `${conversationMenu.value.x}px`, top: `${conversationMenu.value.y}px` }))
 const groupMenuStyle = computed(() => ({ left: `${groupMenu.value.x}px`, top: `${groupMenu.value.y}px` }))
 const conversationSections = computed(() => {
@@ -319,7 +330,7 @@ function responseFields(value = {}) { return { usage: value.usage, durationMs: v
 function inferRoute(text) { if (/工时|打卡|上班|下班/.test(text)) return { route: '/punch', routeLabel: '工时' }; if (/报表/.test(text)) return { route: '/ledger/reports', routeLabel: '账本报表' }; if (/流水/.test(text)) return { route: '/ledger/transactions', routeLabel: '账本流水' }; if (/记账|支出|收入|账本/.test(text)) return { route: '/ledger', routeLabel: '账本' }; return {} }
 function assistantRoute(role, text) { return role === 'assistant' ? inferRoute(text) : {} }
 function loadLocalConversations() { try { conversations.value = JSON.parse(localStorage.getItem(historyKey.value) || '[]').map(item => ({ ...item, messages: (item.messages || []).map(row => { const normalized = { ...row, typing: false }; if (row.role !== 'assistant') { delete normalized.route; delete normalized.routeLabel } return normalized }) })) } catch { conversations.value = [] }; activeId.value = conversations.value[0]?.id || '' }
-async function loadMessages(id, forceScroll = false) { const target = conversations.value.find(item => item.id === id); if (!target) return; const rows = await apiListAgentMessages(id); target.messages = (rows || []).map(row => { const metadata = row.role === 'assistant' ? parseMetadata(row.metadataJson) : {}; return { id: `server-${row.id}`, turnId: row.turnId, role: row.role, content: row.content, createdAt: row.createdAt, typing: false, status: metadata.status || 'COMPLETED', ...responseFields(metadata), ...assistantRoute(row.role, row.content) } }); await reconcileActionStates(target.messages); persist(); if (forceScroll) await scrollToBottom(true); else await scrollToBottom() }
+async function loadMessages(id, forceScroll = false) { const target = conversations.value.find(item => item.id === id); if (!target) return; const rows = await apiListAgentMessages(id); target.messages = (rows || []).map(row => { const metadata = row.role === 'assistant' ? parseMetadata(row.metadataJson) : {}; return { id: `server-${row.id}`, turnId: row.turnId, role: row.role, content: row.content, createdAt: row.createdAt, typing: false, status: metadata.status || 'COMPLETED', ...responseFields(metadata), ...assistantRoute(row.role, row.content) } }); await reconcileActionStates(target.messages); await hydrateMessageTraces(target.messages); persist(); if (forceScroll) await scrollToBottom(true); else await scrollToBottom() }
 async function reconcileActionStates(messages) { const actions = messages.flatMap(item => item.actions || []); await Promise.all(actions.map(async action => { try { const state = await apiGetAgentAction(action.actionId); if (!['WAITING_INPUT', 'WAITING_CONFIRMATION', 'APPROVED'].includes(state.status)) action.uiStatus = state.status } catch { action.uiStatus ||= 'EXPIRED' } })) }
 function normalizeQueueItem(item) { return { id: item.id, conversationId: item.sessionId, text: item.userMessage, status: item.status, createdAt: item.createdAt, retryOfTurnId: item.retryOfTurnId } }
 async function loadQueue(id) { if (!id || !store.authUser || store.offlineSession) return; const queue = await apiListAgentQueue(id); queueRevisions.value = { ...queueRevisions.value, [id]: Number(queue?.revision || 0) }; const others = queuedPrompts.value.filter(item => item.conversationId !== id); queuedPrompts.value = [...others, ...(queue?.items || []).map(normalizeQueueItem)]; if (id === activeId.value) turnRunning.value = activeQueuedPrompts.value.some(item => item.status !== 'QUEUED') }
@@ -384,6 +395,7 @@ function formatMessageTime(value) { return new Intl.DateTimeFormat('zh-CN', { ho
 function formatNumber(value) { return new Intl.NumberFormat('zh-CN').format(Number(value || 0)) }
 function formatDuration(value) { const ms = Math.max(0, Number(value || 0)); if (ms < 1000) return `${ms}ms`; if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`; return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s` }
 function formatCost(value, currency = 'CNY') { const amount = Number(value || 0); return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: currency || 'CNY', minimumFractionDigits: amount < 0.01 ? 6 : 2, maximumFractionDigits: 8 }).format(amount) }
+function compactModelName(value) { const name = String(value || '模型').trim(); if (name === '系统环境配置') return '环境模型'; return name.length > 7 ? `${name.slice(0, 7)}…` : name }
 function pricingTierLabel(value) { return value === 'PEAK' ? '高峰' : value === 'OFF_PEAK' ? '空闲' : '固定价' }
 function replyTokens(usage) { return Math.max(0, Number(usage?.outputTokens || 0) - Number(usage?.reasoningTokens || 0)) }
 function cacheHitRate(usage) { const hit = Number(usage?.cacheHitTokens || 0), miss = Number(usage?.cacheMissTokens || 0); return hit + miss ? Math.round(hit / (hit + miss) * 100) : 0 }
@@ -393,6 +405,18 @@ function actionStatusLabel(action) { return ({ NEEDS_INPUT: '待补充', NEEDS_C
 function actionFieldValue(action, name) { const value = action.form?.[name]; return value == null ? '' : value }
 function setActionField(action, name, value) { action.form ||= {}; action.form[name] = value }
 function actionInputType(type) { return ({ money: 'number', number: 'number', date: 'date', time: 'time' })[type] || 'text' }
+function actionFormComplete(action) { return (action.structuredContent?.fields || []).every(field => !field.required || String(actionFieldValue(action, field.name)).trim()) }
+function entityPickerKey(action, field) { return `${action.actionId}:${field.name}` }
+function entityPickerEntry(action, field) { const key = entityPickerKey(action, field), selected = (field.options || []).find(option => option.value === actionFieldValue(action, field.name)); return entityPickerState.value[key] || { query: selected?.label || '', open: false } }
+function updateEntityPicker(action, field, patch) { const key = entityPickerKey(action, field); entityPickerState.value = { ...entityPickerState.value, [key]: { ...entityPickerEntry(action, field), ...patch } } }
+function entityPickerText(action, field) { return entityPickerEntry(action, field).query }
+function isEntityPickerOpen(action, field) { return entityPickerEntry(action, field).open }
+function openEntityPicker(action, field) { updateEntityPicker(action, field, { open: true }) }
+function closeEntityPicker(action, field) { updateEntityPicker(action, field, { open: false }) }
+function searchEntityPicker(action, field, query) { setActionField(action, field.name, ''); updateEntityPicker(action, field, { query, open: true }) }
+function selectEntityOption(action, field, option) { setActionField(action, field.name, option.value); updateEntityPicker(action, field, { query: option.label, open: false }) }
+function clearEntityPicker(action, field) { setActionField(action, field.name, ''); updateEntityPicker(action, field, { query: '', open: true }) }
+function filteredEntityOptions(action, field) { const query = entityPickerText(action, field).trim().toLocaleLowerCase(); return (field.options || []).filter(option => !query || String(option.label || '').toLocaleLowerCase().includes(query)) }
 function actionPreviewRows(action) {
   const preview = action.structuredContent?.preview || {}
   if (action.structuredContent?.actionType === 'worktime.record.create') return [
@@ -413,7 +437,7 @@ async function answerAction(item, action) {
   } catch (error) { message.error(error?.response?.data?.detail || '无法生成操作预览') }
   finally { action.busy = false }
 }
-async function rejectAction(action) { action.busy = true; try { await apiRejectAgentAction(action.actionId); action.uiStatus = 'DENIED'; action.resultSummary = '已取消，本次未写入任何数据'; persist() } catch (error) { message.error(error?.response?.data?.detail || '取消失败') } finally { action.busy = false } }
+async function rejectAction(action) { action.busy = true; try { const result = await apiRejectAgentAction(action.actionId); action.uiStatus = result.status || (action.status === 'NEEDS_INPUT' ? 'CANCELLED' : 'DENIED'); action.resultSummary = '已取消，本次未写入任何数据'; persist() } catch (error) { message.error(error?.response?.data?.detail || '取消失败') } finally { action.busy = false } }
 async function confirmAction(item, action) {
   action.busy = true
   try {
@@ -433,6 +457,7 @@ async function confirmAction(item, action) {
 async function copyMessage(item) { try { await navigator.clipboard.writeText(item.content || '') } catch { const area = document.createElement('textarea'); area.value = item.content || ''; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove() }; copiedId.value = item.id; window.setTimeout(() => { if (copiedId.value === item.id) copiedId.value = '' }, 1600) }
 function handleMetaToggle(event) { const current = event.currentTarget; if (!current.open) return; current.closest('.message-meta')?.querySelectorAll('details[open]').forEach(detail => { if (detail !== current) detail.open = false }) }
 function closeMetaPopovers(event) {
+  if (!event.target.closest?.('.agent-entity-picker')) entityPickerState.value = Object.fromEntries(Object.entries(entityPickerState.value).map(([key, value]) => [key, { ...value, open: false }]))
   document.querySelectorAll('.message-meta details[open]').forEach(detail => { if (!detail.contains(event.target)) detail.open = false })
   const insideMenu = event.target.closest?.('.conversation-context-menu')
   const menuTrigger = event.target.closest?.('[aria-haspopup="menu"]')
@@ -475,6 +500,7 @@ function handleMessageScroll() {
 }
 function createReplyPlaceholder(conversation) { const reply = { id: uid(), role: 'assistant', content: '', createdAt: Date.now(), typing: true, status: 'RECEIVED', toolExecutions: [] }; conversation.messages.push(reply); persist(); scrollToBottom(); return conversation.messages.at(-1) }
 async function hydrateTrace(target) { if (!target?.turnId || !store.authUser || store.offlineSession) return; try { const trace = await apiGetAgentTrace(target.turnId); const usage = (trace.modelExecutions || []).reduce((sum, row) => ({ inputTokens: sum.inputTokens + Number(row.inputTokens || 0), outputTokens: sum.outputTokens + Number(row.outputTokens || 0), cacheHitTokens: sum.cacheHitTokens + Number(row.cacheHitTokens || 0), cacheMissTokens: sum.cacheMissTokens + Number(row.cacheMissTokens || 0), reasoningTokens: sum.reasoningTokens + Number(row.reasoningTokens || 0), totalTokens: sum.totalTokens + Number(row.totalTokens || 0) }), { inputTokens: 0, outputTokens: 0, cacheHitTokens: 0, cacheMissTokens: 0, reasoningTokens: 0, totalTokens: 0 }); Object.assign(target, { usage, durationMs: trace.totalDurationMs, firstTokenMs: trace.firstTokenMs, modelName: trace.modelName, providerType: trace.providerType, currency: trace.currency, estimatedCost: trace.estimatedCost, modelExecutions: trace.modelExecutions || [], toolExecutions: trace.toolExecutions || [] }); persist() } catch { /* Trace is optional and must never hide the answer. */ } }
+async function hydrateMessageTraces(messages) { await Promise.all((messages || []).filter(item => item.role === 'assistant' && item.turnId && item.status === 'COMPLETED').map(item => hydrateTrace(item))) }
 function applyReply(target, response) { const existingActions = target.actions || [], fields = responseFields(response); if (!fields.actions.length && existingActions.length) fields.actions = existingActions; Object.assign(target, fields, inferRoute(response.content || ''), { content: response.content || '模型没有返回可显示的内容，请稍后重试。', typing: false, status: 'COMPLETED' }); persist(); hydrateTrace(target); scrollToBottom() }
 async function recoverTurn(target) { for (let attempt = 0; attempt < 4; attempt++) { try { const turn = await apiGetAgentTurn(target.turnId); target.status = turn.status; if (turn.status === 'COMPLETED' && turn.responseJson) { applyReply(target, parseMetadata(turn.responseJson)); return true }; if (['FAILED', 'CANCELLED'].includes(turn.status)) { target.content = turn.errorMessage || (turn.status === 'CANCELLED' ? '本轮对话已取消。' : 'Agent 执行失败。'); target.typing = false; persist(); return true } } catch { /* bounded recovery */ }; await new Promise(resolve => window.setTimeout(resolve, 500 * (attempt + 1))) }; target.content ||= '响应连接已中断，后台仍可能在执行。刷新页面后可恢复已完成消息。'; target.typing = false; persist(); return false }
 async function ensureConversation(text, pendingAttachments) {

@@ -241,3 +241,16 @@ test('mobile module menu order persists and active overflow items stay reachable
   await page.goto('/ledger/manage?view=audit')
   await expect(page.getByRole('navigation', { name: '账本移动端二级导航' }).getByRole('button', { name: '操作日志' })).toHaveAttribute('aria-current', 'page')
 })
+
+test('mobile header keeps theme sync settings and account shortcuts', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile-375-chromium')
+  const auth = await registerUser(page.request, 'mobile-header-actions-e2e')
+  await selectLedgerBeforeLoad(page, auth.user.id, 'mobile-header-placeholder')
+  await page.goto('/')
+  const header = page.locator('.workspace-topbar')
+  for (const name of ['切换配色风格', '帮助中心', '设置', '退出登录']) {
+    await expect(header.getByRole(name === '设置' ? 'link' : 'button', { name })).toBeVisible()
+  }
+  const metrics = await header.evaluate(element => ({ scrollWidth: element.scrollWidth, clientWidth: element.clientWidth }))
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth)
+})

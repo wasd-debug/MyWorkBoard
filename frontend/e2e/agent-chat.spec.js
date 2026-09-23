@@ -9,6 +9,13 @@ const response = {
   toolExecutions: [{ name: 'ledger.books.list', status: 'COMPLETED', summary: '当前可访问 1 个账本', durationMs: 21 }],
 }
 
+const trace = {
+  turnId: 'turn-1', status: 'COMPLETED', providerType: 'DEEPSEEK', modelName: 'deepseek-chat',
+  totalDurationMs: 1834, firstTokenMs: 212, totalTokens: 1336, currency: 'CNY', estimatedCost: 0.00318,
+  modelExecutions: [{ round: 1, durationMs: 1600, firstTokenMs: 190, inputTokens: 1250, outputTokens: 86, cacheHitTokens: 900, cacheMissTokens: 350, reasoningTokens: 26, totalTokens: 1336, currency: 'CNY', pricingTier: 'OFF_PEAK', estimatedCost: 0.00318 }],
+  toolExecutions: response.toolExecutions.map((item, index) => ({ sequence: index + 1, ...item })),
+}
+
 async function setupAgent(page, name, options = {}) {
   const auth = await registerUser(page.request, name)
   await markSessionBeforeLoad(page, auth.user.id)
@@ -79,6 +86,10 @@ async function setupAgent(page, name, options = {}) {
     return route.fallback()
   })
   await page.route('**/api/v1/agent/sessions/*/messages', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: messages }) }))
+  await page.route('**/api/v1/agent/turns/*/trace', route => {
+    const turnId = new URL(route.request().url()).pathname.split('/').at(-2)
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ...trace, turnId } }) })
+  })
   await page.route('**/api/v1/agent/sessions/*/turns', async route => {
     const body = route.request().postDataJSON()
     const createdAt = new Date().toISOString()
@@ -156,11 +167,19 @@ test('streams the first reply and exposes detailed observability', async ({ page
     await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:14173' })
   }
   await page.goto('/')
+  const modelPicker = page.locator('.composer-model-picker')
+  await expect(modelPicker).toBeVisible()
+  const modelPickerBox = await modelPicker.boundingBox()
+  expect(modelPickerBox.width).toBeLessThanOrEqual(108)
+  expect(modelPickerBox.height).toBeLessThanOrEqual(30)
   await page.getByLabel('给 AI 发送消息').fill('我有哪些账本？')
   await page.getByRole('button', { name: '发送' }).click()
   await expect(page.locator('.message-markdown strong')).toHaveText('默认账本')
   await expect(page.locator('.chat-message.user').getByRole('button', { name: /进入/ })).toHaveCount(0)
   await expect(page.locator('.chat-message.assistant').getByRole('button', { name: '进入账本' })).toBeVisible()
+  await expect(page.getByText('费用 ¥0.003180')).toBeVisible()
+  await page.getByText('费用 ¥0.003180').click()
+  await expect(page.getByText('模型调用 1 · 空闲')).toBeVisible()
   await expect(page.getByText('1,336 Tokens')).toBeVisible()
   await page.getByText('1,336 Tokens').click()
   await expect(page.getByText('缓存未命中')).toBeVisible()
@@ -168,7 +187,7 @@ test('streams the first reply and exposes detailed observability', async ({ page
   await expect(page.getByText('输入缓存命中率 72%')).toBeVisible()
   await page.locator('.timing-details > summary').click()
   await expect(page.getByText('首字时延')).toBeVisible()
-  await expect(page.getByText('模型调用 1')).toBeVisible()
+  await expect(page.locator('.timing-popover').getByText('模型调用 1', { exact: true })).toBeVisible()
   await expect(page.locator('.timing-popover').getByText('查询账本', { exact: true })).toBeVisible()
   await page.locator('.chat-workspace-head').click()
   await expect(page.getByText('首字时延')).toBeHidden()
@@ -194,10 +213,54 @@ test('restores server sessions and completed messages after refresh', async ({ p
   await expect(page.locator('.message-markdown strong')).toHaveText('默认账本')
   await expect(page.locator('.chat-message.user').getByRole('button', { name: /进入/ })).toHaveCount(0)
   await expect(page.locator('.chat-message.assistant').getByRole('button', { name: '进入账本' })).toBeVisible()
+  await expect(page.getByText('费用 ¥0.003180')).toBeVisible()
   await page.reload()
   await expect(page.locator('.chat-workspace-head').getByText('历史账本查询', { exact: true })).toBeVisible()
   await expect(page.getByText('1,336 Tokens')).toBeVisible()
+  await expect(page.getByText('费用 ¥0.003180')).toBeVisible()
   await expect(page.locator('.chat-message.user').getByRole('button', { name: /进入/ })).toHaveCount(0)
+})
+
+test('filters account and category action fields by typing', async ({ page }) => {
+  const now = new Date().toISOString()
+  const action = {
+    status: 'NEEDS_INPUT', summary: '请补充记账所需信息', actionId: 'action-ledger-1', expiresAt: now,
+    structuredContent: {
+      actionType: 'ledger.transaction.create',
+      input: { bookId: 'book-1', kind: 'EXPENSE', amount: 29.9, accountId: null, categoryId: null, occurredOn: '2026-09-23', note: '买梯子' },
+      fields: [
+        { name: 'accountId', label: '账户', type: 'entity-picker', required: true, options: [{ value: 'cash', label: '现金' }, { value: 'boc', label: '中行卡' }] },
+        { name: 'categoryId', label: '二级分类', type: 'entity-picker', required: true, options: [{ value: 'meal', label: '午餐' }, { value: 'software', label: '软件' }] },
+      ],
+    },
+  }
+  await setupAgent(page, 'agent-entity-picker-e2e', {
+    sessions: [{ id: 'session-1', title: '记账补充', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [
+      { id: 1, turnId: 'turn-action', role: 'user', content: '帮我记账', metadataJson: null, createdAt: now },
+      { id: 2, turnId: 'turn-action', role: 'assistant', content: '还需要补充两个字段。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now },
+    ],
+  })
+  await page.route('**/api/v1/agent/actions/action-ledger-1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_INPUT' } }) }))
+  await page.route('**/api/v1/agent/actions/action-ledger-1/reject', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { id: 'action-ledger-1', status: 'CANCELLED' } }) }))
+  await page.goto('/')
+
+  const account = page.getByRole('combobox', { name: '账户筛选' })
+  await account.fill('中行')
+  const accountOptions = page.getByRole('listbox', { name: '账户候选项' })
+  await expect(accountOptions.getByRole('option')).toHaveCount(1)
+  await accountOptions.getByRole('option', { name: '中行卡' }).click()
+  await expect(account).toHaveValue('中行卡')
+
+  const category = page.getByRole('combobox', { name: '二级分类筛选' })
+  await category.fill('软件')
+  const categoryOptions = page.getByRole('listbox', { name: '二级分类候选项' })
+  await expect(categoryOptions.getByRole('option')).toHaveCount(1)
+  await categoryOptions.getByRole('option', { name: '软件' }).click()
+  await expect(category).toHaveValue('软件')
+  await page.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(page.getByText('已取消，本次未写入任何数据')).toBeVisible()
+  await expect(page.getByRole('combobox', { name: '账户筛选' })).toBeHidden()
 })
 
 test('falls back before the first SSE event', async ({ page }) => {

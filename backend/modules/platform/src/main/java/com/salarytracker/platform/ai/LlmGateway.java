@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -15,7 +16,10 @@ import org.springframework.web.client.RestClientResponseException;
 import java.util.List;
 import java.util.Map;
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -27,6 +31,13 @@ import java.time.Duration;
 
 @Service
 public class LlmGateway {
+    private static final String DSML_MARKER = "<|DSML|";
+    private static final Pattern DSML_INVOKE = Pattern.compile(
+            "<\\|DSML\\|invoke\\s+name=\"([^\"]+)\"\\s*>(.*?)</\\|DSML\\|invoke\\s*>",
+            Pattern.DOTALL);
+    private static final Pattern DSML_PARAMETER = Pattern.compile(
+            "<\\|DSML\\|parameter\\s+name=\"([^\"]+)\"(?:\\s+string=\"(true|false)\")?\\s*>(.*?)</\\|DSML\\|parameter\\s*>",
+            Pattern.DOTALL);
     private final ObjectMapper mapper;
     private final RestClient client;
     private final String endpoint;
@@ -85,13 +96,15 @@ public class LlmGateway {
         String body = execute(payload);
         try {
             JsonNode message = mapper.readTree(body).path("choices").path(0).path("message");
-            List<AgentToolCall> calls = new java.util.ArrayList<>();
+            List<AgentToolCall> calls = new ArrayList<>();
             for (JsonNode call : message.path("tool_calls")) {
                 calls.add(new AgentToolCall(
                         call.path("id").asText(),
                         call.path("function").path("name").asText(),
                         call.path("function").path("arguments").asText("{}")));
             }
+            String rawContent = message.path("content").asText("");
+            ParsedContent parsed = parseContent(rawContent, calls);
             JsonNode usage = mapper.readTree(body).path("usage");
             TokenUsage tokenUsage = new TokenUsage(
                     usage.path("prompt_tokens").asLong(0),
@@ -100,7 +113,7 @@ public class LlmGateway {
                     usage.path("prompt_cache_hit_tokens").asLong(0),
                     usage.path("prompt_cache_miss_tokens").asLong(0),
                     usage.path("completion_tokens_details").path("reasoning_tokens").asLong(0));
-            return new AgentTurn(message.path("content").asText(""), List.copyOf(calls), endpoint, true,
+            return new AgentTurn(parsed.content(), parsed.toolCalls(), endpoint, true,
                     tokenUsage, 0, 0);
         } catch (Exception exception) {
             throw new IllegalStateException("DeepSeek 返回了无法解析的 Agent 响应", exception);
@@ -125,6 +138,7 @@ public class LlmGateway {
         long startedAt = System.nanoTime();
         long firstTokenMs = 0;
         StringBuilder content = new StringBuilder();
+        StreamingContentFilter contentFilter = new StreamingContentFilter(contentConsumer);
         Map<Integer, ToolCallBuilder> calls = new LinkedHashMap<>();
         TokenUsage usage = TokenUsage.empty();
         try {
@@ -153,7 +167,7 @@ public class LlmGateway {
                     if (!part.isEmpty()) {
                         if (firstTokenMs == 0) firstTokenMs = elapsedMs(startedAt);
                         content.append(part);
-                        contentConsumer.accept(part);
+                        contentFilter.accept(part);
                     }
                     for (JsonNode call : delta.path("tool_calls")) {
                         int index = call.path("index").asInt(calls.size());
@@ -165,8 +179,10 @@ public class LlmGateway {
                     }
                 }
             }
-            List<AgentToolCall> toolCalls = calls.values().stream().map(ToolCallBuilder::build).toList();
-            return new AgentTurn(content.toString(), toolCalls, config.endpoint(), true, usage,
+            List<AgentToolCall> providerCalls = calls.values().stream().map(ToolCallBuilder::build).toList();
+            ParsedContent parsed = parseContent(content.toString(), providerCalls);
+            contentFilter.finish();
+            return new AgentTurn(parsed.content(), parsed.toolCalls(), config.endpoint(), true, usage,
                     elapsedMs(startedAt), firstTokenMs);
         } catch (IllegalStateException exception) {
             throw exception;
@@ -181,6 +197,50 @@ public class LlmGateway {
                 usage.path("prompt_cache_hit_tokens").asLong(0),
                 usage.path("prompt_cache_miss_tokens").asLong(0),
                 usage.path("completion_tokens_details").path("reasoning_tokens").asLong(0));
+    }
+
+    private ParsedContent parseContent(String rawContent, List<AgentToolCall> providerCalls) {
+        String content = rawContent == null ? "" : rawContent;
+        if (providerCalls != null && !providerCalls.isEmpty()) {
+            return new ParsedContent(stripDsml(content), List.copyOf(providerCalls));
+        }
+        if (!content.contains(DSML_MARKER)) return new ParsedContent(content, List.of());
+
+        List<AgentToolCall> parsedCalls = new ArrayList<>();
+        Matcher invokeMatcher = DSML_INVOKE.matcher(content);
+        int index = 0;
+        while (invokeMatcher.find()) {
+            ObjectNode arguments = mapper.createObjectNode();
+            Matcher parameterMatcher = DSML_PARAMETER.matcher(invokeMatcher.group(2));
+            while (parameterMatcher.find()) {
+                String name = decodeDsmlText(parameterMatcher.group(1)).trim();
+                String value = decodeDsmlText(parameterMatcher.group(3)).trim();
+                boolean stringValue = !"false".equalsIgnoreCase(parameterMatcher.group(2));
+                if (stringValue) {
+                    arguments.put(name, value);
+                } else {
+                    try {
+                        arguments.set(name, mapper.readTree(value));
+                    } catch (Exception ignored) {
+                        arguments.put(name, value);
+                    }
+                }
+            }
+            parsedCalls.add(new AgentToolCall("dsml-call-" + (++index),
+                    decodeDsmlText(invokeMatcher.group(1)).trim(), arguments.toString()));
+        }
+        return new ParsedContent(stripDsml(content), List.copyOf(parsedCalls));
+    }
+
+    private String stripDsml(String content) {
+        int marker = content.indexOf(DSML_MARKER);
+        return marker < 0 ? content : content.substring(0, marker).stripTrailing();
+    }
+
+    private String decodeDsmlText(String value) {
+        return value == null ? "" : value.replace("&quot;", "\"")
+                .replace("&apos;", "'").replace("&lt;", "<")
+                .replace("&gt;", ">").replace("&amp;", "&");
     }
 
     private long elapsedMs(long startedAt) {
@@ -367,6 +427,44 @@ public class LlmGateway {
 
         private AgentToolCall build() {
             return new AgentToolCall(id.toString(), name.toString(), arguments.isEmpty() ? "{}" : arguments.toString());
+        }
+    }
+
+    private record ParsedContent(String content, List<AgentToolCall> toolCalls) { }
+
+    private static final class StreamingContentFilter {
+        private final Consumer<String> consumer;
+        private final StringBuilder pending = new StringBuilder();
+        private boolean suppressing;
+
+        private StreamingContentFilter(Consumer<String> consumer) {
+            this.consumer = consumer;
+        }
+
+        private void accept(String part) {
+            if (suppressing || part == null || part.isEmpty()) return;
+            pending.append(part);
+            int marker = pending.indexOf(DSML_MARKER);
+            if (marker >= 0) {
+                emit(pending.substring(0, marker));
+                pending.setLength(0);
+                suppressing = true;
+                return;
+            }
+            int safeLength = pending.length() - (DSML_MARKER.length() - 1);
+            if (safeLength > 0) {
+                emit(pending.substring(0, safeLength));
+                pending.delete(0, safeLength);
+            }
+        }
+
+        private void finish() {
+            if (!suppressing && !pending.isEmpty()) emit(pending.toString());
+            pending.setLength(0);
+        }
+
+        private void emit(String value) {
+            if (value != null && !value.isEmpty()) consumer.accept(value);
         }
     }
 

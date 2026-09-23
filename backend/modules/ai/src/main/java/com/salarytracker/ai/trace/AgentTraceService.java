@@ -90,7 +90,8 @@ public class AgentTraceService {
                 """, (r, n) -> new ModelUsageView(r.getInt("round_no"), r.getLong("duration_ms"),
                 r.getLong("first_token_ms"), r.getLong("input_tokens"), r.getLong("output_tokens"),
                 r.getLong("cache_hit_tokens"), r.getLong("cache_miss_tokens"), r.getLong("reasoning_tokens"),
-                r.getLong("total_tokens"), r.getString("currency"), r.getBigDecimal("estimated_total_cost")),
+                r.getLong("total_tokens"), r.getString("currency"), r.getString("pricing_tier"),
+                r.getBigDecimal("estimated_total_cost")),
                 turnId, userId);
         List<ToolView> tools = jdbc.query("""
                 SELECT sequence_no,tool_name,status,result_summary,duration_ms FROM agent_tool_call
@@ -157,7 +158,7 @@ public class AgentTraceService {
     public record ModelUsageView(int round, long durationMs, long firstTokenMs, long inputTokens,
                                  long outputTokens, long cacheHitTokens, long cacheMissTokens,
                                  long reasoningTokens, long totalTokens, String currency,
-                                 BigDecimal estimatedCost) { }
+                                 String pricingTier, BigDecimal estimatedCost) { }
     public record ToolView(int sequence, String name, String status, String summary, long durationMs) { }
     public record TraceView(String turnId, String status, String providerType, String modelName,
                             long totalDurationMs, long firstTokenMs, long totalTokens, String currency,
