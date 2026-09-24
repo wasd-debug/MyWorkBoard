@@ -132,9 +132,9 @@
                   <span><b>{{ pendingLedgerActions(item).length }} 笔待处理</b><small>支出合计 {{ batchAmount(item, 'EXPENSE') }} · 收入合计 {{ batchAmount(item, 'INCOME') }}</small></span>
                   <div><button type="button" :disabled="item.batchBusy" @click="rejectAllActions(item)">全部取消</button><button class="primary" type="button" :disabled="item.batchBusy || !allLedgerActionsConfirmable(item)" @click="confirmAllActions(item)">{{ item.batchBusy ? '正在处理…' : '全部确认' }}</button></div>
                 </div>
-                <section v-for="action in item.actions || []" :key="action.actionId" class="agent-action-card" :class="`state-${action.uiStatus || action.status}`">
+                <section v-for="action in item.actions || []" :key="action.actionId" class="agent-action-card" :class="[`state-${action.uiStatus || action.status}`, { destructive: actionIsDelete(action) }]">
                   <header>
-                    <span><ClipboardCheck /></span>
+                    <span><Trash2 v-if="actionIsDelete(action)" /><ClipboardCheck v-else /></span>
                     <div><b>{{ action.summary }}</b><small>{{ actionTypeLabel(action) }}</small></div>
                     <em>{{ actionStatusLabel(action) }}</em>
                   </header>
@@ -166,8 +166,9 @@
                     <dl>
                       <template v-for="row in actionPreviewRows(action)" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template>
                     </dl>
-                    <p><ShieldCheck />确认后才会写入业务数据；重复点击不会重复创建。</p>
-                    <footer><button v-if="action.structuredContent?.fields?.length" type="button" @click="editAction(action)">返回编辑</button><button type="button" @click="rejectAction(action)">取消</button><button class="primary" type="button" :disabled="action.busy" @click="confirmAction(item, action)">{{ action.busy ? '正在保存…' : '确认并保存' }}</button></footer>
+                    <div v-if="action.structuredContent?.effects?.length" class="agent-action-effects" aria-label="操作影响"><strong>删除影响</strong><ul><li v-for="effect in action.structuredContent.effects" :key="effect">{{ effect }}</li></ul></div>
+                    <p><ShieldCheck />{{ actionIsDelete(action) ? '确认后才会执行删除；提交前会再次校验记录版本。' : '确认后才会写入业务数据；重复点击不会重复创建。' }}</p>
+                    <footer><button v-if="action.structuredContent?.fields?.length" type="button" @click="editAction(action)">返回编辑</button><button type="button" @click="rejectAction(action)">取消</button><button :class="actionIsDelete(action) ? 'danger' : 'primary'" type="button" :disabled="action.busy" @click="confirmAction(item, action)">{{ action.busy ? (actionIsDelete(action) ? '正在删除…' : '正在保存…') : (actionIsDelete(action) ? '确认删除' : '确认并保存') }}</button></footer>
                   </div>
                   <div v-else class="agent-action-result">
                     <CheckCircle2 v-if="action.uiStatus === 'COMPLETED'" />
@@ -428,8 +429,9 @@ function compactModelName(value) { const name = String(value || '模型').trim()
 function pricingTierLabel(value) { return value === 'PEAK' ? '高峰' : value === 'OFF_PEAK' ? '空闲' : '固定价' }
 function replyTokens(usage) { return Math.max(0, Number(usage?.outputTokens || 0) - Number(usage?.reasoningTokens || 0)) }
 function cacheHitRate(usage) { const hit = Number(usage?.cacheHitTokens || 0), miss = Number(usage?.cacheMissTokens || 0); return hit + miss ? Math.round(hit / (hit + miss) * 100) : 0 }
-function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledger.overview': '查询账本概览', 'ledger.transactions.search': '查询账本流水', 'ledger.transaction.history': '查询流水历史', 'ledger.transaction.update.prepare': '准备修改流水', 'ledger.reports.summary': '生成账本报表', 'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置', 'worktime.records.search': '查询工时记录', 'worktime.record.update.prepare': '准备修改工时' })[name] || name }
-function actionTypeLabel(action) { return ({ 'worktime.record.create': '新增工时', 'worktime.record.update': '修改工时', 'ledger.transaction.update': '修改流水' })[action.structuredContent?.actionType] || '单笔记账' }
+function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledger.overview': '查询账本概览', 'ledger.transactions.search': '查询账本流水', 'ledger.transaction.history': '查询流水历史', 'ledger.transaction.update.prepare': '准备修改流水', 'ledger.transaction.delete.prepare': '准备删除流水', 'ledger.reports.summary': '生成账本报表', 'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置', 'worktime.records.search': '查询工时记录', 'worktime.record.update.prepare': '准备修改工时', 'worktime.record.delete.prepare': '准备删除工时' })[name] || name }
+function actionTypeLabel(action) { return ({ 'worktime.record.create': '新增工时', 'worktime.record.update': '修改工时', 'worktime.record.delete': '删除工时', 'ledger.transaction.update': '修改流水', 'ledger.transaction.delete': '删除流水' })[action.structuredContent?.actionType] || '单笔记账' }
+function actionIsDelete(action) { return action.structuredContent?.actionType?.endsWith('.delete') }
 function actionStatusLabel(action) { return ({ NEEDS_INPUT: '待补充', NEEDS_CONFIRMATION: '待确认', COMPLETED: '已完成', DENIED: '已拒绝', CONFLICT: '有冲突', FAILED: '失败', EXPIRED: '已过期' })[action.uiStatus || action.status] || action.uiStatus || action.status }
 function actionFieldValue(action, name) { const value = action.form?.[name]; return value == null ? '' : value }
 function setActionField(action, name, value) {
@@ -464,9 +466,10 @@ function clearEntityPicker(action, field) { setActionField(action, field.name, '
 function filteredEntityOptions(action, field) { const query = entityPickerText(action, field).trim().toLocaleLowerCase(); return (field.options || []).filter(option => field.name !== 'categoryId' || !option.kind || option.kind === actionFieldValue(action, 'kind')).filter(option => !query || String(option.label || '').toLocaleLowerCase().includes(query)) }
 function actionPreviewRows(action) {
   const preview = action.structuredContent?.preview || {}
-  if (['worktime.record.create', 'worktime.record.update'].includes(action.structuredContent?.actionType)) return [
+  if (['worktime.record.create', 'worktime.record.update', 'worktime.record.delete'].includes(action.structuredContent?.actionType)) return [
     ['日期', preview.date], ['开始', preview.start], ['结束', preview.end || '尚未下班'], ['休息', `${preview.restMin ?? preview.rest ?? 0} 分钟`],
-    ['工时', preview.workMin != null ? `${preview.workMin} 分钟` : null], ['加班', preview.overtimeMin != null ? `${preview.overtimeMin} 分钟` : null]
+    ['工时', preview.workMin != null ? `${preview.workMin} 分钟` : null], ['加班', preview.overtimeMin != null ? `${preview.overtimeMin} 分钟` : null],
+    ['实际时薪', preview.realHourlyWage != null ? `¥${Number(preview.realHourlyWage).toFixed(2)}` : null], ['备注', preview.note]
   ].filter(row => row[1] != null).map(([label, value]) => ({ label, value }))
   return [
     ['类型', preview.kind === 'INCOME' ? '收入' : '支出'], ['金额', preview.amount != null ? `¥${Number(preview.amount).toFixed(2)}` : null],

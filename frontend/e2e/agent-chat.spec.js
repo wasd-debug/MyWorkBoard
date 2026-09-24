@@ -413,6 +413,66 @@ test('shows worktime update derived differences without horizontal overflow', as
   expect(fitsViewport).toBe(true)
 })
 
+test('confirms a destructive ledger deletion only after showing its full impact', async ({ page }) => {
+  const now = new Date().toISOString()
+  const action = {
+    status: 'NEEDS_CONFIRMATION', summary: '请确认删除这笔流水', actionId: 'delete-ledger-1', expiresAt: now,
+    structuredContent: {
+      actionType: 'ledger.transaction.delete',
+      input: { bookId: 'book-1', transactionId: 'transaction-1' },
+      preview: { kind: 'EXPENSE', amount: 29.9, accountName: '现金', categoryPath: '餐饮 / 午餐', merchantName: '中转站', memberName: '我', projectName: '个人成长', occurredOn: '2026-09-24', note: '午餐' },
+      effects: ['该流水将从账本列表、报表和统计中移除', '对应账户余额和本地账本投影将重新计算', '删除会进入现有回收站和审计链路，不会立即永久清除'],
+    },
+  }
+  const calls = []
+  await setupAgent(page, 'agent-delete-ledger-card', {
+    sessions: [{ id: 'session-1', title: '删除流水', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [{ id: 1, turnId: 'turn-delete-ledger', role: 'assistant', content: '已找到唯一流水。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now }],
+  })
+  await page.route('**/api/v1/agent/actions/delete-ledger-1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_CONFIRMATION' } }) }))
+  await page.route('**/api/v1/agent/actions/delete-ledger-1/approve', route => { calls.push('approve'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'APPROVED' } }) }) })
+  await page.route('**/api/v1/agent/actions/delete-ledger-1/commit', route => { calls.push('commit'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'COMPLETED', summary: '账本流水已删除', structuredContent: { id: 'transaction-1', deleted: true } } }) }) })
+  await page.goto('/')
+
+  const card = page.locator('.agent-action-card.destructive')
+  await expect(card).toContainText('餐饮 / 午餐')
+  await expect(card).toContainText('中转站')
+  await expect(card.getByLabel('操作影响')).toContainText('账户余额')
+  await expect(card.getByRole('button', { name: '确认删除' })).toBeVisible()
+  await card.getByRole('button', { name: '确认删除' }).click()
+  await expect.poll(() => calls).toEqual(['approve', 'commit'])
+  await expect(card.locator('.agent-action-result b')).toHaveText('账本流水已删除')
+})
+
+test('can cancel a worktime deletion without calling approve or commit', async ({ page }) => {
+  const now = new Date().toISOString()
+  const action = {
+    status: 'NEEDS_CONFIRMATION', summary: '请确认删除这条工时记录', actionId: 'delete-worktime-1', expiresAt: now,
+    structuredContent: {
+      actionType: 'worktime.record.delete', input: { recordId: 9 },
+      preview: { id: 9, date: '2026-09-23', start: '09:00', end: '21:00', rest: 60, overtimeMin: 150, realHourlyWage: 38.1, note: 'release' },
+      effects: ['该记录将从工时列表和统计中移除', '相关加班时间和实际时薪统计将按剩余记录重新展示', '删除成功后会刷新本地工时数据'],
+    },
+  }
+  const calls = []
+  await setupAgent(page, 'agent-delete-worktime-card', {
+    sessions: [{ id: 'session-1', title: '删除工时', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [{ id: 1, turnId: 'turn-delete-worktime', role: 'assistant', content: '已找到唯一工时记录。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now }],
+  })
+  await page.route('**/api/v1/agent/actions/delete-worktime-1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_CONFIRMATION' } }) }))
+  await page.route('**/api/v1/agent/actions/delete-worktime-1/reject', route => { calls.push('reject'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'DENIED' } }) }) })
+  await page.route('**/api/v1/agent/actions/delete-worktime-1/approve', route => { calls.push('approve'); return route.abort() })
+  await page.route('**/api/v1/agent/actions/delete-worktime-1/commit', route => { calls.push('commit'); return route.abort() })
+  await page.goto('/')
+
+  const card = page.locator('.agent-action-card.destructive')
+  await expect(card).toContainText('2026-09-23')
+  await expect(card).toContainText('¥38.10')
+  await card.getByRole('button', { name: '取消', exact: true }).click()
+  await expect.poll(() => calls).toEqual(['reject'])
+  await expect(card).toContainText('已取消，本次未写入任何数据')
+})
+
 test('confirms multiple ledger actions independently from the batch summary', async ({ page }) => {
   const now = new Date().toISOString()
   const makeAction = (id, amount, note) => ({

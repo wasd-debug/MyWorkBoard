@@ -69,6 +69,25 @@ class AgentOrchestratorTest {
     }
 
     @Test
+    void exposesDeletePrepareButNeverDeleteCommitToModel() {
+        ToolDefinition prepare = definition("ledger.transaction.delete.prepare", ToolRisk.R3);
+        ToolDefinition commit = definition("ledger.transaction.delete.commit", ToolRisk.R3);
+        when(model.configured()).thenReturn(true);
+        when(tools.definitionsForCurrentUser()).thenReturn(List.of(prepare, commit));
+        when(model.agentTurn(any(), any())).thenReturn(
+                new LlmGateway.AgentTurn("请先确认删除卡片。", List.of(), "deepseek", true));
+
+        orchestrator().chat("删除昨天的午餐流水");
+
+        var captor = ArgumentCaptor.forClass(List.class);
+        verify(model).agentTurn(any(), captor.capture());
+        @SuppressWarnings("unchecked")
+        List<LlmGateway.AgentTool> exposed = (List<LlmGateway.AgentTool>) captor.getValue();
+        assertEquals(List.of("ledger__transaction__delete__prepare"),
+                exposed.stream().map(tool -> tool.function().name()).toList());
+    }
+
+    @Test
     void returnsToolValidationFailureToModelWithoutThrowing() {
         ToolDefinition read = definition("worktime.records.search", ToolRisk.R1);
         when(model.configured()).thenReturn(true);

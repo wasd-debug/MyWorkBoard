@@ -140,6 +140,48 @@ class WorktimeWriteToolsTest {
         assertEquals(5L, result.structuredContent().path("latestRevision").asLong());
     }
 
+    @Test
+    void deletePrepareShowsCompleteRecordAndCommitUsesOriginalRevision() {
+        WorkRecord original = new WorkRecord(9L, "2026-09-23", "09:00", "21:00", 60, 150,
+                new BigDecimal("38.10"), "release", "v2", "Asia/Shanghai", 4);
+        when(worktime.record(9L)).thenReturn(original);
+        when(worktime.deleteRecord(9L, "4")).thenReturn(
+                new com.salarytracker.worktime.WorktimeModels.DeletedResource(9L, 5L, true));
+        var prepare = new WorktimeRecordDeletePrepareTool(worktime, actions, currentUser, mapper);
+        var commit = new WorktimeRecordDeleteCommitTool(worktime, actions, currentUser, mapper);
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("recordId", 9));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals("worktime.record.delete", prepared.structuredContent().path("actionType").asText());
+        assertEquals("2026-09-23", prepared.structuredContent().path("preview").path("date").asText());
+        assertEquals(3, prepared.structuredContent().path("effects").size());
+        assertThrows(IllegalStateException.class,
+                () -> commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())));
+        actions.approve(prepared.actionId(), 7L);
+        assertEquals(ToolStatus.COMPLETED,
+                commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())).status());
+        assertThrows(IllegalStateException.class,
+                () -> commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())));
+        verify(worktime).deleteRecord(9L, "4");
+    }
+
+    @Test
+    void deleteCommitReturnsConflictWithoutDeletingNewerRecord() {
+        when(worktime.record(9L)).thenReturn(new WorkRecord(9L, "2026-09-23", "09:00", "18:00", 60, 0,
+                new BigDecimal("50.00"), "normal", "v1", "Asia/Shanghai", 4));
+        when(worktime.deleteRecord(9L, "4")).thenThrow(new ConflictException("资源版本已变化", 5));
+        var prepare = new WorktimeRecordDeletePrepareTool(worktime, actions, currentUser, mapper);
+        var commit = new WorktimeRecordDeleteCommitTool(worktime, actions, currentUser, mapper);
+        var prepared = prepare.execute(mapper.createObjectNode().put("recordId", 9));
+
+        actions.approve(prepared.actionId(), 7L);
+        var result = commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId()));
+
+        assertEquals(ToolStatus.CONFLICT, result.status());
+        assertEquals(5L, result.structuredContent().path("latestRevision").asLong());
+    }
+
     private static final class MemoryRepository implements PendingActionRepository {
         private final Map<String, PendingAction> actions = new ConcurrentHashMap<>();
 

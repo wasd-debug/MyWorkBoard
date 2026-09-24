@@ -225,6 +225,57 @@ class LedgerWriteToolsTest {
     }
 
     @Test
+    void deletePrepareShowsCompleteTransactionAndCommitUsesOriginalRevision() {
+        when(transactions.transaction("book-1", "transaction-1"))
+                .thenReturn(transaction(4L, new BigDecimal("29.90"), "午餐"));
+        when(transactions.delete("book-1", "transaction-1", "4", "action-ignored"))
+                .thenReturn(null);
+        var prepare = new LedgerTransactionDeletePrepareTool(transactions, actions, currentUser, mapper);
+        var commit = new LedgerTransactionDeleteCommitTool(transactions, actions, currentUser, mapper);
+
+        var prepared = prepare.execute(mapper.createObjectNode()
+                .put("bookId", "book-1").put("transactionId", "transaction-1"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals("ledger.transaction.delete", prepared.structuredContent().path("actionType").asText());
+        assertEquals("餐饮 / 午餐", prepared.structuredContent().path("preview").path("categoryPath").asText());
+        assertEquals("Alice", prepared.structuredContent().path("preview").path("memberName").asText());
+        assertEquals(3, prepared.structuredContent().path("effects").size());
+        actions.approve(prepared.actionId(), 7L);
+        assertEquals(ToolStatus.COMPLETED,
+                commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())).status());
+        verify(transactions).delete("book-1", "transaction-1", "4", prepared.actionId());
+        assertThrows(IllegalStateException.class,
+                () -> commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())));
+    }
+
+    @Test
+    void deletePrepareRejectsTransferAndCommitReportsRevisionConflict() {
+        Transaction transfer = new Transaction(
+                1L, "transaction-1", "account-1", "现金", "wallet", "account-2", "中行卡", "bank", "group-1",
+                null, null, null, null, null, null, null, null, null, null, null, null,
+                "member-1", "user", "alice", "Alice", null, null, null, null, null,
+                "TRANSFER", TransactionKind.TRANSFER, new BigDecimal("100"), "CNY", java.time.LocalDate.of(2026, 9, 24),
+                "", "manual", "op-1", 2, false, null, 7L, "2026-09-24", "2026-09-24");
+        when(transactions.transaction("book-1", "transaction-1")).thenReturn(transfer);
+        var prepare = new LedgerTransactionDeletePrepareTool(transactions, actions, currentUser, mapper);
+        assertThrows(IllegalArgumentException.class, () -> prepare.execute(mapper.createObjectNode()
+                .put("bookId", "book-1").put("transactionId", "transaction-1")));
+
+        when(transactions.transaction("book-1", "transaction-1"))
+                .thenReturn(transaction(4L, new BigDecimal("29.90"), "午餐"));
+        var prepared = prepare.execute(mapper.createObjectNode()
+                .put("bookId", "book-1").put("transactionId", "transaction-1"));
+        when(transactions.delete("book-1", "transaction-1", "4", prepared.actionId()))
+                .thenThrow(new ConflictException("资源版本已变化", 5));
+        var commit = new LedgerTransactionDeleteCommitTool(transactions, actions, currentUser, mapper);
+        actions.approve(prepared.actionId(), 7L);
+        var result = commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId()));
+        assertEquals(ToolStatus.CONFLICT, result.status());
+        assertEquals(5L, result.structuredContent().path("latestRevision").asLong());
+    }
+
+    @Test
     void commitRequiresApprovalAndUsesActionIdAsIdempotencyKey() {
         var prepare = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
         var commit = new LedgerTransactionCreateCommitTool(transactions, actions, currentUser, mapper);
