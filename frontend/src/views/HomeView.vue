@@ -159,6 +159,10 @@
                     <footer><button type="button" @click="rejectAction(action)">取消</button><button class="primary" type="submit" :disabled="action.busy || !actionFormComplete(action)">{{ action.busy ? '正在生成预览…' : '生成预览' }}</button></footer>
                   </form>
                   <div v-else-if="action.status === 'NEEDS_CONFIRMATION' && !action.uiStatus" class="agent-confirmation-summary">
+                    <div v-if="action.structuredContent?.diff?.length" class="agent-action-diff" aria-label="修改差异">
+                      <strong>本次修改</strong>
+                      <dl><template v-for="row in action.structuredContent.diff" :key="row.label"><dt>{{ row.label }}</dt><dd><del>{{ row.before || '未填写' }}</del><ArrowRight /><ins>{{ row.after || '未填写' }}</ins></dd></template></dl>
+                    </div>
                     <dl>
                       <template v-for="row in actionPreviewRows(action)" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template>
                     </dl>
@@ -278,7 +282,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import { Archive, ArrowDown, ArrowUp, ArrowUpRight, Check, CheckCircle2, ChevronDown, ChevronRight, CircleX, ClipboardCheck, Clock3, Coins, Copy, Database, Ellipsis, Folder, FolderInput, FolderPlus, GripVertical, Image as ImageIcon, Inbox, ListOrdered, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, Paperclip, Pencil, Pin, PinOff, RefreshCw, ShieldCheck, Sparkles, Square, SquarePen, TimerReset, Trash2, Wrench, X } from 'lucide-vue-next'
+import { Archive, ArrowDown, ArrowRight, ArrowUp, ArrowUpRight, Check, CheckCircle2, ChevronDown, ChevronRight, CircleX, ClipboardCheck, Clock3, Coins, Copy, Database, Ellipsis, Folder, FolderInput, FolderPlus, GripVertical, Image as ImageIcon, Inbox, ListOrdered, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, Paperclip, Pencil, Pin, PinOff, RefreshCw, ShieldCheck, Sparkles, Square, SquarePen, TimerReset, Trash2, Wrench, X } from 'lucide-vue-next'
 import { Calendar, List, Timer, Wallet } from '../icons.js'
 import { message } from '../services/message.js'
 import { useAppStore } from '../stores/app'
@@ -403,8 +407,8 @@ function compactModelName(value) { const name = String(value || '模型').trim()
 function pricingTierLabel(value) { return value === 'PEAK' ? '高峰' : value === 'OFF_PEAK' ? '空闲' : '固定价' }
 function replyTokens(usage) { return Math.max(0, Number(usage?.outputTokens || 0) - Number(usage?.reasoningTokens || 0)) }
 function cacheHitRate(usage) { const hit = Number(usage?.cacheHitTokens || 0), miss = Number(usage?.cacheMissTokens || 0); return hit + miss ? Math.round(hit / (hit + miss) * 100) : 0 }
-function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledger.overview': '查询账本概览', 'ledger.transactions.search': '查询账本流水', 'ledger.reports.summary': '生成账本报表', 'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置', 'worktime.records.search': '查询工时记录' })[name] || name }
-function actionTypeLabel(action) { return action.structuredContent?.actionType === 'worktime.record.create' ? '新增工时' : '单笔记账' }
+function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledger.overview': '查询账本概览', 'ledger.transactions.search': '查询账本流水', 'ledger.transaction.history': '查询流水历史', 'ledger.transaction.update.prepare': '准备修改流水', 'ledger.reports.summary': '生成账本报表', 'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置', 'worktime.records.search': '查询工时记录', 'worktime.record.update.prepare': '准备修改工时' })[name] || name }
+function actionTypeLabel(action) { return ({ 'worktime.record.create': '新增工时', 'worktime.record.update': '修改工时', 'ledger.transaction.update': '修改流水' })[action.structuredContent?.actionType] || '单笔记账' }
 function actionStatusLabel(action) { return ({ NEEDS_INPUT: '待补充', NEEDS_CONFIRMATION: '待确认', COMPLETED: '已完成', DENIED: '已拒绝', CONFLICT: '有冲突', FAILED: '失败', EXPIRED: '已过期' })[action.uiStatus || action.status] || action.uiStatus || action.status }
 function actionFieldValue(action, name) { const value = action.form?.[name]; return value == null ? '' : value }
 function setActionField(action, name, value) {
@@ -439,7 +443,7 @@ function clearEntityPicker(action, field) { setActionField(action, field.name, '
 function filteredEntityOptions(action, field) { const query = entityPickerText(action, field).trim().toLocaleLowerCase(); return (field.options || []).filter(option => field.name !== 'categoryId' || !option.kind || option.kind === actionFieldValue(action, 'kind')).filter(option => !query || String(option.label || '').toLocaleLowerCase().includes(query)) }
 function actionPreviewRows(action) {
   const preview = action.structuredContent?.preview || {}
-  if (action.structuredContent?.actionType === 'worktime.record.create') return [
+  if (['worktime.record.create', 'worktime.record.update'].includes(action.structuredContent?.actionType)) return [
     ['日期', preview.date], ['开始', preview.start], ['结束', preview.end || '尚未下班'], ['休息', `${preview.restMin ?? preview.rest ?? 0} 分钟`],
     ['工时', preview.workMin != null ? `${preview.workMin} 分钟` : null], ['加班', preview.overtimeMin != null ? `${preview.overtimeMin} 分钟` : null]
   ].filter(row => row[1] != null).map(([label, value]) => ({ label, value }))
@@ -469,8 +473,8 @@ async function confirmAction(item, action) {
     action.structuredContent = { ...action.structuredContent, result: result.structuredContent }
     if (result.status === 'COMPLETED') message.success(result.summary || '操作已完成')
     else message.error(result.summary || '操作未完成')
-    if (result.status === 'COMPLETED' && action.structuredContent?.actionType === 'worktime.record.create') await worktimeStore.fetch().catch(() => {})
-    if (result.status === 'COMPLETED' && action.structuredContent?.actionType === 'ledger.transaction.create') await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {})
+    if (result.status === 'COMPLETED' && action.structuredContent?.actionType?.startsWith('worktime.record.')) await worktimeStore.fetch().catch(() => {})
+    if (result.status === 'COMPLETED' && action.structuredContent?.actionType?.startsWith('ledger.transaction.')) await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {})
     persist()
   } catch (error) { message.error(error?.response?.data?.detail || '保存失败') }
   finally { action.busy = false }

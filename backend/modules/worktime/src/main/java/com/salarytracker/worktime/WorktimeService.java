@@ -120,6 +120,15 @@ public class WorktimeService {
         return jdbcTemplate.query(sql.toString(), (result, rowNum) -> workRecord(result), args.toArray());
     }
 
+    public WorkRecord record(long id) {
+        long userId = currentUser.id();
+        List<WorkRecord> rows = jdbcTemplate.query(
+                "SELECT " + RECORD_COLUMNS + " FROM work_record WHERE id = ? AND user_id = ? AND deleted = FALSE",
+                (result, rowNum) -> workRecord(result), id, userId);
+        if (rows.isEmpty()) throw new IllegalArgumentException("记录不存在");
+        return rows.get(0);
+    }
+
     @Transactional
     public WorkRecord createRecord(RecordCommand body) {
         return createRecord(body, null);
@@ -134,6 +143,16 @@ public class WorktimeService {
         Calculation calculation = calculate(date, start, end, rest);
         return new RecordPreview(date, start, end, rest, calculation.overtimeMin(),
                 calculation.realHourlyWage(), note);
+    }
+
+    public RecordPreview previewUpdateRecord(long id, RecordCommand body) {
+        WorkRecord current = record(id);
+        RecordCommand update = body == null ? new RecordCommand(null, null, null, null, null) : body;
+        return previewCreateRecord(new RecordCommand(
+                defaultText(update.date(), current.date()), defaultText(update.start(), current.start()),
+                update.end() == null ? current.end() : update.end(),
+                update.rest() == null ? current.rest() : update.rest(),
+                update.note() == null ? current.note() : update.note()));
     }
 
     @Transactional

@@ -13,6 +13,7 @@ import com.salarytracker.worktime.WorktimeModels.RecordCommand;
 import com.salarytracker.worktime.WorktimeModels.RecordPreview;
 import com.salarytracker.worktime.WorktimeModels.WorkRecord;
 import com.salarytracker.worktime.WorktimeService;
+import com.salarytracker.platform.ConflictException;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -90,6 +91,53 @@ class WorktimeWriteToolsTest {
         assertEquals(ToolStatus.COMPLETED, commit.execute(input).status());
         assertThrows(IllegalStateException.class, () -> commit.execute(input));
         verify(worktime).createRecord(any(RecordCommand.class), eq(prepared.actionId()));
+    }
+
+    @Test
+    void updatePrepareBuildsServerDiffAndCommitUsesOriginalRevision() {
+        WorkRecord original = new WorkRecord(9L, "2026-09-23", "09:00", "18:00", 60, 0,
+                new BigDecimal("50.00"), "normal", "v1", "Asia/Shanghai", 4);
+        RecordPreview preview = new RecordPreview("2026-09-23", "09:00", "21:00", 90,
+                150, new BigDecimal("38.10"), "release");
+        when(worktime.record(9L)).thenReturn(original);
+        when(worktime.previewUpdateRecord(eq(9L), any())).thenReturn(preview);
+        when(worktime.updateRecord(eq(9L), any(), eq("4"))).thenReturn(
+                new WorkRecord(9L, "2026-09-23", "09:00", "21:00", 90, 150,
+                        new BigDecimal("38.10"), "release", "v2", "Asia/Shanghai", 5));
+        var prepare = new WorktimeRecordUpdatePrepareTool(worktime, actions, currentUser, mapper);
+        var commit = new WorktimeRecordUpdateCommitTool(worktime, actions, currentUser, mapper);
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("recordId", 9)
+                .put("end", "21:00").put("rest", 90).put("note", "release"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals(5, prepared.structuredContent().path("diff").size());
+        assertEquals(4L, repository.find(prepared.actionId(), 7L).orElseThrow().expectedRevision());
+        actions.approve(prepared.actionId(), 7L);
+        assertEquals(ToolStatus.COMPLETED,
+                commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())).status());
+        verify(worktime).updateRecord(eq(9L), any(RecordCommand.class), eq("4"));
+    }
+
+    @Test
+    void updateCommitReturnsConflictAndCannotOverwriteNewerRecord() {
+        WorkRecord original = new WorkRecord(9L, "2026-09-23", "09:00", "18:00", 60, 0,
+                new BigDecimal("50.00"), "normal", "v1", "Asia/Shanghai", 4);
+        when(worktime.record(9L)).thenReturn(original);
+        when(worktime.previewUpdateRecord(eq(9L), any())).thenReturn(
+                new RecordPreview("2026-09-23", "09:00", "20:00", 60, 90,
+                        new BigDecimal("42.00"), "normal"));
+        when(worktime.updateRecord(eq(9L), any(), eq("4")))
+                .thenThrow(new ConflictException("资源版本已变化", 5));
+        var prepare = new WorktimeRecordUpdatePrepareTool(worktime, actions, currentUser, mapper);
+        var commit = new WorktimeRecordUpdateCommitTool(worktime, actions, currentUser, mapper);
+        var prepared = prepare.execute(mapper.createObjectNode().put("recordId", 9).put("end", "20:00"));
+
+        actions.approve(prepared.actionId(), 7L);
+        var result = commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId()));
+
+        assertEquals(ToolStatus.CONFLICT, result.status());
+        assertEquals(5L, result.structuredContent().path("latestRevision").asLong());
     }
 
     private static final class MemoryRepository implements PendingActionRepository {

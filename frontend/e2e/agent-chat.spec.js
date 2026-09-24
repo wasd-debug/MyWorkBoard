@@ -314,6 +314,105 @@ test('shows the complete ledger card and returns from preview to editing', async
   await expect(page.getByRole('button', { name: '确认并保存' })).toBeVisible()
 })
 
+test('edits a ledger transaction from diff preview and commits the regenerated action', async ({ page }) => {
+  const now = new Date().toISOString()
+  const fields = [
+    { name: 'kind', label: '收支类型', type: 'select', required: true, options: [{ value: 'EXPENSE', label: '支出' }, { value: 'INCOME', label: '收入' }] },
+    { name: 'amount', label: '金额', type: 'money', required: true },
+    { name: 'occurredOn', label: '发生日期', type: 'date', required: true },
+    { name: 'accountId', label: '账户', type: 'entity-picker', required: true, options: [{ value: 'cash', label: '现金' }] },
+    { name: 'categoryId', label: '二级分类', type: 'entity-picker', required: true, options: [{ value: 'meal', label: '餐饮 / 午餐', kind: 'EXPENSE' }] },
+    { name: 'merchantId', label: '商家 / 对方', type: 'entity-picker', required: false, options: [] },
+    { name: 'memberId', label: '成员', type: 'entity-picker', required: false, options: [{ value: 'me', label: '我' }] },
+    { name: 'projectId', label: '项目', type: 'entity-picker', required: false, options: [] },
+    { name: 'note', label: '备注', type: 'textarea', required: false },
+  ]
+  const original = { kind: 'EXPENSE', amount: 29.9, accountId: 'cash', accountName: '现金', categoryId: 'meal', categoryPath: '餐饮 / 午餐', memberId: 'me', memberName: '我', occurredOn: '2026-09-24', note: 'normal', revision: 4 }
+  const makeAction = (id, amount, note) => ({
+    status: 'NEEDS_CONFIRMATION', summary: '请确认修改这笔流水', actionId: id, expiresAt: now,
+    structuredContent: {
+      actionType: 'ledger.transaction.update', fields, original,
+      input: { bookId: 'book-1', transactionId: 'transaction-1', kind: 'EXPENSE', amount, accountId: 'cash', categoryId: 'meal', memberId: 'me', occurredOn: '2026-09-24', note },
+      preview: { ...original, amount, note },
+      diff: [
+        { label: '金额', before: '¥29.9', after: `¥${amount}` },
+        { label: '备注', before: 'normal', after: note },
+      ],
+    },
+  })
+  const action = makeAction('update-ledger-1', 35, 'release')
+  const calls = []
+  await setupAgent(page, 'agent-update-ledger-card', {
+    sessions: [{ id: 'session-1', title: '修改流水', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [
+      { id: 1, turnId: 'turn-update', role: 'user', content: '把这笔午餐改成 35 元', metadataJson: null, createdAt: now },
+      { id: 2, turnId: 'turn-update', role: 'assistant', content: '已生成修改预览。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now },
+    ],
+  })
+  for (const id of ['update-ledger-1', 'update-ledger-2']) {
+    await page.route(`**/api/v1/agent/actions/${id}`, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_CONFIRMATION' } }) }))
+  }
+  await page.route('**/api/v1/agent/actions/update-ledger-1/answer', async route => {
+    const body = route.request().postDataJSON()
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: makeAction('update-ledger-2', Number(body.amount), body.note) }) })
+  })
+  await page.route('**/api/v1/agent/actions/update-ledger-2/approve', route => { calls.push('approve'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'APPROVED' } }) }) })
+  await page.route('**/api/v1/agent/actions/update-ledger-2/commit', route => { calls.push('commit'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'COMPLETED', summary: '账本流水已修改', structuredContent: { id: 'transaction-1', revision: 5 } } }) }) })
+  await page.goto('/')
+
+  const diff = page.getByLabel('修改差异')
+  await expect(diff).toContainText('¥29.9')
+  await expect(diff).toContainText('¥35')
+  await expect(diff).toContainText('normal')
+  await expect(diff).toContainText('release')
+  await page.getByRole('button', { name: '返回编辑' }).click()
+  await page.getByLabel('金额').fill('38.8')
+  await page.getByLabel('备注').fill('final')
+  await page.getByRole('button', { name: '生成预览' }).click()
+  await expect(diff).toContainText('¥38.8')
+  await page.getByRole('button', { name: '确认并保存' }).click()
+  await expect.poll(() => calls).toEqual(['approve', 'commit'])
+  await expect(page.locator('.agent-action-result b')).toHaveText('账本流水已修改')
+})
+
+test('shows worktime update derived differences without horizontal overflow', async ({ page }) => {
+  const now = new Date().toISOString()
+  const action = {
+    status: 'NEEDS_CONFIRMATION', summary: '请确认修改工时记录', actionId: 'update-worktime-1', expiresAt: now,
+    structuredContent: {
+      actionType: 'worktime.record.update',
+      input: { recordId: 9, date: '2026-09-23', start: '09:00', end: '21:00', rest: 90, note: 'release' },
+      fields: [
+        { name: 'date', label: '日期', type: 'date', required: true },
+        { name: 'start', label: '开始时间', type: 'time', required: true },
+        { name: 'end', label: '结束时间', type: 'time', required: false },
+        { name: 'rest', label: '额外休息（分钟）', type: 'number', required: false },
+        { name: 'note', label: '备注', type: 'textarea', required: false },
+      ],
+      preview: { date: '2026-09-23', start: '09:00', end: '21:00', rest: 90, overtimeMin: 150, realHourlyWage: 38.1, note: 'release' },
+      diff: [
+        { label: '结束时间', before: '18:00', after: '21:00' },
+        { label: '额外休息', before: '60 分钟', after: '90 分钟' },
+        { label: '加班时间', before: '0 分钟', after: '150 分钟' },
+        { label: '实际时薪', before: '¥50', after: '¥38.1' },
+      ],
+    },
+  }
+  await setupAgent(page, 'agent-update-worktime-card', {
+    sessions: [{ id: 'session-1', title: '修改工时', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [{ id: 1, turnId: 'turn-update-worktime', role: 'assistant', content: '已重新计算工时。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now }],
+  })
+  await page.route('**/api/v1/agent/actions/update-worktime-1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_CONFIRMATION' } }) }))
+  await page.goto('/')
+
+  const diff = page.getByLabel('修改差异')
+  await expect(diff).toContainText('加班时间')
+  await expect(diff).toContainText('150 分钟')
+  await expect(diff).toContainText('实际时薪')
+  const fitsViewport = await diff.evaluate(element => element.getBoundingClientRect().right <= document.documentElement.clientWidth)
+  expect(fitsViewport).toBe(true)
+})
+
 test('confirms multiple ledger actions independently from the batch summary', async ({ page }) => {
   const now = new Date().toISOString()
   const makeAction = (id, amount, note) => ({

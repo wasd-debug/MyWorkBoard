@@ -486,6 +486,7 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 - 工作台通过 SSE 返回文本、工具状态、受控表单和确认事件；模型不得生成可执行 HTML。
 - 记账 prepare 返回与传统流水编辑器一致的完整字段 Schema；模型可提交人类可读的账户、分类路径、商家、成员和项目名称，由服务端在当前账本权限范围内映射实体 ID。疑似候选可以预填，但只允许推进到预览，不能绕过站内确认。
 - 确认卡片允许返回完整编辑状态；重新生成预览时创建新的 pending action 并终止旧 action，确保用户只能批准最新参数快照。多笔记账保持独立 actionId 和幂等键，批量确认按笔顺序提交，单笔失败不重放已成功项。
+- 账本流水和工时记录修改属于 R3：模型必须先通过查询工具取得当前用户可访问的唯一资源 ID，prepare 保存原 revision 并返回完整字段、原值、新值和差异；工时派生的加班分钟与实际时薪由领域服务重算。commit 只能由站内确认触发，revision 冲突返回最新版本且禁止覆盖。
 
 ### 8.2 MCP 对外接入
 
@@ -629,17 +630,17 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后启动，不等待 Phase 2 任务域；任务模块完成后再注册 `task.*` 工具。
 
 - [~] 已新增 `ai` Maven 模块、Domain Tool 注册表、风险分级、统一结果、action JDBC repository 和 V12 Flyway 表
-- [~] 已实现 2 个工时与 5 个账本 R1 查询工具，以及 `worktime.record.create.prepare/commit` 内部工具；工时修改/删除和账本写工具待实现
+- [~] 已实现 2 个工时与 6 个账本 R1 查询工具；已实现工时新增/修改以及账本收入/支出新增/修改的 prepare/commit，其中流水修改可查询版本历史；删除、复杂流水类型和管理工具待实现
 - [~] 已覆盖当前用户、authority、工具目录过滤、未知字段、重名注册、过期、用户隔离、重复 commit、服务端预览和模块边界；Testcontainers 因 Docker Desktop 启动阻塞待重跑，模型 Agent 与 MCP 未对外启用
 - **验收**：每个工具具备成功、缺参、无权限、冲突和重复提交测试；prepare 不产生业务写入。
 
 ### Phase 3B —— Web 工作台 Agent
 
-- [~] 首页已接入真实 DeepSeek 和最小只读 Agent 编排；模型只看到当前用户可用的 R0/R1 工具，单轮最多执行 4 次，R2-R4 不暴露
-- [~] 服务端会话 CRUD、消息元数据、同一 sessionId 连续追问、用户隔离、turn 状态/幂等、基础 SSE、断流恢复、分组/置顶和持久队列已实现；前端支持右键/更多菜单、分组管理、拖拽进出分组、带 revision 的 FIFO 队列重排、取消/重试和严格底部跟随；结构化表单、确认弹窗、完整 trace/usage 和写入结果链路待完成
-- [ ] 先开放只读查询，再开放记账/记工时，最后接入修改、删除和管理工具
-- [ ] Agent 在线写入后触发账本增量同步，不改变传统页面 local-first 主链
-- [ ] agent trace、ai usage、模型/提示词/工具版本评测和功能开关
+- [~] 首页已接入真实 DeepSeek Agent 编排；模型可见当前用户 R0/R1 和获准的 R2/R3 prepare，单轮最多执行 4 次，所有 commit 均不向模型暴露
+- [~] 服务端会话 CRUD、消息元数据、连续追问、用户隔离、turn 状态/幂等、SSE、断流恢复、分组/置顶、持久队列、模型连接、trace/usage 和受控写入已实现；前端支持完整编辑、差异预览、确认、取消、结果恢复和投影刷新
+- [~] 已按只读查询 → 新增记账/记工时 → 修改流水/工时推进；删除和管理工具待接入
+- [~] Agent 账本写入成功后刷新现有账本本地投影，不改变传统页面 local-first 主链；仍需补真实同步游标专项回归
+- [~] agent trace、ai usage、模型/工具版本已持久化；提示词评测、功能开关门禁和聚合告警待完成
 - **验收**：完整输入、缺参、歧义、拒绝、重复确认和 revision 冲突 E2E 全部通过；错误写入为零。
 
 ### Phase 3C —— MCP 对外接入

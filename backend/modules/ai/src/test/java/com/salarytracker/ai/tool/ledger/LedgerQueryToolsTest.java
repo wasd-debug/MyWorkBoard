@@ -8,10 +8,12 @@ import com.salarytracker.ledger.LedgerModels.Budget;
 import com.salarytracker.ledger.LedgerModels.Overview;
 import com.salarytracker.ledger.LedgerModels.TransactionPage;
 import com.salarytracker.ledger.LedgerModels.TransactionSummary;
+import com.salarytracker.ledger.LedgerModels.TransactionVersion;
 import com.salarytracker.ledger.LedgerTransactionService;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -21,7 +23,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class LedgerQueryToolsTest {
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     @Test
     void booksToolReturnsOnlyServiceVisibleBooks() {
@@ -98,5 +100,27 @@ class LedgerQueryToolsTest {
                 mapper.createObjectNode().put("bookId", "book-1"));
 
         assertEquals(new BigDecimal("9"), result.structuredContent().path("balance").decimalValue());
+    }
+
+    @Test
+    void transactionHistoryDelegatesVisibilityAndReturnsVersions() {
+        LedgerTransactionService service = mock(LedgerTransactionService.class);
+        var transaction = new com.salarytracker.ledger.LedgerModels.Transaction(
+                1L, "transaction-1", "account-1", "现金", "wallet",
+                null, null, null, null, "category-1", "午餐", "tag", "#fff",
+                "parent-1", "餐饮", "tag", "#fff", null, null, null, null,
+                "member-1", "user", "alice", "Alice", null, null, null, null, null,
+                "EXPENSE", com.salarytracker.ledger.LedgerModels.TransactionKind.EXPENSE,
+                new BigDecimal("29.90"), "CNY", LocalDate.of(2026, 9, 24), "午餐",
+                "manual", "op-1", 2, false, null, 7L, "2026-09-24", "2026-09-24");
+        when(service.history("book-1", "transaction-1")).thenReturn(List.of(
+                new TransactionVersion(2, "UPDATE", transaction, "Alice", "2026-09-24T12:00:00+08:00")));
+
+        var result = new LedgerTransactionHistoryTool(service, mapper).execute(
+                mapper.createObjectNode().put("bookId", "book-1").put("transactionId", "transaction-1"));
+
+        assertEquals(ToolStatus.COMPLETED, result.status());
+        assertEquals(2L, result.structuredContent().path(0).path("revision").asLong());
+        verify(service).history("book-1", "transaction-1");
     }
 }

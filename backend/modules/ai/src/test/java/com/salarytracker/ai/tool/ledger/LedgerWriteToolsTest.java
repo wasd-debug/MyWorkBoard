@@ -15,7 +15,11 @@ import com.salarytracker.ledger.LedgerModels.Category;
 import com.salarytracker.ledger.LedgerModels.CategoryKind;
 import com.salarytracker.ledger.LedgerModels.Member;
 import com.salarytracker.ledger.LedgerModels.NamedResource;
+import com.salarytracker.ledger.LedgerModels.Transaction;
+import com.salarytracker.ledger.LedgerModels.TransactionCommand;
+import com.salarytracker.ledger.LedgerModels.TransactionKind;
 import com.salarytracker.ledger.LedgerTransactionService;
+import com.salarytracker.platform.ConflictException;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -37,7 +41,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class LedgerWriteToolsTest {
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
     private final LedgerBookService books = mock(LedgerBookService.class);
     private final LedgerTransactionService transactions = mock(LedgerTransactionService.class);
     private final CurrentUserResolver currentUser = mock(CurrentUserResolver.class);
@@ -162,6 +166,65 @@ class LedgerWriteToolsTest {
     }
 
     @Test
+    void updatePrepareKeepsExistingResourcesAndCommitUsesOriginalRevision() {
+        Transaction original = transaction(4L, new BigDecimal("29.90"), "normal");
+        when(transactions.transaction("book-1", "transaction-1")).thenReturn(original);
+        when(transactions.update(eq("book-1"), eq("transaction-1"), any(), eq("4"), any()))
+                .thenReturn(transaction(5L, new BigDecimal("35.00"), "release"));
+        var prepare = new LedgerTransactionUpdatePrepareTool(transactions, books, actions, currentUser, mapper);
+        var commit = new LedgerTransactionUpdateCommitTool(transactions, actions, currentUser, mapper);
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("transactionId", "transaction-1").put("amount", 35).put("note", "release"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals("account-1", prepared.structuredContent().path("input").path("accountId").asText());
+        assertEquals("member-1", prepared.structuredContent().path("input").path("memberId").asText());
+        assertEquals(2, prepared.structuredContent().path("diff").size());
+        actions.approve(prepared.actionId(), 7L);
+        assertEquals(ToolStatus.COMPLETED,
+                commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())).status());
+        verify(transactions).update(eq("book-1"), eq("transaction-1"),
+                org.mockito.ArgumentMatchers.argThat((TransactionCommand value) ->
+                        value.amount().compareTo(new BigDecimal("35")) == 0 && "member-1".equals(value.memberId())),
+                eq("4"), eq(prepared.actionId()));
+    }
+
+    @Test
+    void updatePrepareRejectsUnsupportedTransactionKind() {
+        when(transactions.transaction("book-1", "transaction-1")).thenReturn(new Transaction(
+                1L, "transaction-1", "account-1", "现金", "wallet", "account-2", "中行卡", "bank", "group-1",
+                null, null, null, null, null, null, null, null, null, null, null, null,
+                "member-1", "user", "alice", "Alice", null, null, null, null, null,
+                "TRANSFER", TransactionKind.TRANSFER, new BigDecimal("100"), "CNY", java.time.LocalDate.of(2026, 9, 24),
+                "", "manual", "op-1", 2, false, null, 7L, "2026-09-24", "2026-09-24"));
+        var prepare = new LedgerTransactionUpdatePrepareTool(transactions, books, actions, currentUser, mapper);
+
+        assertThrows(IllegalArgumentException.class, () -> prepare.execute(mapper.createObjectNode()
+                .put("bookId", "book-1").put("transactionId", "transaction-1").put("amount", 120)));
+    }
+
+    @Test
+    void updateCommitReturnsConflictAndCannotOverwriteNewerTransaction() {
+        when(transactions.transaction("book-1", "transaction-1"))
+                .thenReturn(transaction(4L, new BigDecimal("29.90"), "normal"));
+        when(transactions.update(eq("book-1"), eq("transaction-1"), any(), eq("4"), any()))
+                .thenThrow(new ConflictException("资源版本已变化", 5));
+        var prepare = new LedgerTransactionUpdatePrepareTool(transactions, books, actions, currentUser, mapper);
+        var commit = new LedgerTransactionUpdateCommitTool(transactions, actions, currentUser, mapper);
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("transactionId", "transaction-1").put("amount", 35));
+
+        actions.approve(prepared.actionId(), 7L);
+        var result = commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId()));
+
+        assertEquals(ToolStatus.CONFLICT, result.status());
+        assertEquals(5L, result.structuredContent().path("latestRevision").asLong());
+        assertThrows(IllegalStateException.class,
+                () -> commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())));
+    }
+
+    @Test
     void commitRequiresApprovalAndUsesActionIdAsIdempotencyKey() {
         var prepare = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
         var commit = new LedgerTransactionCreateCommitTool(transactions, actions, currentUser, mapper);
@@ -176,6 +239,15 @@ class LedgerWriteToolsTest {
         assertEquals(ToolStatus.COMPLETED, commit.execute(input).status());
         assertThrows(IllegalStateException.class, () -> commit.execute(input));
         verify(transactions).create(eq("book-1"), any(), eq(prepared.actionId()));
+    }
+
+    private Transaction transaction(long revision, BigDecimal amount, String note) {
+        return new Transaction(1L, "transaction-1", "account-1", "现金", "wallet",
+                null, null, null, null, "category-1", "午餐", "tag", "#fff",
+                "parent-1", "餐饮", "tag", "#fff", "merchant-1", "中转站", "shop", "中转站",
+                "member-1", "user", "alice", "Alice", "project-1", "folder", "#fff", "个人成长", "个人成长",
+                "EXPENSE", TransactionKind.EXPENSE, amount, "CNY", java.time.LocalDate.of(2026, 9, 24), note,
+                "manual", "op-1", revision, false, null, 7L, "2026-09-24", "2026-09-24");
     }
 
     private static final class MemoryRepository implements PendingActionRepository {

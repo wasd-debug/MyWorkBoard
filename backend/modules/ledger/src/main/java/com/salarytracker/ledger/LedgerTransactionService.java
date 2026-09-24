@@ -98,6 +98,10 @@ public class LedgerTransactionService {
                 context.bookId(), Math.min(Math.max(1, limit), 100)).stream().map(this::view).toList();
     }
 
+    public Transaction transaction(String bookPublicId, String transactionPublicId) {
+        return get(access.resolve(bookPublicId), transactionPublicId, true);
+    }
+
     public Overview overview(String bookPublicId, String from, String to) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         LocalDate start = from == null || from.isBlank()
