@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import {
   getWorktimeSettings,
   apiPutWorktimeSettings,
+  apiPutWorktimeLunch,
   apiListWorktimeRecords,
   apiCreateWorktimeRecord,
   apiUpdateWorktimeRecord,
@@ -74,6 +75,13 @@ export const useWorktimeStore = defineStore('worktime', {
       const result = await apiPutWorktimeSettings(submitted, this.settings.revision)
       this.settings = result || {}
       this.revision = Number(this.settings.revision || 0)
+      return result
+    },
+    async saveLunchSettings(payload) {
+      const result = await apiPutWorktimeLunch(payload, this.settings.revision)
+      this.settings = { ...DEFAULT_WORKTIME_SETTINGS, ...(result?.settings || this.settings) }
+      this.revision = Number(this.settings.revision || 0)
+      await this.fetch()
       return result
     },
     async saveRecord(payload) {

@@ -57,3 +57,13 @@ test('day rate changes with the selected salary basis for saved records', () => 
   assert.equal(CALC.dayRate(record, settings, 'pre', 21.75).toFixed(2), '79.69')
   assert.equal(CALC.dayRate(record, settings, 'post', 21.75).toFixed(2), '55.17')
 })
+
+test('saved records keep their lunch snapshot after the global setting changes', () => {
+  const settings = { workStart: '09:00', workEnd: '18:00', lunchMin: 60, daysPerMonth: 20, salaryPost: 10000 }
+  const oldRecord = { start: '09:00', end: '18:00', rest: 30, lunchMin: 90 }
+  const newRecord = { start: '09:00', end: '18:00', rest: 30, lunchMin: 60 }
+
+  assert.equal(CALC.actualMin(oldRecord, settings), 420)
+  assert.equal(CALC.actualMin(newRecord, settings), 450)
+  assert.equal(CALC.calculationText(oldRecord, settings), '18:00 - 09:00 - 午休 90 分钟 - 自定义休息 30 分钟 = 7 小时')
+})

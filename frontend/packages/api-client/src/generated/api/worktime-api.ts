@@ -28,9 +28,13 @@ import type { ApiResponseDeletedResource } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseListWorktimeRecord } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseWorktimeLunchUpdateResult } from '../models/index.ts';
+// @ts-ignore
 import type { ApiResponseWorktimeRecord } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseWorktimeSettings } from '../models/index.ts';
+// @ts-ignore
+import type { WorktimeLunchUpdate } from '../models/index.ts';
 // @ts-ignore
 import type { WorktimeRecordCommand } from '../models/index.ts';
 // @ts-ignore
@@ -195,6 +199,44 @@ export const WorktimeApiAxiosParamCreator = function (configuration?: Configurat
         },
         /**
          *
+         * @param {WorktimeLunchUpdate} worktimeLunchUpdate
+         * @param {string} [ifMatch]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateWorktimeLunch: async (worktimeLunchUpdate: WorktimeLunchUpdate, ifMatch?: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'worktimeLunchUpdate' is not null or undefined
+            assertParamExists('updateWorktimeLunch', 'worktimeLunchUpdate', worktimeLunchUpdate)
+            const localVarPath = `/api/v1/worktime/settings/lunch`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'PUT', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            if (ifMatch != null) {
+                localVarHeaderParameter['If-Match'] = String(ifMatch);
+            }
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(worktimeLunchUpdate, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {number} id
          * @param {WorktimeRecordCommand} worktimeRecordCommand
          * @param {string} [ifMatch]
@@ -336,6 +378,19 @@ export const WorktimeApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {WorktimeLunchUpdate} worktimeLunchUpdate
+         * @param {string} [ifMatch]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async updateWorktimeLunch(worktimeLunchUpdate: WorktimeLunchUpdate, ifMatch?: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseWorktimeLunchUpdateResult>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.updateWorktimeLunch(worktimeLunchUpdate, ifMatch, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorktimeApi.updateWorktimeLunch']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {number} id
          * @param {WorktimeRecordCommand} worktimeRecordCommand
          * @param {string} [ifMatch]
@@ -407,6 +462,15 @@ export const WorktimeApiFactory = function (configuration?: Configuration, baseP
         },
         /**
          *
+         * @param {WorktimeApiUpdateWorktimeLunchRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateWorktimeLunch(requestParameters: WorktimeApiUpdateWorktimeLunchRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseWorktimeLunchUpdateResult> {
+            return localVarFp.updateWorktimeLunch(requestParameters.worktimeLunchUpdate, requestParameters.ifMatch, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {WorktimeApiUpdateWorktimeRecordRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -455,6 +519,15 @@ export interface WorktimeApiListWorktimeRecordsRequest {
     readonly limit?: number
 
     readonly offset?: number
+}
+
+/**
+ * Request parameters for updateWorktimeLunch operation in WorktimeApi.
+ */
+export interface WorktimeApiUpdateWorktimeLunchRequest {
+    readonly worktimeLunchUpdate: WorktimeLunchUpdate
+
+    readonly ifMatch?: string
 }
 
 /**
@@ -518,6 +591,16 @@ export class WorktimeApi extends BaseAPI {
      */
     public listWorktimeRecords(requestParameters: WorktimeApiListWorktimeRecordsRequest = {}, options?: RawAxiosRequestConfig) {
         return WorktimeApiFp(this.configuration).listWorktimeRecords(requestParameters.from, requestParameters.to, requestParameters.limit, requestParameters.offset, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {WorktimeApiUpdateWorktimeLunchRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public updateWorktimeLunch(requestParameters: WorktimeApiUpdateWorktimeLunchRequest, options?: RawAxiosRequestConfig) {
+        return WorktimeApiFp(this.configuration).updateWorktimeLunch(requestParameters.worktimeLunchUpdate, requestParameters.ifMatch, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

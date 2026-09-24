@@ -17,6 +17,8 @@ import java.util.UUID;
 
 import com.salarytracker.worktime.WorktimeModels.Basis;
 import com.salarytracker.worktime.WorktimeModels.MonthlySalary;
+import com.salarytracker.worktime.WorktimeModels.LunchRecalculationScope;
+import com.salarytracker.worktime.WorktimeModels.LunchUpdate;
 import com.salarytracker.worktime.WorktimeModels.RecordCommand;
 import com.salarytracker.worktime.WorktimeModels.Settings;
 import com.salarytracker.worktime.WorktimeModels.SettingsUpdate;
@@ -43,7 +45,8 @@ class WorktimeCalculationIntegrationTest extends MySqlIntegrationTestSupport {
 
         assertDecimal("100.00", monthlyOverride.realHourlyWage());
         assertDecimal("125.00", defaultPreTax.realHourlyWage());
-        assertEquals("phase0-v2-day-type", monthlyOverride.calcVersion());
+        assertEquals("phase0-v3-lunch-snapshot", monthlyOverride.calcVersion());
+        assertEquals(60, monthlyOverride.lunchMin());
         assertEquals("Asia/Shanghai", monthlyOverride.timezone());
         assertEquals(1L, monthlyOverride.revision());
 
@@ -52,6 +55,48 @@ class WorktimeCalculationIntegrationTest extends MySqlIntegrationTestSupport {
                 String.valueOf(preTax.revision()));
         WorkRecord postTax = service.createRecord(record("2026-11-02"), "worktime-default-post");
         assertDecimal("75.00", postTax.realHourlyWage());
+    }
+
+    @Test
+    void recalculatesAllOrSelectedHistoryWithTheNewLunchSnapshot() {
+        WorktimeService service = serviceForNewUser();
+        Settings initial = service.writeSettings(new SettingsUpdate(
+                new BigDecimal("16000"), new BigDecimal("10000"), Basis.POST,
+                "09:00", "18:00", 90, new BigDecimal("20"), false, null), null);
+        WorkRecord before = service.createRecord(record("2026-09-01"));
+        WorkRecord after = service.createRecord(record("2026-09-20"));
+
+        var result = service.updateLunch(new LunchUpdate(60, LunchRecalculationScope.FROM_DATE, "2026-09-15"),
+                String.valueOf(initial.revision()));
+
+        WorkRecord unchanged = service.record(before.id());
+        WorkRecord recalculated = service.record(after.id());
+        assertEquals(1, result.recalculatedRecords());
+        assertEquals(90, unchanged.lunchMin());
+        assertEquals(60, recalculated.lunchMin());
+        assertDecimal("66.67", unchanged.realHourlyWage());
+        assertDecimal("62.50", recalculated.realHourlyWage());
+        assertEquals("phase0-v3-lunch-snapshot", recalculated.calcVersion());
+        assertEquals(2L, recalculated.revision());
+    }
+
+    @Test
+    void changingLunchWithoutRecalculationKeepsExistingRecordSnapshots() {
+        WorktimeService service = serviceForNewUser();
+        Settings initial = service.writeSettings(new SettingsUpdate(
+                new BigDecimal("16000"), new BigDecimal("10000"), Basis.POST,
+                "09:00", "18:00", 90, new BigDecimal("20"), false, null), null);
+        WorkRecord existing = service.createRecord(record("2026-09-10"));
+
+        var result = service.updateLunch(new LunchUpdate(60, LunchRecalculationScope.NONE, null),
+                String.valueOf(initial.revision()));
+
+        WorkRecord unchanged = service.record(existing.id());
+        assertEquals(0, result.recalculatedRecords());
+        assertEquals(60, result.settings().lunchMin());
+        assertEquals(90, unchanged.lunchMin());
+        assertDecimal("66.67", unchanged.realHourlyWage());
+        assertEquals(1L, unchanged.revision());
     }
 
     @Test

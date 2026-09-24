@@ -27,9 +27,24 @@
       </div>
       <div class="row">
         <div class="lbl">午休等扣除时长<small>不计入工时的分钟数</small></div>
-        <div class="ctl"><Input type="number" aria-label="午休扣除分钟数" min="0" max="240" step="5" :model-value="settings.lunchMin" @change="value => setNumber('lunchMin', value, 0)" /></div>
+        <div class="ctl"><Input type="number" aria-label="午休扣除分钟数" min="0" max="240" step="5" :model-value="settings.lunchMin" @change="openLunchDialog" /></div>
       </div>
     </div>
+
+    <Dialog v-model:open="lunchDialogOpen" title="修改午休时长">
+      <div class="lunch-recalc-dialog">
+        <p>午休将从 <b>{{ settings.lunchMin }} 分钟</b> 修改为 <b>{{ pendingLunchMin }} 分钟</b>。请选择历史数据的处理方式：</p>
+        <label><input v-model="lunchScope" type="radio" value="NONE" /> 仅修改设置，不重算已有记录</label>
+        <label><input v-model="lunchScope" type="radio" value="ALL" /> 重算全部已有记录</label>
+        <label><input v-model="lunchScope" type="radio" value="FROM_DATE" /> 从指定日期开始重算</label>
+        <Input v-if="lunchScope === 'FROM_DATE'" v-model="lunchFromDate" aria-label="历史重算起始日期" type="date" />
+        <small>重算会更新对应记录的午休快照、工时、加班时长和实际时薪；未选中的历史记录保持原计算口径。</small>
+      </div>
+      <template #footer>
+        <Button variant="ghost" :disabled="savingLunch" @click="cancelLunchUpdate">取消</Button>
+        <Button :disabled="savingLunch || (lunchScope === 'FROM_DATE' && !lunchFromDate)" @click="confirmLunchUpdate">{{ savingLunch ? '处理中…' : '确认修改' }}</Button>
+      </template>
+    </Dialog>
 
     <div class="card set-group">
       <h2>排班设置</h2>
@@ -113,6 +128,7 @@ import { message } from '../services/message.js'
 import Button from '../components/ui/Button.vue'
 import Input from '../components/ui/Input.vue'
 import Textarea from '../components/ui/Textarea.vue'
+import Dialog from '../components/ui/Dialog.vue'
 import { useAppStore } from '../stores/app'
 import { DEFAULT_WORKTIME_SETTINGS as DEFAULTS, useWorktimeStore } from '../stores/worktime.js'
 import { CALC } from '../utils/calc'
@@ -129,6 +145,7 @@ const accents = [
   { key: 'night', label: '暗夜', color: '#242933' }
 ]
 const ioArea = ref('')
+const lunchDialogOpen = ref(false), pendingLunchMin = ref(0), lunchScope = ref('NONE'), lunchFromDate = ref(CALC.dateKey(new Date())), savingLunch = ref(false)
 const modelConnections = ref([]), selectedModelId = ref(''), modelStatus = ref('')
 const blankModel = () => ({ displayName: '', providerType: 'DEEPSEEK', baseUrl: 'https://api.deepseek.com/chat/completions', modelName: 'deepseek-chat', apiKey: '', timeoutMs: 60000, pricing: { currency: 'CNY', pricingMode: 'FLAT', inputPerMillion: 0, outputPerMillion: 0, cacheHitPerMillion: 0, cacheMissPerMillion: 0, reasoningPerMillion: 0, offPeakInputPerMillion: 0, offPeakOutputPerMillion: 0, offPeakCacheHitPerMillion: 0, offPeakCacheMissPerMillion: 0, offPeakReasoningPerMillion: 0 } })
 const modelForm = ref(blankModel())
@@ -152,6 +169,24 @@ async function removeModel() { if (!window.confirm('删除此模型配置？')) 
 function setNumber(key, value, fallback) {
   const number = Number(value)
   set(key, Number.isFinite(number) ? number : fallback)
+}
+function openLunchDialog(value) {
+  const number = Math.min(240, Math.max(0, Number(value) || 0))
+  if (number === Number(settings.value.lunchMin || 0)) return
+  pendingLunchMin.value = number
+  lunchScope.value = 'NONE'
+  lunchFromDate.value = CALC.dateKey(new Date())
+  lunchDialogOpen.value = true
+}
+function cancelLunchUpdate() { lunchDialogOpen.value = false }
+async function confirmLunchUpdate() {
+  savingLunch.value = true
+  try {
+    const result = await store.saveLunchSettings({ lunchMin: pendingLunchMin.value, scope: lunchScope.value, fromDate: lunchScope.value === 'FROM_DATE' ? lunchFromDate.value : null })
+    lunchDialogOpen.value = false
+    message.success(result?.recalculatedRecords ? `午休已修改，已重算 ${result.recalculatedRecords} 条历史记录` : '午休已修改，历史记录保持原口径')
+  } catch (error) { message.error(error.response?.data?.detail || '午休设置修改失败') }
+  finally { savingLunch.value = false }
 }
 function doExport() { ioArea.value = JSON.stringify({ settings: store.settings, records: store.records }); message.success('已导出到文本框') }
 async function doCopy() {

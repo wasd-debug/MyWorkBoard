@@ -4,6 +4,8 @@ import com.salarytracker.platform.ApiResponse;
 import com.salarytracker.platform.Audit;
 import com.salarytracker.worktime.WorktimeModels.DeletedResource;
 import com.salarytracker.worktime.WorktimeModels.RecordCommand;
+import com.salarytracker.worktime.WorktimeModels.LunchUpdate;
+import com.salarytracker.worktime.WorktimeModels.LunchUpdateResult;
 import com.salarytracker.worktime.WorktimeModels.Settings;
 import com.salarytracker.worktime.WorktimeModels.SettingsUpdate;
 import com.salarytracker.worktime.WorktimeModels.WorkRecord;
@@ -49,6 +51,15 @@ public class WorktimeController {
     public ApiResponse<Settings> updateSettings(@RequestBody SettingsUpdate body,
                                                 @RequestHeader(value = "If-Match", required = false) String ifMatch) {
         return ApiResponse.ok(worktimeService.writeSettings(body, ifMatch));
+    }
+
+    @PutMapping(value = "/settings/lunch", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('worktime:write')")
+    @Audit(module = "worktime", action = "settings.lunch.update", targetType = "work_setting")
+    @Operation(operationId = "updateWorktimeLunch")
+    public ApiResponse<LunchUpdateResult> updateLunch(@RequestBody LunchUpdate body,
+                                                      @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        return ApiResponse.ok(worktimeService.updateLunch(body, ifMatch));
     }
 
     @GetMapping("/records")

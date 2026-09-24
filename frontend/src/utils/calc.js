@@ -24,7 +24,8 @@ export const CALC = (() => {
     let st = toMin(rec.start), en = toMin(rec.end);
     if (en < st) en += 1440;               // 跨零点下班
     const rest = Number(rec.rest) || 0;
-    const m = en - st - (s.lunchMin || 0) - rest;
+    const lunch = rec?.lunchMin === undefined || rec?.lunchMin === null ? (s.lunchMin || 0) : Number(rec.lunchMin) || 0;
+    const m = en - st - lunch - rest;
     return m > 0 ? m : 0;
   }
   /* 当前口径月薪 */
@@ -117,6 +118,12 @@ export const CALC = (() => {
   };
   const fmtMoney = x => "¥" + Number(x || 0).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmtSigned = min => (min >= 0 ? "+" : "") + fmtHours(min) + "h";
+  const recordLunchMin = (rec, s) => rec?.lunchMin === undefined || rec?.lunchMin === null ? Number(s?.lunchMin || 0) : Number(rec.lunchMin || 0);
+  const calculationText = (rec, s) => {
+    if (!rec?.start || !rec?.end) return '填写完整上下班时间后显示计算过程';
+    const lunch = recordLunchMin(rec, s), rest = Number(rec.rest || 0), min = actualMin(rec, s);
+    return `${rec.end} - ${rec.start} - 午休 ${lunch} 分钟 - 自定义休息 ${rest} 分钟 = ${fmtHours(min)} 小时`;
+  };
 
   /* ================= 节假日感知（法定工作日自动计算） =================
      holidays: { "YYYY-MM-DD": {name, off} }
@@ -172,7 +179,7 @@ export const CALC = (() => {
   return { toMin, dateKey, WEEK_CN, addDays, monday, monthFirst, stdWorkMin, actualMin,
            salary, dayPay, baseRate, dayRate, periodStats, spanMonths, rangeKeys, weekKeysTo, monthKeysTo,
            monthSalary, monthCtx,
-           fmtHours, fmtMoney, fmtSigned,
+           fmtHours, fmtMoney, fmtSigned, recordLunchMin, calculationText,
            isWeekendKey, dayType, holidayName, daysInMonth, statutoryWorkdays, offDaysWorked,
            monthWorkdays, effDaysPerMonth };
 })();

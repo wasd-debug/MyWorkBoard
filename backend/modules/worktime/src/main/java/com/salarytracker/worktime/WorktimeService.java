@@ -6,6 +6,9 @@ import com.salarytracker.platform.ConflictException;
 import com.salarytracker.worktime.WorktimeModels.Basis;
 import com.salarytracker.worktime.WorktimeModels.DeletedResource;
 import com.salarytracker.worktime.WorktimeModels.MonthlySalary;
+import com.salarytracker.worktime.WorktimeModels.LunchRecalculationScope;
+import com.salarytracker.worktime.WorktimeModels.LunchUpdate;
+import com.salarytracker.worktime.WorktimeModels.LunchUpdateResult;
 import com.salarytracker.worktime.WorktimeModels.RecordCommand;
 import com.salarytracker.worktime.WorktimeModels.RecordPreview;
 import com.salarytracker.worktime.WorktimeModels.Settings;
@@ -30,9 +33,9 @@ import java.util.Map;
 @Service
 public class WorktimeService {
     private static final DateTimeFormatter DATE = DateTimeFormatter.ISO_LOCAL_DATE;
-    private static final String CALC_VERSION = "phase0-v2-day-type";
+    private static final String CALC_VERSION = "phase0-v3-lunch-snapshot";
     private static final String RECORD_COLUMNS = "id, date, TIME_FORMAT(start_time, '%H:%i') start_time, " +
-            "IFNULL(TIME_FORMAT(end_time, '%H:%i'), '') end_time, rest_min, overtime_min, " +
+            "IFNULL(TIME_FORMAT(end_time, '%H:%i'), '') end_time, rest_min, lunch_min, overtime_min, " +
             "real_hourly_wage, note, calc_version, timezone, revision";
 
     private final JdbcTemplate jdbcTemplate;
@@ -92,6 +95,26 @@ public class WorktimeService {
             });
         }
         return readSettings();
+    }
+
+    @Transactional
+    public LunchUpdateResult updateLunch(LunchUpdate input, String ifMatch) {
+        if (input == null) throw new IllegalArgumentException("午休设置不能为空");
+        long userId = currentUser.id();
+        checkRevision(ifMatch, settingRevision(userId));
+        int lunch = bounded(input.lunchMin(), 90, 0, 600);
+        LunchRecalculationScope scope = input.scope() == null ? LunchRecalculationScope.NONE : input.scope();
+        LocalDate fromDate = null;
+        if (scope == LunchRecalculationScope.FROM_DATE) {
+            if (input.fromDate() == null || input.fromDate().isBlank()) {
+                throw new IllegalArgumentException("选择按日期重算时必须填写起始日期");
+            }
+            fromDate = LocalDate.parse(input.fromDate(), DATE);
+        }
+        jdbcTemplate.update("INSERT INTO work_setting (user_id, lunch_min, revision) VALUES (?, ?, 1) " +
+                "ON DUPLICATE KEY UPDATE lunch_min = VALUES(lunch_min), revision = revision + 1", userId, lunch);
+        int recalculated = scope == LunchRecalculationScope.NONE ? 0 : recalculateHistory(userId, lunch, fromDate);
+        return new LunchUpdateResult(readSettings(), recalculated, fromDate == null ? null : fromDate.toString());
     }
 
     public List<WorkRecord> listRecords(String from, String to, int limit) {
@@ -227,17 +250,19 @@ public class WorktimeService {
         String end = validTime(body.end(), true);
         int rest = bounded(body.rest(), 0, 0, 600);
         String note = body.note() == null ? "" : body.note();
-        Calculation calculation = calculate(date, start, end, rest);
-        SalarySnapshot snapshot = new SalarySnapshot(readSettings().basis(), calculation.salary());
+        Settings settings = readSettings();
+        int lunch = settings.lunchMin();
+        Calculation calculation = calculate(date, start, end, rest, lunch, settings);
+        SalarySnapshot snapshot = new SalarySnapshot(settings.basis(), calculation.salary());
         if (id == null) {
-            jdbcTemplate.update("INSERT INTO work_record (user_id, date, start_time, end_time, rest_min, overtime_min, real_hourly_wage, note, salary_snapshot, calc_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            jdbcTemplate.update("INSERT INTO work_record (user_id, date, start_time, end_time, rest_min, lunch_min, overtime_min, real_hourly_wage, note, salary_snapshot, calc_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     userId, date, Time.valueOf(toSqlTime(start)), end.isBlank() ? null : Time.valueOf(toSqlTime(end)),
-                    rest, calculation.overtimeMin(), calculation.realHourlyWage(), note, json(snapshot), CALC_VERSION);
+                    rest, lunch, calculation.overtimeMin(), calculation.realHourlyWage(), note, json(snapshot), CALC_VERSION);
             id = jdbcTemplate.queryForObject("SELECT id FROM work_record WHERE user_id = ? AND date = ?", Long.class, userId, date);
         } else {
-            jdbcTemplate.update("UPDATE work_record SET date = ?, start_time = ?, end_time = ?, rest_min = ?, overtime_min = ?, real_hourly_wage = ?, note = ?, salary_snapshot = ?, calc_version = ?, deleted = FALSE, revision = revision + 1 WHERE id = ? AND user_id = ?",
+            jdbcTemplate.update("UPDATE work_record SET date = ?, start_time = ?, end_time = ?, rest_min = ?, lunch_min = ?, overtime_min = ?, real_hourly_wage = ?, note = ?, salary_snapshot = ?, calc_version = ?, deleted = FALSE, revision = revision + 1 WHERE id = ? AND user_id = ?",
                     date, Time.valueOf(toSqlTime(start)), end.isBlank() ? null : Time.valueOf(toSqlTime(end)), rest,
-                    calculation.overtimeMin(), calculation.realHourlyWage(), note, json(snapshot), CALC_VERSION, id, userId);
+                    lunch, calculation.overtimeMin(), calculation.realHourlyWage(), note, json(snapshot), CALC_VERSION, id, userId);
         }
         return jdbcTemplate.queryForObject("SELECT " + RECORD_COLUMNS + " FROM work_record WHERE id = ? AND user_id = ?",
                 (result, rowNum) -> workRecord(result), id, userId);
@@ -245,12 +270,16 @@ public class WorktimeService {
 
     private Calculation calculate(String date, String startText, String endText, int rest) {
         Settings settings = readSettings();
+        return calculate(date, startText, endText, rest, settings.lunchMin(), settings);
+    }
+
+    private Calculation calculate(String date, String startText, String endText, int rest, int lunch, Settings settings) {
         MonthlySalary monthly = settings.salaries().get(date.substring(0, 7));
         BigDecimal salary = monthly == null
                 ? (settings.basis() == Basis.PRE ? settings.salaryPre() : settings.salaryPost())
                 : (settings.basis() == Basis.PRE ? monthly.pre() : monthly.post());
         WorktimeCalculator.Result result = WorktimeCalculator.calculate(
-                startText, endText, settings.lunchMin(), rest, settings.workStart(), settings.workEnd(),
+                startText, endText, lunch, rest, settings.workStart(), settings.workEnd(),
                 salary, settings.daysPerMonth(), workdayCalendar.isOffDay(LocalDate.parse(date, DATE)));
         return new Calculation(result.overtimeMin(), result.realHourlyWage(), salary);
     }
@@ -264,9 +293,29 @@ public class WorktimeService {
 
     private WorkRecord workRecord(ResultSet result) throws SQLException {
         return new WorkRecord(result.getLong("id"), result.getString("date"), result.getString("start_time"),
-                result.getString("end_time"), result.getInt("rest_min"), result.getInt("overtime_min"),
+                result.getString("end_time"), result.getInt("rest_min"), result.getInt("lunch_min"), result.getInt("overtime_min"),
                 result.getBigDecimal("real_hourly_wage"), result.getString("note"), result.getString("calc_version"),
                 result.getString("timezone"), result.getLong("revision"));
+    }
+
+    private int recalculateHistory(long userId, int lunch, LocalDate fromDate) {
+        String sql = "SELECT id, DATE_FORMAT(date, '%Y-%m-%d') date, TIME_FORMAT(start_time, '%H:%i') start_time, " +
+                "IFNULL(TIME_FORMAT(end_time, '%H:%i'), '') end_time, rest_min FROM work_record " +
+                "WHERE user_id = ? AND deleted = FALSE" + (fromDate == null ? "" : " AND date >= ?") + " ORDER BY date";
+        Object[] args = fromDate == null ? new Object[]{userId} : new Object[]{userId, fromDate.toString()};
+        List<RecalculationRow> rows = jdbcTemplate.query(sql,
+                (result, rowNum) -> new RecalculationRow(result.getLong("id"), result.getString("date"),
+                        result.getString("start_time"), result.getString("end_time"), result.getInt("rest_min")), args);
+        Settings settings = readSettings();
+        for (RecalculationRow row : rows) {
+            Calculation calculation = calculate(row.date(), row.start(), row.end(), row.rest(), lunch, settings);
+            SalarySnapshot snapshot = new SalarySnapshot(settings.basis(), calculation.salary());
+            jdbcTemplate.update("UPDATE work_record SET lunch_min = ?, overtime_min = ?, real_hourly_wage = ?, " +
+                            "salary_snapshot = ?, calc_version = ?, revision = revision + 1 WHERE id = ? AND user_id = ?",
+                    lunch, calculation.overtimeMin(), calculation.realHourlyWage(), json(snapshot), CALC_VERSION,
+                    row.id(), userId);
+        }
+        return rows.size();
     }
 
     private long settingRevision(long userId) {
@@ -343,6 +392,9 @@ public class WorktimeService {
     }
 
     private record Calculation(int overtimeMin, BigDecimal realHourlyWage, BigDecimal salary) {
+    }
+
+    private record RecalculationRow(long id, String date, String start, String end, int rest) {
     }
 
     private record SalarySnapshot(Basis basis, BigDecimal salary) {

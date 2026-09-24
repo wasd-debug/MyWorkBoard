@@ -185,6 +185,30 @@ test('saveSettings merges a patch and keeps untouched settings', async t => {
   assert.equal(store.settings.revision, 5)
 })
 
+test('saveLunchSettings submits the selected history scope and refreshes projections', async t => {
+  const originalAdapter = api.defaults.adapter
+  const requests = []
+  api.defaults.adapter = async config => {
+    requests.push({ method: config.method, url: config.url, data: config.data, headers: config.headers })
+    if (config.method === 'put') return response(config, { settings: { lunchMin: 60, revision: 5 }, recalculatedRecords: 2, recalculatedFrom: '2026-09-01' })
+    if (config.url === '/api/v1/worktime/settings') return response(config, { lunchMin: 60, revision: 5 })
+    return response(config, [{ id: 17, date: '2026-09-17', lunchMin: 60, revision: 2 }])
+  }
+  t.after(() => { api.defaults.adapter = originalAdapter })
+
+  setActivePinia(createPinia())
+  const store = useWorktimeStore()
+  store.settings = { lunchMin: 90, revision: 4 }
+  const result = await store.saveLunchSettings({ lunchMin: 60, scope: 'FROM_DATE', fromDate: '2026-09-01' })
+
+  assert.equal(requests[0].url, '/api/v1/worktime/settings/lunch')
+  assert.equal(requests[0].headers['If-Match'], '4')
+  assert.deepEqual(JSON.parse(requests[0].data), { lunchMin: 60, scope: 'FROM_DATE', fromDate: '2026-09-01' })
+  assert.equal(result.recalculatedRecords, 2)
+  assert.equal(store.settings.lunchMin, 60)
+  assert.equal(store.records['2026-09-17'].lunchMin, 60)
+})
+
 test('clearResources deletes records and resets settings through resource endpoints', async t => {
   const originalAdapter = api.defaults.adapter
   const requests = []

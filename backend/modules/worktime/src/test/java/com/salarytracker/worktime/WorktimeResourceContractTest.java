@@ -17,6 +17,8 @@ import java.util.Map;
 
 import com.salarytracker.worktime.WorktimeModels.Basis;
 import com.salarytracker.worktime.WorktimeModels.RecordCommand;
+import com.salarytracker.worktime.WorktimeModels.LunchUpdate;
+import com.salarytracker.worktime.WorktimeModels.LunchUpdateResult;
 import com.salarytracker.worktime.WorktimeModels.Settings;
 import com.salarytracker.worktime.WorktimeModels.SettingsUpdate;
 import com.salarytracker.worktime.WorktimeModels.WorkRecord;
@@ -90,6 +92,10 @@ class WorktimeResourceContractTest {
         when(worktimeService.writeSettings(any(SettingsUpdate.class), org.mockito.ArgumentMatchers.eq("4")))
                 .thenReturn(new Settings(BigDecimal.ZERO, BigDecimal.ZERO, Basis.POST, "09:00", "18:00",
                         90, new BigDecimal("21.75"), true, Map.of(), 5L));
+        when(worktimeService.updateLunch(any(LunchUpdate.class), org.mockito.ArgumentMatchers.eq("5")))
+                .thenReturn(new LunchUpdateResult(new Settings(BigDecimal.ZERO, BigDecimal.ZERO, Basis.POST,
+                        "09:00", "18:00", 60, new BigDecimal("21.75"), true, Map.of(), 6L),
+                        12, "2026-01-01"));
         when(worktimeService.createRecord(any(RecordCommand.class), org.mockito.ArgumentMatchers.eq("create-1")))
                 .thenReturn(new WorkRecord(18L, "2026-09-18", "09:00", "", 0, 0,
                         new BigDecimal("35"), "", "phase0-v1", "Asia/Shanghai", 1L));
@@ -113,6 +119,14 @@ class WorktimeResourceContractTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.calcVersion").value("phase0-v1"))
                 .andExpect(jsonPath("$.data.timezone").value("Asia/Shanghai"));
+        mockMvc.perform(put("/api/v1/worktime/settings/lunch")
+                        .with(csrf())
+                        .header("If-Match", "5")
+                        .contentType("application/json")
+                        .content("{\"lunchMin\":60,\"scope\":\"FROM_DATE\",\"fromDate\":\"2026-01-01\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.settings.lunchMin").value(60))
+                .andExpect(jsonPath("$.data.recalculatedRecords").value(12));
         mockMvc.perform(patch("/api/v1/worktime/records/18")
                         .with(csrf())
                         .header("If-Match", "1")
@@ -122,6 +136,7 @@ class WorktimeResourceContractTest {
                 .andExpect(jsonPath("$.data.revision").value(2));
 
         verify(worktimeService).writeSettings(any(SettingsUpdate.class), org.mockito.ArgumentMatchers.eq("4"));
+        verify(worktimeService).updateLunch(any(LunchUpdate.class), org.mockito.ArgumentMatchers.eq("5"));
         verify(worktimeService).createRecord(any(RecordCommand.class), org.mockito.ArgumentMatchers.eq("create-1"));
         verify(worktimeService).updateRecord(org.mockito.ArgumentMatchers.eq(18L), any(RecordCommand.class),
                 org.mockito.ArgumentMatchers.eq("1"));

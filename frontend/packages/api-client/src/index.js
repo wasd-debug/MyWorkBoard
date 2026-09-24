@@ -106,6 +106,7 @@ export async function apiLogout() { try { return data(await auth.logout()) } fin
 
 export const getWorktimeSettings = async () => data(await worktime.getWorktimeSettings())
 export const apiPutWorktimeSettings = async (payload, currentRevision) => data(await worktime.updateWorktimeSettings({ worktimeSettingsUpdate: payload, ifMatch: revision(currentRevision) }))
+export const apiPutWorktimeLunch = async (payload, currentRevision) => data(await worktime.updateWorktimeLunch({ worktimeLunchUpdate: payload, ifMatch: revision(currentRevision) }))
 export const apiListWorktimeRecords = async (params = {}) => data(await worktime.listWorktimeRecords(params))
 export const apiCreateWorktimeRecord = async (payload, idempotencyKey) => data(await worktime.createWorktimeRecord({ worktimeRecordCommand: payload, idempotencyKey }))
 export const apiUpdateWorktimeRecord = async (id, payload, currentRevision) => data(await worktime.updateWorktimeRecord({ id, worktimeRecordCommand: payload, ifMatch: revision(currentRevision) }))

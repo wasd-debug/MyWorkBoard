@@ -34,7 +34,7 @@ class FlywayMigrationIntegrationTest {
         flyway.migrate();
         flyway.validate();
 
-        assertEquals("18", flyway.info().current().getVersion().getVersion());
+        assertEquals("20", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement()) {
@@ -47,6 +47,7 @@ class FlywayMigrationIntegrationTest {
             assertTrue(tableExists(connection, "ai_usage"));
             assertTrue(tableExists(connection, "agent_tool_call"));
             assertTrue(indexExists(connection, "ledger_transaction", "idx_ledger_transaction_book_date"));
+            assertEquals(0L, scalar(statement, "SELECT COUNT(*) FROM work_record WHERE lunch_min IS NULL"));
         }
     }
 
@@ -75,7 +76,7 @@ class FlywayMigrationIntegrationTest {
         flyway.migrate();
         flyway.validate();
 
-        assertEquals("18", flyway.info().current().getVersion().getVersion());
+        assertEquals("20", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement()) {
@@ -87,6 +88,7 @@ class FlywayMigrationIntegrationTest {
             assertEquals(2L, scalar(statement, "SELECT target_count FROM migration_reconciliation WHERE migration_name='legacy-records-to-work-record'"));
             assertEquals(-22L, scalar(statement, "SELECT overtime_min FROM work_record WHERE date='2026-08-03'"));
             assertEquals(2L, scalar(statement, "SELECT COUNT(*) FROM work_record WHERE calc_version='phase0-v2-day-type'"));
+            assertEquals(2L, scalar(statement, "SELECT COUNT(*) FROM work_record WHERE lunch_min=60"));
         }
     }
 

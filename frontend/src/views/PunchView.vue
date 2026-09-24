@@ -63,11 +63,18 @@
         <dl class="breakdown-dl">
           <div class="hrow"><dt>标准工时</dt><dd class="num">{{ hours(std) }}h</dd></div>
           <div class="hrow"><dt>实际工时</dt><dd class="num">{{ hours(m) }}h</dd></div>
+          <div class="hrow"><dt>午休扣除</dt><dd class="num">{{ lunchMin }} 分钟</dd></div>
           <div class="hrow"><dt>{{ otLabel }}</dt><dd class="num" :class="ot >= 0 ? 'warn' : 'up'">{{ signed(ot) }}</dd></div>
           <div class="hrow"><dt>今日日薪</dt><dd class="num">{{ money(dayPay) }}</dd></div>
           <div v-if="rest > 0" class="hrow"><dt>自定义休息</dt><dd class="num">{{ hours(rest) }}h</dd></div>
           <div class="hrow"><dt>时薪达成率</dt><dd class="num" :class="diff >= 0 ? 'up' : 'down'">{{ m > 0 && base > 0 ? (rate / base * 100).toFixed(1) + '%' : '—' }}</dd></div>
         </dl>
+        <div v-if="rec.start && rec.end" class="calculation-process">
+          <b>计算过程</b>
+          <span>{{ CALC.calculationText(rec, ctx) }}</span>
+          <span v-if="hasSalary">{{ basisName }}月薪 {{ money(activeSalary) }} ÷ {{ effDays }} 天 ÷ {{ hours(m) }} 小时 = {{ money(rate) }}/小时</span>
+          <span v-if="otherSalary > 0">{{ basisName === '税前' ? '税后' : '税前' }}月薪 {{ money(otherSalary) }} ÷ {{ effDays }} 天 ÷ {{ hours(m) }} 小时 = {{ money(otherRate) }}/小时</span>
+        </div>
 
         <div class="label" style="margin-top: 22px">本周 WEEK</div>
         <div class="mini-week">
@@ -121,7 +128,11 @@ const base = computed(() => CALC.baseRate(ctx.value, store.settings.basis, effDa
 const diff = computed(() => base.value > 0 ? (rate.value - base.value) / base.value * 100 : 0)
 const dayPay = computed(() => CALC.dayPay(ctx.value, store.settings.basis, effDays.value))
 const hasSalary = computed(() => CALC.salary(ctx.value, store.settings.basis) > 0)
+const activeSalary = computed(() => CALC.salary(ctx.value, store.settings.basis))
 const rest = computed(() => Number(rec.value.rest) || 0)
+const lunchMin = computed(() => CALC.recordLunchMin(rec.value, ctx.value))
+const otherBasis = computed(() => store.settings.basis === 'pre' ? 'post' : 'pre')
+const otherSalary = computed(() => CALC.salary(ctx.value, otherBasis.value))
 const wk = computed(() => CALC.periodStats(CALC.weekKeysTo(new Date(punchDate.value + 'T00:00:00')), store.records, ctx.value, store.settings.basis, undefined, appStore.holidays, ym => CALC.monthSalary(store.settings.salaries, store.settings, store.settings.basis, ym)))
 const isOffDay = computed(() => CALC.dayType(punchDate.value, appStore.holidays) === 'off')
 const dayLabel = computed(() => { const name = CALC.holidayName(punchDate.value, appStore.holidays); return name ? `${name} · 法定假日` : '周末休息日' })

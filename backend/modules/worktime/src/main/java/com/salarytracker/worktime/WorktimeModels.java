@@ -48,6 +48,19 @@ public final class WorktimeModels {
                                  Map<String, MonthlySalary> salaries) {
     }
 
+    @Schema(name = "WorktimeLunchRecalculationScope")
+    public enum LunchRecalculationScope {
+        NONE, ALL, FROM_DATE
+    }
+
+    @Schema(name = "WorktimeLunchUpdate")
+    public record LunchUpdate(int lunchMin, LunchRecalculationScope scope, String fromDate) {
+    }
+
+    @Schema(name = "WorktimeLunchUpdateResult")
+    public record LunchUpdateResult(Settings settings, int recalculatedRecords, String recalculatedFrom) {
+    }
+
     @Schema(name = "WorktimeRecordCommand")
     public record RecordCommand(String date, String start, String end, Integer rest, String note) {
     }
@@ -58,9 +71,14 @@ public final class WorktimeModels {
     }
 
     @Schema(name = "WorktimeRecord")
-    public record WorkRecord(long id, String date, String start, String end, int rest, int overtimeMin,
+    public record WorkRecord(long id, String date, String start, String end, int rest, int lunchMin, int overtimeMin,
                              BigDecimal realHourlyWage, String note, String calcVersion, String timezone,
                              long revision) {
+        public WorkRecord(long id, String date, String start, String end, int rest, int overtimeMin,
+                          BigDecimal realHourlyWage, String note, String calcVersion, String timezone,
+                          long revision) {
+            this(id, date, start, end, rest, 0, overtimeMin, realHourlyWage, note, calcVersion, timezone, revision);
+        }
     }
 
     @Schema(name = "DeletedResource")

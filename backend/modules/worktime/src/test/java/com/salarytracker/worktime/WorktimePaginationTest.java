@@ -32,7 +32,7 @@ class WorktimePaginationTest {
 
         assertTrue(result instanceof List<?>);
         verify(jdbcTemplate).query(
-                eq("SELECT id, date, TIME_FORMAT(start_time, '%H:%i') start_time, IFNULL(TIME_FORMAT(end_time, '%H:%i'), '') end_time, rest_min, overtime_min, real_hourly_wage, note, calc_version, timezone, revision FROM work_record WHERE user_id = ? AND deleted = FALSE ORDER BY date DESC LIMIT ? OFFSET ?"),
+                eq("SELECT id, date, TIME_FORMAT(start_time, '%H:%i') start_time, IFNULL(TIME_FORMAT(end_time, '%H:%i'), '') end_time, rest_min, lunch_min, overtime_min, real_hourly_wage, note, calc_version, timezone, revision FROM work_record WHERE user_id = ? AND deleted = FALSE ORDER BY date DESC LIMIT ? OFFSET ?"),
                 any(RowMapper.class),
                 eq(7L), eq(200), eq(200));
     }

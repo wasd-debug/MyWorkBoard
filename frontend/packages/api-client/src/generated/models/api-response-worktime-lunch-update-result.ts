@@ -13,18 +13,11 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { WorktimeLunchUpdateResult } from './worktime-lunch-update-result.ts';
 
-export interface WorktimeRecord {
-    'id'?: number;
-    'date'?: string;
-    'start'?: string;
-    'end'?: string;
-    'rest'?: number;
-    'lunchMin'?: number;
-    'overtimeMin'?: number;
-    'realHourlyWage'?: number;
-    'note'?: string;
-    'calcVersion'?: string;
-    'timezone'?: string;
-    'revision'?: number;
+export interface ApiResponseWorktimeLunchUpdateResult {
+    'data'?: WorktimeLunchUpdateResult;
+    'traceId'?: string;
 }

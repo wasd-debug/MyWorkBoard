@@ -14,17 +14,14 @@
 
 
 
-export interface WorktimeRecord {
-    'id'?: number;
-    'date'?: string;
-    'start'?: string;
-    'end'?: string;
-    'rest'?: number;
+export interface WorktimeLunchUpdate {
     'lunchMin'?: number;
-    'overtimeMin'?: number;
-    'realHourlyWage'?: number;
-    'note'?: string;
-    'calcVersion'?: string;
-    'timezone'?: string;
-    'revision'?: number;
+    'scope'?: WorktimeLunchUpdateScopeEnum;
+    'fromDate'?: string;
+}
+
+export enum WorktimeLunchUpdateScopeEnum {
+    NONE = 'NONE',
+    ALL = 'ALL',
+    FROM_DATE = 'FROM_DATE'
 }

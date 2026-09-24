@@ -13,18 +13,12 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { WorktimeSettings } from './worktime-settings.ts';
 
-export interface WorktimeRecord {
-    'id'?: number;
-    'date'?: string;
-    'start'?: string;
-    'end'?: string;
-    'rest'?: number;
-    'lunchMin'?: number;
-    'overtimeMin'?: number;
-    'realHourlyWage'?: number;
-    'note'?: string;
-    'calcVersion'?: string;
-    'timezone'?: string;
-    'revision'?: number;
+export interface WorktimeLunchUpdateResult {
+    'settings'?: WorktimeSettings;
+    'recalculatedRecords'?: number;
+    'recalculatedFrom'?: string;
 }

@@ -54,7 +54,7 @@
         <button v-for="day in monthCells" :key="day.k" class="cal-cell month-cell" :class="[cellCls(day), { expanded: expandedDay === day.k }]" type="button" @click.stop="handleMonthDayClick(day.k)" @dblclick.stop="handleMonthDayDoubleClick(day.k)">
           <div class="cal-head"><span class="cal-d num">{{ Number(day.k.slice(8)) }}</span><span v-if="day.holName" class="cal-hol" :title="day.holName">{{ day.holName }}</span></div>
           <div v-if="day.min > 0" class="cal-body"><span class="cal-h num">{{ hours(day.min) }}h</span><span class="cal-o num" :class="day.ot >= 0 ? 'warn' : 'up'">{{ signed(day.ot) }}</span></div>
-          <Transition name="card-expand"><div v-if="expandedDay === day.k" class="cal-expanded"><span v-if="day.min > 0">{{ recOf(day.k).start || '—' }} – {{ recOf(day.k).end || '—' }}</span><span v-if="day.min > 0">加班 {{ signed(day.ot) }}</span><span v-else>暂无打卡记录</span></div></Transition>
+          <Transition name="card-expand"><div v-if="expandedDay === day.k" class="cal-expanded"><template v-if="day.min > 0"><span>{{ recOf(day.k).start || '—' }} – {{ recOf(day.k).end || '—' }}</span><span>午休 {{ lunchOf(day.k) }} 分钟 · 自定义休息 {{ restOf(day.k) }} 分钟</span><span>{{ CALC.calculationText(recOf(day.k), ctx) }}</span><span>{{ rateFormula(day.k) }}</span><span>加班 {{ signed(day.ot) }}</span></template><span v-else>暂无打卡记录</span></div></Transition>
         </button>
       </div>
       <div v-else class="cal-grid">
@@ -66,6 +66,7 @@
             <span class="cal-t num">{{ recOf(day.k).start }} – {{ recOf(day.k).end }}</span>
             <span class="cal-h num">{{ hours(day.min) }}h <b :class="day.ot >= 0 ? 'warn' : 'up'">{{ signed(day.ot) }}</b></span>
             <span v-if="restOf(day.k) > 0" class="cal-r num">休 {{ hours(restOf(day.k)) }}h</span>
+            <span class="cal-r num">午休 {{ lunchOf(day.k) }}m</span>
             <span v-if="day.off" class="cal-off">假期加班</span>
           </div>
           <div v-else class="cal-body none">—</div>
@@ -82,6 +83,7 @@
           <div class="h num">
             {{ hours(actual(key)) }}h
             <small v-if="restOf(key) > 0" class="rest-tag">休 {{ hours(restOf(key)) }}h</small>
+            <small class="rest-tag">午休 {{ lunchOf(key) }}m</small>
             <small v-if="CALC.dayType(key, appStore.holidays) === 'off'" class="hol-tag">假期加班</small>
           </div>
         </div>
@@ -172,6 +174,7 @@ const dayHeat = day => day.min <= 0 ? 0 : day.min < 240 ? 1 : day.min < 420 ? 2 
 const cellCls = day => ({ off: day.off && day.min <= 0, 'off-worked': day.off && day.min > 0, today: day.k === todayKey, [`heat-${dayHeat(day)}`]: true })
 const recOf = key => store.records[key] || {}
 const restOf = key => Number((store.records[key] || {}).rest) || 0
+const lunchOf = key => CALC.recordLunchMin(store.records[key], ctx.value)
 
 function shift(amount) {
   if (viewMode.value === 'month' || viewMode.value === 'list') {
@@ -187,6 +190,11 @@ const actual = key => CALC.actualMin(store.records[key], ctx.value)
 const otOf = key => store.records[key]?.id ? Number(store.records[key].overtimeMin || 0) : (CALC.dayType(key, appStore.holidays) === 'off' ? actual(key) : actual(key) - CALC.stdWorkMin(ctx.value))
 // Records can outlive a basis change; calculate the displayed rate from the active basis.
 const rateOf = key => CALC.dayRate(store.records[key], ctx.value, store.settings.basis, effDays.value)
+const rateFormula = key => {
+  const record = recOf(key), workHours = hours(actual(key)), rate = rateOf(key)
+  const label = store.settings.basis === 'pre' ? '税前' : '税后'
+  return rate > 0 ? `${label}月薪 ${CALC.fmtMoney(CALC.salary(ctx.value, store.settings.basis))} ÷ ${effDays.value} 天 ÷ ${workHours} 小时 = ${CALC.fmtMoney(rate)}/小时` : '设置工资后显示时薪计算'
+}
 
 const monthPre = ref(0)
 const monthPost = ref(0)
