@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -83,6 +84,8 @@ class LedgerWriteToolsTest {
         assertEquals("money", result.structuredContent().path("fields").path(1).path("type").asText());
         assertEquals("account-1", result.structuredContent().path("input").path("accountId").asText());
         assertEquals("category-1", result.structuredContent().path("input").path("categoryId").asText());
+        assertEquals("member-1", result.structuredContent().path("input").path("memberId").asText());
+        assertTrue(result.structuredContent().path("suggestedFields").toString().contains("\"memberId\""));
         verify(transactions, never()).create(any(), any(), any());
     }
 
@@ -123,7 +126,27 @@ class LedgerWriteToolsTest {
         assertEquals("account-2", prepared.structuredContent().path("input").path("accountId").asText());
         assertEquals("category-2", prepared.structuredContent().path("input").path("categoryId").asText());
         assertEquals("merchant-1", prepared.structuredContent().path("input").path("merchantId").asText());
+        assertEquals("member-1", prepared.structuredContent().path("input").path("memberId").asText());
+        assertEquals("Alice", prepared.structuredContent().path("preview").path("memberName").asText());
         assertEquals("学习进修 / 软件", prepared.structuredContent().path("preview").path("categoryPath").asText());
+    }
+
+    @Test
+    void prepareKeepsExplicitMemberInsteadOfReplacingItWithCurrentUser() {
+        when(books.members("book-1")).thenReturn(List.of(
+                new Member("member-1", 7L, 7L, "alice", "Alice", "Alice", "role-1",
+                        "OWNER", "所有者", "user", 1, "2026-09-01"),
+                new Member("member-2", 8L, 7L, "bob", "Bob", "Bob", "role-2",
+                        "MEMBER", "成员", "user", 1, "2026-09-01")));
+        var prepare = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("kind", "EXPENSE").put("amount", 29.9)
+                .put("accountId", "account-1").put("categoryId", "category-1")
+                .put("memberName", "Bob").put("occurredOn", "2026-09-24"));
+
+        assertEquals("member-2", prepared.structuredContent().path("input").path("memberId").asText());
+        assertEquals("Bob", prepared.structuredContent().path("preview").path("memberName").asText());
     }
 
     @Test

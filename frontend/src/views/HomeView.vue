@@ -99,7 +99,7 @@
       </section>
     </div>
 
-    <section class="chat-workspace">
+    <section class="chat-workspace" :style="{ '--chat-composer-height': `${composerHeight}px` }">
       <header class="chat-workspace-head">
         <button v-if="!sidebarOpen" class="chat-icon-button" type="button" title="展开历史会话" aria-label="展开历史会话" @click="sidebarOpen = true"><PanelLeftOpen /></button>
         <div><b>{{ activeConversation?.title || '新对话' }}</b><small>AI 个人工作台</small></div>
@@ -234,7 +234,7 @@
 
       <button v-if="activeMessages.length && !autoFollow" class="scroll-to-bottom" type="button" title="滚动到底部并继续跟随" aria-label="滚动到底部并继续跟随" @click="scrollToBottom(true)"><ArrowDown /></button>
 
-      <div class="chat-composer-wrap">
+      <div ref="composerWrap" class="chat-composer-wrap">
         <section v-if="activeQueuedPrompts.length" class="prompt-queue" aria-label="消息处理队列">
           <header><span><ListOrdered />队列 {{ activeQueuedPrompts.length }} 条</span><button v-if="activeQueuedPrompts.some(item => item.status === 'QUEUED')" type="button" @click="clearPromptQueue(activeId)">清空等待项</button></header>
           <ol>
@@ -288,7 +288,7 @@ import { apiAnswerAgentAction, apiApproveAgentAction, apiArchiveAgentSession, ap
 
 const router = useRouter(), store = useAppStore(), ledgerStore = useLedgerStore(), worktimeStore = useWorktimeStore()
 const sidebarOpen = ref(true), conversations = ref([]), activeId = ref(''), prompt = ref(''), attachments = ref([])
-const fileInput = ref(null), imageInput = ref(null), messageViewport = ref(null), recording = ref(false), autoFollow = ref(true), copiedId = ref('')
+const fileInput = ref(null), imageInput = ref(null), messageViewport = ref(null), composerWrap = ref(null), composerHeight = ref(0), recording = ref(false), autoFollow = ref(true), copiedId = ref('')
 const conversationMenu = ref({ item: null, x: 0, y: 0 }), conversationMenuEl = ref(null)
 const groupMenu = ref({ item: null, x: 0, y: 0 }), groupMenuEl = ref(null)
 const conversationDialog = ref({ type: '', item: null }), renameTitle = ref(''), renameInput = ref(null)
@@ -297,7 +297,7 @@ const queuedPrompts = ref([]), queueRevisions = ref({}), turnRunning = ref(false
 const modelConnections = ref([])
 const draggedConversationId = ref(''), conversationDropTarget = ref('')
 const entityPickerState = ref({})
-let mediaRecorder = null, mediaStream = null, recordingStartedAt = 0, activeTurnController = null, conversationCreationPromise = null, queuePollTimer = null, lastMessageScrollTop = 0, programmaticScroll = false, userPausedFollow = false
+let mediaRecorder = null, mediaStream = null, recordingStartedAt = 0, activeTurnController = null, conversationCreationPromise = null, queuePollTimer = null, composerResizeObserver = null, lastMessageScrollTop = 0, programmaticScroll = false, userPausedFollow = false
 const queuePresence = new Map()
 const historyKey = computed(() => `workspace_ai_conversations_v1:${store.accountScope || 'local'}`)
 const displayName = computed(() => store.authUser?.nickname || store.authUser?.username || '建胜')
@@ -629,6 +629,16 @@ async function scrollToBottom(force = false) {
 }
 async function toggleRecording() { if (recording.value) return mediaRecorder?.stop(); if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') return message.warning('当前浏览器不支持录音'); try { mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true }); mediaRecorder = new MediaRecorder(mediaStream); recordingStartedAt = Date.now(); mediaRecorder.addEventListener('stop', () => { attachments.value.push({ id: uid(), type: 'audio', name: `语音 ${Math.max(1, Math.round((Date.now() - recordingStartedAt) / 1000))} 秒` }); mediaStream?.getTracks().forEach(track => track.stop()); recording.value = false }, { once: true }); mediaRecorder.start(); recording.value = true } catch { message.warning('无法使用麦克风，请检查浏览器权限') } }
 
-onMounted(async () => { await loadConversations(); sidebarOpen.value = window.innerWidth >= 900; document.addEventListener('pointerdown', closeMetaPopovers); queuePollTimer = window.setInterval(pollAgentState, 1500); scrollToBottom(true) })
-onBeforeUnmount(() => { document.removeEventListener('pointerdown', closeMetaPopovers); window.clearInterval(queuePollTimer); activeTurnController?.abort(); if (mediaRecorder?.state === 'recording') mediaRecorder.stop(); mediaStream?.getTracks().forEach(track => track.stop()) })
+onMounted(async () => {
+  await loadConversations()
+  sidebarOpen.value = window.innerWidth >= 900
+  if (composerWrap.value && typeof ResizeObserver !== 'undefined') {
+    composerResizeObserver = new ResizeObserver(([entry]) => { composerHeight.value = Math.ceil(entry?.borderBoxSize?.[0]?.blockSize || entry?.contentRect?.height || 0) })
+    composerResizeObserver.observe(composerWrap.value)
+  }
+  document.addEventListener('pointerdown', closeMetaPopovers)
+  queuePollTimer = window.setInterval(pollAgentState, 1500)
+  scrollToBottom(true)
+})
+onBeforeUnmount(() => { composerResizeObserver?.disconnect(); document.removeEventListener('pointerdown', closeMetaPopovers); window.clearInterval(queuePollTimer); activeTurnController?.abort(); if (mediaRecorder?.state === 'recording') mediaRecorder.stop(); mediaStream?.getTracks().forEach(track => track.stop()) })
 </script>

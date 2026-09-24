@@ -523,6 +523,32 @@ test('restores a server queued follow-up and stops following as soon as the user
   await expect(page.getByRole('button', { name: '滚动到底部并继续跟随' })).toBeHidden()
 })
 
+test('keeps the prompt queue outside the message viewport on desktop and mobile', async ({ page }) => {
+  const now = new Date().toISOString()
+  const longAnswer = Array.from({ length: 18 }, (_, index) => `这是用于验证队列布局的第 ${index + 1} 行回复。`).join('\n')
+  await setupAgent(page, 'agent-queue-layout-e2e', {
+    sessions: [{ id: 'session-1', title: '队列布局测试', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [
+      { id: 1, turnId: 'turn-old', role: 'user', content: '请给我一段较长的回复', metadataJson: null, createdAt: now },
+      { id: 2, turnId: 'turn-old', role: 'assistant', content: longAnswer, metadataJson: JSON.stringify(response), createdAt: now },
+    ],
+    queue: Array.from({ length: 4 }, (_, index) => ({ id: `turn-queued-${index}`, sessionId: 'session-1', clientRequestId: `request-${index}`, status: 'QUEUED', userMessage: `等待处理的消息 ${index + 1}`, createdAt: now })),
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('队列 4 条')).toBeVisible()
+  const geometry = await page.evaluate(() => {
+    const viewport = document.querySelector('.chat-message-viewport').getBoundingClientRect()
+    const composer = document.querySelector('.chat-composer-wrap').getBoundingClientRect()
+    const queue = document.querySelector('.prompt-queue').getBoundingClientRect()
+    const lastMessage = document.querySelector('.chat-message:last-child').getBoundingClientRect()
+    return { viewportBottom: viewport.bottom, composerTop: composer.top, queueTop: queue.top, lastMessageBottom: lastMessage.bottom }
+  })
+  expect(Math.abs(geometry.viewportBottom - geometry.composerTop)).toBeLessThanOrEqual(1)
+  expect(geometry.queueTop).toBeGreaterThanOrEqual(geometry.viewportBottom - 1)
+  expect(geometry.lastMessageBottom).toBeLessThanOrEqual(geometry.viewportBottom + 1)
+})
+
 test('reorders queued messages by dragging before they execute', async ({ page }) => {
   const state = await setupAgent(page, 'agent-queue-order-e2e')
   await page.route('**/api/v1/agent/sessions/*/turns', async route => {
@@ -568,6 +594,16 @@ test('cancels a running server turn from the queue', async ({ page }) => {
   await page.getByRole('button', { name: '停止生成' }).click()
   await expect.poll(() => state.queueState.queueRequests.some(item => item.type === 'cancel' && item.id === 'turn-running')).toBeTruthy()
   await expect(page.locator('.prompt-queue li').filter({ hasText: '正在处理的问题' })).toBeHidden()
+  const successToast = page.locator('.toast-notice.type-success')
+  await expect(successToast).toContainText('已停止生成')
+  expect(await successToast.locator('.toast-icon').evaluate(element => {
+    const probe = document.createElement('span')
+    probe.style.color = 'var(--up)'
+    document.body.appendChild(probe)
+    const matches = getComputedStyle(element).color === getComputedStyle(probe).color
+    probe.remove()
+    return matches
+  })).toBe(true)
 })
 
 test('retries a failed restored turn only once', async ({ page }) => {

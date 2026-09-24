@@ -121,6 +121,15 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
             memberId = matchMemberId(members, memberName);
             if (memberId != null) suggested.add("memberId");
         }
+        if (memberId == null && memberName == null) {
+            long currentUserId = currentUser.id();
+            List<Member> currentMembers = members.stream()
+                    .filter(item -> item.userId() == currentUserId).toList();
+            if (currentMembers.size() == 1) {
+                memberId = currentMembers.get(0).id();
+                suggested.add("memberId");
+            }
+        }
         if (projectId == null && projectName != null) {
             projectId = matchNamedId(projects, projectName);
             if (projectId != null) suggested.add("projectId");
