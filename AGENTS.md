@@ -33,7 +33,7 @@ Use JUnit 5 names ending in `Test.java`; write behavior-focused method names suc
 
 ## Commit & Pull Request Guidelines
 
-Recent history uses concise conventional prefixes, for example `feat：完善账本流水管理` and `fix：账本`. Prefer `feat:`, `fix:`, `chore:`, or `test:` followed by a specific summary. PRs should describe scope, data/schema impact, test commands and results, linked issues, and screenshots for UI changes. Keep unrelated changes in separate commits.
+All Git commit messages must use a concise conventional prefix such as `feat:`, `fix:`, `docs:`, `chore:`, or `test:`, followed by a specific Chinese summary, for example `feat: 完善账本流水管理` or `fix: 修复账本成员缓存串用`. Do not use an English summary. Keep the subject concise and use a Chinese body when additional context is necessary. PRs should describe scope, data/schema impact, test commands and results, linked issues, and screenshots for UI changes. Keep unrelated changes in separate commits.
 
 For incremental development requested in this repository, finish each increment by updating the relevant files under `docs/`, running proportional verification, refreshing any affected local development services so the checked-out code is available for manual testing, and creating a local Git commit containing only that increment. Do not push, deploy, or include unrelated untracked files unless the user explicitly requests it. If verification or service refresh is blocked, document and report the blocker before committing.
 
