@@ -73,7 +73,7 @@
 ### Phase 2-6
 
 - **Phase 2 任务管理：未启动。** 导航只有禁用占位，没有 task/file/notification 模块或表结构。
-- **Phase 3A-D Agent/MCP：Phase 3A/3B 增量实施。** 会话、队列、SSE、模型连接、Usage 与 Trace 已落地；首页已支持工时及普通收入/支出的新增、修改、删除，包含完整编辑/影响预览、站内确认和幂等 commit。修改与删除均按 prepare 保存的原 revision 提交，冲突不会覆盖或删除新版本；补参后会更新历史 action 元数据，刷新可恢复最新终态。自动评测、复杂账本写入和 MCP Server 尚未完成。
+- **Phase 3A-D Agent/MCP：Phase 3A/3B 增量实施。** 会话、队列、SSE、模型连接、Usage 与 Trace 已落地；首页已支持工时及普通收入/支出的新增、修改、删除。已建立机器可读中文评测集、提示词/工具白名单契约和显式真实 DeepSeek 评测，固定 12 条首轮工具选择与参数用例通过且零业务写入。多轮歧义回放、复杂账本写入和 MCP Server 尚未完成。
 - **Phase 4 文件/RAG：未启动。** 尚无 MinIO/NAS 文件域、Tika、Qdrant 和知识库。
 - **Phase 5 跨域洞察：未启动。** 只有 `domain_event` 预留表，无事件发布/消费、`report_fact`、`report_snapshot` 或洞察页面。
 - **Phase 6 持续打磨：部分能力提前实现。** 已有响应式布局、主题、共享账本和可重复恢复演练；PWA、全局搜索和完整可观测体系尚未实现。
@@ -120,7 +120,7 @@
 1. 完成 Android Chrome 与 iOS Safari 真机验收记录。
 2. 确认 MoneyWiz 与外部账单源范围。
 3. 将恢复脚本纳入季度生产运维并持续留存发布/回滚记录。
-4. 继续 [工作台的 Agent 改造计划](工作台的Agent改造计划.md) Phase 3B：建设中文 Agent 自动评测、工具选择与参数准确率、危险写入失败回放，再补真实同步投影回归和稳定性门禁。
+4. 继续 [工作台的 Agent 改造计划](工作台的Agent改造计划.md) Phase 3B：实现实体歧义候选选择、多轮工具结果回放和真实同步投影回归，再完成稳定性门禁。
 5. Phase 2 任务域与现有工时/账本 Agent 可分别推进；任务能力完成后再注册为新的 Domain Tool，不阻塞 Phase 3A-D。
 
 ## 文档约定

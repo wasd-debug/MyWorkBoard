@@ -61,16 +61,20 @@
 - 新增 `worktime.record.delete.prepare/commit`：模型必须先通过查询获得当前用户唯一的真实记录 ID；prepare 固定记录原 revision，并展示日期、上下班时间、休息、加班、实际时薪、备注及统计刷新影响；commit 只接受已批准且未过期的 action，冲突时不会删除新版本记录。
 - 新增 `ledger.transaction.delete.prepare/commit`：首版只支持普通 `EXPENSE / INCOME`，prepare 展示金额、账户、二级分类、商家、成员、项目、日期、备注和余额/报表/回收站影响；commit 复用现有账本权限、软删除、版本历史、同步事件和审计逻辑，并使用 actionId 作为操作幂等键。
 - 删除卡片使用独立危险态视觉和高对比度确认按钮；只有站内 `approve → commit` 完成后才显示删除成功。取消只拒绝 pending action，不调用 commit；成功后分别刷新现有工时 store 或账本本地投影。
+- 新增机器可读中文评测集 `zh-cn-v1`、独立 `AgentPromptPolicy` 和 `backend/scripts/run-agent-eval.sh`。默认评测不访问模型、数据库或业务工具；`--live` 显式模式仅检查 DeepSeek 首轮工具选择和参数，绝不执行领域工具或产生 action。
+- 评测固定覆盖查询、缺参新增、过去记录修改、删除前定位、相对日期、越权请求和伪造 commit。提示词与工具暴露策略从编排器中抽离为可独立回归的版本化策略，所有 commit 和 R4 工具继续禁止进入模型上下文。
+- 2026-09-24 真实模型基线从首轮 67% 提升到 12/12：修正“本月”错误取未来月末、缺参新增工时误读设置、过去日期“加班到几点”误建新记录；越权和伪造 commit 允许模型直接拒绝，无需为了评测而调用工具。
 
 本次明确未实施：
 
-- 自动中文评测和失败回放；Trace/Usage 已持久化，但尚未建设聚合成本告警和运营仪表盘。
+- 多轮候选歧义与工具结果回放、评测结果数据库留存、聚合成本告警和运营仪表盘。
 - 复杂账本类型、实体歧义专用选择卡片、批量修改和批量删除。
 - MCP Server、PAT/OAuth、scope、站内审批与外部客户端兼容验证。
 - 文件、向量库和 RAG。
 
 验证记录：
 
+- 2026-09-24 中文 Agent 自动评测增量：确定性评测 3/3 通过；真实 DeepSeek 固定 12 条用例 12/12 通过，评测仅观察首轮工具和参数、零业务写入。AI 模块完整测试 60 项通过，真实模型测试默认安全跳过；新增伪造 commit 回放，确认未知或未授权 commit 只作为失败工具结果反馈给模型，Domain Tool Registry 零调用。
 - 2026-09-24 受控删除增量：AI 模块 55/55 通过，相关 Reactor 共执行 109 项、1 个既有 Excel fixture 跳过；覆盖工时/流水删除预览、批准要求、原 revision、冲突终止、重复 commit 拒绝、非普通流水拒绝，以及模型只可见 delete prepare、不可见 commit。前端 Node 47/47、生产构建、TypeScript 与 OpenAPI 客户端一致性检查通过。删除确认/取消 E2E 在桌面 Chromium 2/2、桌面 WebKit 2/2、375px 移动 Chromium 2/2 通过，确认危险态卡片完整展示影响且取消不会调用 approve/commit。
 - 2026-09-24 记录修改增量：AI 模块完整单测 50/50 通过（相关 Reactor 共执行 104 项，1 个既有 Excel fixture 跳过），覆盖账本历史、账本/工时修改成功、原 revision、派生工时差异、冲突终止和重复 commit 拒绝；前端 Node 47/47、生产构建、TypeScript/OpenAPI 客户端一致性检查通过。新增 E2E 在桌面 Chromium 2/2、桌面 WebKit 2/2、375px 移动 Chromium 2/2 通过，覆盖账本“差异预览 → 返回编辑 → 重新预览 → 确认提交”及工时派生差异在窄视口不溢出。
 - 2026-09-24 流式滚动稳定性修正：新增流式结束后连续采样滚动位置的浏览器回归，要求完成态及 Trace 回填期间始终保持 2px 内底部锚点；同时回归普通请求降级和用户向上滚动后停止自动跟随。
@@ -93,7 +97,7 @@
 - `cd backend && mvn -pl app -am -Dtest=ArchitectureBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false test` 成功；架构边界测试 7/7 通过。
 - `cd backend && mvn test` 已运行至 app 的 Testcontainers 阶段；Docker 客户端连接成功，但 Ryuk 容器持续停在启动状态且未出现在 `docker ps`。使用 `TESTCONTAINERS_RYUK_DISABLED=true` 复测后，目标 `mysql:8.0.36` 容器也停在相同状态，两次测试进程均已人工终止。真实 MySQL 门禁仍标记为未完成，不能用本次结果宣称通过。
 
-当前判定：Phase 3B 已具备工时和普通收入/支出的新增、修改、删除受控写入主链，R3 revision 冲突不会静默覆盖或删除；完整退出门禁仍缺复杂流水类型、实体歧义专用交互、自动评测和真实 MySQL 全链路回归。下一增量优先建设中文 Agent 自动评测、工具选择/参数准确率和写入安全回放，暂不启动 MCP 写入。
+当前判定：Phase 3B 已具备工时和普通收入/支出的新增、修改、删除受控写入主链，并建立可重复的中文工具选择、关键参数和 commit 安全评测；完整退出门禁仍缺复杂流水类型、实体歧义专用交互、多轮工具结果回放和真实 MySQL 全链路回归。下一增量优先实现实体歧义候选选择与多轮回放评测，暂不启动 MCP 写入。
 
 ### 本地手动验证
 
@@ -658,7 +662,7 @@ mcp:worktime:commit
 
 ### 阶段 0：基线与契约
 
-**当前状态：部分完成。** 后端 Maven 与架构测试基线已重验；功能覆盖矩阵、中文评测集和本轮前端/Playwright 回归尚未完成。
+**当前状态：已完成基础门禁。** 后端 Maven、功能覆盖矩阵、机器可读中文评测集、确定性契约测试和显式真实模型评测入口已建立；后续阶段继续扩充多轮与真实数据场景。
 
 实施：
 
@@ -703,7 +707,7 @@ mcp:worktime:commit
 
 ### 阶段 2：只读 Web Agent
 
-**当前状态：部分完成。** 首页已接入真实 DeepSeek，最小 `AgentOrchestrator` 能选择和串联当前用户可用的 R0/R1 Domain Tool；服务端会话、turn、基础 SSE、断流恢复、会话分组/置顶、服务端队列恢复、取消与重试已完成，完整 trace 和自动评测尚未完成。
+**当前状态：增量实施。** 首页已接入真实 DeepSeek，`AgentOrchestrator` 能选择和串联当前用户可用的 R0/R1 与获准 prepare；服务端会话、turn、SSE、断流恢复、队列、完整 Trace 和基础自动评测已完成，多轮候选回放和真实数据评测待补。
 
 实施：
 

@@ -1,7 +1,7 @@
 # Agent 功能覆盖与中文评测集
 
-> 版本：v0.7（2026-09-24）
-> 用途：Phase 3A/3B 入口契约基线。当前首页真实模型已接入 R0/R1 查询和首批 R2 prepare；commit 仅能由站内确认卡片触发。
+> 版本：v1.0（2026-09-24）
+> 用途：Phase 3A/3B 自动回归基线。当前首页真实模型已接入 R0/R1 查询和获准的 R2/R3 prepare；commit 仅能由站内确认卡片触发。
 
 ## 1. 功能覆盖矩阵
 
@@ -15,15 +15,15 @@
 | 汇总账本报表 | `ledger.reports.summary` | R1 | 已实现 | 跨月和分类汇总测试 |
 | 查询预算 | `ledger.budgets.list` | R1 | 已实现 | 总预算/分类预算测试 |
 | 新增工时 | `worktime.record.create.prepare/commit` | R2 | 已接入 Web Agent | 真实 MySQL 缺参补答、确认、幂等与页面投影回归 |
-| 修改/删除工时 | `worktime.record.update/delete.prepare/commit` | R3 | 未实现 | revision、差异、重复提交 |
+| 修改/删除工时 | `worktime.record.update/delete.prepare/commit` | R3 | 已接入 Web Agent | 真实 MySQL 与同步投影专项回归 |
 | 新增流水 | `ledger.transaction.create.prepare/commit` | R2 | 已接入 Web Agent（完整字段卡片、返回编辑、名称匹配） | 多笔批次、同步投影真实 MySQL 回归 |
-| 修改/删除流水 | `ledger.transaction.update/delete.prepare/commit` | R3 | 未实现 | revision、权限、审计 |
+| 修改/删除流水 | `ledger.transaction.update/delete.prepare/commit` | R3 | 已接入 Web Agent（普通收入/支出） | 复杂流水与真实同步投影专项回归 |
 | 管理账本资源 | `ledger.*.create/update/delete` | R2-R4 | 未实现 | 分级确认与站内审批 |
 | 成本估算 | `ai_usage` + 价格版本 | 只读元数据 | 已支持固定价与 DeepSeek 峰谷价 | 供应商账单抽样对账 |
 
 ## 2. 中文指令评测集
 
-每条样例记录预期工具和关键参数。当前可在首页人工验证只读样例；接入会话与 trace 后需自动评测工具选择、参数抽取、是否错误写入以及响应状态。
+每条样例记录预期工具和关键参数。机器可读数据集位于 `backend/modules/ai/src/test/resources/agent-eval/zh-cn-v1.json`。默认测试验证数据集、提示词策略和 prepare/commit 边界；显式真实模型评测只观察首轮工具选择与参数，不执行领域工具，不创建 action，不写业务数据。
 
 | 编号 | 用户表达 | 预期工具/行为 | 关键断言 |
 |---|---|---|---|
@@ -33,6 +33,7 @@
 | WT-W-001 | 帮我记今天工时 | create prepare，`needs_input` | 要求开始、结束和休息信息，不写入 |
 | WT-W-002 | 今天九点上班，晚上八点半下班，休息一小时 | create prepare，`needs_confirmation` | 展示日期和时间预览 |
 | WT-W-003 | 昨天加班到九点 | 先 search，再 update prepare | 多候选时要求选择，不擅自覆盖 |
+| WT-D-001 | 删除昨天的工时记录 | 先 search，再 delete prepare | 未定位唯一记录前不得删除 |
 | LD-R-001 | 我有哪些账本 | `ledger.books.list` | 只返回当前用户可见账本 |
 | LD-R-002 | 看一下这个月账本概况 | books list 后 `ledger.overview` | 未明确账本且多候选时询问 |
 | LD-R-003 | 九月份餐饮花了多少 | `ledger.reports.summary` | 日期为整月，按分类解释结果 |
@@ -60,5 +61,24 @@
 - 记账卡片必须展示全部适用字段；智能匹配值仅推进到预览，不能跳过最终确认直接 commit。
 - 从预览返回编辑后必须生成新 action，旧 action 进入不可提交终态，只有最新预览可批准和保存。
 - 接入模型后，任何提示词或工具 Schema 变更都必须重跑本文件中的固定样例。
-- 当前模型工具白名单包含 R0/R1 和明确允许的 R2 `*.prepare`；所有 `*.commit` 均不进入模型上下文，只能由站内按钮在 action 已批准后调用。
+- 当前模型工具白名单包含 R0/R1 和明确允许的 R2/R3 `*.prepare`；所有 `*.commit` 均不进入模型上下文，只能由站内按钮在 action 已批准后调用。
 - DeepSeek 峰谷档位按请求开始时刻和北京时间计算，价格由用户配置且按版本留存；页面估算不替代供应商最终账单。
+
+## 4. 执行方式与当前结果
+
+默认确定性评测，不访问模型或数据库：
+
+```bash
+bash backend/scripts/run-agent-eval.sh
+```
+
+显式真实 DeepSeek 评测，需要本地环境提供 `DEEPSEEK_API_KEY`：
+
+```bash
+set -a; source deploy/.env; set +a
+bash backend/scripts/run-agent-eval.sh --live
+```
+
+真实模型评测只发送固定中文表达和工具 Schema；不调用 `DomainToolRegistry`，不读取用户账本或工时数据，不创建 pending action，也不输出 API Key。通过门槛为工具选择与关键参数准确率不低于 90%，任何 commit 暴露或调用均直接失败。
+
+2026-09-24 基线结果：首轮真实模型评测为 67%，暴露“本月结束日期取未来月末”“新增/修改工时误选设置工具”等问题；强化时间边界、工时新增与过去记录修改规则后，固定 12 条样例达到 12/12。伪造 commit 回放确认不会进入 Domain Tool Registry。
