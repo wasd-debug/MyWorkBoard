@@ -13,6 +13,8 @@ import com.salarytracker.ledger.LedgerBookService;
 import com.salarytracker.ledger.LedgerModels.Account;
 import com.salarytracker.ledger.LedgerModels.Category;
 import com.salarytracker.ledger.LedgerModels.CategoryKind;
+import com.salarytracker.ledger.LedgerModels.Member;
+import com.salarytracker.ledger.LedgerModels.NamedResource;
 import com.salarytracker.ledger.LedgerTransactionService;
 import org.junit.jupiter.api.Test;
 
@@ -47,12 +49,25 @@ class LedgerWriteToolsTest {
                 Set.of("ledger:read", "ledger:write")));
         when(books.accounts("book-1", false)).thenReturn(List.of(
                 new Account("account-1", "现金", "wallet", "CASH", "CNY", BigDecimal.ZERO,
+                        BigDecimal.ZERO, false, 1, "2026-09-01"),
+                new Account("account-2", "中行卡", "bank-boc", "BANK", "CNY", BigDecimal.ZERO,
                         BigDecimal.ZERO, false, 1, "2026-09-01")));
         when(books.categories("book-1", false)).thenReturn(List.of(
                 new Category("parent-1", "餐饮", "tag", CategoryKind.EXPENSE, null,
                         "#fff", false, 1, "2026-09-01"),
                 new Category("category-1", "午餐", "tag", CategoryKind.EXPENSE, "parent-1",
+                        "#fff", false, 1, "2026-09-01"),
+                new Category("parent-2", "学习进修", "tag", CategoryKind.EXPENSE, null,
+                        "#fff", false, 1, "2026-09-01"),
+                new Category("category-2", "软件", "tag", CategoryKind.EXPENSE, "parent-2",
                         "#fff", false, 1, "2026-09-01")));
+        when(books.merchants("book-1", false)).thenReturn(List.of(
+                new NamedResource("merchant-1", "中转站", "shop", null, null, false, 1, "2026-09-01")));
+        when(books.projects("book-1", false)).thenReturn(List.of(
+                new NamedResource("project-1", "个人成长", "folder", null, "#fff", false, 1, "2026-09-01")));
+        when(books.members("book-1")).thenReturn(List.of(
+                new Member("member-1", 7L, 7L, "alice", "Alice", "Alice", "role-1",
+                        "OWNER", "所有者", "user", 1, "2026-09-01")));
     }
 
     @Test
@@ -63,8 +78,52 @@ class LedgerWriteToolsTest {
 
         assertEquals(ToolStatus.NEEDS_INPUT, result.status());
         assertEquals("amount", result.structuredContent().path("missingFields").path(0).asText());
-        assertEquals("money", result.structuredContent().path("fields").path(0).path("type").asText());
+        assertEquals(9, result.structuredContent().path("fields").size());
+        assertEquals("kind", result.structuredContent().path("fields").path(0).path("name").asText());
+        assertEquals("money", result.structuredContent().path("fields").path(1).path("type").asText());
+        assertEquals("account-1", result.structuredContent().path("input").path("accountId").asText());
+        assertEquals("category-1", result.structuredContent().path("input").path("categoryId").asText());
         verify(transactions, never()).create(any(), any(), any());
+    }
+
+    @Test
+    void prepareIncludesAllEditableFieldsAndCommitKeepsSelectedResources() {
+        var prepare = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
+        var commit = new LedgerTransactionCreateCommitTool(transactions, actions, currentUser, mapper);
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("kind", "EXPENSE").put("amount", 50).put("accountId", "account-1")
+                .put("categoryId", "category-1").put("merchantId", "merchant-1")
+                .put("memberId", "member-1").put("projectId", "project-1")
+                .put("occurredOn", "2026-09-24").put("note", "中转站"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals("餐饮 / 午餐", prepared.structuredContent().path("preview").path("categoryPath").asText());
+        assertEquals("中转站", prepared.structuredContent().path("preview").path("merchantName").asText());
+        assertEquals("Alice", prepared.structuredContent().path("preview").path("memberName").asText());
+        assertEquals("个人成长", prepared.structuredContent().path("preview").path("projectName").asText());
+
+        actions.approve(prepared.actionId(), 7L);
+        assertEquals(ToolStatus.COMPLETED,
+                commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())).status());
+        verify(transactions).create(eq("book-1"), org.mockito.ArgumentMatchers.argThat(command ->
+                "merchant-1".equals(command.merchantId()) && "member-1".equals(command.memberId())
+                        && "project-1".equals(command.projectId())), eq(prepared.actionId()));
+    }
+
+    @Test
+    void prepareMatchesHumanReadableAccountAndCategoryPath() {
+        var prepare = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("kind", "EXPENSE").put("amount", 29.9)
+                .put("accountName", "中行卡").put("categoryName", "学习进修软件")
+                .put("merchantName", "中转站").put("occurredOn", "2026-09-24"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals("account-2", prepared.structuredContent().path("input").path("accountId").asText());
+        assertEquals("category-2", prepared.structuredContent().path("input").path("categoryId").asText());
+        assertEquals("merchant-1", prepared.structuredContent().path("input").path("merchantId").asText());
+        assertEquals("学习进修 / 软件", prepared.structuredContent().path("preview").path("categoryPath").asText());
     }
 
     @Test

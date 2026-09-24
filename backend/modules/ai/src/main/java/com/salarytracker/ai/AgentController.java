@@ -84,8 +84,9 @@ public class AgentController {
                                           @RequestBody(required = false) JsonNode answer) {
         long userId = currentUser.id();
         PendingAction action = actions.getForUser(actionId, userId);
-        if (action.status() != com.salarytracker.ai.action.ActionStatus.WAITING_INPUT) {
-            throw new IllegalStateException("action 当前不等待补充输入");
+        if (action.status() != com.salarytracker.ai.action.ActionStatus.WAITING_INPUT
+                && action.status() != com.salarytracker.ai.action.ActionStatus.WAITING_CONFIRMATION) {
+            throw new IllegalStateException("action 当前不可编辑");
         }
         try {
             com.fasterxml.jackson.databind.node.ObjectNode merged = (com.fasterxml.jackson.databind.node.ObjectNode)

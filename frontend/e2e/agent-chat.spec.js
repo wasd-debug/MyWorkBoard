@@ -263,8 +263,96 @@ test('filters account and category action fields by typing', async ({ page }) =>
   await expect(page.getByRole('combobox', { name: '账户筛选' })).toBeHidden()
 })
 
+test('shows the complete ledger card and returns from preview to editing', async ({ page }) => {
+  const now = new Date().toISOString()
+  const fields = [
+    { name: 'kind', label: '收支类型', type: 'select', required: true, options: [{ value: 'EXPENSE', label: '支出' }, { value: 'INCOME', label: '收入' }] },
+    { name: 'amount', label: '金额', type: 'money', required: true },
+    { name: 'occurredOn', label: '发生日期', type: 'date', required: true },
+    { name: 'accountId', label: '账户', type: 'entity-picker', required: true, options: [{ value: 'boc', label: '中行卡' }] },
+    { name: 'categoryId', label: '二级分类', type: 'entity-picker', required: true, options: [{ value: 'software', label: '学习进修 / 软件' }] },
+    { name: 'merchantId', label: '商家 / 对方', type: 'entity-picker', required: false, options: [{ value: 'relay', label: '中转站' }] },
+    { name: 'memberId', label: '成员', type: 'entity-picker', required: false, options: [{ value: 'me', label: '我' }] },
+    { name: 'projectId', label: '项目', type: 'entity-picker', required: false, options: [{ value: 'growth', label: '个人成长' }] },
+    { name: 'note', label: '备注', type: 'textarea', required: false },
+  ]
+  const input = { bookId: 'book-1', kind: 'EXPENSE', amount: 50, occurredOn: '2026-09-24', accountId: 'boc', categoryId: 'software', merchantId: 'relay', memberId: 'me', projectId: 'growth', note: '中转站' }
+  const action = {
+    status: 'NEEDS_CONFIRMATION', summary: '请确认这笔支出', actionId: 'action-preview-1', expiresAt: now,
+    structuredContent: { actionType: 'ledger.transaction.create', input, suggestedFields: ['accountId', 'categoryId', 'merchantId'], fields, preview: { ...input, accountName: '中行卡', categoryPath: '学习进修 / 软件', merchantName: '中转站', memberName: '我', projectName: '个人成长' } },
+  }
+  await setupAgent(page, 'agent-complete-ledger-card', {
+    sessions: [{ id: 'session-1', title: '完整记账卡片', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [
+      { id: 1, turnId: 'turn-action', role: 'user', content: '中转站花了 50，也是软件里', metadataJson: null, createdAt: now },
+      { id: 2, turnId: 'turn-action', role: 'assistant', content: '已整理好完整记账预览。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now },
+    ],
+  })
+  await page.route('**/api/v1/agent/actions/action-preview-1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_CONFIRMATION' } }) }))
+  await page.route('**/api/v1/agent/actions/action-preview-1/answer', async route => {
+    const body = route.request().postDataJSON()
+    const next = { ...action, actionId: 'action-preview-2', structuredContent: { ...action.structuredContent, input: body, preview: { ...action.structuredContent.preview, ...body, amount: Number(body.amount) } } }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: next }) })
+  })
+  await page.goto('/')
+
+  await expect(page.getByText('学习进修 / 软件')).toBeVisible()
+  await expect(page.getByText('个人成长')).toBeVisible()
+  await page.getByRole('button', { name: '返回编辑' }).click()
+  await expect(page.getByLabel('金额')).toHaveValue('50')
+  await expect(page.getByRole('combobox', { name: '账户筛选' })).toHaveValue('中行卡')
+  await expect(page.getByText('智能匹配')).toHaveCount(3)
+  await page.getByLabel('金额').fill('58.8')
+
+  await page.evaluate(() => { localStorage.setItem('st_theme', 'dark'); localStorage.setItem('st_accent', 'sun') })
+  await page.reload()
+  await page.getByRole('button', { name: '返回编辑' }).click()
+  const primary = page.getByRole('button', { name: '生成预览' })
+  const colors = await primary.evaluate(element => { const style = getComputedStyle(element); return { color: style.color, background: style.backgroundColor } })
+  expect(colors.color).not.toBe(colors.background)
+  await primary.click()
+  await expect(page.getByRole('button', { name: '确认并保存' })).toBeVisible()
+})
+
+test('confirms multiple ledger actions independently from the batch summary', async ({ page }) => {
+  const now = new Date().toISOString()
+  const makeAction = (id, amount, note) => ({
+    status: 'NEEDS_CONFIRMATION', summary: `请确认${note}`, actionId: id, expiresAt: now,
+    structuredContent: {
+      actionType: 'ledger.transaction.create', input: { bookId: 'book-1', kind: 'EXPENSE', amount, accountId: 'boc', categoryId: 'software', occurredOn: '2026-09-24', note },
+      preview: { kind: 'EXPENSE', amount, accountName: '中行卡', categoryPath: '学习进修 / 软件', occurredOn: '2026-09-24', note },
+      fields: [{ name: 'amount', label: '金额', type: 'money', required: true }],
+    },
+  })
+  const actions = [makeAction('batch-action-1', 29.9, '买梯子'), makeAction('batch-action-2', 50, '中转站')]
+  const calls = []
+  await setupAgent(page, 'agent-batch-ledger-card', {
+    sessions: [{ id: 'session-1', title: '多笔记账', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [
+      { id: 1, turnId: 'turn-batch', role: 'user', content: '记两笔软件支出', metadataJson: null, createdAt: now },
+      { id: 2, turnId: 'turn-batch', role: 'assistant', content: '已生成两笔独立预览。', metadataJson: JSON.stringify({ ...response, actions }), createdAt: now },
+    ],
+  })
+  for (const action of actions) {
+    await page.route(`**/api/v1/agent/actions/${action.actionId}`, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_CONFIRMATION' } }) }))
+    await page.route(`**/api/v1/agent/actions/${action.actionId}/approve`, route => { calls.push(`approve:${action.actionId}`); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'APPROVED' } }) }) })
+    await page.route(`**/api/v1/agent/actions/${action.actionId}/commit`, route => { calls.push(`commit:${action.actionId}`); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'COMPLETED', summary: '账本流水已保存', structuredContent: { id: `transaction-${action.actionId}` } } }) }) })
+  }
+  await page.goto('/')
+  await expect(page.getByText('2 笔待处理')).toBeVisible()
+  await expect(page.getByText('支出合计 ¥79.90 · 收入合计 ¥0.00')).toBeVisible()
+  await page.getByRole('button', { name: '全部确认' }).click()
+  await expect.poll(() => calls).toEqual([
+    'approve:batch-action-1', 'commit:batch-action-1',
+    'approve:batch-action-2', 'commit:batch-action-2',
+  ])
+  await expect(page.getByText('已完成')).toHaveCount(2)
+  await expect(page.getByText('2 笔待处理')).toBeHidden()
+})
+
 test('falls back before the first SSE event', async ({ page }) => {
   const state = await setupAgent(page, 'agent-fallback-e2e')
+  await page.route('**/api/v1/agent/turns/fallback-turn/trace', route => route.fulfill({ status: 404, contentType: 'application/json', body: '{}' }))
   await page.route('**/api/v1/agent/sessions/*/turns', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }))
   await page.route('**/api/v1/ai/chat', route => {
     const createdAt = new Date().toISOString()

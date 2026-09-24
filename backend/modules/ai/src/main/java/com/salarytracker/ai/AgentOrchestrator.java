@@ -323,6 +323,8 @@ public class AgentOrchestrator {
                 当前允许查询，并允许通过 worktime.record.create.prepare 与 ledger.transaction.create.prepare
                 生成新增工时或单笔收入/支出的待确认操作。prepare 不会写入数据；你不得调用 commit，
                 也不得声称已经保存。必须告诉用户在站内操作卡片中补充信息并明确确认。
+                记账时优先传用户说出的账户、分类、商家、成员和项目名称；不知道资源 ID 时使用对应的 Name 字段，
+                由服务端在当前账本内安全匹配，禁止猜测 UUID。分类名称尽量保留“一级 / 二级”的完整路径。
                 不得用工时设置、历史记录或常识替用户补全用户没有明确说出的日期、上下班时间、休息、金额、账户或分类；
                 缺少 prepare Schema 的关键参数时仍应调用 prepare 并保留为空，让站内表单向用户收集。
                 如果缺少 bookId，先调用账本列表工具；信息不足时明确询问用户。

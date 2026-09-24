@@ -61,7 +61,8 @@ public class LedgerTransactionCreateCommitTool implements DomainTool {
             String bookId = ToolInputs.requiredText(value, "bookId");
             TransactionCommand command = new TransactionCommand(null,
                     ToolInputs.requiredText(value, "accountId"), null,
-                    ToolInputs.requiredText(value, "categoryId"), null, null, null,
+                    ToolInputs.requiredText(value, "categoryId"), ToolInputs.optionalText(value, "merchantId"),
+                    ToolInputs.optionalText(value, "memberId"), ToolInputs.optionalText(value, "projectId"),
                     TransactionKind.valueOf(ToolInputs.requiredText(value, "kind")),
                     value.path("amount").decimalValue(), null,
                     value.path("occurredOn").isTextual() ? LocalDate.parse(value.path("occurredOn").asText()) : LocalDate.now(),

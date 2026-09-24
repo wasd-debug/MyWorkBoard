@@ -1,23 +1,23 @@
 # 个人效率中枢 · 整体架构设计与长期发展规划
 
-> 版本：v1.9（2026-09-23）
+> 版本：v1.10（2026-09-24）
 > 范围：基于现有 salary-sync（加班时长与时薪计算）系统，规划"工时 + 账本 + 任务 + AI"一体化个人效率平台的整体架构与演进路线。
 
 > 实施状态：Phase 0/Phase 1 自动化收口已完成，真机验收和周期生产运维按发布记录持续执行。本文同时包含目标架构与实施计划；除明确标注“当前实现”的内容外，其余技术组件和阶段能力均为目标状态，不代表已经上线。
 
-## 0. 当前实施快照（2026-09-22）
+## 0. 当前实施快照（2026-09-24）
 
 | 阶段 | 状态 | 结论 |
 |---|---|---|
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
 | Phase 2 任务 | 未启动 | 只有禁用导航占位，无领域模块、数据表和页面 |
-| Phase 3A-D Agent/MCP | Phase 3A/3B 增量实施 | 7 个 R1 查询工具、action JDBC、会话/队列/SSE、模型连接与 Trace 已落地；新增工时和单笔收入/支出已支持 R2 prepare、动态补参、站内确认与 commit，自动评测、修改删除和 MCP 尚未实现 |
+| Phase 3A-D Agent/MCP | Phase 3A/3B 增量实施 | 7 个 R1 查询工具、action JDBC、会话/队列/SSE、模型连接与 Trace 已落地；新增工时和收入/支出已支持 R2 prepare、完整字段卡片、名称候选匹配、返回编辑、多笔批次操作、站内确认与 commit，修改删除和 MCP 尚未实现 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
 | Phase 6 打磨 | 部分提前实现 | 已有响应式布局、主题、共享账本、自动视觉/无障碍和恢复演练；PWA、搜索及完整可观测体系未实现 |
 
-2026-09-22 执行 `mvn -pl modules/ai -am test`，目标 Reactor 共 75 项，74 项通过、1 项账本 Excel fixture 跳过；platform 1/1、AI 27/27 通过，新增 DeepSeek 工具协议和编排上限测试。前端生产构建成功，聚焦 Agent Playwright 2/2 通过，并完成真实 DeepSeek 账本/工时查询与只读写入边界验证。完整 `mvn test` 最近基线仍为 70 项中 63 项通过、7 项跳过、0 项失败；完整前端 Node/契约 44/44、OpenAPI 生成、TypeScript 严格编译、Playwright 32 passed/4 skipped 和恢复演练结果继续作为既有基线。第 12.6 节中的 Android Chrome 与 iOS Safari 真机验收仍需在实际设备上留档。
+2026-09-24 执行 `mvn -pl modules/ai -am test`，platform 5/5、worktime 11/11、ledger 37 通过（1 个既有 Excel fixture 跳过）、AI 43/43；前端生产构建、TypeScript 与 OpenAPI 客户端检查通过。Agent 桌面 Chromium 全套 13/13 通过，完整记账卡片、返回编辑和多笔批次操作在桌面 WebKit 与 375px Chromium 专项 4/4 通过。第 12.6 节中的 Android Chrome 与 iOS Safari 真机验收仍需在实际设备上留档。
 
 ---
 
@@ -484,6 +484,8 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 - Agent 工具调用各域公开应用接口，不直接读写领域表；用户、账本和 scope 由服务端认证上下文注入。
 - 所有 R2-R4 写操作使用 `prepare → 补充/确认 → commit`，不能依赖模型自行声明“用户已确认”。
 - 工作台通过 SSE 返回文本、工具状态、受控表单和确认事件；模型不得生成可执行 HTML。
+- 记账 prepare 返回与传统流水编辑器一致的完整字段 Schema；模型可提交人类可读的账户、分类路径、商家、成员和项目名称，由服务端在当前账本权限范围内映射实体 ID。疑似候选可以预填，但只允许推进到预览，不能绕过站内确认。
+- 确认卡片允许返回完整编辑状态；重新生成预览时创建新的 pending action 并终止旧 action，确保用户只能批准最新参数快照。多笔记账保持独立 actionId 和幂等键，批量确认按笔顺序提交，单笔失败不重放已成功项。
 
 ### 8.2 MCP 对外接入
 

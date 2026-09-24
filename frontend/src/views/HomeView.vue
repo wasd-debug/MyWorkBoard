@@ -128,15 +128,19 @@
               <template v-if="item.role === 'assistant'">
                 <div class="message-markdown" v-html="renderMarkdown(item.content)"></div>
                 <span v-if="item.typing" class="typing-cursor" aria-label="正在输入">▍</span>
+                <div v-if="pendingLedgerActions(item).length > 1" class="agent-action-batch">
+                  <span><b>{{ pendingLedgerActions(item).length }} 笔待处理</b><small>支出合计 {{ batchAmount(item, 'EXPENSE') }} · 收入合计 {{ batchAmount(item, 'INCOME') }}</small></span>
+                  <div><button type="button" :disabled="item.batchBusy" @click="rejectAllActions(item)">全部取消</button><button class="primary" type="button" :disabled="item.batchBusy || !allLedgerActionsConfirmable(item)" @click="confirmAllActions(item)">{{ item.batchBusy ? '正在处理…' : '全部确认' }}</button></div>
+                </div>
                 <section v-for="action in item.actions || []" :key="action.actionId" class="agent-action-card" :class="`state-${action.uiStatus || action.status}`">
                   <header>
                     <span><ClipboardCheck /></span>
                     <div><b>{{ action.summary }}</b><small>{{ actionTypeLabel(action) }}</small></div>
                     <em>{{ actionStatusLabel(action) }}</em>
                   </header>
-                  <form v-if="action.status === 'NEEDS_INPUT' && !action.uiStatus" class="agent-action-form" @submit.prevent="answerAction(item, action)">
+                  <form v-if="actionEditable(action)" class="agent-action-form" @submit.prevent="answerAction(item, action)">
                     <label v-for="field in action.structuredContent?.fields || []" :key="field.name" :class="{ 'entity-picker-field': field.type === 'entity-picker' }">
-                      <span>{{ field.label }}<i v-if="field.required">必填</i></span>
+                      <span>{{ field.label }}<i v-if="field.required">必填</i><i v-if="actionFieldSuggested(action, field.name)" class="suggested">智能匹配</i></span>
                       <select v-if="field.type === 'select'" :value="actionFieldValue(action, field.name)" :required="field.required" @change="setActionField(action, field.name, $event.target.value)">
                         <option value="">请选择</option>
                         <option v-for="option in field.options || []" :key="option.value" :value="option.value">{{ option.label }}</option>
@@ -159,7 +163,7 @@
                       <template v-for="row in actionPreviewRows(action)" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template>
                     </dl>
                     <p><ShieldCheck />确认后才会写入业务数据；重复点击不会重复创建。</p>
-                    <footer><button type="button" @click="rejectAction(action)">拒绝</button><button class="primary" type="button" :disabled="action.busy" @click="confirmAction(item, action)">{{ action.busy ? '正在保存…' : '确认并保存' }}</button></footer>
+                    <footer><button v-if="action.structuredContent?.fields?.length" type="button" @click="editAction(action)">返回编辑</button><button type="button" @click="rejectAction(action)">取消</button><button class="primary" type="button" :disabled="action.busy" @click="confirmAction(item, action)">{{ action.busy ? '正在保存…' : '确认并保存' }}</button></footer>
                   </div>
                   <div v-else class="agent-action-result">
                     <CheckCircle2 v-if="action.uiStatus === 'COMPLETED'" />
@@ -403,9 +407,25 @@ function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledge
 function actionTypeLabel(action) { return action.structuredContent?.actionType === 'worktime.record.create' ? '新增工时' : '单笔记账' }
 function actionStatusLabel(action) { return ({ NEEDS_INPUT: '待补充', NEEDS_CONFIRMATION: '待确认', COMPLETED: '已完成', DENIED: '已拒绝', CONFLICT: '有冲突', FAILED: '失败', EXPIRED: '已过期' })[action.uiStatus || action.status] || action.uiStatus || action.status }
 function actionFieldValue(action, name) { const value = action.form?.[name]; return value == null ? '' : value }
-function setActionField(action, name, value) { action.form ||= {}; action.form[name] = value }
+function setActionField(action, name, value) {
+  action.form ||= {}; action.form[name] = value
+  if (name === 'kind') {
+    const field = (action.structuredContent?.fields || []).find(item => item.name === 'categoryId')
+    const selected = (field?.options || []).find(option => option.value === action.form.categoryId)
+    if (selected?.kind && selected.kind !== value) {
+      action.form.categoryId = ''
+      if (field) updateEntityPicker(action, field, { query: '', open: false })
+    }
+  }
+}
 function actionInputType(type) { return ({ money: 'number', number: 'number', date: 'date', time: 'time' })[type] || 'text' }
 function actionFormComplete(action) { return (action.structuredContent?.fields || []).every(field => !field.required || String(actionFieldValue(action, field.name)).trim()) }
+function actionEditable(action) { return !action.uiStatus && (action.status === 'NEEDS_INPUT' || (action.status === 'NEEDS_CONFIRMATION' && action.editing)) }
+function actionFieldSuggested(action, name) { return (action.structuredContent?.suggestedFields || []).includes(name) }
+function editAction(action) { action.editing = true; action.form = { ...(action.structuredContent?.input || {}), ...(action.form || {}) }; persist() }
+function pendingLedgerActions(item) { return (item.actions || []).filter(action => action.structuredContent?.actionType === 'ledger.transaction.create' && !action.uiStatus && ['NEEDS_INPUT', 'NEEDS_CONFIRMATION'].includes(action.status)) }
+function batchAmount(item, kind) { const total = pendingLedgerActions(item).filter(action => action.structuredContent?.input?.kind === kind).reduce((sum, action) => sum + Number(action.structuredContent?.input?.amount || 0), 0); return `¥${total.toFixed(2)}` }
+function allLedgerActionsConfirmable(item) { const actions = pendingLedgerActions(item); return actions.length > 1 && actions.every(action => action.status === 'NEEDS_CONFIRMATION' && !action.editing) }
 function entityPickerKey(action, field) { return `${action.actionId}:${field.name}` }
 function entityPickerEntry(action, field) { const key = entityPickerKey(action, field), selected = (field.options || []).find(option => option.value === actionFieldValue(action, field.name)); return entityPickerState.value[key] || { query: selected?.label || '', open: false } }
 function updateEntityPicker(action, field, patch) { const key = entityPickerKey(action, field); entityPickerState.value = { ...entityPickerState.value, [key]: { ...entityPickerEntry(action, field), ...patch } } }
@@ -416,7 +436,7 @@ function closeEntityPicker(action, field) { updateEntityPicker(action, field, { 
 function searchEntityPicker(action, field, query) { setActionField(action, field.name, ''); updateEntityPicker(action, field, { query, open: true }) }
 function selectEntityOption(action, field, option) { setActionField(action, field.name, option.value); updateEntityPicker(action, field, { query: option.label, open: false }) }
 function clearEntityPicker(action, field) { setActionField(action, field.name, ''); updateEntityPicker(action, field, { query: '', open: true }) }
-function filteredEntityOptions(action, field) { const query = entityPickerText(action, field).trim().toLocaleLowerCase(); return (field.options || []).filter(option => !query || String(option.label || '').toLocaleLowerCase().includes(query)) }
+function filteredEntityOptions(action, field) { const query = entityPickerText(action, field).trim().toLocaleLowerCase(); return (field.options || []).filter(option => field.name !== 'categoryId' || !option.kind || option.kind === actionFieldValue(action, 'kind')).filter(option => !query || String(option.label || '').toLocaleLowerCase().includes(query)) }
 function actionPreviewRows(action) {
   const preview = action.structuredContent?.preview || {}
   if (action.structuredContent?.actionType === 'worktime.record.create') return [
@@ -425,10 +445,11 @@ function actionPreviewRows(action) {
   ].filter(row => row[1] != null).map(([label, value]) => ({ label, value }))
   return [
     ['类型', preview.kind === 'INCOME' ? '收入' : '支出'], ['金额', preview.amount != null ? `¥${Number(preview.amount).toFixed(2)}` : null],
-    ['账户', preview.accountName], ['分类', preview.categoryName], ['日期', preview.occurredOn || '今天'], ['备注', preview.note]
+    ['账户', preview.accountName], ['分类', preview.categoryPath || preview.categoryName], ['商家 / 对方', preview.merchantName],
+    ['成员', preview.memberName], ['项目', preview.projectName], ['日期', preview.occurredOn || '今天'], ['备注', preview.note]
   ].filter(row => row[1]).map(([label, value]) => ({ label, value }))
 }
-function replaceAction(item, previous, next) { const index = (item.actions || []).findIndex(action => action.actionId === previous.actionId); if (index >= 0) item.actions.splice(index, 1, { ...next, form: { ...(next.structuredContent?.input || {}) } }); persist() }
+function replaceAction(item, previous, next) { const index = (item.actions || []).findIndex(action => action.actionId === previous.actionId); if (index >= 0) item.actions.splice(index, 1, { ...next, editing: false, form: { ...(next.structuredContent?.input || {}) } }); persist() }
 async function answerAction(item, action) {
   action.busy = true
   try {
@@ -453,6 +474,19 @@ async function confirmAction(item, action) {
     persist()
   } catch (error) { message.error(error?.response?.data?.detail || '保存失败') }
   finally { action.busy = false }
+}
+async function confirmAllActions(item) {
+  if (!allLedgerActionsConfirmable(item)) return
+  item.batchBusy = true
+  try {
+    for (const action of pendingLedgerActions(item)) await confirmAction(item, action)
+  } finally { item.batchBusy = false; persist() }
+}
+async function rejectAllActions(item) {
+  item.batchBusy = true
+  try {
+    for (const action of pendingLedgerActions(item)) await rejectAction(action)
+  } finally { item.batchBusy = false; persist() }
 }
 async function copyMessage(item) { try { await navigator.clipboard.writeText(item.content || '') } catch { const area = document.createElement('textarea'); area.value = item.content || ''; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove() }; copiedId.value = item.id; window.setTimeout(() => { if (copiedId.value === item.id) copiedId.value = '' }, 1600) }
 function handleMetaToggle(event) { const current = event.currentTarget; if (!current.open) return; current.closest('.message-meta')?.querySelectorAll('details[open]').forEach(detail => { if (detail !== current) detail.open = false }) }
