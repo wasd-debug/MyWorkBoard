@@ -622,6 +622,36 @@ test('restores a server queued follow-up and stops following as soon as the user
   await expect(page.getByRole('button', { name: '滚动到底部并继续跟随' })).toBeHidden()
 })
 
+test('keeps the bottom anchor stable when streaming switches to the completed reply', async ({ page }) => {
+  const now = new Date().toISOString()
+  const previousAnswer = Array.from({ length: 70 }, (_, index) => `历史回复第 ${index + 1} 行`).join('\n\n')
+  await setupAgent(page, 'agent-stream-bottom-anchor', {
+    sessions: [{ id: 'session-1', title: '流式滚动稳定性', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [
+      { id: 1, turnId: 'turn-old', role: 'user', content: '历史问题', metadataJson: null, createdAt: now },
+      { id: 2, turnId: 'turn-old', role: 'assistant', content: previousAnswer, metadataJson: JSON.stringify(response), createdAt: now },
+    ],
+  })
+  await page.goto('/')
+  const viewport = page.locator('.chat-message-viewport')
+  await page.getByLabel('给 AI 发送消息').fill('测试流式结束位置')
+  await page.getByRole('button', { name: '发送' }).click()
+  await expect(page.getByText('已查询到一个').last()).toBeVisible()
+
+  const samples = await viewport.evaluate(async element => {
+    const rows = []
+    const deadline = performance.now() + 500
+    while (performance.now() < deadline) {
+      rows.push({ top: element.scrollTop, gap: element.scrollHeight - element.scrollTop - element.clientHeight })
+      await new Promise(resolve => requestAnimationFrame(resolve))
+    }
+    return rows
+  })
+  expect(Math.max(...samples.map(item => item.gap))).toBeLessThanOrEqual(2)
+  expect(Math.max(...samples.map(item => item.top)) - Math.min(...samples.map(item => item.top))).toBeLessThan(160)
+  await expect(page.getByRole('button', { name: '滚动到底部并继续跟随' })).toBeHidden()
+})
+
 test('keeps the prompt queue outside the message viewport on desktop and mobile', async ({ page }) => {
   const now = new Date().toISOString()
   const longAnswer = Array.from({ length: 18 }, (_, index) => `这是用于验证队列布局的第 ${index + 1} 行回复。`).join('\n')

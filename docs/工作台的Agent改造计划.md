@@ -57,6 +57,7 @@
 - 新增 `worktime.record.update.prepare/commit`：prepare 读取当前用户记录并复用 `WorktimeService` 重新计算加班分钟和实际时薪，卡片同时展示直接字段与派生字段差异；commit 仅接受已批准 action，并以原 revision 调用现有工时更新服务。
 - 模型可看到 R3 `*.prepare`，但继续禁止看到或调用任何 `*.commit`；系统提示要求修改前先查询真实记录，多候选时必须让用户选择，不得猜测 ID。
 - 确认卡片新增明暗主题兼容的差异区，可从预览返回完整编辑状态，修改后生成新 action 和新预览再确认；账本或工时修改成功后分别刷新现有本地投影。
+- 修复流式回复完成瞬间的滚动闪跳：完成事件先在原消息对象上稳定切换输入态和元信息，再保持底部锚点；Trace 异步回填后再次校正底部。已完成的 SSE 回复不再在 finally 中用服务端历史整体重建消息列表，常规历史恢复也复用已有消息键，避免 DOM 被销毁重建后跳到上方。
 
 本次明确未实施：
 
@@ -68,6 +69,7 @@
 验证记录：
 
 - 2026-09-24 记录修改增量：AI 模块完整单测 50/50 通过（相关 Reactor 共执行 104 项，1 个既有 Excel fixture 跳过），覆盖账本历史、账本/工时修改成功、原 revision、派生工时差异、冲突终止和重复 commit 拒绝；前端 Node 47/47、生产构建、TypeScript/OpenAPI 客户端一致性检查通过。新增 E2E 在桌面 Chromium 2/2、桌面 WebKit 2/2、375px 移动 Chromium 2/2 通过，覆盖账本“差异预览 → 返回编辑 → 重新预览 → 确认提交”及工时派生差异在窄视口不溢出。
+- 2026-09-24 流式滚动稳定性修正：新增流式结束后连续采样滚动位置的浏览器回归，要求完成态及 Trace 回填期间始终保持 2px 内底部锚点；同时回归普通请求降级和用户向上滚动后停止自动跟随。
 
 - 2026-09-23 会话恢复/SSE 增量：`mvn -pl modules/identity,modules/ai -am test` 通过，platform 3/3、identity 1/1、AI 31/31，相关 Reactor 仅 1 个既有 Excel fixture 跳过；真实 MySQL `AgentConversationIntegrationTest` 3/3 通过并从空库执行 V1-V15，覆盖会话 CRUD、用户隔离、turn 幂等、跨会话请求冲突及取消终态。
 - OpenAPI 已从本地 v15 后端刷新，`npm run api:generate`、`npm run api:check`、TypeScript 严格编译和 `npm run build` 通过。

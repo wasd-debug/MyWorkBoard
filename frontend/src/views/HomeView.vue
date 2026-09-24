@@ -338,7 +338,28 @@ function responseFields(value = {}) { return { usage: value.usage, durationMs: v
 function inferRoute(text) { if (/工时|打卡|上班|下班/.test(text)) return { route: '/punch', routeLabel: '工时' }; if (/报表/.test(text)) return { route: '/ledger/reports', routeLabel: '账本报表' }; if (/流水/.test(text)) return { route: '/ledger/transactions', routeLabel: '账本流水' }; if (/记账|支出|收入|账本/.test(text)) return { route: '/ledger', routeLabel: '账本' }; return {} }
 function assistantRoute(role, text) { return role === 'assistant' ? inferRoute(text) : {} }
 function loadLocalConversations() { try { conversations.value = JSON.parse(localStorage.getItem(historyKey.value) || '[]').map(item => ({ ...item, messages: (item.messages || []).map(row => { const normalized = { ...row, typing: false }; if (row.role !== 'assistant') { delete normalized.route; delete normalized.routeLabel } return normalized }) })) } catch { conversations.value = [] }; activeId.value = conversations.value[0]?.id || '' }
-async function loadMessages(id, forceScroll = false) { const target = conversations.value.find(item => item.id === id); if (!target) return; const rows = await apiListAgentMessages(id); target.messages = (rows || []).map(row => { const metadata = row.role === 'assistant' ? parseMetadata(row.metadataJson) : {}; return { id: `server-${row.id}`, turnId: row.turnId, role: row.role, content: row.content, createdAt: row.createdAt, typing: false, status: metadata.status || 'COMPLETED', ...responseFields(metadata), ...assistantRoute(row.role, row.content) } }); await reconcileActionStates(target.messages); await hydrateMessageTraces(target.messages); persist(); if (forceScroll) await scrollToBottom(true); else await scrollToBottom() }
+async function loadMessages(id, forceScroll = false) {
+  const target = conversations.value.find(item => item.id === id)
+  if (!target) return
+  const rows = await apiListAgentMessages(id)
+  const current = target.messages || [], claimed = new Set()
+  const restored = (rows || []).map(row => {
+    const metadata = row.role === 'assistant' ? parseMetadata(row.metadataJson) : {}
+    const existing = current.find(item => !claimed.has(item) && item.role === row.role && (
+      (row.turnId && item.turnId === row.turnId)
+      || (!row.turnId && item.content === row.content)
+      || (row.role === 'user' && item.content === row.content)
+    ))
+    if (existing) claimed.add(existing)
+    return { id: existing?.id || `server-${row.id}`, turnId: row.turnId, role: row.role, content: row.content, createdAt: row.createdAt, typing: false, status: metadata.status || 'COMPLETED', ...responseFields(metadata), ...assistantRoute(row.role, row.content) }
+  })
+  await reconcileActionStates(restored)
+  await hydrateMessageTraces(restored, false)
+  target.messages = restored
+  persist()
+  if (forceScroll) await scrollToBottom(true)
+  else await scrollToBottom()
+}
 async function reconcileActionStates(messages) { const actions = messages.flatMap(item => item.actions || []); await Promise.all(actions.map(async action => { try { const state = await apiGetAgentAction(action.actionId); if (!['WAITING_INPUT', 'WAITING_CONFIRMATION', 'APPROVED'].includes(state.status)) action.uiStatus = state.status } catch { action.uiStatus ||= 'EXPIRED' } })) }
 function normalizeQueueItem(item) { return { id: item.id, conversationId: item.sessionId, text: item.userMessage, status: item.status, createdAt: item.createdAt, retryOfTurnId: item.retryOfTurnId } }
 async function loadQueue(id) { if (!id || !store.authUser || store.offlineSession) return; const queue = await apiListAgentQueue(id); queueRevisions.value = { ...queueRevisions.value, [id]: Number(queue?.revision || 0) }; const others = queuedPrompts.value.filter(item => item.conversationId !== id); queuedPrompts.value = [...others, ...(queue?.items || []).map(normalizeQueueItem)]; if (id === activeId.value) turnRunning.value = activeQueuedPrompts.value.some(item => item.status !== 'QUEUED') }
@@ -537,10 +558,10 @@ function handleMessageScroll() {
   lastMessageScrollTop = viewport.scrollTop
 }
 function createReplyPlaceholder(conversation) { const reply = { id: uid(), role: 'assistant', content: '', createdAt: Date.now(), typing: true, status: 'RECEIVED', toolExecutions: [] }; conversation.messages.push(reply); persist(); scrollToBottom(); return conversation.messages.at(-1) }
-async function hydrateTrace(target) { if (!target?.turnId || !store.authUser || store.offlineSession) return; try { const trace = await apiGetAgentTrace(target.turnId); const usage = (trace.modelExecutions || []).reduce((sum, row) => ({ inputTokens: sum.inputTokens + Number(row.inputTokens || 0), outputTokens: sum.outputTokens + Number(row.outputTokens || 0), cacheHitTokens: sum.cacheHitTokens + Number(row.cacheHitTokens || 0), cacheMissTokens: sum.cacheMissTokens + Number(row.cacheMissTokens || 0), reasoningTokens: sum.reasoningTokens + Number(row.reasoningTokens || 0), totalTokens: sum.totalTokens + Number(row.totalTokens || 0) }), { inputTokens: 0, outputTokens: 0, cacheHitTokens: 0, cacheMissTokens: 0, reasoningTokens: 0, totalTokens: 0 }); Object.assign(target, { usage, durationMs: trace.totalDurationMs, firstTokenMs: trace.firstTokenMs, modelName: trace.modelName, providerType: trace.providerType, currency: trace.currency, estimatedCost: trace.estimatedCost, modelExecutions: trace.modelExecutions || [], toolExecutions: trace.toolExecutions || [] }); persist() } catch { /* Trace is optional and must never hide the answer. */ } }
-async function hydrateMessageTraces(messages) { await Promise.all((messages || []).filter(item => item.role === 'assistant' && item.turnId && item.status === 'COMPLETED').map(item => hydrateTrace(item))) }
-function applyReply(target, response) { const existingActions = target.actions || [], fields = responseFields(response); if (!fields.actions.length && existingActions.length) fields.actions = existingActions; Object.assign(target, fields, inferRoute(response.content || ''), { content: response.content || '模型没有返回可显示的内容，请稍后重试。', typing: false, status: 'COMPLETED' }); persist(); hydrateTrace(target); scrollToBottom() }
-async function recoverTurn(target) { for (let attempt = 0; attempt < 4; attempt++) { try { const turn = await apiGetAgentTurn(target.turnId); target.status = turn.status; if (turn.status === 'COMPLETED' && turn.responseJson) { applyReply(target, parseMetadata(turn.responseJson)); return true }; if (['FAILED', 'CANCELLED'].includes(turn.status)) { target.content = turn.errorMessage || (turn.status === 'CANCELLED' ? '本轮对话已取消。' : 'Agent 执行失败。'); target.typing = false; persist(); return true } } catch { /* bounded recovery */ }; await new Promise(resolve => window.setTimeout(resolve, 500 * (attempt + 1))) }; target.content ||= '响应连接已中断，后台仍可能在执行。刷新页面后可恢复已完成消息。'; target.typing = false; persist(); return false }
+async function hydrateTrace(target, keepBottom = true) { if (!target?.turnId || !store.authUser || store.offlineSession) return; try { const trace = await apiGetAgentTrace(target.turnId); const usage = (trace.modelExecutions || []).reduce((sum, row) => ({ inputTokens: sum.inputTokens + Number(row.inputTokens || 0), outputTokens: sum.outputTokens + Number(row.outputTokens || 0), cacheHitTokens: sum.cacheHitTokens + Number(row.cacheHitTokens || 0), cacheMissTokens: sum.cacheMissTokens + Number(row.cacheMissTokens || 0), reasoningTokens: sum.reasoningTokens + Number(row.reasoningTokens || 0), totalTokens: sum.totalTokens + Number(row.totalTokens || 0) }), { inputTokens: 0, outputTokens: 0, cacheHitTokens: 0, cacheMissTokens: 0, reasoningTokens: 0, totalTokens: 0 }); Object.assign(target, { usage, durationMs: trace.totalDurationMs, firstTokenMs: trace.firstTokenMs, modelName: trace.modelName, providerType: trace.providerType, currency: trace.currency, estimatedCost: trace.estimatedCost, modelExecutions: trace.modelExecutions || [], toolExecutions: trace.toolExecutions || [] }); persist(); if (keepBottom) await scrollToBottom() } catch { /* Trace is optional and must never hide the answer. */ } }
+async function hydrateMessageTraces(messages, keepBottom = true) { await Promise.all((messages || []).filter(item => item.role === 'assistant' && item.turnId && item.status === 'COMPLETED').map(item => hydrateTrace(item, keepBottom))) }
+async function applyReply(target, response) { const existingActions = target.actions || [], fields = responseFields(response); if (!fields.actions.length && existingActions.length) fields.actions = existingActions; Object.assign(target, fields, inferRoute(response.content || ''), { content: response.content || '模型没有返回可显示的内容，请稍后重试。', typing: false, status: 'COMPLETED' }); persist(); await scrollToBottom(); void hydrateTrace(target) }
+async function recoverTurn(target) { for (let attempt = 0; attempt < 4; attempt++) { try { const turn = await apiGetAgentTurn(target.turnId); target.status = turn.status; if (turn.status === 'COMPLETED' && turn.responseJson) { await applyReply(target, parseMetadata(turn.responseJson)); return true }; if (['FAILED', 'CANCELLED'].includes(turn.status)) { target.content = turn.errorMessage || (turn.status === 'CANCELLED' ? '本轮对话已取消。' : 'Agent 执行失败。'); target.typing = false; persist(); return true } } catch { /* bounded recovery */ }; await new Promise(resolve => window.setTimeout(resolve, 500 * (attempt + 1))) }; target.content ||= '响应连接已中断，后台仍可能在执行。刷新页面后可恢复已完成消息。'; target.typing = false; persist(); return false }
 async function ensureConversation(text, pendingAttachments) {
   let conversation = activeConversation.value
   if (conversation) return conversation
@@ -580,7 +601,7 @@ async function executePrompt(pending) {
   conversation.messages ||= []
   conversation.messages.push({ id: uid(), role: 'user', content: text, createdAt: now, attachments: pendingAttachments })
   conversation.updatedAt = now; conversations.value = [conversation, ...conversations.value.filter(item => item.id !== conversation.id)]; persist(); await scrollToBottom()
-  const assistant = createReplyPlaceholder(conversation), clientRequestId = uid(); let received = false
+  const assistant = createReplyPlaceholder(conversation), clientRequestId = uid(); let received = false, replyReconciled = false
   activeTurnController = new AbortController()
   try {
     await apiStreamAgentTurn(conversation.id, { clientRequestId, message: text }, async (event, data) => {
@@ -591,20 +612,21 @@ async function executePrompt(pending) {
       else if (event === 'tool.started') assistant.toolExecutions.push({ name: data.name, status: 'RUNNING', summary: '正在调用', durationMs: 0 })
       else if (event === 'tool.completed') { const index = assistant.toolExecutions.findIndex(tool => tool.name === data.execution?.name && tool.status === 'RUNNING'); if (index >= 0) assistant.toolExecutions.splice(index, 1, data.execution); else assistant.toolExecutions.push(data.execution) }
       else if (['input.required', 'confirmation.required'].includes(event)) { assistant.actions ||= []; if (!assistant.actions.some(action => action.actionId === data.action?.actionId)) assistant.actions.push({ ...data.action, form: { ...(data.action?.structuredContent?.input || {}) } }); persist() }
-      else if (event === 'turn.completed') applyReply(assistant, data.response || {})
+      else if (event === 'turn.completed') { await applyReply(assistant, data.response || {}); replyReconciled = true }
       else if (event === 'turn.cancelled') Object.assign(assistant, { content: assistant.content || '本轮对话已取消。', typing: false, status: 'CANCELLED' })
       else if (event === 'turn.failed') throw new Error(data.message || 'Agent 执行失败')
     }, activeTurnController.signal)
-    if (assistant.typing && assistant.turnId) await recoverTurn(assistant)
+    if (assistant.typing && assistant.turnId) replyReconciled = await recoverTurn(assistant)
   } catch (error) {
-    if (!received) try { applyReply(assistant, await apiChatWithAssistant(text, conversation.id)); return } catch (fallback) { error = fallback }
-    else if (assistant.turnId && await recoverTurn(assistant)) return
+    if (!received) try { await applyReply(assistant, await apiChatWithAssistant(text, conversation.id)); replyReconciled = true; return } catch (fallback) { error = fallback }
+    else if (assistant.turnId && await recoverTurn(assistant)) { replyReconciled = true; return }
     assistant.content = error?.response?.data?.detail || error?.message || '暂时无法连接 AI 服务，请稍后重试。'; assistant.typing = false; assistant.status = 'FAILED'; persist()
   } finally {
     activeTurnController = null
     await loadQueue(conversation.id).catch(() => {})
     turnRunning.value = queuedPrompts.value.some(item => item.status !== 'QUEUED')
-    await loadMessages(conversation.id).catch(() => {})
+    if (replyReconciled) await scrollToBottom()
+    else await loadMessages(conversation.id).catch(() => {})
   }
 }
 async function pollAgentState() {
