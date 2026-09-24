@@ -33,7 +33,7 @@ mybatis-plus:
 app:
   jwt:
     secret: ${JWT_SECRET:salary-tracker-phase0-change-this-secret-at-least-32-bytes}
-    access-ttl: ${JWT_ACCESS_TTL:900}
+    access-ttl: ${JWT_ACCESS_TTL:7200}
     refresh-ttl: ${JWT_REFRESH_TTL:2592000}
   legacy-open: ${LEGACY_API_OPEN:false}
   legacy-admin-password: ${LEGACY_ADMIN_PASSWORD:}

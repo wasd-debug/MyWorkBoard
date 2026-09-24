@@ -208,7 +208,7 @@ com.hub.<module>/
 | 模块化       | **Spring Modulith**                                                      | 官方模块化单体方案：边界校验 + 持久化领域事件（`@ApplicationModuleListener`），零额外中间件即可做事件溯源式联动            |
 | ORM       | **MyBatis-Plus**（延续）                                                     | 团队已熟悉；复杂查询仍写 XML                                                                   |
 | 迁移        | **Flyway**                                                               | 替代现有 `schema.sql` 启动建表，任何表结构变更必须走版本化脚本                                             |
-| 安全        | **Spring Security + JWT 双令牌** | 当前 access token 默认 15 分钟、refresh token 默认 30 天并持久化到 MySQL；密码 bcrypt。Redis 吊销/限流仍是后续目标 |
+| 安全        | **Spring Security + JWT 双令牌** | 当前 access token 默认 2 小时、refresh token 默认 30 天并持久化到 MySQL；密码 bcrypt。Redis 吊销/限流仍是后续目标 |
 | 权限        | **RBAC 三表模型 + `@PreAuthorize`**                                          | user / role / permission + 关联表；够用且可演进到数据级权限                                        |
 | 缓存/限流     | **Redis 7**（Compose 新增）                                                  | 刷新令牌、验证码、接口限流、报表缓存；单机初期可延后到 Phase 2                                                |
 | 定时任务      | **Spring Scheduling + ShedLock**（起步）→ **XXL-Job**（任务量 >20 或需可视化时）        | 周期账单、报表聚合、节假日抓取、提醒投递；ShedLock 保证多实例不重复执行                                           |

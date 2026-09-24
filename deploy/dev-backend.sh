@@ -50,6 +50,7 @@ exec env \
   DB_USER=salary \
   DB_PASSWORD=SalaryDevApp@2026 \
   JWT_SECRET=local-development-secret-change-me-32-bytes \
+  JWT_ACCESS_TTL=7200 \
+  JWT_REFRESH_TTL=2592000 \
   COOKIE_SECURE=false \
   java -jar "$PROJECT_DIR/backend/target/salary-tracker-backend.jar"
-

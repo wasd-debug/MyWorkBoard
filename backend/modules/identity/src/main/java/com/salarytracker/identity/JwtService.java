@@ -21,7 +21,7 @@ public class JwtService {
 
     public JwtService(ObjectMapper objectMapper,
                       @Value("${app.jwt.secret}") String secret,
-                      @Value("${app.jwt.access-ttl:900}") long accessTtlSeconds) {
+                      @Value("${app.jwt.access-ttl:7200}") long accessTtlSeconds) {
         this.objectMapper = objectMapper;
         this.secret = secret.getBytes(StandardCharsets.UTF_8);
         if (this.secret.length < 32) {

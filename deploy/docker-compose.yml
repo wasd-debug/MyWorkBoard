@@ -37,6 +37,8 @@ services:
       DB_USER: salary
       DB_PASSWORD: ${MYSQL_PASSWORD:-SalaryApp@2026}
       JWT_SECRET: ${JWT_SECRET:-please-change-this-jwt-secret-in-production}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-7200}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-2592000}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       FLYWAY_OUT_OF_ORDER: ${FLYWAY_OUT_OF_ORDER:-true}
       LEGACY_ADMIN_PASSWORD: ${LEGACY_ADMIN_PASSWORD:-}

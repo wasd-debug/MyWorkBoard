@@ -42,6 +42,8 @@ services:
       DB_USER: salary
       DB_PASSWORD: SalaryApp@2026
       JWT_SECRET: "local-development-secret-change-me-32-bytes"
+      JWT_ACCESS_TTL: "7200"
+      JWT_REFRESH_TTL: "2592000"
       COOKIE_SECURE: "false"
       # 本地数据库可能来自较早的快照：允许已存在的历史校验差异，
       # 并跳过已经在快照中落地但未登记的 out-of-order migration。

@@ -36,6 +36,8 @@ ssh -i ./workboard.pem ubuntu@212.64.29.21
    - `MYSQL_ROOT_PASSWORD`：MySQL root 密码。
    - `MYSQL_PASSWORD`：应用连接 MySQL 使用的密码。
    - `JWT_SECRET`：至少 32 字节的 access token 签名密钥。
+   - `JWT_ACCESS_TTL`：access token 有效期，单位秒，默认 `7200`（2 小时）。
+   - `JWT_REFRESH_TTL`：refresh token 有效期，单位秒，默认 `2592000`（30 天）。
    - `LEGACY_ADMIN_PASSWORD`：旧数据回填的 `admin` 账户初始密码。
    - `COOKIE_SECURE`：仅 HTTPS 生产环境设为 `true`；通过服务器 IP + HTTP 访问时必须为 `false`，否则浏览器不会发送 refresh cookie，刷新页面会反复回到登录页。
 
