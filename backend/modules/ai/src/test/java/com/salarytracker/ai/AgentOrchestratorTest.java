@@ -195,6 +195,56 @@ class AgentOrchestratorTest {
                 org.mockito.ArgumentMatchers.eq("默认账本。"));
     }
 
+    @Test
+    void replaysMultiRoundBookLookupAndPrepareWithoutExposingCommit() {
+        ToolDefinition booksList = definition("ledger.books.list", ToolRisk.R1);
+        ToolDefinition prepare = definition("ledger.transaction.create.prepare", ToolRisk.R2);
+        when(model.configured()).thenReturn(true);
+        when(tools.definitionsForCurrentUser()).thenReturn(List.of(booksList, prepare));
+        when(tools.invoke(org.mockito.ArgumentMatchers.eq("ledger.books.list"), any()))
+                .thenReturn(ToolResult.completed("当前可访问 1 个账本",
+                        mapper.createArrayNode().addObject().put("id", "book-1").put("name", "日常账本")));
+        var ambiguousContent = mapper.createObjectNode().put("actionType", "ledger.transaction.create");
+        ambiguousContent.putArray("ambiguousFields").add("accountId");
+        when(tools.invoke(org.mockito.ArgumentMatchers.eq("ledger.transaction.create.prepare"), any()))
+                .thenReturn(ToolResult.needsInput("请选择存在歧义的记账信息",
+                        ambiguousContent,
+                        "action-1", "2026-09-24T16:30:00Z"));
+        when(model.agentTurn(any(), any()))
+                .thenReturn(new LlmGateway.AgentTurn("", List.of(
+                        new LlmGateway.AgentToolCall("call-books", "ledger__books__list", "{}")),
+                        "deepseek", true))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    List<LlmGateway.AgentMessage> messages = invocation.getArgument(0);
+                    assertTrue(messages.get(messages.size() - 1).content().contains("日常账本"));
+                    return new LlmGateway.AgentTurn("", List.of(
+                            new LlmGateway.AgentToolCall("call-prepare", "ledger__transaction__create__prepare",
+                                    "{\"bookId\":\"book-1\",\"kind\":\"EXPENSE\",\"amount\":29.9,\"accountName\":\"中行\",\"categoryName\":\"软件\"}")),
+                            "deepseek", true);
+                })
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    List<LlmGateway.AgentMessage> messages = invocation.getArgument(0);
+                    assertTrue(messages.get(messages.size() - 1).content().contains("ambiguousFields"));
+                    @SuppressWarnings("unchecked")
+                    List<LlmGateway.AgentTool> exposed = invocation.getArgument(1);
+                    assertTrue(exposed.isEmpty(), "产生 action 后最后一轮不得继续开放任何工具");
+                    return new LlmGateway.AgentTurn("请选择具体账户后再生成预览。", List.of(), "deepseek", true);
+                });
+
+        LlmGateway.ChatResponse response = orchestrator().chat("中行买软件花了29.9");
+
+        assertEquals("请选择具体账户后再生成预览。", response.content());
+        assertEquals(2, response.toolExecutions().size());
+        assertEquals(1, response.actions().size());
+        verify(tools).invoke(org.mockito.ArgumentMatchers.eq("ledger.books.list"), any());
+        verify(tools).invoke(org.mockito.ArgumentMatchers.eq("ledger.transaction.create.prepare"),
+                org.mockito.ArgumentMatchers.argThat(input -> "book-1".equals(input.path("bookId").asText())
+                        && input.path("amount").asDouble() == 29.9));
+        verify(tools, never()).invoke(org.mockito.ArgumentMatchers.endsWith(".commit"), any());
+    }
+
     private AgentOrchestrator orchestrator() {
         return new AgentOrchestrator(tools, model, mapper, conversations);
     }

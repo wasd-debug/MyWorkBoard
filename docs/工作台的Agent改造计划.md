@@ -11,7 +11,7 @@
 
 ## 0. 实施进度快照（2026-09-24）
 
-当前增量完成 Phase 3B 第一批 R3 删除链路：账本普通收入/支出与工时记录支持查询定位、删除 prepare、完整影响预览、站内确认和按原 revision commit；不开放模糊批量删除、永久清除、复杂流水删除或 MCP 写入口。
+当前增量完成 Phase 3B 实体消歧与多轮回放：账本、账户、二级分类、商家、成员和项目统一返回 `exact / suggested / ambiguous / missing` 匹配状态；唯一候选可以预填，多个候选必须在可搜索卡片中明确选择，不再默认取列表第一项。普通与流式编排在生成 pending action 后均关闭模型工具目录，只允许模型说明下一步，不能继续调用工具或尝试 commit。
 
 已完成：
 
@@ -64,16 +64,28 @@
 - 新增机器可读中文评测集 `zh-cn-v1`、独立 `AgentPromptPolicy` 和 `backend/scripts/run-agent-eval.sh`。默认评测不访问模型、数据库或业务工具；`--live` 显式模式仅检查 DeepSeek 首轮工具选择和参数，绝不执行领域工具或产生 action。
 - 评测固定覆盖查询、缺参新增、过去记录修改、删除前定位、相对日期、越权请求和伪造 commit。提示词与工具暴露策略从编排器中抽离为可独立回归的版本化策略，所有 commit 和 R4 工具继续禁止进入模型上下文。
 - 2026-09-24 真实模型基线从首轮 67% 提升到 12/12：修正“本月”错误取未来月末、缺参新增工时误读设置、过去日期“加班到几点”误建新记录；越权和伪造 commit 允许模型直接拒绝，无需为了评测而调用工具。
+- 记账 prepare 增加结构化 `entityMatches`、`ambiguousFields` 和 `resolutionRequiredFields`。多账本时先选账本并重新生成资源候选；账户候选显示类型、币种和余额，成员显示用户名和角色，分类显示完整父子路径。用户原始名称作为卡片筛选词保留，选择后重新 prepare，旧 action 取消且只有新预览可提交。
+- 新增多轮编排回放：`ledger.books.list → ledger.transaction.create.prepare → needs_input`，断言工具结果正确回传、action 进入响应、产生 action 后工具目录为空，任何 commit 不会进入 Domain Tool Registry。
 
 本次明确未实施：
 
-- 多轮候选歧义与工具结果回放、评测结果数据库留存、聚合成本告警和运营仪表盘。
-- 复杂账本类型、实体歧义专用选择卡片、批量修改和批量删除。
+- 评测结果数据库留存、聚合成本告警和运营仪表盘。
+- 转账、借入、借出、还款等复杂流水类型，以及批量记账和批量删除。
+- 账本、账户、分类等账本资源管理工具，以及工时设置管理写工具。
 - MCP Server、PAT/OAuth、scope、站内审批与外部客户端兼容验证。
 - 文件、向量库和 RAG。
 
+后续正式增量顺序（已排期，不能遗漏）：
+
+1. 复杂流水工具：转账、借入、借出、还款及其修改/删除/冲突保护。
+2. 批量操作：多笔自然语言记账、批量预览、逐项失败隔离、批量删除的强确认。
+3. 管理工具：账本、账户、分类、商家、成员、项目、预算及工时设置，按 R2-R4 分级审批。
+4. 只读 MCP Server：Streamable HTTP、PAT、scope、撤销、审计、限流与 MCP Inspector/Codex/WorkBuddy 验证。
+5. MCP 写入与正式认证：prepare/commit、站内审批中心、OAuth 2.1 + PKCE 和外部客户端兼容回归。
+
 验证记录：
 
+- 2026-09-24 实体消歧与多轮回放增量：后端定向 23/23 通过，覆盖多账本、相似账户、同名二级分类、可选实体歧义、唯一候选预填、伪造/越权 ID 的既有领域校验，以及产生 action 后关闭工具目录。前端生产构建和 TypeScript 检查通过；账户/分类搜索、歧义选择、辅助信息、字段保留和重新生成预览在桌面 Chromium、桌面 WebKit、375px 移动 Chromium 共 9/9 通过。
 - 2026-09-24 中文 Agent 自动评测增量：确定性评测 3/3 通过；真实 DeepSeek 固定 12 条用例 12/12 通过，评测仅观察首轮工具和参数、零业务写入。AI 模块完整测试 60 项通过，真实模型测试默认安全跳过；新增伪造 commit 回放，确认未知或未授权 commit 只作为失败工具结果反馈给模型，Domain Tool Registry 零调用。
 - 2026-09-24 受控删除增量：AI 模块 55/55 通过，相关 Reactor 共执行 109 项、1 个既有 Excel fixture 跳过；覆盖工时/流水删除预览、批准要求、原 revision、冲突终止、重复 commit 拒绝、非普通流水拒绝，以及模型只可见 delete prepare、不可见 commit。前端 Node 47/47、生产构建、TypeScript 与 OpenAPI 客户端一致性检查通过。删除确认/取消 E2E 在桌面 Chromium 2/2、桌面 WebKit 2/2、375px 移动 Chromium 2/2 通过，确认危险态卡片完整展示影响且取消不会调用 approve/commit。
 - 2026-09-24 记录修改增量：AI 模块完整单测 50/50 通过（相关 Reactor 共执行 104 项，1 个既有 Excel fixture 跳过），覆盖账本历史、账本/工时修改成功、原 revision、派生工时差异、冲突终止和重复 commit 拒绝；前端 Node 47/47、生产构建、TypeScript/OpenAPI 客户端一致性检查通过。新增 E2E 在桌面 Chromium 2/2、桌面 WebKit 2/2、375px 移动 Chromium 2/2 通过，覆盖账本“差异预览 → 返回编辑 → 重新预览 → 确认提交”及工时派生差异在窄视口不溢出。
@@ -97,7 +109,7 @@
 - `cd backend && mvn -pl app -am -Dtest=ArchitectureBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false test` 成功；架构边界测试 7/7 通过。
 - `cd backend && mvn test` 已运行至 app 的 Testcontainers 阶段；Docker 客户端连接成功，但 Ryuk 容器持续停在启动状态且未出现在 `docker ps`。使用 `TESTCONTAINERS_RYUK_DISABLED=true` 复测后，目标 `mysql:8.0.36` 容器也停在相同状态，两次测试进程均已人工终止。真实 MySQL 门禁仍标记为未完成，不能用本次结果宣称通过。
 
-当前判定：Phase 3B 已具备工时和普通收入/支出的新增、修改、删除受控写入主链，并建立可重复的中文工具选择、关键参数和 commit 安全评测；完整退出门禁仍缺复杂流水类型、实体歧义专用交互、多轮工具结果回放和真实 MySQL 全链路回归。下一增量优先实现实体歧义候选选择与多轮回放评测，暂不启动 MCP 写入。
+当前判定：Phase 3B 已具备工时和普通收入/支出的新增、修改、删除受控写入主链，已完成实体歧义专用交互、账本到 prepare 的多轮回放和 commit 安全评测；完整退出门禁仍缺复杂流水、批量操作、管理工具和真实 MySQL 同步投影专项回归。后续按“复杂流水 → 批量操作 → 管理工具 → 只读 MCP → MCP 写入/OAuth”推进。
 
 ### 本地手动验证
 

@@ -263,6 +263,69 @@ test('filters account and category action fields by typing', async ({ page }) =>
   await expect(page.getByRole('combobox', { name: '账户筛选' })).toBeHidden()
 })
 
+test('requires explicit selection for ambiguous ledger entities and keeps resolved fields', async ({ page }) => {
+  const now = new Date().toISOString()
+  const fields = [
+    { name: 'kind', label: '收支类型', type: 'select', required: true, options: [{ value: 'EXPENSE', label: '支出' }, { value: 'INCOME', label: '收入' }] },
+    { name: 'amount', label: '金额', type: 'money', required: true },
+    { name: 'occurredOn', label: '发生日期', type: 'date', required: true },
+    { name: 'accountId', label: '账户', type: 'entity-picker', required: true, options: [
+      { value: 'boc-credit', label: '中行信用卡', description: 'CREDIT_CARD · CNY · 余额 -1280' },
+      { value: 'boc-debit', label: '中行储蓄卡', description: 'BANK · CNY · 余额 5000' },
+    ] },
+    { name: 'categoryId', label: '二级分类', type: 'entity-picker', required: true, options: [
+      { value: 'study-software', label: '学习进修 / 软件', kind: 'EXPENSE' },
+      { value: 'work-software', label: '工作支出 / 软件', kind: 'EXPENSE' },
+    ] },
+    { name: 'memberId', label: '成员', type: 'entity-picker', required: false, options: [{ value: 'me', label: '我', description: 'alice · 所有者' }] },
+    { name: 'note', label: '备注', type: 'textarea', required: false },
+  ]
+  const action = {
+    status: 'NEEDS_INPUT', summary: '请选择存在歧义的记账信息', actionId: 'action-ambiguous-1', expiresAt: now,
+    structuredContent: {
+      actionType: 'ledger.transaction.create',
+      input: { bookId: 'book-1', kind: 'EXPENSE', amount: 29.9, occurredOn: '2026-09-24', accountId: null, accountName: '中行', categoryId: null, categoryName: '软件', memberId: 'me', note: '买梯子' },
+      suggestedFields: ['memberId'], ambiguousFields: ['accountId', 'categoryId'],
+      entityMatches: { accountId: { status: 'ambiguous', query: '中行' }, categoryId: { status: 'ambiguous', query: '软件' }, memberId: { status: 'suggested' } },
+      fields,
+    },
+  }
+  await setupAgent(page, 'agent-ambiguous-entity-e2e', {
+    sessions: [{ id: 'session-1', title: '实体消歧', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [
+      { id: 1, turnId: 'turn-action', role: 'user', content: '中行买软件 29.9', metadataJson: null, createdAt: now },
+      { id: 2, turnId: 'turn-action', role: 'assistant', content: '找到了多个可能的账户和分类，请选择。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now },
+    ],
+  })
+  await page.route('**/api/v1/agent/actions/action-ambiguous-1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_INPUT' } }) }))
+  await page.route('**/api/v1/agent/actions/action-ambiguous-1/answer', async route => {
+    const body = route.request().postDataJSON()
+    expect(body).toMatchObject({ accountId: 'boc-debit', categoryId: 'study-software', memberId: 'me', amount: 29.9 })
+    const next = {
+      ...action, status: 'NEEDS_CONFIRMATION', summary: '请确认这笔支出', actionId: 'action-ambiguous-2',
+      structuredContent: { ...action.structuredContent, input: body, ambiguousFields: [], entityMatches: { accountId: { status: 'exact' }, categoryId: { status: 'exact' }, memberId: { status: 'exact' } }, preview: { ...body, accountName: '中行储蓄卡', categoryPath: '学习进修 / 软件', memberName: '我' } },
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: next }) })
+  })
+  await page.goto('/')
+
+  await expect(page.getByText('多个候选 · 请选择')).toHaveCount(2)
+  const account = page.getByRole('combobox', { name: '账户筛选' })
+  await expect(account).toHaveValue('中行')
+  await account.click()
+  await expect(page.getByText('BANK · CNY · 余额 5000')).toBeVisible()
+  await page.getByRole('option', { name: /中行储蓄卡/ }).click()
+  const category = page.getByRole('combobox', { name: '二级分类筛选' })
+  await expect(category).toHaveValue('软件')
+  await category.click()
+  await page.getByRole('option', { name: '学习进修 / 软件' }).click()
+  await expect(page.getByRole('combobox', { name: '成员筛选' })).toHaveValue('我')
+  await page.getByRole('button', { name: '生成预览' }).click()
+  await expect(page.getByRole('button', { name: '确认并保存' })).toBeVisible()
+  await expect(page.getByText('中行储蓄卡')).toBeVisible()
+  await expect(page.getByText('学习进修 / 软件')).toBeVisible()
+})
+
 test('shows the complete ledger card and returns from preview to editing', async ({ page }) => {
   const now = new Date().toISOString()
   const fields = [

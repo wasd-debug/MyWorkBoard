@@ -15,10 +15,10 @@ import com.salarytracker.ai.tool.ToolSchemas;
 import com.salarytracker.identity.CurrentUserResolver;
 import com.salarytracker.ledger.LedgerBookService;
 import com.salarytracker.ledger.LedgerModels.Account;
+import com.salarytracker.ledger.LedgerModels.Book;
 import com.salarytracker.ledger.LedgerModels.Category;
 import com.salarytracker.ledger.LedgerModels.Member;
 import com.salarytracker.ledger.LedgerModels.NamedResource;
-import com.salarytracker.ledger.LedgerModels.TransactionKind;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -43,6 +43,7 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         this.mapper = mapper;
         ObjectNode schema = ToolSchemas.object(mapper);
         ToolSchemas.stringProperty(schema, "bookId", "账本公开 ID", null);
+        ToolSchemas.stringProperty(schema, "bookName", "账本名称", null);
         ToolSchemas.stringProperty(schema, "kind", "只支持 EXPENSE 或 INCOME", null);
         ToolSchemas.numberProperty(schema, "amount", "金额，必须大于 0", 0);
         ToolSchemas.stringProperty(schema, "accountId", "账户公开 ID", null);
@@ -67,6 +68,7 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
     @Override
     public ToolResult execute(JsonNode input) {
         String bookId = ToolInputs.optionalText(input, "bookId");
+        String bookName = ToolInputs.optionalText(input, "bookName");
         String kind = ToolInputs.optionalText(input, "kind");
         if (kind != null && !Set.of("EXPENSE", "INCOME").contains(kind.toUpperCase())) {
             throw new IllegalArgumentException("kind 只支持 EXPENSE 或 INCOME");
@@ -87,6 +89,9 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         if (occurredOn == null) occurredOn = LocalDate.now().toString();
         String note = ToolInputs.optionalText(input, "note");
 
+        List<Book> bookOptions = books.books();
+        Match<Book> bookMatch = matchBooks(bookOptions, bookId, bookName);
+        if (bookId == null && bookMatch.selected() != null) bookId = bookMatch.selected().id();
         List<Account> accountOptions = bookId == null ? List.of() : books.accounts(bookId, false);
         List<Category> categories = bookId == null ? List.of() : books.categories(bookId, false);
         List<NamedResource> merchants = bookId == null ? List.of() : books.merchants(bookId, false);
@@ -94,6 +99,12 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         List<NamedResource> projects = bookId == null ? List.of() : books.projects(bookId, false);
 
         ArrayNode suggested = mapper.createArrayNode();
+        ObjectNode entityMatches = mapper.createObjectNode();
+        ArrayNode ambiguous = mapper.createArrayNode();
+        ArrayNode resolutionRequired = mapper.createArrayNode();
+        writeMatch(entityMatches, ambiguous, resolutionRequired, "bookId", bookName, bookMatch,
+                bookOptions.stream().map(item -> option(item.id(), item.name())).toList(), true);
+        if (bookId != null && input.path("bookId").isMissingNode() && !input.hasNonNull("bookId")) suggested.add("bookId");
         if (kind == null && amount != null) {
             kind = "EXPENSE";
             suggested.add("kind");
@@ -101,26 +112,14 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         final String requestedKind = kind;
         List<Category> secondaryCategories = categories.stream().filter(item -> item.parentId() != null)
                 .filter(item -> requestedKind == null || item.kind().name().equals(requestedKind)).toList();
-        if (accountId == null && accountName != null) {
-            List<Account> matches = accountOptions.stream().filter(item -> item.name().equalsIgnoreCase(accountName)
-                    || item.name().toLowerCase().contains(accountName.toLowerCase())).toList();
-            if (matches.size() == 1) { accountId = matches.get(0).id(); suggested.add("accountId"); }
-        }
-        if (categoryId == null && categoryName != null) {
-            String normalizedCategoryName = compact(categoryName);
-            List<Category> matches = secondaryCategories.stream().filter(item -> compact(item.name()).equals(normalizedCategoryName)
-                    || compact(categoryLabel(item, categories)).equals(normalizedCategoryName)
-                    || compact(categoryLabel(item, categories)).contains(normalizedCategoryName)).toList();
-            if (matches.size() == 1) { categoryId = matches.get(0).id(); suggested.add("categoryId"); }
-        }
-        if (merchantId == null && merchantName != null) {
-            merchantId = matchNamedId(merchants, merchantName);
-            if (merchantId != null) suggested.add("merchantId");
-        }
-        if (memberId == null && memberName != null) {
-            memberId = matchMemberId(members, memberName);
-            if (memberId != null) suggested.add("memberId");
-        }
+        Match<Account> accountMatch = matchAccounts(accountOptions, accountId, accountName);
+        if (accountId == null && accountMatch.selected() != null) { accountId = accountMatch.selected().id(); suggested.add("accountId"); }
+        Match<Category> categoryMatch = matchCategories(secondaryCategories, categories, categoryId, categoryName);
+        if (categoryId == null && categoryMatch.selected() != null) { categoryId = categoryMatch.selected().id(); suggested.add("categoryId"); }
+        Match<NamedResource> merchantMatch = matchNamed(merchants, merchantId, merchantName);
+        if (merchantId == null && merchantMatch.selected() != null) { merchantId = merchantMatch.selected().id(); suggested.add("merchantId"); }
+        Match<Member> memberMatch = matchMembers(members, memberId, memberName);
+        if (memberId == null && memberMatch.selected() != null) { memberId = memberMatch.selected().id(); suggested.add("memberId"); }
         if (memberId == null && memberName == null) {
             long currentUserId = currentUser.id();
             List<Member> currentMembers = members.stream()
@@ -128,23 +127,26 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
             if (currentMembers.size() == 1) {
                 memberId = currentMembers.get(0).id();
                 suggested.add("memberId");
+                memberMatch = new Match<>("suggested", currentMembers.get(0), currentMembers);
             }
         }
-        if (projectId == null && projectName != null) {
-            projectId = matchNamedId(projects, projectName);
-            if (projectId != null) suggested.add("projectId");
-        }
-        if (accountId == null && !accountOptions.isEmpty()) {
-            accountId = accountOptions.get(0).id();
-            suggested.add("accountId");
-        }
-        if (categoryId == null && !secondaryCategories.isEmpty()) {
-            categoryId = secondaryCategories.get(0).id();
-            suggested.add("categoryId");
-        }
+        Match<NamedResource> projectMatch = matchNamed(projects, projectId, projectName);
+        if (projectId == null && projectMatch.selected() != null) { projectId = projectMatch.selected().id(); suggested.add("projectId"); }
+        writeMatch(entityMatches, ambiguous, resolutionRequired, "accountId", accountName, accountMatch,
+                accountOptions.stream().map(this::accountOption).toList(), true);
+        writeMatch(entityMatches, ambiguous, resolutionRequired, "categoryId", categoryName, categoryMatch,
+                secondaryCategories.stream().map(item -> categoryOption(item, categories)).toList(), true);
+        writeMatch(entityMatches, ambiguous, resolutionRequired, "merchantId", merchantName, merchantMatch,
+                merchants.stream().map(item -> namedOption(item, "商家")).toList(),
+                "ambiguous".equals(merchantMatch.status()));
+        writeMatch(entityMatches, ambiguous, resolutionRequired, "memberId", memberName, memberMatch,
+                members.stream().map(this::memberOption).toList(), "ambiguous".equals(memberMatch.status()));
+        writeMatch(entityMatches, ambiguous, resolutionRequired, "projectId", projectName, projectMatch,
+                projects.stream().map(item -> namedOption(item, "项目")).toList(),
+                "ambiguous".equals(projectMatch.status()));
 
         ObjectNode normalized = mapper.createObjectNode();
-        put(normalized, "bookId", bookId); put(normalized, "kind", kind);
+        put(normalized, "bookId", bookId); put(normalized, "bookName", bookName); put(normalized, "kind", kind);
         if (amount == null) normalized.putNull("amount"); else normalized.put("amount", amount);
         put(normalized, "accountId", accountId); put(normalized, "categoryId", categoryId);
         put(normalized, "accountName", accountName); put(normalized, "categoryName", categoryName);
@@ -160,6 +162,9 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         if (amount == null) missing.add("amount");
         if (accountId == null) missing.add("accountId");
         if (categoryId == null) missing.add("categoryId");
+        addResolutionMissing(missing, resolutionRequired, "merchantId");
+        addResolutionMissing(missing, resolutionRequired, "memberId");
+        addResolutionMissing(missing, resolutionRequired, "projectId");
 
         final String normalizedAccountId = accountId;
         final String normalizedCategoryId = categoryId;
@@ -185,27 +190,36 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         content.put("actionType", "ledger.transaction.create");
         content.set("input", normalized);
         content.set("suggestedFields", suggested);
+        content.set("entityMatches", entityMatches);
+        content.set("ambiguousFields", ambiguous);
+        content.set("resolutionRequiredFields", resolutionRequired);
         ArrayNode fields = content.putArray("fields");
         field(fields, "kind", "收支类型", "select", true,
                 List.of(option("EXPENSE", "支出"), option("INCOME", "收入")));
         field(fields, "amount", "金额", "money", true, null);
         field(fields, "occurredOn", "发生日期", "date", true, null);
-        field(fields, "accountId", "账户", "entity-picker", true,
-                accountOptions.stream().map(item -> option(item.id(), item.name())).toList());
-        field(fields, "categoryId", "二级分类", "entity-picker", true,
-                categories.stream().filter(item -> item.parentId() != null)
-                        .map(item -> categoryOption(item, categories)).toList());
-        field(fields, "merchantId", "商家 / 对方", "entity-picker", false,
-                merchants.stream().map(item -> option(item.id(), item.name())).toList());
-        field(fields, "memberId", "成员", "entity-picker", false,
-                members.stream().map(item -> option(item.id(), item.displayName())).toList());
-        field(fields, "projectId", "项目", "entity-picker", false,
-                projects.stream().map(item -> option(item.id(), item.name())).toList());
+        if (bookId == null) field(fields, "bookId", "账本", "entity-picker", true,
+                bookOptions.stream().map(item -> option(item.id(), item.name())).toList());
+        if (bookId != null) {
+            field(fields, "accountId", "账户", "entity-picker", true,
+                    accountOptions.stream().map(this::accountOption).toList());
+            field(fields, "categoryId", "二级分类", "entity-picker", true,
+                    categories.stream().filter(item -> item.parentId() != null)
+                            .map(item -> categoryOption(item, categories)).toList());
+            field(fields, "merchantId", "商家 / 对方", "entity-picker",
+                    contains(resolutionRequired, "merchantId"),
+                    merchants.stream().map(item -> namedOption(item, "商家")).toList());
+            field(fields, "memberId", "成员", "entity-picker",
+                    contains(resolutionRequired, "memberId"), members.stream().map(this::memberOption).toList());
+            field(fields, "projectId", "项目", "entity-picker",
+                    contains(resolutionRequired, "projectId"),
+                    projects.stream().map(item -> namedOption(item, "项目")).toList());
+        }
         field(fields, "note", "备注", "textarea", false, null);
         if (!missing.isEmpty()) {
             content.set("missingFields", missing);
-            if (bookId == null) field(fields, "bookId", "账本 ID", "text", true, null);
-            return ToolResult.needsInput("请补充记账所需信息", content, action.id(), action.expiresAt().toString());
+            String summary = ambiguous.isEmpty() ? "请补充记账所需信息" : "请选择存在歧义的记账信息";
+            return ToolResult.needsInput(summary, content, action.id(), action.expiresAt().toString());
         }
         ObjectNode preview = content.putObject("preview");
         preview.put("bookId", bookId); preview.put("kind", kind); preview.put("amount", amount);
@@ -249,6 +263,23 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         return option(category.id(), categoryLabel(category, categories)).put("kind", category.kind().name());
     }
 
+    private ObjectNode accountOption(Account account) {
+        String description = account.accountType() + " · " + account.currency();
+        if (account.balance() != null) description += " · 余额 " + account.balance().stripTrailingZeros().toPlainString();
+        return option(account.id(), account.name()).put("description", description);
+    }
+
+    private ObjectNode namedOption(NamedResource resource, String type) {
+        ObjectNode option = option(resource.id(), resource.name());
+        option.put("description", resource.note() == null || resource.note().isBlank() ? type : resource.note());
+        return option;
+    }
+
+    private ObjectNode memberOption(Member member) {
+        return option(member.id(), member.displayName())
+                .put("description", member.username() + " · " + member.roleName());
+    }
+
     private String name(List<Account> accounts, String id) {
         return accounts.stream().filter(item -> item.id().equals(id)).map(Account::name).findFirst().orElse(id);
     }
@@ -281,24 +312,99 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         return options.stream().filter(item -> item.id().equals(id)).map(Member::displayName).findFirst().orElse(id);
     }
 
-    private String matchNamedId(List<NamedResource> options, String name) {
-        String normalized = compact(name);
-        List<NamedResource> exact = options.stream()
-                .filter(item -> item.name().equalsIgnoreCase(name)).toList();
-        if (exact.size() == 1) return exact.get(0).id();
-        List<NamedResource> partial = options.stream()
-                .filter(item -> compact(item.name()).contains(normalized)
-                        || normalized.contains(compact(item.name()))).toList();
-        return partial.size() == 1 ? partial.get(0).id() : null;
+    private Match<Book> matchBooks(List<Book> options, String id, String name) {
+        return match(options, id, name, Book::id, Book::name);
     }
 
-    private String matchMemberId(List<Member> options, String name) {
-        String normalized = compact(name);
-        List<Member> matches = options.stream().filter(item -> item.displayName().equalsIgnoreCase(name)
-                || item.username().equalsIgnoreCase(name) || (item.nickname() != null && item.nickname().equalsIgnoreCase(name))
-                || compact(item.displayName()).contains(normalized)).toList();
-        return matches.size() == 1 ? matches.get(0).id() : null;
+    private Match<Account> matchAccounts(List<Account> options, String id, String name) {
+        return match(options, id, name, Account::id, Account::name);
     }
+
+    private Match<Category> matchCategories(List<Category> options, List<Category> all, String id, String name) {
+        if (id != null) return match(options, id, null, Category::id, Category::name);
+        if (name == null) return options.size() == 1
+                ? new Match<>("suggested", options.get(0), options) : new Match<>(options.isEmpty() ? "missing" : "ambiguous", null, options);
+        String normalized = compact(name);
+        List<Category> exact = options.stream().filter(item -> compact(item.name()).equals(normalized)
+                || compact(categoryLabel(item, all)).equals(normalized)).toList();
+        if (exact.size() == 1) return new Match<>("exact", exact.get(0), exact);
+        List<Category> candidates = exact.isEmpty() ? options.stream().filter(item -> compact(item.name()).contains(normalized)
+                || compact(categoryLabel(item, all)).contains(normalized)
+                || normalized.contains(compact(item.name()))).toList() : exact;
+        return candidates.size() == 1 ? new Match<>("suggested", candidates.get(0), candidates)
+                : new Match<>(candidates.isEmpty() ? "missing" : "ambiguous", null, candidates);
+    }
+
+    private Match<NamedResource> matchNamed(List<NamedResource> options, String id, String name) {
+        if (id == null && name == null) return new Match<>("missing", null, List.of());
+        return match(options, id, name, NamedResource::id, NamedResource::name);
+    }
+
+    private Match<Member> matchMembers(List<Member> options, String id, String name) {
+        if (id != null) return match(options, id, null, Member::id, Member::displayName);
+        if (name == null) return new Match<>("missing", null, List.of());
+        String normalized = compact(name);
+        List<Member> exact = options.stream().filter(item -> compact(item.displayName()).equals(normalized)
+                || compact(item.username()).equals(normalized) || compact(item.nickname()).equals(normalized)).toList();
+        if (exact.size() == 1) return new Match<>("exact", exact.get(0), exact);
+        List<Member> candidates = exact.isEmpty() ? options.stream().filter(item -> compact(item.displayName()).contains(normalized)
+                || compact(item.username()).contains(normalized) || compact(item.nickname()).contains(normalized)).toList() : exact;
+        return candidates.size() == 1 ? new Match<>("suggested", candidates.get(0), candidates)
+                : new Match<>(candidates.isEmpty() ? "missing" : "ambiguous", null, candidates);
+    }
+
+    private <T> Match<T> match(List<T> options, String id, String name,
+                               java.util.function.Function<T, String> idOf,
+                               java.util.function.Function<T, String> labelOf) {
+        if (id != null) {
+            T selected = options.stream().filter(item -> idOf.apply(item).equals(id)).findFirst().orElse(null);
+            return new Match<>(selected == null ? "missing" : "exact", selected, selected == null ? List.of() : List.of(selected));
+        }
+        if (name == null) return options.size() == 1
+                ? new Match<>("suggested", options.get(0), options)
+                : new Match<>(options.isEmpty() ? "missing" : "ambiguous", null, options);
+        String normalized = compact(name);
+        List<T> exact = options.stream().filter(item -> compact(labelOf.apply(item)).equals(normalized)).toList();
+        if (exact.size() == 1) return new Match<>("exact", exact.get(0), exact);
+        List<T> candidates = exact.isEmpty() ? options.stream().filter(item -> compact(labelOf.apply(item)).contains(normalized)
+                || normalized.contains(compact(labelOf.apply(item)))).toList() : exact;
+        return candidates.size() == 1 ? new Match<>("suggested", candidates.get(0), candidates)
+                : new Match<>(candidates.isEmpty() ? "missing" : "ambiguous", null, candidates);
+    }
+
+    private <T> void writeMatch(ObjectNode matches, ArrayNode ambiguous, ArrayNode resolutionRequired,
+                                String field, String query, Match<T> match, List<ObjectNode> allOptions,
+                                boolean required) {
+        ObjectNode node = matches.putObject(field);
+        node.put("status", match.status());
+        if (query != null) node.put("query", query);
+        ArrayNode candidates = node.putArray("candidates");
+        Set<String> candidateIds = match.candidates().stream().map(item -> {
+            if (item instanceof Book value) return value.id();
+            if (item instanceof Account value) return value.id();
+            if (item instanceof Category value) return value.id();
+            if (item instanceof NamedResource value) return value.id();
+            if (item instanceof Member value) return value.id();
+            return "";
+        }).collect(java.util.stream.Collectors.toSet());
+        allOptions.stream().filter(option -> candidateIds.contains(option.path("value").asText())).forEach(candidates::add);
+        if ("ambiguous".equals(match.status())) ambiguous.add(field);
+        if (required && match.selected() == null) resolutionRequired.add(field);
+    }
+
+    private void addResolutionMissing(ArrayNode missing, ArrayNode resolutionRequired, String field) {
+        boolean unresolved = contains(resolutionRequired, field);
+        boolean alreadyMissing = java.util.stream.StreamSupport.stream(missing.spliterator(), false)
+                .anyMatch(item -> field.equals(item.asText()));
+        if (unresolved && !alreadyMissing) missing.add(field);
+    }
+
+    private boolean contains(ArrayNode values, String value) {
+        return java.util.stream.StreamSupport.stream(values.spliterator(), false)
+                .anyMatch(item -> value.equals(item.asText()));
+    }
+
+    private record Match<T>(String status, T selected, List<T> candidates) { }
 
     private String compact(String value) {
         return value == null ? "" : value.toLowerCase().replaceAll("[\\s/／_-]+", "");

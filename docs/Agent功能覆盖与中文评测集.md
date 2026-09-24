@@ -16,7 +16,7 @@
 | 查询预算 | `ledger.budgets.list` | R1 | 已实现 | 总预算/分类预算测试 |
 | 新增工时 | `worktime.record.create.prepare/commit` | R2 | 已接入 Web Agent | 真实 MySQL 缺参补答、确认、幂等与页面投影回归 |
 | 修改/删除工时 | `worktime.record.update/delete.prepare/commit` | R3 | 已接入 Web Agent | 真实 MySQL 与同步投影专项回归 |
-| 新增流水 | `ledger.transaction.create.prepare/commit` | R2 | 已接入 Web Agent（完整字段卡片、返回编辑、名称匹配） | 多笔批次、同步投影真实 MySQL 回归 |
+| 新增流水 | `ledger.transaction.create.prepare/commit` | R2 | 已接入 Web Agent（完整字段、实体消歧、返回编辑） | 多笔批次、同步投影真实 MySQL 回归 |
 | 修改/删除流水 | `ledger.transaction.update/delete.prepare/commit` | R3 | 已接入 Web Agent（普通收入/支出） | 复杂流水与真实同步投影专项回归 |
 | 管理账本资源 | `ledger.*.create/update/delete` | R2-R4 | 未实现 | 分级确认与站内审批 |
 | 成本估算 | `ai_usage` + 价格版本 | 只读元数据 | 已支持固定价与 DeepSeek 峰谷价 | 供应商账单抽样对账 |
@@ -59,6 +59,8 @@
 - 模型提供的用户 ID、权限、revision 和“已确认”声明均不可信。
 - 同一 action 只能成功进入一次 commit；过期、越权和冲突不得产生业务写入。
 - 记账卡片必须展示全部适用字段；智能匹配值仅推进到预览，不能跳过最终确认直接 commit。
+- 唯一候选才允许自动预填；多个账本、账户、分类、商家、成员或项目候选必须返回 `ambiguous` 并由用户选择，禁止取列表第一项。
+- 多账本补参先选择账本，再加载该账本内资源候选；候选 ID 必须重新经过当前用户和当前账本权限校验。
 - 从预览返回编辑后必须生成新 action，旧 action 进入不可提交终态，只有最新预览可批准和保存。
 - 接入模型后，任何提示词或工具 Schema 变更都必须重跑本文件中的固定样例。
 - 当前模型工具白名单包含 R0/R1 和明确允许的 R2/R3 `*.prepare`；所有 `*.commit` 均不进入模型上下文，只能由站内按钮在 action 已批准后调用。
@@ -82,3 +84,5 @@ bash backend/scripts/run-agent-eval.sh --live
 真实模型评测只发送固定中文表达和工具 Schema；不调用 `DomainToolRegistry`，不读取用户账本或工时数据，不创建 pending action，也不输出 API Key。通过门槛为工具选择与关键参数准确率不低于 90%，任何 commit 暴露或调用均直接失败。
 
 2026-09-24 基线结果：首轮真实模型评测为 67%，暴露“本月结束日期取未来月末”“新增/修改工时误选设置工具”等问题；强化时间边界、工时新增与过去记录修改规则后，固定 12 条样例达到 12/12。伪造 commit 回放确认不会进入 Domain Tool Registry。
+
+2026-09-24 多轮补充：增加账本列表到记账 prepare 的工具结果回放，并为多账本、相似账户、同名二级分类和商家歧义建立确定性测试。产生 pending action 后，普通和 SSE 编排都会关闭后续模型工具目录。

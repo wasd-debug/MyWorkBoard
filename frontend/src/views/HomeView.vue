@@ -140,7 +140,7 @@
                   </header>
                   <form v-if="actionEditable(action)" class="agent-action-form" @submit.prevent="answerAction(item, action)">
                     <label v-for="field in action.structuredContent?.fields || []" :key="field.name" :class="{ 'entity-picker-field': field.type === 'entity-picker' }">
-                      <span>{{ field.label }}<i v-if="field.required">必填</i><i v-if="actionFieldSuggested(action, field.name)" class="suggested">智能匹配</i></span>
+                      <span>{{ field.label }}<i v-if="field.required">必填</i><i v-if="actionFieldAmbiguous(action, field.name)" class="ambiguous">多个候选 · 请选择</i><i v-else-if="actionFieldSuggested(action, field.name)" class="suggested">智能匹配</i></span>
                       <select v-if="field.type === 'select'" :value="actionFieldValue(action, field.name)" :required="field.required" @change="setActionField(action, field.name, $event.target.value)">
                         <option value="">请选择</option>
                         <option v-for="option in field.options || []" :key="option.value" :value="option.value">{{ option.label }}</option>
@@ -149,7 +149,7 @@
                         <input type="search" autocomplete="off" :placeholder="`输入${field.label}名称筛选`" :value="entityPickerText(action, field)" :required="field.required && !actionFieldValue(action, field.name)" role="combobox" :aria-label="`${field.label}筛选`" aria-autocomplete="list" :aria-expanded="isEntityPickerOpen(action, field)" @focus="openEntityPicker(action, field)" @input="searchEntityPicker(action, field, $event.target.value)" />
                         <button v-if="actionFieldValue(action, field.name)" type="button" :aria-label="`清除${field.label}`" @click="clearEntityPicker(action, field)"><X /></button>
                         <div v-if="isEntityPickerOpen(action, field)" class="agent-entity-options" role="listbox" :aria-label="`${field.label}候选项`">
-                          <button v-for="option in filteredEntityOptions(action, field)" :key="option.value" type="button" role="option" :aria-selected="actionFieldValue(action, field.name) === option.value" @pointerdown.prevent="selectEntityOption(action, field, option)"><Check v-if="actionFieldValue(action, field.name) === option.value" /><span>{{ option.label }}</span></button>
+                          <button v-for="option in filteredEntityOptions(action, field)" :key="option.value" type="button" role="option" :aria-selected="actionFieldValue(action, field.name) === option.value" @pointerdown.prevent="selectEntityOption(action, field, option)"><Check v-if="actionFieldValue(action, field.name) === option.value" /><span><b>{{ option.label }}</b><small v-if="option.description">{{ option.description }}</small></span></button>
                           <p v-if="!filteredEntityOptions(action, field).length">没有匹配项</p>
                         </div>
                       </div>
@@ -449,12 +449,13 @@ function actionInputType(type) { return ({ money: 'number', number: 'number', da
 function actionFormComplete(action) { return (action.structuredContent?.fields || []).every(field => !field.required || String(actionFieldValue(action, field.name)).trim()) }
 function actionEditable(action) { return !action.uiStatus && (action.status === 'NEEDS_INPUT' || (action.status === 'NEEDS_CONFIRMATION' && action.editing)) }
 function actionFieldSuggested(action, name) { return (action.structuredContent?.suggestedFields || []).includes(name) }
+function actionFieldAmbiguous(action, name) { return action.structuredContent?.entityMatches?.[name]?.status === 'ambiguous' && !actionFieldValue(action, name) }
 function editAction(action) { action.editing = true; action.form = { ...(action.structuredContent?.input || {}), ...(action.form || {}) }; persist() }
 function pendingLedgerActions(item) { return (item.actions || []).filter(action => action.structuredContent?.actionType === 'ledger.transaction.create' && !action.uiStatus && ['NEEDS_INPUT', 'NEEDS_CONFIRMATION'].includes(action.status)) }
 function batchAmount(item, kind) { const total = pendingLedgerActions(item).filter(action => action.structuredContent?.input?.kind === kind).reduce((sum, action) => sum + Number(action.structuredContent?.input?.amount || 0), 0); return `¥${total.toFixed(2)}` }
 function allLedgerActionsConfirmable(item) { const actions = pendingLedgerActions(item); return actions.length > 1 && actions.every(action => action.status === 'NEEDS_CONFIRMATION' && !action.editing) }
 function entityPickerKey(action, field) { return `${action.actionId}:${field.name}` }
-function entityPickerEntry(action, field) { const key = entityPickerKey(action, field), selected = (field.options || []).find(option => option.value === actionFieldValue(action, field.name)); return entityPickerState.value[key] || { query: selected?.label || '', open: false } }
+function entityPickerEntry(action, field) { const key = entityPickerKey(action, field), selected = (field.options || []).find(option => option.value === actionFieldValue(action, field.name)), match = action.structuredContent?.entityMatches?.[field.name]; return entityPickerState.value[key] || { query: selected?.label || match?.query || '', open: false } }
 function updateEntityPicker(action, field, patch) { const key = entityPickerKey(action, field); entityPickerState.value = { ...entityPickerState.value, [key]: { ...entityPickerEntry(action, field), ...patch } } }
 function entityPickerText(action, field) { return entityPickerEntry(action, field).query }
 function isEntityPickerOpen(action, field) { return entityPickerEntry(action, field).open }

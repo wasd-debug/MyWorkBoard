@@ -89,8 +89,9 @@ public class AgentOrchestrator {
 
         int callCount = 0;
         for (int round = 0; round <= MAX_TOOL_CALLS + 1; round++) {
+            boolean finalRound = callCount >= MAX_TOOL_CALLS || !actionRequests.isEmpty();
             LlmGateway.AgentTurn turn = model.agentTurn(messages,
-                    callCount >= MAX_TOOL_CALLS ? List.of() : modelTools);
+                    finalRound ? List.of() : modelTools);
             usage = usage.plus(turn.usage());
             modelExecutions.add(new LlmGateway.ModelExecution(round + 1, turn.durationMs(),
                     turn.firstTokenMs(), turn.usage()));

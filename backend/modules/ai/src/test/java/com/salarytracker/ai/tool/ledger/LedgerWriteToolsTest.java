@@ -11,6 +11,7 @@ import com.salarytracker.identity.CurrentUser;
 import com.salarytracker.identity.CurrentUserResolver;
 import com.salarytracker.ledger.LedgerBookService;
 import com.salarytracker.ledger.LedgerModels.Account;
+import com.salarytracker.ledger.LedgerModels.Book;
 import com.salarytracker.ledger.LedgerModels.Category;
 import com.salarytracker.ledger.LedgerModels.CategoryKind;
 import com.salarytracker.ledger.LedgerModels.Member;
@@ -52,6 +53,9 @@ class LedgerWriteToolsTest {
         when(currentUser.id()).thenReturn(7L);
         when(currentUser.required()).thenReturn(new CurrentUser(7L, "alice", "Alice",
                 Set.of("ledger:read", "ledger:write")));
+        when(books.books()).thenReturn(List.of(
+                new Book("book-1", "日常账本", "CNY", 7L, 1, false, "OWNER", "所有者",
+                        List.of("TRANSACTION_ANY_WRITE"), 1, 0, "2026-09-01")));
         when(books.accounts("book-1", false)).thenReturn(List.of(
                 new Account("account-1", "现金", "wallet", "CASH", "CNY", BigDecimal.ZERO,
                         BigDecimal.ZERO, false, 1, "2026-09-01"),
@@ -86,11 +90,106 @@ class LedgerWriteToolsTest {
         assertEquals(9, result.structuredContent().path("fields").size());
         assertEquals("kind", result.structuredContent().path("fields").path(0).path("name").asText());
         assertEquals("money", result.structuredContent().path("fields").path(1).path("type").asText());
-        assertEquals("account-1", result.structuredContent().path("input").path("accountId").asText());
-        assertEquals("category-1", result.structuredContent().path("input").path("categoryId").asText());
+        assertTrue(result.structuredContent().path("input").path("accountId").isNull());
+        assertTrue(result.structuredContent().path("input").path("categoryId").isNull());
+        assertEquals(List.of("accountId", "categoryId"), mapper.convertValue(
+                result.structuredContent().path("ambiguousFields"),
+                mapper.getTypeFactory().constructCollectionType(List.class, String.class)));
         assertEquals("member-1", result.structuredContent().path("input").path("memberId").asText());
         assertTrue(result.structuredContent().path("suggestedFields").toString().contains("\"memberId\""));
         verify(transactions, never()).create(any(), any(), any());
+    }
+
+    @Test
+    void prepareRequiresSelectionForAmbiguousAccountAndCategoryInsteadOfPickingFirst() {
+        when(books.accounts("book-1", false)).thenReturn(List.of(
+                new Account("account-boc-credit", "中行信用卡", "bank-boc", "CREDIT_CARD", "CNY",
+                        BigDecimal.ZERO, BigDecimal.ZERO, false, 1, "2026-09-01"),
+                new Account("account-boc-debit", "中行储蓄卡", "bank-boc", "BANK", "CNY",
+                        BigDecimal.ZERO, BigDecimal.ZERO, false, 1, "2026-09-01")));
+        when(books.categories("book-1", false)).thenReturn(List.of(
+                new Category("parent-study", "学习进修", "tag", CategoryKind.EXPENSE, null,
+                        "#fff", false, 1, "2026-09-01"),
+                new Category("category-study-software", "软件", "tag", CategoryKind.EXPENSE, "parent-study",
+                        "#fff", false, 1, "2026-09-01"),
+                new Category("parent-work", "工作支出", "tag", CategoryKind.EXPENSE, null,
+                        "#fff", false, 1, "2026-09-01"),
+                new Category("category-work-software", "软件", "tag", CategoryKind.EXPENSE, "parent-work",
+                        "#fff", false, 1, "2026-09-01")));
+        var prepare = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
+
+        var result = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("kind", "EXPENSE").put("amount", 29.9)
+                .put("accountName", "中行").put("categoryName", "软件")
+                .put("occurredOn", "2026-09-24"));
+
+        assertEquals(ToolStatus.NEEDS_INPUT, result.status());
+        assertTrue(result.structuredContent().path("input").path("accountId").isNull());
+        assertTrue(result.structuredContent().path("input").path("categoryId").isNull());
+        assertEquals("ambiguous", result.structuredContent().path("entityMatches").path("accountId").path("status").asText());
+        assertEquals(2, result.structuredContent().path("entityMatches").path("accountId").path("candidates").size());
+        assertEquals("ambiguous", result.structuredContent().path("entityMatches").path("categoryId").path("status").asText());
+        assertEquals(List.of("accountId", "categoryId"), mapper.convertValue(
+                result.structuredContent().path("ambiguousFields"),
+                mapper.getTypeFactory().constructCollectionType(List.class, String.class)));
+        verify(transactions, never()).create(any(), any(), any());
+    }
+
+    @Test
+    void prepareUsesOnlyAvailableAccountAndCategoryButKeepsThemEditable() {
+        when(books.accounts("book-1", false)).thenReturn(List.of(
+                new Account("only-account", "现金", "wallet", "CASH", "CNY", BigDecimal.ZERO,
+                        BigDecimal.ZERO, false, 1, "2026-09-01")));
+        when(books.categories("book-1", false)).thenReturn(List.of(
+                new Category("parent-food", "餐饮", "tag", CategoryKind.EXPENSE, null,
+                        "#fff", false, 1, "2026-09-01"),
+                new Category("only-category", "午餐", "tag", CategoryKind.EXPENSE, "parent-food",
+                        "#fff", false, 1, "2026-09-01")));
+        var prepare = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
+
+        var result = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("kind", "EXPENSE").put("amount", 20).put("occurredOn", "2026-09-24"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, result.status());
+        assertEquals("only-account", result.structuredContent().path("input").path("accountId").asText());
+        assertEquals("only-category", result.structuredContent().path("input").path("categoryId").asText());
+        assertEquals("suggested", result.structuredContent().path("entityMatches").path("accountId").path("status").asText());
+        assertEquals("suggested", result.structuredContent().path("entityMatches").path("categoryId").path("status").asText());
+    }
+
+    @Test
+    void prepareRequiresBookSelectionWhenUserCanAccessMultipleBooks() {
+        when(books.books()).thenReturn(List.of(
+                new Book("book-1", "日常账本", "CNY", 7L, 1, false, "OWNER", "所有者", List.of(), 1, 0, "2026-09-01"),
+                new Book("book-2", "工作账本", "CNY", 7L, 1, false, "OWNER", "所有者", List.of(), 1, 0, "2026-09-02")));
+        var prepare = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
+
+        var result = prepare.execute(mapper.createObjectNode().put("kind", "EXPENSE").put("amount", 20));
+
+        assertEquals(ToolStatus.NEEDS_INPUT, result.status());
+        assertEquals("ambiguous", result.structuredContent().path("entityMatches").path("bookId").path("status").asText());
+        assertEquals(2, result.structuredContent().path("entityMatches").path("bookId").path("candidates").size());
+        assertEquals(5, result.structuredContent().path("fields").size());
+        assertEquals("bookId", result.structuredContent().path("fields").path(3).path("name").asText());
+        assertEquals("entity-picker", result.structuredContent().path("fields").path(3).path("type").asText());
+    }
+
+    @Test
+    void prepareRequiresSelectionWhenAnOptionalNamedEntityHasAmbiguousMatches() {
+        when(books.merchants("book-1", false)).thenReturn(List.of(
+                new NamedResource("merchant-1", "中转站北京", "shop", "北京节点", null, false, 1, "2026-09-01"),
+                new NamedResource("merchant-2", "中转站上海", "shop", "上海节点", null, false, 1, "2026-09-01")));
+        var prepare = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
+
+        var result = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("kind", "EXPENSE").put("amount", 29.9)
+                .put("accountId", "account-1").put("categoryId", "category-1")
+                .put("merchantName", "中转站").put("occurredOn", "2026-09-24"));
+
+        assertEquals(ToolStatus.NEEDS_INPUT, result.status());
+        assertTrue(result.structuredContent().path("input").path("merchantId").isNull());
+        assertEquals("ambiguous", result.structuredContent().path("entityMatches").path("merchantId").path("status").asText());
+        assertTrue(result.structuredContent().path("missingFields").toString().contains("merchantId"));
     }
 
     @Test
