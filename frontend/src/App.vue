@@ -22,6 +22,7 @@
             </div>
           </div>
           <button class="top-text-button" type="button" aria-label="帮助中心" title="同步状态" @click="onSyncClick"><Connection aria-hidden="true" /><span>帮助中心</span></button>
+          <router-link class="top-text-button" to="/approvals" aria-label="审批中心" title="审批中心"><ShieldCheck aria-hidden="true" /><span>审批</span></router-link>
           <router-link class="top-text-button" to="/settings" aria-label="设置" title="设置"><Setting aria-hidden="true" /><span>设置</span></router-link>
           <button class="workspace-avatar" type="button" title="退出登录" aria-label="退出登录" @click="store.logout()">{{ userInitial }}</button>
         </div>
@@ -39,6 +40,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowLeft, Connection, House, Setting } from './icons.js'
+import { ShieldCheck } from 'lucide-vue-next'
 import { ledgerNavigation, navigationItemIsActive, worktimeNavigation } from './config/moduleNavigation.js'
 import { message } from './services/message.js'
 import { useAppStore } from './stores/app'
@@ -65,8 +67,8 @@ const palettes = [
 const currentPalette = computed(() => palettes.find(item => item.key === store.accent) || palettes[0])
 const userInitial = computed(() => String(store.authUser?.nickname || store.authUser?.username || '我').slice(0, 1))
 const isLedger = computed(() => route.path.startsWith('/ledger'))
-const moduleLabel = computed(() => isLedger.value ? '账本' : route.path === '/settings' ? '设置' : '工时')
-const moduleNav = computed(() => isLedger.value ? ledgerNavigation : route.path === '/settings' ? [] : worktimeNavigation)
+const moduleLabel = computed(() => isLedger.value ? '账本' : route.path.startsWith('/approvals') ? '审批中心' : route.path === '/settings' ? '设置' : '工时')
+const moduleNav = computed(() => isLedger.value ? ledgerNavigation : route.path === '/settings' || route.path.startsWith('/approvals') ? [] : worktimeNavigation)
 function isNavActive(item) { return navigationItemIsActive(route, item) }
 function selectPalette(key) { store.setAccent(key); themeMenuOpen.value = false }
 function clearNavigationTimers() { window.clearTimeout(navigationFinishTimer); window.clearTimeout(navigationSafetyTimer) }

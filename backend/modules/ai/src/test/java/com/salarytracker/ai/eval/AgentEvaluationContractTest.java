@@ -44,6 +44,8 @@ class AgentEvaluationContractTest {
         assertTrue(policy.modelVisible(definition("ledger.transaction.delete.prepare", ToolRisk.R3)));
         assertFalse(policy.modelVisible(definition("ledger.transaction.delete.commit", ToolRisk.R3)));
         assertFalse(policy.modelVisible(definition("ledger.book.delete.prepare", ToolRisk.R4)));
+        assertFalse(policy.modelVisible(definition("ledger.import.confirm.prepare", ToolRisk.R4)));
+        assertFalse(policy.modelVisible(definition("ledger.import.confirm.commit", ToolRisk.R4)));
         assertTrue(policy.systemPrompt(java.time.LocalDate.of(2026, 9, 24)).contains("今天是 2026-09-24"));
         assertTrue(policy.systemPrompt(java.time.LocalDate.of(2026, 9, 24)).contains("你不得调用 commit"));
     }

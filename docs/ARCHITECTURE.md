@@ -655,7 +655,7 @@ Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后
 
 - [ ] Streamable HTTP MCP Server，Domain Tool 到 MCP Tool 的单一适配层
 - [ ] PAT、read/prepare/commit scope、撤销、账本限制、审计和限流
-- [ ] OAuth 2.1 + PKCE、站内审批中心和高风险 confirmation URL
+- [ ] OAuth 2.1 + PKCE 和外部客户端高风险 confirmation URL；Web 站内审批基础已先行落地
 - [ ] MCP Inspector、Codex 和 WorkBuddy 真实兼容验证
 - **验收**：默认只读；未审批、过期、重放、伪造用户和越权账本均不能写入；真实客户端完成查询和低风险写入。
 
@@ -666,7 +666,8 @@ Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后
 - [x] 增量 3：工时设置、账本创建/修改、账户、分类、商家、项目和预算管理已按 R2/R3 接入；账本删除保留 R4 影响预览
 - [x] 增量 4：周期任务 list/create/update/delete/run 已接入，复用固定日期、间隔规则、revision、到期日去重和真实流水生成服务
 - [x] 增量 5A：回收站查询/恢复、受认证导出和 CSV/XLS/XLSX 只读导入预览；永久清除保持 R4 且无聊天 commit
-- [ ] 增量 5B：导入确认、成员/角色和 R4 站内审批基础
+- [x] 增量 5B-1：统一 R4 站内审批表、用户隔离审批中心和导入确认；普通聊天 approve/commit 无法绕过审批
+- [ ] 增量 5B-2：成员/角色管理，以及账本删除、回收站永久清除等 R4 executor 注册与审批
 - [ ] 覆盖其他用户级工时和账本功能，排除同步、物化等内部维护接口
 - [ ] 模型回归评测、失败回放、成本告警、客户端熔断和数据清理任务
 - [x] V19 支持用户模型及系统环境模型的固定价/DeepSeek 峰谷价格配置；服务端按请求开始时刻选择高峰或空闲档位并将档位、版本和估算费用写入 Usage Trace
@@ -759,6 +760,8 @@ Phase 0 地基 → Phase 1 账本 ─┬→ Phase 2 任务核心 ─────
 ### 12.1.1 当前验证记录
 
 2026-09-27 回收站与导入导出基础增量：后端 `mvn clean test` 共 179 项，177 项通过、2 项按既有规则跳过，Flyway V1-V20、真实 MySQL 和架构边界通过；新增数据生命周期集成测试 3/3，覆盖恢复 revision 冲突、跨用户隔离、导入预览零写入与 CSV 公式注入防护。前端 Node 49/49、sync-engine 8/8、类型检查、OpenAPI 一致性和生产构建通过；回收站恢复、受认证导出和只读导入预览在桌面 Chromium、桌面 WebKit与 375px 移动 Chromium 共 9/9 通过。
+
+2026-09-27 R4 审批与导入确认增量：后端 `mvn test` 共 184 项，182 项通过、2 项按既有规则跳过，Flyway V1-V21、真实 MySQL、迁移回放和架构边界通过；新增工具契约覆盖 R4 prepare、非法重复策略、未审批 commit 和模型不可见策略，真实 MySQL 覆盖批准导入、重复批准幂等与跨用户隔离。前端 Node 49/49、sync-engine 8/8、类型检查、OpenAPI 一致性和生产构建通过；“上传预览 → 创建审批 → 批准导入”在桌面 Chromium、桌面 WebKit与 375px 移动 Chromium 共 3/3 通过。
 
 2026-09-18 收口结果：Maven 默认套件 57 项通过、1 项真实 Excel fixture 按设计跳过，指定真实工作簿后 ledger 37/37；前端 Node/契约 44/44；OpenAPI 49 paths、70 operations、120 schemas，生成幂等和 TypeScript 严格编译通过；Vite 构建通过；Docker 源码构建后的 Playwright 32 passed、4 项按项目设计 skipped。Testcontainers 实际执行 MySQL 权限/同步、Flyway 空库与旧 fixture 重放、工资口径；旧 schema 恢复演练完成核心数据对账、Flyway v11 migrate/validate 和健康检查。Phase 0/1 自动化退出门禁已通过，真机和季度生产恢复演练按发布流程持续记录。
 

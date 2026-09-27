@@ -32,6 +32,12 @@ public class DomainToolRegistry {
                 .sorted(java.util.Comparator.comparing(ToolDefinition::name)).toList();
     }
 
+    public ToolDefinition definition(String name) {
+        DomainTool tool = tools.get(name);
+        if (tool == null) throw new IllegalArgumentException("未知领域工具: " + name);
+        return tool.definition();
+    }
+
     public List<ToolDefinition> definitionsForCurrentUser() {
         CurrentUser user = currentUserResolver.required();
         return definitions().stream()

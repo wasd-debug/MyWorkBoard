@@ -63,6 +63,10 @@ public class AgentController {
     @PostMapping("/actions/{actionId}/approve")
     @Operation(operationId = "approveAgentAction")
     public ApiResponse<ActionResponse> approve(@PathVariable String actionId) {
+        PendingAction action = actions.getForUser(actionId, currentUser.id());
+        if (tools.definition(action.toolName()).riskLevel() == com.salarytracker.ai.tool.ToolRisk.R4) {
+            throw new IllegalStateException("R4 操作必须在站内审批中心处理");
+        }
         return ApiResponse.ok(ActionResponse.of(actions.approve(actionId, currentUser.id())));
     }
 
@@ -113,6 +117,9 @@ public class AgentController {
     public ApiResponse<ToolResult> commit(@PathVariable String actionId) {
         PendingAction action = actions.getForUser(actionId, currentUser.id());
         if (!action.toolName().endsWith(".prepare")) throw new IllegalArgumentException("action 工具不支持提交");
+        if (tools.definition(action.toolName()).riskLevel() == com.salarytracker.ai.tool.ToolRisk.R4) {
+            throw new IllegalStateException("R4 操作必须在站内审批中心处理");
+        }
         String commitTool = action.toolName().substring(0, action.toolName().length() - ".prepare".length()) + ".commit";
         return ApiResponse.ok(tools.invoke(commitTool,
                 JsonNodeFactory.instance.objectNode().put("actionId", actionId)));

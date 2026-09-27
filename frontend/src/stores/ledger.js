@@ -11,8 +11,8 @@ import {
   apiDeleteLedgerMember,
   apiDeleteLedgerRole,
   apiDeleteLedgerScheduledTask,
-  apiImportLedgerConfirm,
   apiImportLedgerPreview,
+  apiInvokeAgentTool,
   apiLedgerAiConfirm,
   apiListLedgerAccounts,
   apiListLedgerBooks,
@@ -497,10 +497,12 @@ export const useLedgerStore = defineStore('ledger', {
       progress.onStage?.('upload')
       const preview = await apiImportLedgerPreview(this.currentBookId, file, 'AUTO', progress.onUploadProgress)
       progress.onPreview?.(preview)
-      progress.onStage?.('confirm')
-      const result = await apiImportLedgerConfirm(this.currentBookId, preview.batchId)
-      await this.refreshCurrentBook()
-      return result
+      progress.onStage?.('approval')
+      return apiInvokeAgentTool('ledger.import.confirm.prepare', {
+        bookId: this.currentBookId,
+        batchId: preview.batchId,
+        duplicateStrategy: 'SKIP'
+      })
     },
 
     scheduleSync() {

@@ -6,6 +6,10 @@ import com.salarytracker.ai.action.InteractionPolicy;
 import com.salarytracker.ai.action.PendingAction;
 import com.salarytracker.ai.action.PendingActionRepository;
 import com.salarytracker.ai.action.PendingActionService;
+import com.salarytracker.ai.approval.AgentApproval;
+import com.salarytracker.ai.approval.AgentApprovalService;
+import com.salarytracker.ai.approval.ApprovalStatus;
+import com.salarytracker.ai.approval.LedgerImportApprovalExecutor;
 import com.salarytracker.ai.tool.ToolStatus;
 import com.salarytracker.identity.CurrentUser;
 import com.salarytracker.identity.CurrentUserResolver;
@@ -815,6 +819,63 @@ class LedgerWriteToolsTest {
         assertEquals(1, parsed.structuredContent().path("preview").path("validCount").asInt());
         assertTrue(parsed.structuredContent().path("webApprovalRequired").asBoolean());
         assertEquals(false, parsed.structuredContent().path("commitAvailable").asBoolean());
+        verify(imports, never()).confirm(any(), any());
+    }
+
+    @Test
+    void importConfirmPrepareCreatesR4WebApprovalWithoutWriting() {
+        var preview = new com.salarytracker.ledger.LedgerModels.ImportPreview("batch-1", "ledger.xlsx", "STANDARD",
+                1, 0, 1, List.of(),
+                new com.salarytracker.ledger.LedgerModels.ResourceCreates(List.of(), List.of(), List.of(), List.of()));
+        when(imports.getPreview("book-1", "batch-1")).thenReturn(preview);
+        AgentApprovalService approvals = mock(AgentApprovalService.class);
+        when(approvals.create(any(), eq("book-1"), any(), any())).thenAnswer(invocation -> {
+            PendingAction action = invocation.getArgument(0);
+            Instant now = Instant.now();
+            return new AgentApproval("approval-1", 7L, action.id(), action.toolName(), action.toolVersion(),
+                    "book-1", ApprovalStatus.PENDING, invocation.getArgument(2), "{}", null,
+                    action.expiresAt(), null, null, null, now, now);
+        });
+        var tool = new LedgerImportConfirmPrepareTool(imports, actions, approvals, currentUser, mapper);
+
+        var result = tool.execute(mapper.createObjectNode().put("bookId", "book-1").put("batchId", "batch-1"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, result.status());
+        assertEquals(com.salarytracker.ai.tool.ToolRisk.R4, tool.definition().riskLevel());
+        assertEquals("approval-1", result.structuredContent().path("approvalId").asText());
+        assertTrue(result.structuredContent().path("webApprovalRequired").asBoolean());
+        assertEquals(false, result.structuredContent().path("commitAvailable").asBoolean());
+        assertEquals("/approvals/approval-1", result.confirmationUrl());
+        verify(imports, never()).confirm(any(), any());
+    }
+
+    @Test
+    void importConfirmPrepareRejectsUnsupportedDuplicateStrategy() {
+        var tool = new LedgerImportConfirmPrepareTool(imports, actions, mock(AgentApprovalService.class),
+                currentUser, mapper);
+
+        var error = assertThrows(IllegalArgumentException.class, () -> tool.execute(mapper.createObjectNode()
+                .put("bookId", "book-1").put("batchId", "batch-1").put("duplicateStrategy", "OVERWRITE")));
+
+        assertEquals("当前只支持跳过重复流水", error.getMessage());
+        verify(imports, never()).getPreview(any(), any());
+    }
+
+    @Test
+    void importConfirmCommitRequiresApprovedAction() {
+        var definition = new com.salarytracker.ai.tool.ToolDefinition("ledger.import.confirm.prepare", 1,
+                "导入确认", com.salarytracker.ai.tool.ToolRisk.R4, Set.of("ledger:import"),
+                com.salarytracker.ai.tool.ToolSchemas.object(mapper));
+        PendingAction action = actions.prepare(7L, definition,
+                mapper.createObjectNode().put("bookId", "book-1").put("batchId", "batch-1"),
+                null, false, java.time.Duration.ofMinutes(30));
+        var executor = new LedgerImportApprovalExecutor(imports, actions, currentUser, mapper);
+        var tool = new LedgerImportConfirmCommitTool(executor, mapper);
+
+        var error = assertThrows(IllegalStateException.class,
+                () -> tool.execute(mapper.createObjectNode().put("actionId", action.id())));
+
+        assertEquals("action 尚未批准或已开始提交", error.getMessage());
         verify(imports, never()).confirm(any(), any());
     }
 

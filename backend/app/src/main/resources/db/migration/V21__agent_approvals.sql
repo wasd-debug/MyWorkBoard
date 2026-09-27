@@ -1,0 +1,23 @@
+CREATE TABLE agent_approval (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    action_id VARCHAR(36) NOT NULL,
+    tool_name VARCHAR(160) NOT NULL,
+    tool_version INT NOT NULL,
+    book_id VARCHAR(64),
+    status VARCHAR(32) NOT NULL,
+    summary VARCHAR(500) NOT NULL,
+    payload_json JSON NOT NULL,
+    result_json JSON,
+    expires_at TIMESTAMP NOT NULL,
+    approved_at TIMESTAMP NULL,
+    rejected_at TIMESTAMP NULL,
+    executed_at TIMESTAMP NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_agent_approval_action (action_id),
+    KEY idx_agent_approval_user_status_updated (user_id, status, updated_at),
+    KEY idx_agent_approval_expires (expires_at),
+    CONSTRAINT fk_agent_approval_user FOREIGN KEY (user_id) REFERENCES app_user(id) ON DELETE CASCADE,
+    CONSTRAINT fk_agent_approval_action FOREIGN KEY (action_id) REFERENCES agent_pending_action(id) ON DELETE CASCADE
+);

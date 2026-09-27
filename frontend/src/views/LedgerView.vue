@@ -428,17 +428,15 @@ function exportCsv(){const header='交易类型,日期,一级分类,二级分类
      const progress={
        onStage:stage=>{
          if(stage==='upload')Object.assign(importState,{phase:'上传文件',detail:'正在上传账本文件',processing:false})
-         else Object.assign(importState,{progress:70,phase:'写入流水',detail:'正在创建所需资源并写入有效流水',processing:true})
+         else Object.assign(importState,{progress:75,phase:'创建审批',detail:'正在生成站内高风险审批申请',processing:true})
        },
        onUploadProgress:value=>{importState.progress=Math.max(importState.progress,Math.min(50,Math.round(value*.5)))},
        onPreview:preview=>Object.assign(importState,{progress:65,phase:'解析完成',detail:`有效 ${preview.validCount||0} 笔，重复 ${preview.duplicateCount||0} 笔，错误 ${preview.errorCount||0} 笔`,processing:false})
      }
      const result=await ledgerStore.importFile(file,progress)
-     const count=Number(result.createdCount??result.created?.length??result.transactions?.length??0)
-     Object.assign(importState,{progress:95,phase:'刷新账本',detail:`已写入 ${count} 笔，正在更新本地数据`,processing:true})
-     applyLedgerProjection()
-     Object.assign(importState,{progress:100,phase:'导入完成',detail:`成功导入 ${count} 笔流水`,processing:false})
-     message.success(`已导入 ${count} 笔交易`)
+     Object.assign(importState,{progress:100,phase:'等待审批',detail:'预览已保存，请在审批中心确认后再写入流水',processing:false})
+     message.success('导入预览已提交审批')
+     await router.push(result.confirmationUrl||`/approvals/${result.structuredContent?.approvalId||''}`)
    }catch(error){
      Object.assign(importState,{phase:'导入失败',detail:error.response?.data?.detail||'导入失败',processing:false})
      message.error(importState.detail)

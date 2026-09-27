@@ -45,6 +45,11 @@ export async function apiGetAgentAction(actionId) { return data(await api.get(`/
 export async function apiApproveAgentAction(actionId) { return data(await api.post(`/api/v1/agent/actions/${actionId}/approve`)) }
 export async function apiRejectAgentAction(actionId) { return data(await api.post(`/api/v1/agent/actions/${actionId}/reject`)) }
 export async function apiCommitAgentAction(actionId) { return data(await api.post(`/api/v1/agent/actions/${actionId}/commit`)) }
+export async function apiInvokeAgentTool(toolName, payload = {}) { return data(await api.post(`/api/v1/agent/tools/${encodeURIComponent(toolName)}/invoke`, payload)) }
+export async function apiListAgentApprovals(status) { return data(await api.get('/api/v1/agent/approvals', { params: status ? { status } : {} })) }
+export async function apiGetAgentApproval(id) { return data(await api.get(`/api/v1/agent/approvals/${id}`)) }
+export async function apiApproveAgentApproval(id) { return data(await api.post(`/api/v1/agent/approvals/${id}/approve`)) }
+export async function apiRejectAgentApproval(id) { return data(await api.post(`/api/v1/agent/approvals/${id}/reject`)) }
 export async function apiCancelAgentTurn(turnId) { return data(await api.post(`/api/v1/agent/turns/${turnId}/cancel`)) }
 export async function apiListAgentQueue(sessionId) { return data(await api.get(`/api/v1/agent/sessions/${sessionId}/queue`)) }
 export async function apiEnqueueAgentTurn(sessionId, payload) { return data(await api.post(`/api/v1/agent/sessions/${sessionId}/queue`, payload)) }

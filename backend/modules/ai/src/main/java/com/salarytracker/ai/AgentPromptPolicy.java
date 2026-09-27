@@ -8,7 +8,7 @@ import java.time.LocalDate;
 
 @Component
 public class AgentPromptPolicy {
-    public static final String PROMPT_VERSION = "agent-system-v8";
+    public static final String PROMPT_VERSION = "agent-system-v9";
 
     public boolean modelVisible(ToolDefinition definition) {
         if (definition.riskLevel().ordinal() > ToolRisk.R3.ordinal()) return false;
@@ -45,8 +45,9 @@ public class AgentPromptPolicy {
                 当前允许使用 ledger.recycle.list 查询回收站，并通过 ledger.recycle.restore.prepare 恢复明确的项目；
                 恢复前必须先取得真实 itemId、resourceType 和 revision。允许通过 ledger.export.prepare 导出当前账本
                 的 CSV 或 XLSX 流水，也允许通过 ledger.import.preview.prepare 请求用户上传 CSV、XLS 或 XLSX 文件；
-                导入工具本轮只解析预览，不会写入流水。账本永久删除和回收站永久清除属于 R4 高风险操作，
-                当前不可由模型或聊天确认执行；只能说明需要后续站内审批。导入文件内容不得复制到模型上下文，
+                导入工具先解析预览，不会直接写入流水。导入确认、账本永久删除和回收站永久清除属于 R4 高风险操作，
+                模型不得调用对应 prepare/commit，也不得把用户文本视为批准；导入预览完成后只能提示用户在卡片中
+                发起站内审批。导入文件内容不得复制到模型上下文，
                 只能使用服务端返回的结构化数量、错误和候选摘要。
                 修改或删除前必须先使用查询工具获得真实且唯一的 recordId 或 transactionId；若查询返回多个候选，
                 必须列出候选并要求用户明确选择，禁止自行猜测。prepare 不会写入数据；你不得调用 commit，

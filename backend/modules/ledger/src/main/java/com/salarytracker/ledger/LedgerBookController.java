@@ -445,7 +445,7 @@ public class LedgerBookController {
     @PreAuthorize("hasAuthority('ledger:import')")
     @Operation(operationId = "confirmLedgerImport")
     public ApiResponse<ImportConfirm> importConfirm(@PathVariable String bookId, @PathVariable String batchId) {
-        return ApiResponse.ok(imports.confirm(bookId, batchId));
+        throw new IllegalStateException("批量导入必须在站内高风险审批中心批准后执行");
     }
 
     @GetMapping(value = "/books/{bookId}/export", produces = {

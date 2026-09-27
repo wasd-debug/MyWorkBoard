@@ -787,7 +787,7 @@ test('downloads an authenticated ledger export after confirmation', async ({ pag
   expect(download.suggestedFilename()).toBe('ledger-2026-09-27.csv')
 })
 
-test('uploads a ledger file and shows a read-only import preview', async ({ page }) => {
+test('uploads a ledger file then approves the import in the R4 approval center', async ({ page }) => {
   const now = new Date().toISOString()
   const action = {
     status: 'NEEDS_INPUT', summary: '请选择账本文件生成导入预览', actionId: 'import-preview-1', expiresAt: now,
@@ -814,6 +814,25 @@ test('uploads a ledger file and shows a read-only import preview', async ({ page
   await page.route('**/api/v1/agent/actions/import-preview-1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_INPUT' } }) }))
   await page.route('**/api/v1/ledger/books/book-1/imports/preview**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: parsedAction.structuredContent.preview }) }))
   await page.route('**/api/v1/agent/actions/import-preview-1/answer', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: parsedAction }) }))
+  let approval = {
+    id: 'approval-1', actionId: 'import-confirm-1', toolName: 'ledger.import.confirm.prepare', bookId: 'book-1',
+    status: 'PENDING', summary: '确认导入“ledger.csv”中的 1 笔有效流水',
+    payload: { preview: parsedAction.structuredContent.preview, effects: ['只写入预览中状态为 VALID 的流水', '重复流水默认跳过，错误行不会写入'] },
+    result: null, expiresAt: now, createdAt: now, updatedAt: now,
+  }
+  await page.route('**/api/v1/agent/tools/ledger.import.confirm.prepare/invoke', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ data: {
+      status: 'NEEDS_CONFIRMATION', summary: '已创建高风险导入审批，请前往站内审批中心处理',
+      structuredContent: { approvalId: approval.id, webApprovalRequired: true, commitAvailable: false },
+      actionId: approval.actionId, confirmationUrl: `/approvals/${approval.id}`, expiresAt: now,
+    } }),
+  }))
+  await page.route('**/api/v1/agent/approvals', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [approval] }) }))
+  await page.route('**/api/v1/agent/approvals/approval-1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: approval }) }))
+  await page.route('**/api/v1/agent/approvals/approval-1/approve', route => {
+    approval = { ...approval, status: 'COMPLETED', result: { status: 'COMPLETED', summary: '导入完成，共写入 1 笔流水', structuredContent: { createdCount: 1 } } }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: approval }) })
+  })
   await page.goto('/')
 
   const card = page.locator('.agent-action-card')
@@ -822,7 +841,12 @@ test('uploads a ledger file and shows a read-only import preview', async ({ page
   await expect(card.getByLabel('导入预览结果')).toContainText('有效')
   await expect(card.getByLabel('导入预览结果')).toContainText('重复')
   await expect(card.getByLabel('导入预览结果')).toContainText('二级分类不能为空')
-  await expect(card.getByRole('button', { name: '本轮仅提供预览' })).toBeDisabled()
+  await card.getByRole('button', { name: '提交站内审批' }).click()
+  await expect(page).toHaveURL(/\/approvals\/approval-1$/)
+  await expect(page.getByRole('heading', { name: /确认导入/ })).toBeVisible()
+  await expect(page.getByText('预计写入').locator('..').getByText('1')).toBeVisible()
+  await page.getByRole('button', { name: '批准并导入 1 笔' }).click()
+  await expect(page.getByText('导入完成，共写入 1 笔流水')).toBeVisible()
 })
 
 test('confirms multiple ledger actions independently from the batch summary', async ({ page }) => {

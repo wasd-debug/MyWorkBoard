@@ -2,6 +2,8 @@ package com.salarytracker.ai.tool.ledger;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.salarytracker.ai.action.PendingActionService;
+import com.salarytracker.ai.approval.AgentApprovalService;
+import com.salarytracker.ai.approval.LedgerImportApprovalExecutor;
 import com.salarytracker.ai.tool.DomainTool;
 import com.salarytracker.identity.CurrentUserResolver;
 import com.salarytracker.ledger.LedgerBookService;
@@ -19,4 +21,6 @@ public class LedgerDataLifecycleToolsConfiguration {
     @Bean DomainTool ledgerExportPrepareTool(LedgerBookService b, LedgerTransactionService t, PendingActionService a, CurrentUserResolver u, ObjectMapper m) { return new LedgerExportPrepareTool(b, t, a, u, m); }
     @Bean DomainTool ledgerExportCommitTool(LedgerImportService i, PendingActionService a, CurrentUserResolver u, ObjectMapper m) { return new LedgerExportCommitTool(i, a, u, m); }
     @Bean DomainTool ledgerImportPreviewPrepareTool(LedgerBookService b, LedgerImportService i, PendingActionService a, CurrentUserResolver u, ObjectMapper m) { return new LedgerImportPreviewPrepareTool(b, i, a, u, m); }
+    @Bean DomainTool ledgerImportConfirmPrepareTool(LedgerImportService i, PendingActionService a, AgentApprovalService p, CurrentUserResolver u, ObjectMapper m) { return new LedgerImportConfirmPrepareTool(i, a, p, u, m); }
+    @Bean DomainTool ledgerImportConfirmCommitTool(LedgerImportApprovalExecutor e, ObjectMapper m) { return new LedgerImportConfirmCommitTool(e, m); }
 }
