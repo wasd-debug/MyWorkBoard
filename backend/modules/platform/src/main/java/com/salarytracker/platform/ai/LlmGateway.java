@@ -32,6 +32,9 @@ import java.time.Duration;
 @Service
 public class LlmGateway {
     private static final String DSML_MARKER = "<|DSML|";
+    private static final Pattern DSML_MARKER_VARIANT = Pattern.compile(
+            "\\\\?<\\s*(/?)\\s*(?:\\|+|｜+)\\s*DSML\\s*(?:\\|+|｜+)\\s*",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern DSML_INVOKE = Pattern.compile(
             "<\\|DSML\\|invoke\\s+name=\"([^\"]+)\"\\s*>(.*?)</\\|DSML\\|invoke\\s*>",
             Pattern.DOTALL);
@@ -200,7 +203,7 @@ public class LlmGateway {
     }
 
     private ParsedContent parseContent(String rawContent, List<AgentToolCall> providerCalls) {
-        String content = rawContent == null ? "" : rawContent;
+        String content = normalizeDsml(rawContent == null ? "" : rawContent);
         if (providerCalls != null && !providerCalls.isEmpty()) {
             return new ParsedContent(stripDsml(content), List.copyOf(providerCalls));
         }
@@ -235,6 +238,10 @@ public class LlmGateway {
     private String stripDsml(String content) {
         int marker = content.indexOf(DSML_MARKER);
         return marker < 0 ? content : content.substring(0, marker).stripTrailing();
+    }
+
+    private String normalizeDsml(String content) {
+        return DSML_MARKER_VARIANT.matcher(content).replaceAll("<$1|DSML|");
     }
 
     private String decodeDsmlText(String value) {
@@ -433,6 +440,7 @@ public class LlmGateway {
     private record ParsedContent(String content, List<AgentToolCall> toolCalls) { }
 
     private static final class StreamingContentFilter {
+        private static final int MARKER_LOOKBEHIND = 32;
         private final Consumer<String> consumer;
         private final StringBuilder pending = new StringBuilder();
         private boolean suppressing;
@@ -444,14 +452,14 @@ public class LlmGateway {
         private void accept(String part) {
             if (suppressing || part == null || part.isEmpty()) return;
             pending.append(part);
-            int marker = pending.indexOf(DSML_MARKER);
-            if (marker >= 0) {
-                emit(pending.substring(0, marker));
+            Matcher marker = DSML_MARKER_VARIANT.matcher(pending);
+            if (marker.find()) {
+                emit(pending.substring(0, marker.start()));
                 pending.setLength(0);
                 suppressing = true;
                 return;
             }
-            int safeLength = pending.length() - (DSML_MARKER.length() - 1);
+            int safeLength = pending.length() - MARKER_LOOKBEHIND;
             if (safeLength > 0) {
                 emit(pending.substring(0, safeLength));
                 pending.delete(0, safeLength);

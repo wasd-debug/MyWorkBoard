@@ -125,6 +125,48 @@ class LlmGatewayTest {
     }
 
     @Test
+    void parsesFullWidthDsmlVariantInsteadOfExposingProtocolText() throws Exception {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/chat", exchange -> {
+            byte[] response = mapper.writeValueAsBytes(Map.of(
+                    "choices", List.of(Map.of("message", Map.of(
+                            "role", "assistant",
+                            "content", """
+                                    正在查询需要删除的挂号退款：
+                                    <｜｜DSML｜｜ calls>
+                                    <｜｜DSML｜｜ invoke name="ledger__transactions__search">
+                                    <｜｜DSML｜｜ parameter name="bookId" string="true">book-1\\</｜｜DSML｜｜ parameter>
+                                    <｜｜DSML｜｜ parameter name="from" string="true">2026-09-01\\</｜｜DSML｜｜ parameter>
+                                    <｜｜DSML｜｜ parameter name="to" string="true">2026-09-28\\</｜｜DSML｜｜ parameter>
+                                    <｜｜DSML｜｜ parameter name="q" string="true">挂号\\</｜｜DSML｜｜ parameter>
+                                    <｜｜DSML｜｜ parameter name="pageSize" string="false">100\\</｜｜DSML｜｜ parameter>
+                                    \\</｜｜DSML｜｜ invoke>
+                                    \\</｜｜DSML｜｜ calls>
+                                    """))),
+                    "usage", Map.of("prompt_tokens", 10, "completion_tokens", 20, "total_tokens", 30)));
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        LlmGateway gateway = new LlmGateway(mapper, RestClient.builder(),
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/chat",
+                "deepseek-chat", "test-key");
+        LlmGateway.AgentTurn turn = gateway.agentTurn(List.of(LlmGateway.AgentMessage.user("删除挂号退款")),
+                List.of(LlmGateway.AgentTool.function("ledger__transactions__search", "搜索流水",
+                        mapper.readTree("{\"type\":\"object\"}"))));
+
+        assertEquals("正在查询需要删除的挂号退款：", turn.content());
+        assertEquals(1, turn.toolCalls().size());
+        assertEquals("ledger__transactions__search", turn.toolCalls().get(0).name());
+        JsonNode arguments = mapper.readTree(turn.toolCalls().get(0).arguments());
+        assertEquals("挂号", arguments.path("q").asText());
+        assertEquals(100, arguments.path("pageSize").asInt());
+    }
+
+    @Test
     void omitsToolCallsForPlainAssistantHistory() throws Exception {
         JsonNode message = mapper.valueToTree(LlmGateway.AgentMessage.assistant("历史回答", List.of()));
 
@@ -201,6 +243,43 @@ class LlmGatewayTest {
         assertEquals(2, turn.toolCalls().size());
         assertEquals(29.9, mapper.readTree(turn.toolCalls().get(0).arguments()).path("amount").asDouble());
         assertEquals(50, mapper.readTree(turn.toolCalls().get(1).arguments()).path("amount").asInt());
+        assertTrue(deltas.stream().noneMatch(part -> part.contains("DSML")));
+    }
+
+    @Test
+    void suppressesSplitFullWidthDsmlVariantDuringStreaming() throws Exception {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/chat", exchange -> {
+            String first = mapper.writeValueAsString(Map.of("choices", List.of(Map.of("delta",
+                    Map.of("content", "正在查询：\n<｜｜DS")))));
+            String second = mapper.writeValueAsString(Map.of(
+                    "choices", List.of(Map.of("delta", Map.of("content", """
+                            ML｜｜ calls>
+                            <｜｜DSML｜｜ invoke name="ledger__transactions__search">
+                            <｜｜DSML｜｜ parameter name="q" string="true">挂号\\</｜｜DSML｜｜ parameter>
+                            \\</｜｜DSML｜｜ invoke>
+                            \\</｜｜DSML｜｜ calls>"""))),
+                    "usage", Map.of("prompt_tokens", 10, "completion_tokens", 20, "total_tokens", 30)));
+            byte[] response = ("data: " + first + "\n\ndata: " + second + "\n\ndata: [DONE]\n\n")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        LlmGateway gateway = new LlmGateway(mapper, RestClient.builder(),
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/chat",
+                "deepseek-chat", "test-key");
+        List<String> deltas = new ArrayList<>();
+
+        LlmGateway.AgentTurn turn = gateway.agentTurnStreaming(
+                List.of(LlmGateway.AgentMessage.user("删除挂号退款")), List.of(), deltas::add);
+
+        assertEquals("正在查询：", turn.content());
+        assertEquals("正在查询：\n", String.join("", deltas));
+        assertEquals(1, turn.toolCalls().size());
+        assertEquals("挂号", mapper.readTree(turn.toolCalls().get(0).arguments()).path("q").asText());
         assertTrue(deltas.stream().noneMatch(part -> part.contains("DSML")));
     }
 }
