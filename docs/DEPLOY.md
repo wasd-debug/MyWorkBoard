@@ -255,6 +255,16 @@ unset VERIFY_DB_PASSWORD
 - 内网和公网首页、`GET /api/health`、`/v3/api-docs` 均返回 HTTP 200；未认证访问 Agent 会话、模型配置、工具列表、账本和工时设置接口均返回 HTTP 401。线上 OpenAPI 已包含 action 查询、补参、批准、拒绝和提交接口。
 - 后端精确错误日志扫描未发现 `ERROR`、启动失败或 Flyway 失败；公网桌面浏览器烟测正常，登录页成功加载本次前端资源，未捕获 4xx/5xx 请求。
 
+### 2026-09-27 Agent 账本写入增强生产发布记录
+
+- 应用提交：`d6ef378`，发布目录：`/home/ubuntu/salary-tracker/releases/d6ef378`；后端和前端均在服务器从提交归档构建为 `amd64` 镜像 `salary-backend:d6ef378` 与 `salary-frontend:d6ef378`。
+- 发布前完成逻辑备份 `backups/salary-before-d6ef378-20260927-153651.sql.gz`，使用 `mysqldump --no-tablespaces --single-transaction` 并通过 `gzip -t` 校验；旧应用镜像保留为 `salary-backend:pre-d6ef378` 和 `salary-frontend:pre-d6ef378`。
+- 发布前已通过后端 Maven 全量测试、真实 MySQL/Testcontainers 集成测试、前端生产构建和同步引擎 8/8 测试。生产仅执行 `up -d --no-deps --force-recreate backend frontend`，MySQL 容器和数据卷未重建。
+- Flyway 从 v19 成功应用 `V20__worktime_lunch_snapshot.sql` 至 v20；发布前后核心数据数量一致：`app_user=3`、`work_record=43`、`ledger_book=5`、`ledger_transaction=16469`。
+- 健康检查在第 7 次探测成功，后端日志确认 `Started SalaryTrackerApplication`；启动窗口内出现约 10 秒短暂 502，恢复后未再发现 Nginx 5xx、后端 `ERROR`、Flyway 失败或应用启动失败。
+- 内网、服务器 IP 和 `jsn1024.cn` 的首页与 `/api/health` 均返回 HTTP 200，公网 `/v3/api-docs` 返回 200，未认证访问 `/api/v1/agent/sessions` 返回预期 HTTP 401；线上 OpenAPI 包含 77 个路径和 167 个 schema。
+- 本次发布包含 Agent 账本完整操作卡片、默认值修正、流水与工时修改/删除受控链路、流式滚动稳定性、两小时 access token、午休变更后的历史工时重算、中文评测安全基线和记账实体消歧。回滚应用时恢复 `docker-compose.prod.yml.bak.d6ef378` 并重建 backend/frontend；数据库备份保留用于迁移异常恢复核验。
+
 ### 2026-09-23 本地 Agent SSE 增量说明
 
 - 本地后端启动会由 Flyway 从 v14 升级至 v15，新增 `agent_turn`、会话归档字段和消息元数据；不得改写或忽略已应用迁移。
