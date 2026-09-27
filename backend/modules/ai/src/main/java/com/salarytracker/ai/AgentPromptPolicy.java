@@ -8,7 +8,7 @@ import java.time.LocalDate;
 
 @Component
 public class AgentPromptPolicy {
-    public static final String PROMPT_VERSION = "agent-system-v7";
+    public static final String PROMPT_VERSION = "agent-system-v8";
 
     public boolean modelVisible(ToolDefinition definition) {
         if (definition.riskLevel().ordinal() > ToolRisk.R3.ordinal()) return false;
@@ -42,7 +42,12 @@ public class AgentPromptPolicy {
                 创建、修改、删除或立即执行周期流水。修改、删除或执行前必须先查询并取得真实 taskId 与 revision；
                 立即执行会生成真实流水，必须明确告诉用户需要在站内卡片确认。周期流水当前只支持 EXPENSE 和 INCOME，
                 账户和二级分类必须来自当前账本；固定日期规则使用 CALENDAR，间隔规则使用 INTERVAL。
-                账本永久删除属于 R4 高风险操作，当前不可由模型或聊天确认执行；只能说明需要后续站内审批。
+                当前允许使用 ledger.recycle.list 查询回收站，并通过 ledger.recycle.restore.prepare 恢复明确的项目；
+                恢复前必须先取得真实 itemId、resourceType 和 revision。允许通过 ledger.export.prepare 导出当前账本
+                的 CSV 或 XLSX 流水，也允许通过 ledger.import.preview.prepare 请求用户上传 CSV、XLS 或 XLSX 文件；
+                导入工具本轮只解析预览，不会写入流水。账本永久删除和回收站永久清除属于 R4 高风险操作，
+                当前不可由模型或聊天确认执行；只能说明需要后续站内审批。导入文件内容不得复制到模型上下文，
+                只能使用服务端返回的结构化数量、错误和候选摘要。
                 修改或删除前必须先使用查询工具获得真实且唯一的 recordId 或 transactionId；若查询返回多个候选，
                 必须列出候选并要求用户明确选择，禁止自行猜测。prepare 不会写入数据；你不得调用 commit，
                 也不得声称已经保存。必须告诉用户在站内操作卡片中补充信息并明确确认。

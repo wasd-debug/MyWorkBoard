@@ -21,6 +21,7 @@ import com.salarytracker.ledger.LedgerModels.Transaction;
 import com.salarytracker.ledger.LedgerModels.TransactionCommand;
 import com.salarytracker.ledger.LedgerModels.TransactionKind;
 import com.salarytracker.ledger.LedgerTransactionService;
+import com.salarytracker.ledger.LedgerImportService;
 import com.salarytracker.ledger.LedgerScheduledTaskService;
 import com.salarytracker.ledger.LedgerModels.CalendarRule;
 import com.salarytracker.ledger.LedgerModels.ScheduledTask;
@@ -51,6 +52,7 @@ class LedgerWriteToolsTest {
     private final LedgerBookService books = mock(LedgerBookService.class);
     private final LedgerTransactionService transactions = mock(LedgerTransactionService.class);
     private final LedgerScheduledTaskService schedules = mock(LedgerScheduledTaskService.class);
+    private final LedgerImportService imports = mock(LedgerImportService.class);
     private final CurrentUserResolver currentUser = mock(CurrentUserResolver.class);
     private final MemoryRepository repository = new MemoryRepository();
     private final PendingActionService actions = new PendingActionService(repository, mapper, new InteractionPolicy());
@@ -93,6 +95,11 @@ class LedgerWriteToolsTest {
                         "OWNER", "所有者", "user", 1, "2026-09-01")));
         when(schedules.previewFirstRun(any())).thenReturn(java.time.LocalDate.of(2026, 10, 1));
         when(schedules.list("book-1", false)).thenReturn(List.of(schedule()));
+        when(books.recycle("book-1", 1, 100)).thenReturn(new com.salarytracker.ledger.LedgerModels.RecyclePage(
+                List.of(new com.salarytracker.ledger.LedgerModels.RecycleItem(
+                        com.salarytracker.ledger.LedgerModels.ResourceType.transaction, "transaction-1", "午餐",
+                        "2026-09-27T10:00:00Z", 3, 7, "2026-09-26", new BigDecimal("29.90"))),
+                1, 100, 1, 1));
     }
 
     @Test
@@ -733,6 +740,82 @@ class LedgerWriteToolsTest {
         var result = commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId()));
         assertEquals(ToolStatus.CONFLICT, result.status());
         assertEquals(4, result.structuredContent().path("latestRevision").asInt());
+    }
+
+    @Test
+    void recycleRestoreFreezesRevisionAndCommitsThroughExistingService() {
+        when(transactions.restore(eq("book-1"), eq("transaction-1"), eq("3"), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(transaction(4, new BigDecimal("29.90"), "午餐"));
+        var prepare = new LedgerRecycleRestorePrepareTool(books, actions, currentUser, mapper);
+        var commit = new LedgerRecycleRestoreCommitTool(books, transactions, actions, currentUser, mapper);
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("itemId", "transaction-1").put("resourceType", "transaction"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals(3L, repository.find(prepared.actionId(), 7L).orElseThrow().expectedRevision());
+        assertEquals("午餐", prepared.structuredContent().path("preview").path("name").asText());
+        actions.approve(prepared.actionId(), 7L);
+        assertEquals(ToolStatus.COMPLETED,
+                commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())).status());
+        verify(transactions).restore("book-1", "transaction-1", "3", prepared.actionId());
+    }
+
+    @Test
+    void recyclePurgeOnlyProducesR4WebApprovalPreview() {
+        var tool = new LedgerRecyclePurgePrepareTool(books, actions, currentUser, mapper);
+
+        var result = tool.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("itemId", "transaction-1").put("resourceType", "transaction"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, result.status());
+        assertEquals(com.salarytracker.ai.tool.ToolRisk.R4, tool.definition().riskLevel());
+        assertTrue(result.structuredContent().path("webApprovalRequired").asBoolean());
+        assertEquals(false, result.structuredContent().path("commitAvailable").asBoolean());
+        verify(transactions, never()).purge(any(), any());
+    }
+
+    @Test
+    void exportPrepareAndCommitValidateThenReturnAuthenticatedDownloadMetadata() {
+        when(transactions.list(eq("book-1"), any())).thenReturn(
+                new com.salarytracker.ledger.LedgerModels.TransactionPage(List.of(), 1, 1, 12, 12,
+                        new com.salarytracker.ledger.LedgerModels.TransactionSummary(BigDecimal.ZERO, BigDecimal.ZERO, 0)));
+        when(imports.export("book-1", "xlsx", "2026-09-01", "2026-09-27"))
+                .thenReturn(new byte[]{1, 2, 3});
+        var prepare = new LedgerExportPrepareTool(books, transactions, actions, currentUser, mapper);
+        var commit = new LedgerExportCommitTool(imports, actions, currentUser, mapper);
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1").put("format", "xlsx")
+                .put("from", "2026-09-01").put("to", "2026-09-27"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals(12, prepared.structuredContent().path("preview").path("estimatedCount").asInt());
+        actions.approve(prepared.actionId(), 7L);
+        var result = commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId()));
+        assertEquals(ToolStatus.COMPLETED, result.status());
+        assertEquals(3, result.structuredContent().path("byteSize").asInt());
+    }
+
+    @Test
+    void importPreviewRequiresFileThenReturnsReadOnlyStructuredPreview() {
+        var preview = new com.salarytracker.ledger.LedgerModels.ImportPreview("batch-1", "ledger.xlsx", "STANDARD",
+                1, 1, 1, List.of(new com.salarytracker.ledger.LedgerModels.ImportRow("流水", 2, "VALID", List.of(),
+                TransactionKind.EXPENSE, java.time.LocalDate.of(2026, 9, 27), "餐饮", "午餐", "现金", null,
+                new BigDecimal("29.90"), "Alice", "便利店", null, "午餐", "import")),
+                new com.salarytracker.ledger.LedgerModels.ResourceCreates(List.of(), List.of(), List.of(), List.of()));
+        when(imports.getPreview("book-1", "batch-1")).thenReturn(preview);
+        var tool = new LedgerImportPreviewPrepareTool(books, imports, actions, currentUser, mapper);
+
+        var waiting = tool.execute(mapper.createObjectNode().put("bookId", "book-1"));
+        assertEquals(ToolStatus.NEEDS_INPUT, waiting.status());
+        assertEquals("file", waiting.structuredContent().path("fields").path(0).path("type").asText());
+
+        var parsed = tool.execute(mapper.createObjectNode().put("bookId", "book-1").put("batchId", "batch-1"));
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, parsed.status());
+        assertEquals(1, parsed.structuredContent().path("preview").path("validCount").asInt());
+        assertTrue(parsed.structuredContent().path("webApprovalRequired").asBoolean());
+        assertEquals(false, parsed.structuredContent().path("commitAvailable").asBoolean());
+        verify(imports, never()).confirm(any(), any());
     }
 
     private ScheduledTask schedule() {

@@ -43,6 +43,8 @@ import static com.salarytracker.ledger.LedgerModels.*;
 
 @Service
 public class LedgerImportService {
+    private static final long MAX_IMPORT_BYTES = 10L * 1024 * 1024;
+    private static final int MAX_IMPORT_ROWS = 10_000;
     private static final Pattern DATE_PREFIX = Pattern.compile("^(\\d{4})-(\\d{1,2})-(\\d{1,2})");
     private static final List<String> EXPORT_HEADERS = List.of(
             "交易类型", "日期", "一级分类", "二级分类", "收入/支出账户",
@@ -70,6 +72,7 @@ public class LedgerImportService {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         access.require(context, "IMPORT_EXPORT");
         if (file == null || file.isEmpty()) throw new IllegalArgumentException("请选择导入文件");
+        if (file.getSize() > MAX_IMPORT_BYTES) throw new IllegalArgumentException("导入文件不能超过 10 MB");
         String filename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
         String lower = filename.toLowerCase(Locale.ROOT);
         if (!lower.endsWith(".csv") && !lower.endsWith(".xls") && !lower.endsWith(".xlsx")) {
@@ -79,6 +82,7 @@ public class LedgerImportService {
                 ? csvRows(file.getBytes())
                 : excelRows(file.getBytes(), lower.endsWith(".xls") && !lower.endsWith(".xlsx"));
         if (rawRows.isEmpty()) throw new IllegalArgumentException("文件中没有可导入的数据");
+        if (rawRows.size() > MAX_IMPORT_ROWS) throw new IllegalArgumentException("单次导入最多解析 10000 行");
 
         String template = recognizeTemplate(rawRows, templateHint);
         List<ImportRow> rows = new ArrayList<>();
@@ -155,6 +159,23 @@ public class LedgerImportService {
                         "WHERE id=? AND status='PREVIEW'",
                 json(committed), batchId);
         return new ImportConfirm(batchId, "COMMITTED", createdCount);
+    }
+
+    public ImportPreview getPreview(String bookPublicId, String batchId) {
+        LedgerBookAccess.Context context = access.resolve(bookPublicId);
+        access.require(context, "IMPORT_EXPORT");
+        List<DbRow> batches = DbRow.query(jdbc,
+                "SELECT template_type,payload_json,valid_count,error_count,duplicate_count FROM ledger_import_batch " +
+                        "WHERE id=? AND book_id=? AND user_id=? AND status='PREVIEW' AND expires_at>CURRENT_TIMESTAMP",
+                batchId, context.bookId(), context.userId());
+        if (batches.isEmpty()) throw new IllegalArgumentException("导入预览不存在或已过期");
+        DbRow batch = batches.get(0);
+        ImportBatchPayload payload = parseBatch(batch.get("payload_json"));
+        return new ImportPreview(batchId, payload.filename(), String.valueOf(batch.get("template_type")),
+                Math.toIntExact(number(batch.get("valid_count"))),
+                Math.toIntExact(number(batch.get("error_count"))),
+                Math.toIntExact(number(batch.get("duplicate_count"))),
+                payload.rows(), payload.toCreate());
     }
 
     public byte[] export(String bookPublicId, String format, String from, String to) {
@@ -604,7 +625,13 @@ public class LedgerImportService {
     }
 
     private String csvCell(String value) {
-        return "\"" + text(value).replace("\"", "\"\"") + "\"";
+        return "\"" + safeSpreadsheetCell(text(value)).replace("\"", "\"\"") + "\"";
+    }
+
+    private String safeSpreadsheetCell(String value) {
+        String trimmed = value.stripLeading();
+        if (!trimmed.isEmpty() && "=+-@".indexOf(trimmed.charAt(0)) >= 0) return "'" + value;
+        return value;
     }
 
     private String clean(Object value) {

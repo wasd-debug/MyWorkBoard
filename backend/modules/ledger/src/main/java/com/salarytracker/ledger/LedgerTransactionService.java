@@ -296,9 +296,18 @@ public class LedgerTransactionService {
     public Transaction restore(String bookPublicId,
                                        String transactionPublicId,
                                        String opId) {
+        return restore(bookPublicId, transactionPublicId, null, opId);
+    }
+
+    @Transactional
+    public Transaction restore(String bookPublicId,
+                               String transactionPublicId,
+                               String ifMatch,
+                               String opId) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         Transaction before = get(context, transactionPublicId, false);
         if (!before.deleted()) throw new IllegalArgumentException("流水未在回收站");
+        if (ifMatch != null && !ifMatch.isBlank()) requireRevision(ifMatch, before.revision());
         access.requireTransactionWrite(context, before.createdBy());
         List<Long> ids = transactionGroupIds(context, before);
         if (before.kind() == TransactionKind.TRANSFER) {

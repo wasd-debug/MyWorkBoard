@@ -732,6 +732,99 @@ test('uses an explicit immediate-run confirmation and shows duplicate protection
   await expect.poll(() => calls).toEqual(['approve', 'commit'])
 })
 
+test('restores a recycle item only after explicit confirmation', async ({ page }) => {
+  const now = new Date().toISOString()
+  const action = {
+    status: 'NEEDS_CONFIRMATION', summary: '请确认恢复“午餐”', actionId: 'recycle-restore-1', expiresAt: now,
+    structuredContent: {
+      actionType: 'ledger.recycle.restore', input: { bookId: 'book-1', itemId: 'transaction-1', resourceType: 'transaction' },
+      preview: { type: 'transaction', id: 'transaction-1', name: '午餐', deletedAt: '2026-09-27T10:00:00Z', occurredOn: '2026-09-26', amount: 29.9, revision: 3 },
+      effects: ['恢复后项目会重新出现在账本及本地同步投影中', '提交前会再次校验回收站状态和 revision'],
+    },
+  }
+  const calls = []
+  await setupAgent(page, 'agent-recycle-restore-card', {
+    sessions: [{ id: 'session-1', title: '恢复流水', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [{ id: 1, turnId: 'turn-recycle', role: 'assistant', content: '已生成恢复预览。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now }],
+  })
+  await page.route('**/api/v1/agent/actions/recycle-restore-1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_CONFIRMATION' } }) }))
+  await page.route('**/api/v1/agent/actions/recycle-restore-1/approve', route => { calls.push('approve'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'APPROVED' } }) }) })
+  await page.route('**/api/v1/agent/actions/recycle-restore-1/commit', route => { calls.push('commit'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'COMPLETED', summary: '回收站项目已恢复', structuredContent: { id: 'transaction-1', revision: 4 } } }) }) })
+  await page.goto('/')
+
+  const card = page.locator('.agent-action-card')
+  await expect(card).toContainText('午餐')
+  await expect(card).toContainText('¥29.90')
+  await card.getByRole('button', { name: '确认并恢复' }).click()
+  await expect.poll(() => calls).toEqual(['approve', 'commit'])
+  await expect(card.locator('.agent-action-result b')).toHaveText('回收站项目已恢复')
+})
+
+test('downloads an authenticated ledger export after confirmation', async ({ page }) => {
+  const now = new Date().toISOString()
+  const action = {
+    status: 'NEEDS_CONFIRMATION', summary: '请确认导出 12 笔流水', actionId: 'export-1', expiresAt: now,
+    structuredContent: {
+      actionType: 'ledger.export', input: { bookId: 'book-1', format: 'csv', from: '2026-09-01', to: '2026-09-27' },
+      preview: { format: 'csv', from: '2026-09-01', to: '2026-09-27', estimatedCount: 12, filename: 'ledger-2026-09-27.csv' },
+    },
+  }
+  await setupAgent(page, 'agent-export-card', {
+    sessions: [{ id: 'session-1', title: '导出流水', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [{ id: 1, turnId: 'turn-export', role: 'assistant', content: '已准备导出范围。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now }],
+  })
+  await page.route('**/api/v1/agent/actions/export-1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_CONFIRMATION' } }) }))
+  await page.route('**/api/v1/agent/actions/export-1/approve', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'APPROVED' } }) }))
+  await page.route('**/api/v1/agent/actions/export-1/commit', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'COMPLETED', summary: '导出文件已准备', structuredContent: { bookId: 'book-1', format: 'csv', from: '2026-09-01', to: '2026-09-27', filename: 'ledger-2026-09-27.csv', byteSize: 28 } } }) }))
+  await page.route('**/api/v1/ledger/books/book-1/export**', route => route.fulfill({ status: 200, contentType: 'text/csv', body: '日期,金额\n2026-09-27,29.90\n' }))
+  await page.goto('/')
+
+  const card = page.locator('.agent-action-card')
+  await expect(card).toContainText('12 笔')
+  const downloadPromise = page.waitForEvent('download')
+  await card.getByRole('button', { name: '确认并下载' }).click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toBe('ledger-2026-09-27.csv')
+})
+
+test('uploads a ledger file and shows a read-only import preview', async ({ page }) => {
+  const now = new Date().toISOString()
+  const action = {
+    status: 'NEEDS_INPUT', summary: '请选择账本文件生成导入预览', actionId: 'import-preview-1', expiresAt: now,
+    structuredContent: {
+      actionType: 'ledger.import.preview', input: { bookId: 'book-1' }, missingFields: ['batchId'],
+      fields: [{ name: 'importFile', label: '账本文件', type: 'file', required: true, accept: '.csv,.xls,.xlsx' }],
+    },
+  }
+  const parsedAction = {
+    status: 'NEEDS_CONFIRMATION', summary: '导入预览已生成，本轮不会写入流水', actionId: 'import-preview-2', expiresAt: now,
+    structuredContent: {
+      actionType: 'ledger.import.preview', input: { bookId: 'book-1', batchId: 'batch-1' }, commitAvailable: false, webApprovalRequired: true,
+      preview: { batchId: 'batch-1', filename: 'ledger.csv', template: 'STANDARD', validCount: 1, duplicateCount: 1, errorCount: 1, toCreate: { accounts: [], categories: [] }, rows: [
+        { sheet: 'CSV', rowNumber: 2, status: 'VALID', kind: 'EXPENSE', amount: 29.9, errors: [] },
+        { sheet: 'CSV', rowNumber: 3, status: 'DUPLICATE', kind: 'EXPENSE', amount: 18, errors: [] },
+        { sheet: 'CSV', rowNumber: 4, status: 'ERROR', errors: ['二级分类不能为空'] },
+      ] },
+    },
+  }
+  await setupAgent(page, 'agent-import-preview-card', {
+    sessions: [{ id: 'session-1', title: '导入预览', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [{ id: 1, turnId: 'turn-import', role: 'assistant', content: '请选择文件。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now }],
+  })
+  await page.route('**/api/v1/agent/actions/import-preview-1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_INPUT' } }) }))
+  await page.route('**/api/v1/ledger/books/book-1/imports/preview**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: parsedAction.structuredContent.preview }) }))
+  await page.route('**/api/v1/agent/actions/import-preview-1/answer', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: parsedAction }) }))
+  await page.goto('/')
+
+  const card = page.locator('.agent-action-card')
+  await page.getByLabel('账本文件').setInputFiles({ name: 'ledger.csv', mimeType: 'text/csv', buffer: Buffer.from('交易类型,日期,金额\n支出,2026-09-27,29.9') })
+  await card.getByRole('button', { name: '生成预览' }).click()
+  await expect(card.getByLabel('导入预览结果')).toContainText('有效')
+  await expect(card.getByLabel('导入预览结果')).toContainText('重复')
+  await expect(card.getByLabel('导入预览结果')).toContainText('二级分类不能为空')
+  await expect(card.getByRole('button', { name: '本轮仅提供预览' })).toBeDisabled()
+})
+
 test('confirms multiple ledger actions independently from the batch summary', async ({ page }) => {
   const now = new Date().toISOString()
   const makeAction = (id, amount, note) => ({

@@ -181,6 +181,7 @@
                           <p v-if="!filteredEntityOptions(action, field).length">没有匹配项</p>
                         </div>
                       </div>
+                      <input v-else-if="field.type === 'file'" type="file" :accept="field.accept || '.csv,.xls,.xlsx'" :required="field.required" @change="setActionFile(action, field.name, $event)" />
                       <textarea v-else-if="field.type === 'textarea'" :value="actionFieldValue(action, field.name)" rows="2" :required="field.required" @input="setActionField(action, field.name, $event.target.value)"></textarea>
                       <input v-else :type="actionInputType(field.type)" :step="field.type === 'money' ? '0.01' : field.type === 'number' ? '1' : undefined" :min="field.type === 'money' ? '0.01' : undefined" :value="actionFieldValue(action, field.name)" :required="field.required" @input="setActionField(action, field.name, $event.target.value)" />
                     </label>
@@ -207,9 +208,13 @@
                     <dl>
                       <template v-for="row in actionPreviewRows(action)" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template>
                     </dl>
+                    <div v-if="actionIsImportPreview(action)" class="agent-import-preview" aria-label="导入预览结果">
+                      <div><span><b>{{ action.structuredContent?.preview?.validCount || 0 }}</b><small>有效</small></span><span><b>{{ action.structuredContent?.preview?.duplicateCount || 0 }}</b><small>重复</small></span><span><b>{{ action.structuredContent?.preview?.errorCount || 0 }}</b><small>错误</small></span></div>
+                      <details v-if="action.structuredContent?.preview?.rows?.length"><summary>查看解析明细<ChevronDown /></summary><ul><li v-for="row in action.structuredContent.preview.rows.slice(0, 20)" :key="`${row.sheet}-${row.rowNumber}`"><span>{{ row.sheet }} · 第 {{ row.rowNumber }} 行</span><b :class="`status-${String(row.status || '').toLowerCase()}`">{{ importRowStatus(row.status) }}</b><small>{{ row.errors?.join('；') || `${transactionKindLabel(row.kind)} ${formatMoney(row.amount)}` }}</small></li></ul></details>
+                    </div>
                     <div v-if="action.structuredContent?.effects?.length" class="agent-action-effects" aria-label="操作影响"><strong>删除影响</strong><ul><li v-for="effect in action.structuredContent.effects" :key="effect">{{ effect }}</li></ul></div>
                     <p><ShieldCheck />{{ actionIsDelete(action) ? '确认后才会执行删除；提交前会再次校验记录版本。' : actionIsRun(action) ? '确认后将立即生成真实流水；相同到期日不会重复记账。' : '确认后才会写入业务数据；重复点击不会重复创建。' }}</p>
-                    <footer><button v-if="action.structuredContent?.fields?.length" type="button" @click="editAction(action)">返回编辑</button><button type="button" @click="rejectAction(action)">取消</button><button v-if="actionRequiresWebApproval(action)" class="danger" type="button" disabled>需要站内高风险审批</button><button v-else :class="actionIsDelete(action) ? 'danger' : 'primary'" type="button" :disabled="action.busy" @click="confirmAction(item, action)">{{ action.busy ? (actionIsDelete(action) ? '正在删除…' : actionIsRun(action) ? '正在执行…' : '正在保存…') : (actionIsDelete(action) ? '确认删除' : actionIsRun(action) ? '确认并立即执行' : '确认并保存') }}</button></footer>
+                    <footer><button v-if="action.structuredContent?.fields?.length" type="button" @click="editAction(action)">返回编辑</button><button type="button" @click="rejectAction(action)">取消</button><button v-if="actionRequiresWebApproval(action)" class="danger" type="button" disabled>{{ webApprovalLabel(action) }}</button><button v-else :class="actionIsDelete(action) ? 'danger' : 'primary'" type="button" :disabled="action.busy" @click="confirmAction(item, action)">{{ action.busy ? confirmBusyLabel(action) : confirmButtonLabel(action) }}</button></footer>
                   </div>
                   <div v-else class="agent-action-result">
                     <CheckCircle2 v-if="action.uiStatus === 'COMPLETED'" />
@@ -330,7 +335,7 @@ import { message } from '../services/message.js'
 import { useAppStore } from '../stores/app'
 import { useLedgerStore } from '../stores/ledger'
 import { useWorktimeStore } from '../stores/worktime'
-import { apiAnswerAgentAction, apiApproveAgentAction, apiArchiveAgentSession, apiCancelAgentTurn, apiChangeAgentSessionModel, apiChatWithAssistant, apiCommitAgentAction, apiCreateAgentSession, apiCreateAgentSessionGroup, apiDeleteAgentSession, apiDeleteAgentSessionGroup, apiEnqueueAgentTurn, apiGetAgentAction, apiGetAgentTrace, apiGetAgentTurn, apiListAgentMessages, apiListAgentModelConnections, apiListAgentQueue, apiListAgentSessionGroups, apiListAgentSessions, apiMoveAgentSession, apiRejectAgentAction, apiRemoveQueuedAgentTurn, apiRenameAgentSessionGroup, apiReorderAgentQueue, apiRetryAgentTurn, apiStreamAgentTurn, apiUpdateAgentSession } from '../../packages/api-client/src/index.js'
+import { apiAnswerAgentAction, apiApproveAgentAction, apiArchiveAgentSession, apiCancelAgentTurn, apiChangeAgentSessionModel, apiChatWithAssistant, apiCommitAgentAction, apiCreateAgentSession, apiCreateAgentSessionGroup, apiDeleteAgentSession, apiDeleteAgentSessionGroup, apiDownloadLedgerExport, apiEnqueueAgentTurn, apiGetAgentAction, apiGetAgentTrace, apiGetAgentTurn, apiImportLedgerPreview, apiListAgentMessages, apiListAgentModelConnections, apiListAgentQueue, apiListAgentSessionGroups, apiListAgentSessions, apiMoveAgentSession, apiRejectAgentAction, apiRemoveQueuedAgentTurn, apiRenameAgentSessionGroup, apiReorderAgentQueue, apiRetryAgentTurn, apiStreamAgentTurn, apiUpdateAgentSession } from '../../packages/api-client/src/index.js'
 
 const router = useRouter(), store = useAppStore(), ledgerStore = useLedgerStore(), worktimeStore = useWorktimeStore()
 const sidebarOpen = ref(true), conversations = ref([]), activeId = ref(''), prompt = ref(''), attachments = ref([])
@@ -472,11 +477,18 @@ function compactModelName(value) { const name = String(value || '模型').trim()
 function pricingTierLabel(value) { return value === 'PEAK' ? '高峰' : value === 'OFF_PEAK' ? '空闲' : '固定价' }
 function replyTokens(usage) { return Math.max(0, Number(usage?.outputTokens || 0) - Number(usage?.reasoningTokens || 0)) }
 function cacheHitRate(usage) { const hit = Number(usage?.cacheHitTokens || 0), miss = Number(usage?.cacheMissTokens || 0); return hit + miss ? Math.round(hit / (hit + miss) * 100) : 0 }
-function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledger.book.create.prepare': '准备新增账本', 'ledger.book.update.prepare': '准备修改账本', 'ledger.account.list': '查询账户', 'ledger.account.create.prepare': '准备新增账户', 'ledger.account.update.prepare': '准备修改账户', 'ledger.account.delete.prepare': '准备删除账户', 'ledger.category.list': '查询分类', 'ledger.category.create.prepare': '准备新增分类', 'ledger.category.update.prepare': '准备修改分类', 'ledger.category.delete.prepare': '准备删除分类', 'ledger.merchant.list': '查询商家', 'ledger.merchant.create.prepare': '准备新增商家', 'ledger.merchant.update.prepare': '准备修改商家', 'ledger.merchant.delete.prepare': '准备删除商家', 'ledger.project.list': '查询项目', 'ledger.project.create.prepare': '准备新增项目', 'ledger.project.update.prepare': '准备修改项目', 'ledger.project.delete.prepare': '准备删除项目', 'ledger.budget.upsert.prepare': '准备设置预算', 'ledger.budget.delete.prepare': '准备删除预算', 'ledger.schedule.list': '查询周期任务', 'ledger.schedule.create.prepare': '准备创建周期任务', 'ledger.schedule.update.prepare': '准备修改周期任务', 'ledger.schedule.delete.prepare': '准备删除周期任务', 'ledger.schedule.run.prepare': '准备执行周期任务', 'ledger.overview': '查询账本概览', 'ledger.transactions.search': '查询账本流水', 'ledger.transaction.history': '查询流水历史', 'ledger.transaction.create.prepare': '准备新增流水', 'ledger.transaction.update.prepare': '准备修改流水', 'ledger.transaction.delete.prepare': '准备删除流水', 'ledger.transactions.batch.create.prepare': '准备批量记账', 'ledger.transactions.batch.delete.prepare': '准备批量删除', 'ledger.reports.summary': '生成账本报表', 'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置', 'worktime.settings.update.prepare': '准备修改工时设置', 'worktime.records.search': '查询工时记录', 'worktime.record.create.prepare': '准备新增工时', 'worktime.record.update.prepare': '准备修改工时', 'worktime.record.delete.prepare': '准备删除工时' })[name] || name }
-function actionTypeLabel(action) { return ({ 'worktime.settings.update': '修改工时设置', 'worktime.record.create': '新增工时', 'worktime.record.update': '修改工时', 'worktime.record.delete': '删除工时', 'ledger.book.create': '新增账本', 'ledger.book.update': '修改账本', 'ledger.book.delete': '删除账本', 'ledger.account.create': '新增账户', 'ledger.account.update': '修改账户', 'ledger.account.delete': '删除账户', 'ledger.category.create': '新增分类', 'ledger.category.update': '修改分类', 'ledger.category.delete': '删除分类', 'ledger.merchant.create': '新增商家', 'ledger.merchant.update': '修改商家', 'ledger.merchant.delete': '删除商家', 'ledger.project.create': '新增项目', 'ledger.project.update': '修改项目', 'ledger.project.delete': '删除项目', 'ledger.budget.upsert': '设置预算', 'ledger.budget.delete': '删除预算', 'ledger.schedule.create': '创建周期任务', 'ledger.schedule.update': '修改周期任务', 'ledger.schedule.delete': '删除周期任务', 'ledger.schedule.run': '立即执行周期任务', 'ledger.transaction.create': '单笔记账', 'ledger.transaction.update': '修改流水', 'ledger.transaction.delete': '删除流水', 'ledger.transactions.batch.create': '批量记账', 'ledger.transactions.batch.delete': '批量删除流水' })[action.structuredContent?.actionType] || '待确认操作' }
+function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledger.book.create.prepare': '准备新增账本', 'ledger.book.update.prepare': '准备修改账本', 'ledger.account.list': '查询账户', 'ledger.account.create.prepare': '准备新增账户', 'ledger.account.update.prepare': '准备修改账户', 'ledger.account.delete.prepare': '准备删除账户', 'ledger.category.list': '查询分类', 'ledger.category.create.prepare': '准备新增分类', 'ledger.category.update.prepare': '准备修改分类', 'ledger.category.delete.prepare': '准备删除分类', 'ledger.merchant.list': '查询商家', 'ledger.merchant.create.prepare': '准备新增商家', 'ledger.merchant.update.prepare': '准备修改商家', 'ledger.merchant.delete.prepare': '准备删除商家', 'ledger.project.list': '查询项目', 'ledger.project.create.prepare': '准备新增项目', 'ledger.project.update.prepare': '准备修改项目', 'ledger.project.delete.prepare': '准备删除项目', 'ledger.budget.upsert.prepare': '准备设置预算', 'ledger.budget.delete.prepare': '准备删除预算', 'ledger.schedule.list': '查询周期任务', 'ledger.schedule.create.prepare': '准备创建周期任务', 'ledger.schedule.update.prepare': '准备修改周期任务', 'ledger.schedule.delete.prepare': '准备删除周期任务', 'ledger.schedule.run.prepare': '准备执行周期任务', 'ledger.recycle.list': '查询回收站', 'ledger.recycle.restore.prepare': '准备恢复回收站项目', 'ledger.export.prepare': '准备导出流水', 'ledger.import.preview.prepare': '准备导入预览', 'ledger.overview': '查询账本概览', 'ledger.transactions.search': '查询账本流水', 'ledger.transaction.history': '查询流水历史', 'ledger.transaction.create.prepare': '准备新增流水', 'ledger.transaction.update.prepare': '准备修改流水', 'ledger.transaction.delete.prepare': '准备删除流水', 'ledger.transactions.batch.create.prepare': '准备批量记账', 'ledger.transactions.batch.delete.prepare': '准备批量删除', 'ledger.reports.summary': '生成账本报表', 'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置', 'worktime.settings.update.prepare': '准备修改工时设置', 'worktime.records.search': '查询工时记录', 'worktime.record.create.prepare': '准备新增工时', 'worktime.record.update.prepare': '准备修改工时', 'worktime.record.delete.prepare': '准备删除工时' })[name] || name }
+function actionTypeLabel(action) { return ({ 'worktime.settings.update': '修改工时设置', 'worktime.record.create': '新增工时', 'worktime.record.update': '修改工时', 'worktime.record.delete': '删除工时', 'ledger.book.create': '新增账本', 'ledger.book.update': '修改账本', 'ledger.book.delete': '删除账本', 'ledger.account.create': '新增账户', 'ledger.account.update': '修改账户', 'ledger.account.delete': '删除账户', 'ledger.category.create': '新增分类', 'ledger.category.update': '修改分类', 'ledger.category.delete': '删除分类', 'ledger.merchant.create': '新增商家', 'ledger.merchant.update': '修改商家', 'ledger.merchant.delete': '删除商家', 'ledger.project.create': '新增项目', 'ledger.project.update': '修改项目', 'ledger.project.delete': '删除项目', 'ledger.budget.upsert': '设置预算', 'ledger.budget.delete': '删除预算', 'ledger.schedule.create': '创建周期任务', 'ledger.schedule.update': '修改周期任务', 'ledger.schedule.delete': '删除周期任务', 'ledger.schedule.run': '立即执行周期任务', 'ledger.recycle.restore': '恢复回收站项目', 'ledger.recycle.purge': '永久清除回收站项目', 'ledger.export': '导出流水', 'ledger.import.preview': '导入文件预览', 'ledger.transaction.create': '单笔记账', 'ledger.transaction.update': '修改流水', 'ledger.transaction.delete': '删除流水', 'ledger.transactions.batch.create': '批量记账', 'ledger.transactions.batch.delete': '批量删除流水' })[action.structuredContent?.actionType] || '待确认操作' }
 function actionIsDelete(action) { return action.structuredContent?.actionType?.endsWith('.delete') }
 function actionIsRun(action) { return action.structuredContent?.actionType === 'ledger.schedule.run' }
+function actionIsRestore(action) { return action.structuredContent?.actionType === 'ledger.recycle.restore' }
+function actionIsExport(action) { return action.structuredContent?.actionType === 'ledger.export' }
+function actionIsImportPreview(action) { return action.structuredContent?.actionType === 'ledger.import.preview' }
 function actionRequiresWebApproval(action) { return action.structuredContent?.webApprovalRequired === true || action.structuredContent?.commitAvailable === false }
+function webApprovalLabel(action) { return actionIsImportPreview(action) ? '本轮仅提供预览' : '需要站内高风险审批' }
+function confirmButtonLabel(action) { if (actionIsDelete(action)) return '确认删除'; if (actionIsRun(action)) return '确认并立即执行'; if (actionIsRestore(action)) return '确认并恢复'; if (actionIsExport(action)) return '确认并下载'; return '确认并保存' }
+function confirmBusyLabel(action) { if (actionIsDelete(action)) return '正在删除…'; if (actionIsRun(action)) return '正在执行…'; if (actionIsRestore(action)) return '正在恢复…'; if (actionIsExport(action)) return '正在生成文件…'; return '正在保存…' }
+function importRowStatus(value) { return ({ VALID: '有效', DUPLICATE: '重复', ERROR: '错误' })[value] || value }
 function actionIsBatchCreate(action) { return action.structuredContent?.actionType === 'ledger.transactions.batch.create' }
 function actionIsBatch(action) { return action.structuredContent?.actionType?.startsWith('ledger.transactions.batch.') }
 function actionStatusLabel(action) { return ({ NEEDS_INPUT: '待补充', NEEDS_CONFIRMATION: '待确认', COMPLETED: '已完成', DENIED: '已拒绝', CONFLICT: '有冲突', FAILED: '失败', EXPIRED: '已过期' })[action.uiStatus || action.status] || action.uiStatus || action.status }
@@ -492,6 +504,7 @@ function setActionField(action, name, value) {
     }
   }
 }
+function setActionFile(action, name, event) { action.form ||= {}; action.form[name] = event.target.files?.[0] || null }
 function actionInputType(type) { return ({ money: 'number', number: 'number', date: 'date', time: 'time', month: 'month' })[type] || 'text' }
 function actionFormComplete(action) { return (action.structuredContent?.fields || []).every(field => !field.required || String(actionFieldValue(action, field.name)).trim()) }
 function actionEditable(action) { return !action.uiStatus && (action.status === 'NEEDS_INPUT' || (action.status === 'NEEDS_CONFIRMATION' && action.editing)) }
@@ -545,6 +558,18 @@ function scheduleRuleLabel(value = {}) {
 }
 function actionPreviewRows(action) {
   const preview = action.structuredContent?.preview || {}
+  if (action.structuredContent?.actionType === 'ledger.recycle.restore' || action.structuredContent?.actionType === 'ledger.recycle.purge') return [
+    ['名称', preview.name], ['类型', preview.type], ['删除时间', preview.deletedAt], ['日期', preview.occurredOn],
+    ['金额', preview.amount != null ? formatMoney(preview.amount) : null], ['版本', preview.revision != null ? `rev ${preview.revision}` : null]
+  ].filter(row => row[1] != null && row[1] !== '').map(([label, value]) => ({ label, value }))
+  if (action.structuredContent?.actionType === 'ledger.export') return [
+    ['格式', String(preview.format || 'xlsx').toUpperCase()], ['开始日期', preview.from || '不限'], ['结束日期', preview.to || '不限'],
+    ['预计数量', `${preview.estimatedCount || 0} 笔`], ['文件名', preview.filename]
+  ].map(([label, value]) => ({ label, value }))
+  if (action.structuredContent?.actionType === 'ledger.import.preview') return [
+    ['文件', preview.filename], ['识别模板', preview.template], ['临时批次', preview.batchId],
+    ['待创建账户', preview.toCreate?.accounts?.length || 0], ['待创建分类', preview.toCreate?.categories?.length || 0]
+  ].filter(row => row[1] != null && row[1] !== '').map(([label, value]) => ({ label, value }))
   if (action.structuredContent?.actionType === 'worktime.settings.update') return [
     ['税前月薪', preview.salaryPre != null ? formatMoney(preview.salaryPre) : null], ['税后月薪', preview.salaryPost != null ? formatMoney(preview.salaryPost) : null],
     ['时薪口径', preview.basis === 'pre' ? '税前' : '税后'], ['标准时间', preview.workStart && preview.workEnd ? `${preview.workStart} - ${preview.workEnd}` : null],
@@ -598,9 +623,15 @@ function actionAnswerPayload(value, key = '') {
 async function answerAction(item, action) {
   action.busy = true
   try {
-    const payload = actionAnswerPayload(action.form || {})
+    let payload = actionAnswerPayload(action.form || {})
+    if (actionIsImportPreview(action)) {
+      const file = action.form?.importFile
+      if (!(file instanceof File)) throw new Error('请选择要解析的账本文件')
+      const preview = await apiImportLedgerPreview(action.form?.bookId || action.structuredContent?.input?.bookId, file)
+      payload = { bookId: action.form?.bookId || action.structuredContent?.input?.bookId, batchId: preview.batchId }
+    }
     replaceAction(item, action, await apiAnswerAgentAction(action.actionId, payload))
-  } catch (error) { message.error(error?.response?.data?.detail || '无法生成操作预览') }
+  } catch (error) { message.error(error?.response?.data?.detail || error?.message || '无法生成操作预览') }
   finally { action.busy = false }
 }
 async function rejectAction(action) { action.busy = true; try { const result = await apiRejectAgentAction(action.actionId); action.uiStatus = result.status || (action.status === 'NEEDS_INPUT' ? 'CANCELLED' : 'DENIED'); action.resultSummary = '已取消，本次未写入任何数据'; persist() } catch (error) { message.error(error?.response?.data?.detail || '取消失败') } finally { action.busy = false } }
@@ -612,15 +643,21 @@ async function confirmAction(item, action) {
     action.uiStatus = result.status
     action.resultSummary = result.summary
     action.structuredContent = { ...action.structuredContent, result: result.structuredContent }
+    if (result.status === 'COMPLETED' && actionIsExport(action)) await downloadAgentExport(result.structuredContent)
     if (result.status === 'COMPLETED') message.success(result.summary || '操作已完成')
     else message.error(result.summary || '操作未完成')
     if (result.status === 'COMPLETED' && action.structuredContent?.actionType?.startsWith('worktime.')) await worktimeStore.fetch().catch(() => {})
     if (result.status === 'COMPLETED' && /^ledger\.transactions?\./.test(action.structuredContent?.actionType || '')) await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {})
     if (result.status === 'COMPLETED' && /^ledger\.(book|account|category|merchant|project|budget)\./.test(action.structuredContent?.actionType || '')) { await ledgerStore.refreshBooks().catch(() => {}); await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {}) }
-    if (result.status === 'COMPLETED' && /^ledger\.schedule\./.test(action.structuredContent?.actionType || '')) await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {})
+    if (result.status === 'COMPLETED' && (/^ledger\.schedule\./.test(action.structuredContent?.actionType || '') || actionIsRestore(action))) await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {})
     persist()
   } catch (error) { message.error(error?.response?.data?.detail || '保存失败') }
   finally { action.busy = false }
+}
+async function downloadAgentExport(result = {}) {
+  const blob = await apiDownloadLedgerExport(result.bookId, result.format || 'xlsx', { from: result.from || undefined, to: result.to || undefined })
+  const url = URL.createObjectURL(blob); const link = document.createElement('a')
+  link.href = url; link.download = result.filename || `ledger.${result.format || 'xlsx'}`; link.click(); URL.revokeObjectURL(url)
 }
 async function confirmAllActions(item) {
   if (!allLedgerActionsConfirmable(item)) return

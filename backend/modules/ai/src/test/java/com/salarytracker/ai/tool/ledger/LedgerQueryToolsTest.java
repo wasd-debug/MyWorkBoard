@@ -131,6 +131,24 @@ class LedgerQueryToolsTest {
     }
 
     @Test
+    void recycleListReturnsOnlyDomainVisibleDeletedItems() {
+        LedgerBookService service = mock(LedgerBookService.class);
+        var page = new com.salarytracker.ledger.LedgerModels.RecyclePage(List.of(
+                new com.salarytracker.ledger.LedgerModels.RecycleItem(
+                        com.salarytracker.ledger.LedgerModels.ResourceType.transaction,
+                        "transaction-1", "午餐", "2026-09-27T10:00:00Z", 3, 7,
+                        "2026-09-26", new BigDecimal("29.90"))), 1, 20, 1, 1);
+        when(service.recycle("book-1", 1, 20)).thenReturn(page);
+
+        var result = new LedgerRecycleListTool(service, mapper).execute(
+                mapper.createObjectNode().put("bookId", "book-1"));
+
+        assertEquals(ToolStatus.COMPLETED, result.status());
+        assertEquals("transaction-1", result.structuredContent().path("items").path(0).path("id").asText());
+        verify(service).recycle("book-1", 1, 20);
+    }
+
+    @Test
     void reportSummaryUsesDomainOverview() {
         LedgerTransactionService service = mock(LedgerTransactionService.class);
         Overview overview = new Overview("2026-09-01", "2026-09-30", BigDecimal.TEN,

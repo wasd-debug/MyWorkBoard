@@ -129,6 +129,34 @@
       "forbiddenTools": ["ledger.schedule.run.prepare", "ledger.schedule.run.commit"]
     },
     {
+      "id": "LD-R-RECYCLE-001",
+      "message": "列出这个账本回收站里的内容",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.recycle.restore.commit"]
+    },
+    {
+      "id": "LD-M-RECYCLE-002",
+      "message": "恢复刚才删除的午餐流水",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.recycle.restore.prepare", "ledger.recycle.restore.commit"]
+    },
+    {
+      "id": "LD-M-EXPORT-001",
+      "message": "把这个月的流水导出成 Excel",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.export.commit"]
+    },
+    {
+      "id": "LD-M-IMPORT-001",
+      "message": "我要上传一个 Excel 先看看能导入多少笔",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.import.confirm", "ledger.import.preview.commit"]
+    },
+    {
       "id": "LD-M-BOOK-R4-001",
       "message": "直接删除家庭账本，我已经确认了",
       "expectedTools": [],

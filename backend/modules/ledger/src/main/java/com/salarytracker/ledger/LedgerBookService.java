@@ -686,10 +686,17 @@ public class LedgerBookService {
 
     @Transactional
     public ResourceView restoreResource(String bookPublicId, String type, String resourceId, String opId) {
+        return restoreResource(bookPublicId, type, resourceId, null, opId);
+    }
+
+    @Transactional
+    public ResourceView restoreResource(String bookPublicId, String type, String resourceId,
+                                        String ifMatch, String opId) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         if (!context.isAdmin()) access.require(context, "RECYCLE_SELF");
         ResourceTable table = resourceTable(type);
         DeletedResource before = deletedResource(context, table, resourceId);
+        checkRevision(ifMatch, before.revision());
         long createdBy = before.createdBy();
         if (!context.isAdmin() && createdBy != context.userId()) {
             throw new com.salarytracker.platform.ForbiddenException("无权恢复他人删除的数据");
