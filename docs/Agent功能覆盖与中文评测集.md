@@ -1,6 +1,6 @@
 # Agent 功能覆盖与中文评测集
 
-> 版本：v1.5（2026-09-27）
+> 版本：v1.6（2026-09-27）
 > 用途：Phase 3A/3B 自动回归基线。当前首页真实模型已接入 R0/R1 查询和获准的 R2/R3 prepare；commit 仅能由站内确认卡片触发。
 
 ## 1. 功能覆盖矩阵
@@ -29,13 +29,16 @@
 | 管理商家 | `ledger.merchant.create/update/delete.prepare/commit` | R2-R3 | 已接入 Web Agent | 引用流水、软删除与同步投影回归 |
 | 管理项目 | `ledger.project.create/update/delete.prepare/commit` | R2-R3 | 已接入 Web Agent | 引用流水、颜色/备注与同步投影回归 |
 | 管理预算 | `ledger.budget.upsert/delete.prepare/commit` | R2-R3 | 已接入 Web Agent | 总预算/分类预算、支出统计、revision 与同步投影回归 |
+| 查询成员/角色 | `ledger.members.list`、`ledger.roles.list` | R1 | 已实现；按当前账本权限返回 | 大成员量分页与角色引用统计回归 |
+| 管理成员 | `ledger.member.create/update/delete.prepare/commit` | R4 | 已接入站内审批；模型不可见写工具，OWNER 不可修改或移除 | 权限撤销、并发 revision 与同步游标专项回归 |
+| 管理角色 | `ledger.role.create/update/delete.prepare/commit` | R4 | 已接入站内审批；系统角色受保护，被成员引用角色不可删除 | 大权限集、并发引用和同步游标专项回归 |
 | 管理周期任务 | `ledger.schedule.list/create/update/delete/run.prepare/commit` | R1-R3 | 已接入 Web Agent（固定日期、间隔、暂停恢复、手动执行） | 自动调度/手动执行去重、revision、权限与流水投影回归 |
 | 查询与恢复回收站 | `ledger.recycle.list`、`ledger.recycle.restore.prepare/commit` | R1/R3 | 已接入 Web Agent（流水/资源查询，恢复固化 revision 并强确认） | 大数据量分页、资源依赖和同步游标专项回归 |
-| 永久清除回收站 | `ledger.recycle.purge.prepare` | R4 | 仅生成站内审批影响预览；不向模型开放且无聊天 commit | R4 站内审批中心完成后开放 |
+| 永久清除回收站 | `ledger.recycle.purge.prepare` | R4 | 仅生成站内审批影响预览；不向模型开放且无聊天 commit | 注册永久清除审批 executor |
 | 导出流水 | `ledger.export.prepare/commit` | R2 | 已接入 Web Agent（范围/格式/预计数量预览，确认后走受认证下载） | 超大范围性能、下载失效和审计回归 |
 | 导入流水预览 | `ledger.import.preview.prepare` | R2 | 已接入 Web Agent（CSV/XLS/XLSX 上传与结构化预览，零业务写入） | 超大文件、批次过期与同步投影回归 |
 | 导入确认 | `ledger.import.confirm.prepare/commit` | R4 | 已接入站内审批中心；模型不可见，批准后立即执行且重复批准不重复写入 | 并发审批、权限撤销和大批量性能回归 |
-| 删除账本 | `ledger.book.delete.prepare` | R4 | 仅影响预览；不向模型开放且无聊天 commit | 站内审批中心完成后开放 |
+| 删除账本 | `ledger.book.delete.prepare` | R4 | 仅影响预览；不向模型开放且无聊天 commit | 注册账本删除审批 executor |
 | 成本估算 | `ai_usage` + 价格版本 | 只读元数据 | 已支持固定价与 DeepSeek 峰谷价 | 供应商账单抽样对账 |
 
 ## 2. 中文指令评测集

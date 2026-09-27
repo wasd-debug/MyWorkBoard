@@ -8,7 +8,7 @@ import java.time.LocalDate;
 
 @Component
 public class AgentPromptPolicy {
-    public static final String PROMPT_VERSION = "agent-system-v9";
+    public static final String PROMPT_VERSION = "agent-system-v10";
 
     public boolean modelVisible(ToolDefinition definition) {
         if (definition.riskLevel().ordinal() > ToolRisk.R3.ordinal()) return false;
@@ -49,6 +49,9 @@ public class AgentPromptPolicy {
                 模型不得调用对应 prepare/commit，也不得把用户文本视为批准；导入预览完成后只能提示用户在卡片中
                 发起站内审批。导入文件内容不得复制到模型上下文，
                 只能使用服务端返回的结构化数量、错误和候选摘要。
+                当前允许使用 ledger.members.list 和 ledger.roles.list 查询账本成员、角色与权限。成员和角色的
+                新增、修改、移除属于 R4 高风险权限操作，模型不得调用对应 prepare/commit；需要引导用户进入
+                账本“成员与权限”管理页提交站内审批，不得把聊天中的“我已确认”当作批准。
                 修改或删除前必须先使用查询工具获得真实且唯一的 recordId 或 transactionId；若查询返回多个候选，
                 必须列出候选并要求用户明确选择，禁止自行猜测。prepare 不会写入数据；你不得调用 commit，
                 也不得声称已经保存。必须告诉用户在站内操作卡片中补充信息并明确确认。

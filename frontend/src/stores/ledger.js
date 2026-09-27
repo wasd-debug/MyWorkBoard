@@ -4,12 +4,8 @@ import { accountScopeFor, currentLedgerBookStorageKey, ledgerDatabaseName, setAc
 import { createClientId } from '../utils/clientId.js'
 import {
   apiCreateLedgerBook,
-  apiCreateLedgerMember,
-  apiCreateLedgerRole,
   apiCreateLedgerScheduledTask,
   apiDeleteLedgerBook,
-  apiDeleteLedgerMember,
-  apiDeleteLedgerRole,
   apiDeleteLedgerScheduledTask,
   apiImportLedgerPreview,
   apiInvokeAgentTool,
@@ -28,8 +24,6 @@ import {
   apiRestoreLedgerRecycle,
   apiRunLedgerScheduledTask,
   apiUpdateLedgerBook,
-  apiUpdateLedgerMember,
-  apiUpdateLedgerRole,
   apiUpdateLedgerScheduledTask
 } from '../../packages/api-client/src/index.js'
 
@@ -405,34 +399,40 @@ export const useLedgerStore = defineStore('ledger', {
 
     async saveMember(payload) {
       this.requireOnline('成员管理需要联网')
-      const result = payload.id
-        ? await apiUpdateLedgerMember(this.currentBookId, payload.id, payload, payload.revision, createClientId())
-        : await apiCreateLedgerMember(this.currentBookId, payload, createClientId())
-      await this.refreshResources()
-      return result
+      const tool = payload.id ? 'ledger.member.update.prepare' : 'ledger.member.create.prepare'
+      return apiInvokeAgentTool(tool, {
+        bookId: this.currentBookId,
+        ...(payload.id ? { memberId: payload.id } : { username: payload.username }),
+        roleId: payload.roleId,
+        icon: payload.icon || 'user'
+      })
     },
 
     async deleteMember(member) {
       this.requireOnline('成员管理需要联网')
-      const result = await apiDeleteLedgerMember(this.currentBookId, member.id, member.revision, createClientId())
-      await this.refreshResources()
-      return result
+      return apiInvokeAgentTool('ledger.member.delete.prepare', {
+        bookId: this.currentBookId,
+        memberId: member.id
+      })
     },
 
     async saveRole(payload) {
       this.requireOnline('角色管理需要联网')
-      const result = payload.id
-        ? await apiUpdateLedgerRole(this.currentBookId, payload.id, payload, payload.revision, createClientId())
-        : await apiCreateLedgerRole(this.currentBookId, payload, createClientId())
-      await this.refreshResources()
-      return result
+      const tool = payload.id ? 'ledger.role.update.prepare' : 'ledger.role.create.prepare'
+      return apiInvokeAgentTool(tool, {
+        bookId: this.currentBookId,
+        ...(payload.id ? { roleId: payload.id } : {}),
+        name: payload.name,
+        permissions: payload.permissions || []
+      })
     },
 
     async deleteRole(role) {
       this.requireOnline('角色管理需要联网')
-      const result = await apiDeleteLedgerRole(this.currentBookId, role.id, role.revision, createClientId())
-      await this.refreshResources()
-      return result
+      return apiInvokeAgentTool('ledger.role.delete.prepare', {
+        bookId: this.currentBookId,
+        roleId: role.id
+      })
     },
 
     async updateBook(book, payload) {

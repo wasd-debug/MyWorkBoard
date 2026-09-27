@@ -51,6 +51,9 @@ public final class LedgerModels {
     public record MemberCommand(String id, String username, String roleId, String icon) { }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record MemberCandidate(long userId, String username, String nickname, String displayName) { }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record RoleCommand(String id, String code, String name, List<String> permissions) { }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

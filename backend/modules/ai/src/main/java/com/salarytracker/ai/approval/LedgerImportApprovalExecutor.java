@@ -13,7 +13,7 @@ import com.salarytracker.ledger.LedgerModels.ImportConfirm;
 import org.springframework.stereotype.Service;
 
 @Service
-public class LedgerImportApprovalExecutor {
+public class LedgerImportApprovalExecutor implements AgentApprovalExecutor {
     private final LedgerImportService imports;
     private final PendingActionService actions;
     private final CurrentUserResolver currentUser;
@@ -27,6 +27,12 @@ public class LedgerImportApprovalExecutor {
         this.mapper = mapper;
     }
 
+    @Override
+    public boolean supports(String toolName) {
+        return "ledger.import.confirm.prepare".equals(toolName);
+    }
+
+    @Override
     public ToolResult commit(String actionId) {
         long userId = currentUser.id();
         PendingAction action = actions.getForUser(actionId, userId);

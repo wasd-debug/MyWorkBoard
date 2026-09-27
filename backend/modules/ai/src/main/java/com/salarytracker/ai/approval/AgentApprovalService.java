@@ -18,16 +18,16 @@ import java.util.UUID;
 public class AgentApprovalService {
     private final AgentApprovalRepository repository;
     private final PendingActionService actions;
-    private final LedgerImportApprovalExecutor importExecutor;
+    private final List<AgentApprovalExecutor> executors;
     private final CurrentUserResolver currentUser;
     private final ObjectMapper mapper;
 
     public AgentApprovalService(AgentApprovalRepository repository, PendingActionService actions,
-                                LedgerImportApprovalExecutor importExecutor, CurrentUserResolver currentUser,
+                                List<AgentApprovalExecutor> executors, CurrentUserResolver currentUser,
                                 ObjectMapper mapper) {
         this.repository = repository;
         this.actions = actions;
-        this.importExecutor = importExecutor;
+        this.executors = List.copyOf(executors);
         this.currentUser = currentUser;
         this.mapper = mapper;
     }
@@ -79,7 +79,10 @@ public class AgentApprovalService {
         if (!repository.transition(id, userId, ApprovalStatus.APPROVED, ApprovalStatus.EXECUTING, null, Instant.now())) {
             throw new IllegalStateException("审批执行状态已变化");
         }
-        ToolResult result = importExecutor.commit(approval.actionId());
+        AgentApprovalExecutor executor = executors.stream()
+                .filter(candidate -> candidate.supports(approval.toolName()))
+                .findFirst().orElseThrow(() -> new IllegalStateException("审批操作暂不支持执行"));
+        ToolResult result = executor.commit(approval.actionId());
         ApprovalStatus finalStatus = result.status().name().equals("COMPLETED")
                 ? ApprovalStatus.COMPLETED : ApprovalStatus.FAILED;
         repository.transition(id, userId, ApprovalStatus.EXECUTING, finalStatus, json(mapper.valueToTree(result)), Instant.now());

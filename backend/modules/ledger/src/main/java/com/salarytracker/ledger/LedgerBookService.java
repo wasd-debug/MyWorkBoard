@@ -412,6 +412,62 @@ public class LedgerBookService {
                 context.bookId()).stream().map(this::memberView).toList();
     }
 
+    public MemberCandidate memberCandidate(String bookPublicId, String username) {
+        LedgerBookAccess.Context context = access.resolve(bookPublicId);
+        access.require(context, "MEMBER_MANAGE");
+        String normalized = required(username, "username");
+        List<DbRow> users = DbRow.query(jdbc,
+                "SELECT id,username,nickname FROM app_user WHERE username=? AND status='ACTIVE'", normalized);
+        if (users.isEmpty()) throw new IllegalArgumentException("该用户名未注册或账号不可用，请先确认用户名");
+        DbRow user = users.get(0);
+        long userId = number(user.get("id"));
+        Integer existing = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM ledger_book_member WHERE book_id=? AND user_id=? AND deleted=FALSE",
+                Integer.class, context.bookId(), userId);
+        if (existing != null && existing > 0) throw new IllegalArgumentException("该用户已是当前账本成员");
+        String nickname = text(user.get("nickname"));
+        return new MemberCandidate(userId, normalized, nickname,
+                nickname.isBlank() ? normalized : nickname);
+    }
+
+    public long memberTransactionCount(String bookPublicId, String memberPublicId) {
+        LedgerBookAccess.Context context = access.resolve(bookPublicId);
+        Member member = member(context, memberPublicId, true);
+        Long count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM ledger_transaction WHERE book_id=? AND member_id=" +
+                        "(SELECT id FROM ledger_book_member WHERE public_id=? AND book_id=?)",
+                Long.class, context.bookId(), member.id(), context.bookId());
+        return count == null ? 0 : count;
+    }
+
+    public long roleMemberCount(String bookPublicId, String rolePublicId) {
+        LedgerBookAccess.Context context = access.resolve(bookPublicId);
+        Role role = role(context, rolePublicId, true);
+        Long count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM ledger_book_member WHERE book_id=? AND role_id=" +
+                        "(SELECT id FROM ledger_role WHERE public_id=? AND book_id=?) AND deleted=FALSE",
+                Long.class, context.bookId(), role.id(), context.bookId());
+        return count == null ? 0 : count;
+    }
+
+    public List<String> validateCustomRolePermissions(Collection<?> raw) {
+        Set<String> requested = new LinkedHashSet<>();
+        if (raw != null) {
+            for (Object value : raw) {
+                String permission = text(value).toUpperCase(Locale.ROOT);
+                if (!ROLE_PERMISSIONS.contains(permission)
+                        || "BOOK_DELETE".equals(permission)
+                        || "AUDIT_ALL_CLEAR".equals(permission)
+                        || "AUDIT_ALL_READ".equals(permission)) {
+                    throw new IllegalArgumentException("不支持的角色权限: " + permission);
+                }
+                requested.add(permission);
+            }
+        }
+        requested.add("AUDIT_SELF_READ");
+        return List.copyOf(requested);
+    }
+
     @Transactional
     public Member addMember(String bookPublicId, MemberCommand input, String opId) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
@@ -1156,19 +1212,8 @@ public class LedgerBookService {
     }
 
     private void replacePermissions(long roleId, Object raw) {
-        Set<String> requested = new LinkedHashSet<>();
-        if (raw instanceof Collection<?> values) {
-            for (Object value : values) {
-                String permission = text(value).toUpperCase(Locale.ROOT);
-                if (ROLE_PERMISSIONS.contains(permission)
-                        && !"BOOK_DELETE".equals(permission)
-                        && !"AUDIT_ALL_CLEAR".equals(permission)
-                        && !"AUDIT_ALL_READ".equals(permission)) {
-                    requested.add(permission);
-                }
-            }
-        }
-        requested.add("AUDIT_SELF_READ");
+        Collection<?> values = raw instanceof Collection<?> collection ? collection : List.of();
+        List<String> requested = validateCustomRolePermissions(values);
         jdbc.update("DELETE FROM ledger_role_permission WHERE role_id=?", roleId);
         for (String permission : requested) {
             jdbc.update("INSERT INTO ledger_role_permission(role_id,permission_code) VALUES(?,?)",

@@ -10,6 +10,7 @@ import com.salarytracker.ai.approval.AgentApprovalService;
 import com.salarytracker.ai.approval.ApprovalStatus;
 import com.salarytracker.ai.approval.JdbcAgentApprovalRepository;
 import com.salarytracker.ai.approval.LedgerImportApprovalExecutor;
+import com.salarytracker.ai.approval.LedgerMemberRoleApprovalExecutor;
 import com.salarytracker.ai.tool.ToolDefinition;
 import com.salarytracker.ai.tool.ToolRisk;
 import com.salarytracker.ai.tool.ToolSchemas;
@@ -27,6 +28,7 @@ import com.salarytracker.ledger.LedgerModels.CategoryCommand;
 import com.salarytracker.ledger.LedgerModels.CategoryKind;
 import com.salarytracker.ledger.LedgerModels.ImportPreview;
 import com.salarytracker.ledger.LedgerModels.Member;
+import com.salarytracker.ledger.LedgerModels.Role;
 import com.salarytracker.ledger.LedgerTransactionService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -70,7 +72,7 @@ class AgentApprovalIntegrationTest extends MySqlIntegrationTestSupport {
         LedgerImportApprovalExecutor executor = new LedgerImportApprovalExecutor(
                 fixture.imports, actions, currentUser, mapper);
         AgentApprovalService approvals = new AgentApprovalService(new JdbcAgentApprovalRepository(jdbc), actions,
-                executor, currentUser, mapper);
+                List.of(executor), currentUser, mapper);
         AgentApproval approval = approvals.create(action, fixture.bookId, "确认导入", mapper.valueToTree(preview));
 
         AgentApproval completed = approvals.approveAndExecute(approval.id());
@@ -83,6 +85,50 @@ class AgentApprovalIntegrationTest extends MySqlIntegrationTestSupport {
         long otherUser = createUser("agent-import-approval-other");
         authenticate(otherUser, "agent-import-approval-other");
         assertThrows(IllegalArgumentException.class, () -> approvals.get(approval.id()));
+    }
+
+    @Test
+    void r4ApprovalAddsMemberAndCreatesRoleWithoutDuplicateExecution() {
+        Fixture fixture = fixture("agent-member-role-approval");
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        CurrentUserResolver currentUser = new CurrentUserResolver();
+        PendingActionService actions = new PendingActionService(new JdbcPendingActionRepository(jdbc), mapper,
+                new InteractionPolicy());
+        LedgerMemberRoleApprovalExecutor executor = new LedgerMemberRoleApprovalExecutor(
+                fixture.books, actions, currentUser, mapper);
+        AgentApprovalService approvals = new AgentApprovalService(new JdbcAgentApprovalRepository(jdbc), actions,
+                List.of(executor), currentUser, mapper);
+
+        String username = "approval-member-" + UUID.randomUUID();
+        jdbc.update("INSERT INTO app_user(username,password_hash,nickname) VALUES(?, '!', '审批成员')", username);
+        Role memberRole = fixture.books.roles(fixture.bookId).stream()
+                .filter(value -> "MEMBER".equals(value.code())).findFirst().orElseThrow();
+        ToolDefinition memberTool = new ToolDefinition("ledger.member.create.prepare", 1, "添加成员",
+                ToolRisk.R4, Set.of("ledger:write"), ToolSchemas.object(mapper));
+        PendingAction memberAction = actions.prepare(currentUser.id(), memberTool,
+                mapper.createObjectNode().put("bookId", fixture.bookId).put("username", username)
+                        .put("roleId", memberRole.id()).put("icon", "user"),
+                null, false, Duration.ofMinutes(30));
+        AgentApproval memberApproval = approvals.create(memberAction, fixture.bookId, "添加成员", mapper.createObjectNode());
+
+        assertEquals(ApprovalStatus.COMPLETED, approvals.approveAndExecute(memberApproval.id()).status());
+        assertEquals(1L, fixture.books.members(fixture.bookId).stream()
+                .filter(value -> username.equals(value.username())).count());
+        assertEquals(ApprovalStatus.COMPLETED, approvals.approveAndExecute(memberApproval.id()).status());
+        assertEquals(1L, fixture.books.members(fixture.bookId).stream()
+                .filter(value -> username.equals(value.username())).count());
+
+        ToolDefinition roleTool = new ToolDefinition("ledger.role.create.prepare", 1, "创建角色",
+                ToolRisk.R4, Set.of("ledger:write"), ToolSchemas.object(mapper));
+        var roleInput = mapper.createObjectNode().put("bookId", fixture.bookId).put("name", "审批审核员");
+        roleInput.putArray("permissions").add("TRANSACTION_OWN_WRITE").add("AUDIT_SELF_READ");
+        PendingAction roleAction = actions.prepare(currentUser.id(), roleTool, roleInput,
+                null, false, Duration.ofMinutes(30));
+        AgentApproval roleApproval = approvals.create(roleAction, fixture.bookId, "创建角色", mapper.createObjectNode());
+
+        assertEquals(ApprovalStatus.COMPLETED, approvals.approveAndExecute(roleApproval.id()).status());
+        assertEquals(1L, fixture.books.roles(fixture.bookId).stream()
+                .filter(value -> "审批审核员".equals(value.name())).count());
     }
 
     private Fixture fixture(String prefix) {
@@ -103,7 +149,7 @@ class AgentApprovalIntegrationTest extends MySqlIntegrationTestSupport {
         Category secondary = books.createCategory(bookId, new CategoryCommand(null, "房租", "home",
                 CategoryKind.EXPENSE, primary.id(), "#e18b41", false), prefix + "-secondary");
         Member member = books.members(bookId).stream().filter(value -> value.userId() == userId).findFirst().orElseThrow();
-        return new Fixture(bookId, account.id(), secondary.id(), member.id(), imports);
+        return new Fixture(bookId, account.id(), secondary.id(), member.id(), imports, books);
     }
 
     private long createUser(String prefix) {
@@ -125,5 +171,5 @@ class AgentApprovalIntegrationTest extends MySqlIntegrationTestSupport {
     }
 
     private record Fixture(String bookId, String accountId, String categoryId, String memberId,
-                           LedgerImportService imports) { }
+                           LedgerImportService imports, LedgerBookService books) { }
 }

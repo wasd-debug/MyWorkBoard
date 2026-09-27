@@ -20,7 +20,9 @@ import com.salarytracker.ledger.LedgerModels.Budget;
 import com.salarytracker.ledger.LedgerModels.Category;
 import com.salarytracker.ledger.LedgerModels.CategoryKind;
 import com.salarytracker.ledger.LedgerModels.Member;
+import com.salarytracker.ledger.LedgerModels.MemberCandidate;
 import com.salarytracker.ledger.LedgerModels.NamedResource;
+import com.salarytracker.ledger.LedgerModels.Role;
 import com.salarytracker.ledger.LedgerModels.Transaction;
 import com.salarytracker.ledger.LedgerModels.TransactionCommand;
 import com.salarytracker.ledger.LedgerModels.TransactionKind;
@@ -97,6 +99,21 @@ class LedgerWriteToolsTest {
         when(books.members("book-1")).thenReturn(List.of(
                 new Member("member-1", 7L, 7L, "alice", "Alice", "Alice", "role-1",
                         "OWNER", "所有者", "user", 1, "2026-09-01")));
+        when(books.roles("book-1")).thenReturn(List.of(
+                new Role("role-1", "OWNER", "所有者", true, 7L,
+                        List.of("MEMBER_MANAGE", "ROLE_MANAGE"), 1, "2026-09-01"),
+                new Role("role-2", "MEMBER", "成员", true, 7L,
+                        List.of("TRANSACTION_OWN_WRITE", "AUDIT_SELF_READ"), 1, "2026-09-01"),
+                new Role("role-custom", "CUSTOM_TEST", "审核员", false, 7L,
+                        List.of("AUDIT_SELF_READ"), 3, "2026-09-01")));
+        when(books.memberCandidate("book-1", "bob")).thenReturn(
+                new MemberCandidate(8L, "bob", "Bob", "Bob"));
+        when(books.validateCustomRolePermissions(any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked") List<String> values = invocation.getArgument(0);
+            if (values.contains("ROOT")) throw new IllegalArgumentException("不支持的角色权限: ROOT");
+            return values.contains("AUDIT_SELF_READ") ? values
+                    : java.util.stream.Stream.concat(values.stream(), java.util.stream.Stream.of("AUDIT_SELF_READ")).toList();
+        });
         when(schedules.previewFirstRun(any())).thenReturn(java.time.LocalDate.of(2026, 10, 1));
         when(schedules.list("book-1", false)).thenReturn(List.of(schedule()));
         when(books.recycle("book-1", 1, 100)).thenReturn(new com.salarytracker.ledger.LedgerModels.RecyclePage(
@@ -877,6 +894,66 @@ class LedgerWriteToolsTest {
 
         assertEquals("action 尚未批准或已开始提交", error.getMessage());
         verify(imports, never()).confirm(any(), any());
+    }
+
+    @Test
+    void memberCreatePrepareCreatesR4ApprovalWithoutWriting() {
+        AgentApprovalService approvals = approvalServiceMock();
+        var tool = new LedgerMemberRolePrepareTool(LedgerMemberRoleToolMode.MEMBER_CREATE,
+                books, actions, approvals, currentUser, mapper);
+
+        var result = tool.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("username", "bob").put("roleId", "role-2").put("icon", "user"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, result.status());
+        assertEquals(com.salarytracker.ai.tool.ToolRisk.R4, tool.definition().riskLevel());
+        assertEquals("Bob", result.structuredContent().path("after").path("displayName").asText());
+        assertEquals("成员", result.structuredContent().path("after").path("roleName").asText());
+        assertEquals("/approvals/approval-1", result.confirmationUrl());
+        verify(books, never()).addMember(any(), any(), any());
+    }
+
+    @Test
+    void memberOwnerAndSystemRoleCannotCreateApproval() {
+        AgentApprovalService approvals = approvalServiceMock();
+        var member = new LedgerMemberRolePrepareTool(LedgerMemberRoleToolMode.MEMBER_DELETE,
+                books, actions, approvals, currentUser, mapper);
+        var role = new LedgerMemberRolePrepareTool(LedgerMemberRoleToolMode.ROLE_DELETE,
+                books, actions, approvals, currentUser, mapper);
+
+        assertEquals("不能修改或移除账本主人", assertThrows(IllegalArgumentException.class,
+                () -> member.execute(mapper.createObjectNode().put("bookId", "book-1")
+                        .put("memberId", "member-1"))).getMessage());
+        assertEquals("系统角色不可编辑或删除", assertThrows(IllegalArgumentException.class,
+                () -> role.execute(mapper.createObjectNode().put("bookId", "book-1")
+                        .put("roleId", "role-2"))).getMessage());
+        verify(approvals, never()).create(any(), any(), any(), any());
+    }
+
+    @Test
+    void rolePrepareRejectsPermissionOutsideServiceWhitelist() {
+        AgentApprovalService approvals = approvalServiceMock();
+        var tool = new LedgerMemberRolePrepareTool(LedgerMemberRoleToolMode.ROLE_CREATE,
+                books, actions, approvals, currentUser, mapper);
+        var input = mapper.createObjectNode().put("bookId", "book-1").put("name", "超级角色");
+        input.putArray("permissions").add("ROOT");
+
+        var error = assertThrows(IllegalArgumentException.class, () -> tool.execute(input));
+
+        assertEquals("不支持的角色权限: ROOT", error.getMessage());
+        verify(approvals, never()).create(any(), any(), any(), any());
+    }
+
+    private AgentApprovalService approvalServiceMock() {
+        AgentApprovalService approvals = mock(AgentApprovalService.class);
+        when(approvals.create(any(), eq("book-1"), any(), any())).thenAnswer(invocation -> {
+            PendingAction action = invocation.getArgument(0);
+            Instant now = Instant.now();
+            return new AgentApproval("approval-1", 7L, action.id(), action.toolName(), action.toolVersion(),
+                    "book-1", ApprovalStatus.PENDING, invocation.getArgument(2), "{}", null,
+                    action.expiresAt(), null, null, null, now, now);
+        });
+        return approvals;
     }
 
     private ScheduledTask schedule() {

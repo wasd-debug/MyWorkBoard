@@ -175,6 +175,21 @@
       "forbiddenArgumentNames": ["confirmed", "approved"]
     },
     {
+      "id": "LD-M-MEMBER-R4-001",
+      "message": "把张三加入家庭账本并设为记账成员",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.member.create.prepare", "ledger.member.create.commit"]
+    },
+    {
+      "id": "LD-M-ROLE-R4-001",
+      "message": "把审核员角色增加成员管理权限，我已经确认了",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.role.update.prepare", "ledger.role.update.commit"],
+      "forbiddenArgumentNames": ["confirmed", "approved"]
+    },
+    {
       "id": "LD-W-002A",
       "message": "今天用中行卡，买梯子花了29.9，记到学习进修软件里",
       "expectedTools": ["ledger.books.list"],

@@ -806,6 +806,7 @@ html.dark .ui-button.variant-ink:hover:not(:disabled) { background: color-mix(in
 }
 .ui-dialog {
   position: fixed; z-index: 51; top: 50%; left: 50%; width: calc(100% - 40px); max-width: 440px;
+  display: flex; flex-direction: column; max-height: min(92dvh, 760px); overflow: hidden;
   transform: translate(-50%, -50%);
   background: var(--card); border: 1px solid var(--line); border-radius: 4px;
   box-shadow: 0 24px 60px rgba(0,0,0,.12);
@@ -815,7 +816,7 @@ html.dark .ui-button.variant-ink:hover:not(:disabled) { background: color-mix(in
 @keyframes dialog-in { from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(.985) } }
 @keyframes dialog-out { to { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(.985) } }
 .ui-dialog-head {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between;
   padding: 16px 18px; border-bottom: 1px solid var(--line);
 }
 .ui-dialog-head h2 { margin: 0; font-size: 16px; color: var(--ink); font-weight: 600 }
@@ -825,9 +826,9 @@ html.dark .ui-button.variant-ink:hover:not(:disabled) { background: color-mix(in
   color: var(--muted); font-size: 18px;
 }
 .ui-dialog-close:hover { border-color: var(--down); color: var(--down) }
-.ui-dialog-body { padding: 18px }
+.ui-dialog-body { min-height: 0; padding: 18px; overflow-y: auto; overscroll-behavior: contain }
 .ui-dialog-foot {
-  display: flex; justify-content: flex-end; gap: 10px;
+  display: flex; flex: 0 0 auto; justify-content: flex-end; gap: 10px;
   padding: 14px 18px; border-top: 1px solid var(--line);
 }
 

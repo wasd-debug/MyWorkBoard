@@ -1,6 +1,6 @@
 <template>
   <section class="ledger-management">
-    <LoadingOverlay :open="managementLoading || saving || Boolean(exportingBookId)" :label="exportingBookId ? '正在导出账本…' : saving ? '正在保存更改…' : '正在读取管理数据…'" />
+    <LoadingOverlay :open="managementLoading || saving || Boolean(exportingBookId)" :label="exportingBookId ? '正在导出账本…' : saving ? (isR4Form ? '正在创建站内审批…' : '正在保存更改…') : '正在读取管理数据…'" />
     <div class="manager-heading">
       <div>
         <p class="manager-overline">账本设置 / {{ activeTab.label }}</p>
@@ -374,7 +374,7 @@
 
         <div class="dialog-actions">
           <LedgerActionIcon action="close" label="取消" @click="formOpen = false" />
-          <LedgerActionIcon action="confirm" :label="saving ? '保存中' : '保存'" type="submit" :disabled="saving" />
+          <LedgerActionIcon action="confirm" :label="saving ? (isR4Form ? '提交中' : '保存中') : (isR4Form ? '提交审批' : '保存')" type="submit" :disabled="saving" />
         </div>
       </form>
     </Dialog>
@@ -493,6 +493,7 @@ function can(permission) {
   return ledger.currentBook?.roleCode === 'OWNER' || ledger.currentBook?.permissions?.includes(permission)
 }
 const dialogTitle = computed(() => `${editingItem.value ? '编辑' : '新增'}${resourceTypeLabel(formResource.value)}`)
+const isR4Form = computed(() => ['member', 'role'].includes(formResource.value))
 
 const accountGroups = computed(() => {
   const candidates = ledger.accounts.filter(item => (accountScope.value === 'liability') === liabilityTypes.has(item.accountType) && (showHidden.value || !item.hidden))
@@ -661,8 +662,9 @@ async function submitForm() {
     if (resource === 'account') await ledger.saveResource('account', { ...base, ...forms.account, hidden: editingItem.value?.hidden || false })
     if (resource === 'category') await ledger.saveResource('category', { ...base, ...forms.category, hidden: editingItem.value?.hidden || false })
     if (resource === 'merchant' || resource === 'project') await ledger.saveResource(resource, { ...base, ...forms.named, hidden: editingItem.value?.hidden || false })
-    if (resource === 'member') await ledger.saveMember({ ...base, ...forms.member })
-    if (resource === 'role') await ledger.saveRole({ ...base, name: forms.role.name, permissions: [...forms.role.permissions] })
+    let approval
+    if (resource === 'member') approval = await ledger.saveMember({ ...base, ...forms.member })
+    if (resource === 'role') approval = await ledger.saveRole({ ...base, name: forms.role.name, permissions: [...forms.role.permissions] })
     if (resource === 'book') {
       if (!ledger.online) throw new Error('账本管理需要联网')
       if (editingItem.value) await ledger.updateBook(editingItem.value, { name: forms.book.name, currency: forms.book.currency })
@@ -670,7 +672,10 @@ async function submitForm() {
       await ledger.refreshServer()
     }
     formOpen.value = false
-    message.success(editingItem.value ? '修改已保存' : '新增成功')
+    if (approval?.confirmationUrl) {
+      message.success('高风险操作已提交站内审批')
+      await router.push(approval.confirmationUrl)
+    } else message.success(editingItem.value ? '修改已保存' : '新增成功')
   } catch (error) {
     message.error(error?.response?.data?.detail || error?.message || '保存失败')
   } finally {
@@ -706,8 +711,8 @@ function askDelete(type, item) {
     item,
     title: `删除${resourceTypeLabel(type)}`,
     message: `确定删除“${item.name || item.displayName}”吗？`,
-    description: isBook ? '账本删除后将不再出现在账本列表中，请先确认已导出所需数据。' : '删除后会进入回收站，可在保留期内恢复。',
-    confirmText: isBook ? '删除账本' : '移入回收站'
+    description: isBook ? '账本删除后将不再出现在账本列表中，请先确认已导出所需数据。' : ['member', 'role'].includes(type) ? '成员和角色属于高风险权限操作，提交后需在站内审批中心再次确认。' : '删除后会进入回收站，可在保留期内恢复。',
+    confirmText: isBook ? '删除账本' : ['member', 'role'].includes(type) ? '提交审批' : '移入回收站'
   })
   confirmOpen.value = true
 }
@@ -726,10 +731,14 @@ async function confirmAction() {
       await ledger.deleteBook(confirmState.item)
       message.success('账本已删除')
     } else {
-      if (confirmState.type === 'member') await ledger.deleteMember(confirmState.item)
-      else if (confirmState.type === 'role') await ledger.deleteRole(confirmState.item)
+      let approval
+      if (confirmState.type === 'member') approval = await ledger.deleteMember(confirmState.item)
+      else if (confirmState.type === 'role') approval = await ledger.deleteRole(confirmState.item)
       else await ledger.deleteResource(confirmState.type, resourcePayload(confirmState.type, confirmState.item))
-      message.success('已移入回收站')
+      if (approval?.confirmationUrl) {
+        message.success('高风险操作已提交站内审批')
+        await router.push(approval.confirmationUrl)
+      } else message.success('已移入回收站')
     }
     confirmOpen.value = false
   } catch (error) {
