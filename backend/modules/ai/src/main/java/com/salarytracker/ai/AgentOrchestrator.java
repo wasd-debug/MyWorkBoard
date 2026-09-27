@@ -23,7 +23,7 @@ import java.util.function.Consumer;
 
 @Service
 public class AgentOrchestrator {
-    private static final int MAX_TOOL_CALLS = 4;
+    private static final int MAX_TOOL_CALLS = 50;
     private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final DomainToolRegistry tools;

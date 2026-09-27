@@ -146,26 +146,49 @@ class AgentOrchestratorTest {
     @Test
     void stopsExecutingToolsAfterPerTurnLimit() {
         ToolDefinition read = definition("ledger.books.list", ToolRisk.R1);
+        List<LlmGateway.AgentToolCall> calls = java.util.stream.IntStream.rangeClosed(1, 51)
+                .mapToObj(index -> new LlmGateway.AgentToolCall(
+                        "call-" + index, "ledger__books__list", "{}"))
+                .toList();
         when(model.configured()).thenReturn(true);
         when(tools.definitionsForCurrentUser()).thenReturn(List.of(read));
         when(tools.invoke(org.mockito.ArgumentMatchers.eq("ledger.books.list"), any()))
                 .thenReturn(ToolResult.completed("ok", mapper.createObjectNode()));
         when(model.agentTurn(any(), any()))
-                .thenReturn(new LlmGateway.AgentTurn("", List.of(
-                        new LlmGateway.AgentToolCall("call-1", "ledger__books__list", "{}"),
-                        new LlmGateway.AgentToolCall("call-2", "ledger__books__list", "{}"),
-                        new LlmGateway.AgentToolCall("call-3", "ledger__books__list", "{}"),
-                        new LlmGateway.AgentToolCall("call-4", "ledger__books__list", "{}"),
-                        new LlmGateway.AgentToolCall("call-5", "ledger__books__list", "{}")),
-                        "deepseek", true))
+                .thenReturn(new LlmGateway.AgentTurn("", calls, "deepseek", true))
                 .thenReturn(new LlmGateway.AgentTurn("查询完成。", List.of(), "deepseek", true));
 
         LlmGateway.ChatResponse response = orchestrator().chat("查询多个账本信息");
 
         assertEquals("查询完成。", response.content());
-        verify(tools, times(4)).invoke(org.mockito.ArgumentMatchers.eq("ledger.books.list"), any());
+        verify(tools, times(50)).invoke(org.mockito.ArgumentMatchers.eq("ledger.books.list"), any());
         var toolCaptor = ArgumentCaptor.forClass(List.class);
         verify(model, times(2)).agentTurn(any(), toolCaptor.capture());
+        assertTrue(toolCaptor.getAllValues().get(1).isEmpty());
+    }
+
+    @Test
+    void stopsStreamingToolsAfterPerTurnLimit() {
+        ToolDefinition read = definition("ledger.books.list", ToolRisk.R1);
+        List<LlmGateway.AgentToolCall> calls = java.util.stream.IntStream.rangeClosed(1, 51)
+                .mapToObj(index -> new LlmGateway.AgentToolCall(
+                        "stream-call-" + index, "ledger__books__list", "{}"))
+                .toList();
+        when(model.configured()).thenReturn(true);
+        when(tools.definitionsForCurrentUser()).thenReturn(List.of(read));
+        when(tools.invoke(org.mockito.ArgumentMatchers.eq("ledger.books.list"), any()))
+                .thenReturn(ToolResult.completed("ok", mapper.createObjectNode()));
+        when(model.agentTurnStreaming(any(), any(), any()))
+                .thenReturn(new LlmGateway.AgentTurn("", calls, "deepseek", true))
+                .thenReturn(new LlmGateway.AgentTurn("流式查询完成。", List.of(), "deepseek", true));
+        AgentOrchestrator.StreamListener listener = mock(AgentOrchestrator.StreamListener.class);
+
+        LlmGateway.ChatResponse response = orchestrator().chatStreaming("session-1", "查询多个账本信息", listener);
+
+        assertEquals("流式查询完成。", response.content());
+        verify(tools, times(50)).invoke(org.mockito.ArgumentMatchers.eq("ledger.books.list"), any());
+        var toolCaptor = ArgumentCaptor.forClass(List.class);
+        verify(model, times(2)).agentTurnStreaming(any(), toolCaptor.capture(), any());
         assertTrue(toolCaptor.getAllValues().get(1).isEmpty());
     }
 

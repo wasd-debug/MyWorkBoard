@@ -15,6 +15,8 @@
 
 2026-09-27 修复 DeepSeek DSML 协议文本泄漏：LLM 网关除标准 `<|DSML|...>` 外，也会归一化模型偶发返回的全角双竖线、标签名前空格和关闭标签反斜杠变体；普通响应会恢复为结构化工具调用，SSE 会在协议起始处停止向页面推送，避免原始调用标记出现在聊天消息中。
 
+2026-09-27 将单轮 Agent 工具调用上限由 4 次提升到 50 次；普通与 SSE 编排共用同一上限，第 51 次调用返回失败工具结果，随后关闭工具目录并要求模型基于前 50 次结果完成总结。权限、Schema、prepare/commit 隔离和产生待确认 action 后立即关闭工具目录的规则保持不变。
+
 已完成：
 
 - 创建 `backend/modules/ai` Maven 模块，并由 `app` 装配；原有 `AiController` 迁入 AI 模块，对外行为不变。
@@ -29,7 +31,7 @@
 - 工具注册表拒绝重名工具和未知输入字段；工时查询加入 ISO 日期、日期范围、最大分页数量和 offset 上限校验。
 - 增加 AI 模块单测和架构边界测试：核心领域不得依赖 AI，AI 不得依赖领域 Controller 或 Mapper，AI Java 源码必须归属物理模块。
 - 新增 `AgentOrchestrator`，由首页既有 `/api/v1/ai/chat` 入口驱动 DeepSeek function calling；只向模型暴露当前用户可见的 R0/R1 工具，点分工具名转换为供应商兼容名称，执行时仍由 `DomainToolRegistry` 完成 Schema、authority 和领域权限校验。
-- 工具结果作为不可信数据回传模型，单轮最多执行 4 次工具；达到上限后关闭工具选择并要求模型总结，写工具 R2-R4 不会进入模型上下文。
+- 工具结果作为不可信数据回传模型，单轮最多执行 50 次工具；达到上限后关闭工具选择并要求模型总结，未获准的高风险写工具不会进入模型上下文。
 - LLM 网关已覆盖 OpenAI-compatible `tools`、`tool_choice`、assistant `tool_calls` 和 tool `tool_call_id` 请求格式，并解析 DeepSeek 工具调用响应。
 - 修复新会话首条回答继续修改非响应式原始对象的问题；“正在思考…”和后续假打字机内容无需刷新即可显示，并加入独立浏览器回归。
 - 增加 V13 `agent_session`、`agent_message` 表和用户隔离的 JDBC 会话服务；首页现将同一前端会话的 `sessionId` 发送到后端，模型每轮加载最近 20 条 user/assistant 消息，并在最终回答后持久化本轮问答。
@@ -87,6 +89,7 @@
 
 验证记录：
 
+- 2026-09-27 工具调用上限增量：普通与 SSE 两条编排回归均覆盖同一轮返回 51 个工具调用时仅执行前 50 个，并验证下一轮模型工具目录为空；AI 相关 Reactor 共执行 66 项，65 项通过、1 项真实模型测试按既有规则跳过。
 - 2026-09-27 DSML 兼容增量：`LlmGatewayTest` 7/7 通过，新增普通与 SSE 两类回归，覆盖 `<｜｜DSML｜｜ calls>`、分片标记、标签名前空格、关闭标签反斜杠、字符串参数和数值参数；AI 相关 Reactor 共执行 65 项，64 项通过、1 项真实模型测试按既有规则跳过。断言页面增量不包含协议文本且工具名、搜索词和分页参数均可恢复；本地 `salary-backend` 已使用新打包 JAR 重启并正常监听 8080。
 - 2026-09-24 实体消歧与多轮回放增量：后端定向 23/23 通过，覆盖多账本、相似账户、同名二级分类、可选实体歧义、唯一候选预填、伪造/越权 ID 的既有领域校验，以及产生 action 后关闭工具目录。前端生产构建和 TypeScript 检查通过；账户/分类搜索、歧义选择、辅助信息、字段保留和重新生成预览在桌面 Chromium、桌面 WebKit、375px 移动 Chromium 共 9/9 通过。
 - 2026-09-24 中文 Agent 自动评测增量：确定性评测 3/3 通过；真实 DeepSeek 固定 12 条用例 12/12 通过，评测仅观察首轮工具和参数、零业务写入。AI 模块完整测试 60 项通过，真实模型测试默认安全跳过；新增伪造 commit 回放，确认未知或未授权 commit 只作为失败工具结果反馈给模型，Domain Tool Registry 零调用。
@@ -104,7 +107,7 @@
 - 2026-09-23 模型配置与 Trace 增量：AI Reactor 35/35、前端 Node/契约 46/46、生产构建和 `npm run api:check` 通过；真实 MySQL 从空库及旧 fixture 成功迁移到 V18，`AgentConversationIntegrationTest` 4/4、`FlywayMigrationIntegrationTest` 2/2 通过。测试覆盖 AES-GCM 往返、无独立凭据密钥拒绝、HTTPS/私网端点策略和 V18 新表存在性。
 - 本地 Compose 后端已迁移至 v15 并健康运行；真实 DeepSeek 手动验证“我有哪些账本？”和“查询我的工时设置”均通过 SSE 返回。修复 ASYNC 二次分派权限后，完成响应不再产生 `AccessDeniedException` 日志。
 
-- `cd backend && mvn -pl modules/ai -am test` 成功；目标 Reactor 共执行 75 项，74 项通过、1 项账本 Excel fixture 跳过；其中 platform 1/1、AI 模块 27/27 通过。新增测试覆盖只读工具暴露、R2 隔离、参数校验、4 次调用上限及 DeepSeek 工具协议序列化/解析。
+- `cd backend && mvn -pl modules/ai -am test` 成功；目标 Reactor 共执行 75 项，74 项通过、1 项账本 Excel fixture 跳过；其中 platform 1/1、AI 模块 27/27 通过。新增测试覆盖只读工具暴露、R2 隔离、参数校验、当时的 4 次调用上限及 DeepSeek 工具协议序列化/解析。
 - `cd frontend && npm run build` 成功；`SALARY_E2E_SOURCE_BUILD=1 PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test e2e/agent-chat.spec.js --project=desktop-chromium` 2/2 通过，覆盖新会话首条响应、Markdown、假打字机和用户控制的底部跟随。
 - 本地真实 DeepSeek 手动验证通过：“我有哪些账本？”返回当前用户默认账本；“查询我最近的工时记录”调用查询工具并返回近 30 天 0 条；“帮我记今天工时”明确拒绝写入。发送后思考占位与回复均无需刷新可见。
 - Testcontainers `AgentConversationIntegrationTest` 成功，真实 MySQL 从空库执行 V1-V13 并验证会话消息顺序和用户隔离；本地 Compose 后端已迁移至 V13 并启动成功。
@@ -732,7 +735,7 @@ mcp:worktime:commit
 - 开放工时、流水、账本总览、预算和报表查询。
 - 接入导航卡片，但不开放写工具。
 - [x] 将首页本地关键词回复替换为真实服务端 DeepSeek 聊天；保留假打字机，未配置密钥或上游失败时展示明确状态。
-- [x] 建立最多 4 次调用的只读模型工具循环；R2-R4 不向模型暴露，工具执行继续复用注册表的 Schema、权限和领域校验。
+- [x] 建立最多 50 次调用的模型工具循环；仅向模型暴露策略允许的查询与 prepare 工具，工具执行继续复用注册表的 Schema、权限和领域校验。
 - [x] 持久化前端会话的最近 20 条文本消息，连续追问复用同一 `sessionId`；会话按认证用户隔离，历史实时数据仍强制重新查询。
 - [x] 提供服务端会话创建、列表、消息、改名、归档和删除接口，首页登录后以服务端会话为权威并可刷新恢复。
 - [x] 新增 V15 `agent_turn`，记录 `RECEIVED / PLANNING / COMPLETED / FAILED / CANCELLED`，使用用户级 `clientRequestId` 防止重复响应。
