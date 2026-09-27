@@ -1,6 +1,6 @@
 <template>
   <section class="ledger-management">
-    <LoadingOverlay :open="managementLoading || saving || Boolean(exportingBookId)" :label="exportingBookId ? '正在导出账本…' : saving ? (isR4Form ? '正在创建站内审批…' : '正在保存更改…') : '正在读取管理数据…'" />
+    <LoadingOverlay :open="managementLoading || saving || Boolean(exportingBookId)" :label="exportingBookId ? '正在导出账本…' : saving ? (isR4Operation ? '正在创建站内审批…' : '正在保存更改…') : '正在读取管理数据…'" />
     <div class="manager-heading">
       <div>
         <p class="manager-overline">账本设置 / {{ activeTab.label }}</p>
@@ -81,7 +81,11 @@
         显示已隐藏的{{ activeTab.unit }}
       </button>
 
-      <LedgerActionIcon v-if="tab === 'recycle' || tab === 'audit'" action="refresh" label="刷新列表" @click="loadSecondary" />
+      <span v-if="tab === 'recycle'" class="manager-toolbar-actions">
+        <LedgerActionIcon v-if="canPurge && recycle.total > 0" action="delete" label="清空回收站" @click="askPurgeAll" />
+        <LedgerActionIcon action="refresh" label="刷新列表" @click="loadSecondary" />
+      </span>
+      <LedgerActionIcon v-else-if="tab === 'audit'" action="refresh" label="刷新列表" @click="loadSecondary" />
     </div>
 
     <Card class="manager-table-card">
@@ -248,7 +252,7 @@
           <div class="table-header"><span>已删除项目</span><span>类型</span><span>删除时间</span><span>操作</span></div>
           <Empty v-if="!recycle.items?.length" description="回收站为空" />
           <div v-for="item in recycle.items" :key="`${item.type}-${item.id}`" class="table-row data-row">
-            <span class="cell-primary"><span class="resource-icon"><DeleteFilled /></span><b>{{ item.label }}</b></span>
+            <span class="cell-primary"><span class="resource-icon"><DeleteFilled /></span><b>{{ item.name || item.label || item.id }}</b></span>
             <span>{{ resourceTypeLabel(item.type) }}</span>
             <span>{{ formatTime(item.deletedAt) }}</span>
             <span class="row-actions">
@@ -494,6 +498,7 @@ function can(permission) {
 }
 const dialogTitle = computed(() => `${editingItem.value ? '编辑' : '新增'}${resourceTypeLabel(formResource.value)}`)
 const isR4Form = computed(() => ['member', 'role'].includes(formResource.value))
+const isR4Operation = computed(() => isR4Form.value || ['delete-book', 'purge', 'purge-all'].includes(confirmState.mode))
 
 const accountGroups = computed(() => {
   const candidates = ledger.accounts.filter(item => (accountScope.value === 'liability') === liabilityTypes.has(item.accountType) && (showHidden.value || !item.hidden))
@@ -717,30 +722,33 @@ function askDelete(type, item) {
   confirmOpen.value = true
 }
 function askPurge(item) {
-  Object.assign(confirmState, { mode: 'purge', type: item.type, item, title: '永久删除', message: `永久删除“${item.label}”？`, description: '该操作不可恢复；被历史流水引用的资源只保留最小墓碑。', confirmText: '永久删除' })
+  Object.assign(confirmState, { mode: 'purge', type: item.type, item, title: '永久删除', message: `永久删除“${item.name || item.label || item.id}”？`, description: '该操作不可恢复；提交后需在站内审批中心核对并批准。', confirmText: '提交审批' })
+  confirmOpen.value = true
+}
+function askPurgeAll() {
+  Object.assign(confirmState, { mode: 'purge-all', type: 'recycle', item: null, title: '清空回收站', message: `永久清除当前回收站中的 ${recycle.value.total} 个项目？`, description: '审批会冻结当前回收站快照；审批期间新增的项目不会被本次操作清除。', confirmText: '提交审批' })
   confirmOpen.value = true
 }
 async function confirmAction() {
   saving.value = true
   try {
+    let approval
     if (confirmState.mode === 'purge') {
-      await ledger.purgeRecycle(confirmState.item)
-      await loadSecondary()
-      message.success('已永久删除')
+      approval = await ledger.purgeRecycle(confirmState.item)
+    } else if (confirmState.mode === 'purge-all') {
+      approval = await ledger.purgeRecycleAll()
     } else if (confirmState.mode === 'delete-book') {
-      await ledger.deleteBook(confirmState.item)
-      message.success('账本已删除')
+      approval = await ledger.deleteBook(confirmState.item)
     } else {
-      let approval
       if (confirmState.type === 'member') approval = await ledger.deleteMember(confirmState.item)
       else if (confirmState.type === 'role') approval = await ledger.deleteRole(confirmState.item)
       else await ledger.deleteResource(confirmState.type, resourcePayload(confirmState.type, confirmState.item))
-      if (approval?.confirmationUrl) {
-        message.success('高风险操作已提交站内审批')
-        await router.push(approval.confirmationUrl)
-      } else message.success('已移入回收站')
     }
     confirmOpen.value = false
+    if (approval?.confirmationUrl) {
+      message.success('高风险操作已提交站内审批')
+      await router.push(approval.confirmationUrl)
+    } else message.success('已移入回收站')
   } catch (error) {
     message.error(error?.response?.data?.detail || error?.message || '删除失败')
   } finally {

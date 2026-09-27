@@ -10,6 +10,7 @@ import com.salarytracker.ai.approval.AgentApprovalService;
 import com.salarytracker.ai.approval.ApprovalStatus;
 import com.salarytracker.ai.approval.JdbcAgentApprovalRepository;
 import com.salarytracker.ai.approval.LedgerImportApprovalExecutor;
+import com.salarytracker.ai.approval.LedgerDestructiveApprovalExecutor;
 import com.salarytracker.ai.approval.LedgerMemberRoleApprovalExecutor;
 import com.salarytracker.ai.tool.ToolDefinition;
 import com.salarytracker.ai.tool.ToolRisk;
@@ -21,14 +22,19 @@ import com.salarytracker.ledger.LedgerAuditService;
 import com.salarytracker.ledger.LedgerBookAccess;
 import com.salarytracker.ledger.LedgerBookService;
 import com.salarytracker.ledger.LedgerImportService;
+import com.salarytracker.ledger.LedgerRecyclePurgeService;
 import com.salarytracker.ledger.LedgerModels.Account;
 import com.salarytracker.ledger.LedgerModels.AccountCommand;
 import com.salarytracker.ledger.LedgerModels.Category;
 import com.salarytracker.ledger.LedgerModels.CategoryCommand;
 import com.salarytracker.ledger.LedgerModels.CategoryKind;
+import com.salarytracker.ledger.LedgerModels.BookCommand;
+import com.salarytracker.ledger.LedgerModels.BookMode;
 import com.salarytracker.ledger.LedgerModels.ImportPreview;
 import com.salarytracker.ledger.LedgerModels.Member;
 import com.salarytracker.ledger.LedgerModels.Role;
+import com.salarytracker.ledger.LedgerModels.TransactionCommand;
+import com.salarytracker.ledger.LedgerModels.TransactionKind;
 import com.salarytracker.ledger.LedgerTransactionService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -39,6 +45,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -131,6 +138,67 @@ class AgentApprovalIntegrationTest extends MySqlIntegrationTestSupport {
                 .filter(value -> "审批审核员".equals(value.name())).count());
     }
 
+    @Test
+    void r4ApprovalDeletesBookOnceAndKeepsAnotherBookAvailable() {
+        Fixture fixture = fixture("agent-book-delete-approval");
+        var retained = fixture.books.createBook(new BookCommand(null, "保留账本", "CNY",
+                BookMode.EMPTY, null, false));
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        CurrentUserResolver currentUser = new CurrentUserResolver();
+        PendingActionService actions = new PendingActionService(new JdbcPendingActionRepository(jdbc), mapper,
+                new InteractionPolicy());
+        ToolDefinition tool = new ToolDefinition("ledger.book.delete.prepare", 1, "删除账本",
+                ToolRisk.R4, Set.of("ledger:write"), ToolSchemas.object(mapper));
+        PendingAction action = actions.prepare(currentUser.id(), tool,
+                mapper.createObjectNode().put("bookId", fixture.bookId),
+                fixture.books.bookDeletionImpact(fixture.bookId).book().revision(), false, Duration.ofMinutes(30));
+        LedgerDestructiveApprovalExecutor executor = new LedgerDestructiveApprovalExecutor(
+                fixture.books, fixture.recycle, actions, currentUser, mapper);
+        AgentApprovalService approvals = new AgentApprovalService(new JdbcAgentApprovalRepository(jdbc), actions,
+                List.of(executor), currentUser, mapper);
+        AgentApproval approval = approvals.create(action, fixture.bookId, "删除账本", mapper.createObjectNode());
+
+        assertEquals(ApprovalStatus.COMPLETED, approvals.approveAndExecute(approval.id()).status());
+        assertEquals(List.of(retained.id()), fixture.books.books().stream().map(value -> value.id()).toList());
+        assertEquals(ApprovalStatus.COMPLETED, approvals.approveAndExecute(approval.id()).status());
+    }
+
+    @Test
+    void r4ApprovalPermanentlyPurgesFrozenRecycleSnapshotOnce() {
+        Fixture fixture = fixture("agent-recycle-purge-approval");
+        var created = fixture.transactions.create(fixture.bookId, new TransactionCommand(
+                null, fixture.accountId, null, fixture.categoryId, null, fixture.memberId, null,
+                TransactionKind.EXPENSE, new BigDecimal("29.90"), "CNY", LocalDate.of(2026, 9, 27),
+                "便利店", null, null, "审批清除", "test", null, null, null),
+                "agent-recycle-purge-create");
+        fixture.transactions.delete(fixture.bookId, created.id(), String.valueOf(created.revision()),
+                "agent-recycle-purge-delete");
+        var recycled = fixture.recycle.all(fixture.bookId).stream()
+                .filter(value -> value.id().equals(created.id())).findFirst().orElseThrow();
+
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        CurrentUserResolver currentUser = new CurrentUserResolver();
+        PendingActionService actions = new PendingActionService(new JdbcPendingActionRepository(jdbc), mapper,
+                new InteractionPolicy());
+        ToolDefinition tool = new ToolDefinition("ledger.recycle.purge.prepare", 1, "永久清除",
+                ToolRisk.R4, Set.of("ledger:write"), ToolSchemas.object(mapper));
+        var input = mapper.createObjectNode().put("bookId", fixture.bookId).put("scope", "ITEM");
+        input.putArray("items").addObject().put("type", recycled.type().name())
+                .put("id", recycled.id()).put("revision", recycled.revision());
+        PendingAction action = actions.prepare(currentUser.id(), tool, input, recycled.revision(),
+                false, Duration.ofMinutes(30));
+        LedgerDestructiveApprovalExecutor executor = new LedgerDestructiveApprovalExecutor(
+                fixture.books, fixture.recycle, actions, currentUser, mapper);
+        AgentApprovalService approvals = new AgentApprovalService(new JdbcAgentApprovalRepository(jdbc), actions,
+                List.of(executor), currentUser, mapper);
+        AgentApproval approval = approvals.create(action, fixture.bookId, "永久清除", mapper.createObjectNode());
+
+        assertEquals(ApprovalStatus.COMPLETED, approvals.approveAndExecute(approval.id()).status());
+        assertEquals(0L, fixture.recycle.all(fixture.bookId).stream()
+                .filter(value -> value.id().equals(created.id())).count());
+        assertEquals(ApprovalStatus.COMPLETED, approvals.approveAndExecute(approval.id()).status());
+    }
+
     private Fixture fixture(String prefix) {
         long userId = createUser(prefix);
         authenticate(userId, prefix);
@@ -149,7 +217,8 @@ class AgentApprovalIntegrationTest extends MySqlIntegrationTestSupport {
         Category secondary = books.createCategory(bookId, new CategoryCommand(null, "房租", "home",
                 CategoryKind.EXPENSE, primary.id(), "#e18b41", false), prefix + "-secondary");
         Member member = books.members(bookId).stream().filter(value -> value.userId() == userId).findFirst().orElseThrow();
-        return new Fixture(bookId, account.id(), secondary.id(), member.id(), imports, books);
+        return new Fixture(bookId, account.id(), secondary.id(), member.id(), imports, books, transactions,
+                new LedgerRecyclePurgeService(books, transactions));
     }
 
     private long createUser(String prefix) {
@@ -171,5 +240,6 @@ class AgentApprovalIntegrationTest extends MySqlIntegrationTestSupport {
     }
 
     private record Fixture(String bookId, String accountId, String categoryId, String memberId,
-                           LedgerImportService imports, LedgerBookService books) { }
+                           LedgerImportService imports, LedgerBookService books,
+                           LedgerTransactionService transactions, LedgerRecyclePurgeService recycle) { }
 }

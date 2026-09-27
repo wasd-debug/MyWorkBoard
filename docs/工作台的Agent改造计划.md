@@ -1,7 +1,7 @@
 # 工作台 Agent 与 MCP 改造计划
 
 > 版本：v2.5（2026-09-27）
-> 状态：实施中（阶段 3 已开始：真实模型、R0/R1 查询、服务端会话/队列/SSE、模型连接与 Trace 已完成；R2/R3 现有功能持续覆盖，R4 站内审批已覆盖导入确认、成员与角色管理）
+> 状态：实施中（阶段 3 已开始：真实模型、R0/R1 查询、服务端会话/队列/SSE、模型连接与 Trace 已完成；R2/R3 现有功能持续覆盖，R4 站内审批已覆盖导入确认、成员与角色管理、账本删除和回收站永久清除）
 
 > 运维修正：迁移 `V8.1` 是在 `V8` 已发布后补充的索引迁移，已有数据库升级时需开启 `FLYWAY_OUT_OF_ORDER=true`；不得删除或改写 `flyway_schema_history`。
 
@@ -11,7 +11,9 @@
 
 ## 0. 实施进度快照（2026-09-27）
 
-当前增量完成成员与角色管理的 R4 站内审批：新增 `ledger.members.list`、`ledger.roles.list`，以及 `ledger.member.create/update/delete.prepare/commit`、`ledger.role.create/update/delete.prepare/commit`。查询工具为 R1 且可供模型调用；所有写工具均为 R4，不进入模型工具目录。管理页不再直接写成员或角色，而是创建冻结参数、30 分钟有效的 pending action 和审批单并跳转审批中心；批准时由通用 `AgentApprovalExecutor` 按工具名选择成员/角色执行器，重新校验当前用户、账本权限、目标资源、revision 和幂等状态。OWNER 不可修改或移除，系统角色不可修改或删除，被成员引用的角色不可删除，非法权限值会被明确拒绝。审批页展示操作类型、目标成员或角色、变更前后和权限差异，批准完成后可返回成员与权限管理页。移动端长角色表单改为对话框内部滚动，底部提交操作保持可达。
+当前增量完成账本删除与回收站永久清除的 R4 站内审批：`ledger.book.delete.prepare/commit` 仅允许 OWNER 创建和执行审批，prepare 展示账户、分类、商家、项目、预算、成员、角色、流水、周期任务和回收站影响数量，并固化账本 revision；批准时重新检查 OWNER、账本存在性、revision 和至少保留一个可用账本。`ledger.recycle.purge.prepare/commit` 支持单项 `ITEM` 与当前回收站快照 `BOOK` 两种范围，冻结每个项目的 `type/id/revision`，批准时先校验全部快照再在独立事务中原子清除；审批期间新增项目不会被本次审批意外清除，已恢复、消失或版本变化会冲突失败。管理页的删除账本、单项永久删除与清空回收站入口均改为创建审批并跳转审批中心，批准后刷新账本列表或回收站与本地投影。模型工具目录继续隐藏全部 R4 prepare/commit。
+
+上一增量完成成员与角色管理的 R4 站内审批：新增 `ledger.members.list`、`ledger.roles.list`，以及 `ledger.member.create/update/delete.prepare/commit`、`ledger.role.create/update/delete.prepare/commit`。查询工具为 R1 且可供模型调用；所有写工具均为 R4，不进入模型工具目录。管理页不再直接写成员或角色，而是创建冻结参数、30 分钟有效的 pending action 和审批单并跳转审批中心；批准时由通用 `AgentApprovalExecutor` 按工具名选择成员/角色执行器，重新校验当前用户、账本权限、目标资源、revision 和幂等状态。OWNER 不可修改或移除，系统角色不可修改或删除，被成员引用的角色不可删除，非法权限值会被明确拒绝。审批页展示操作类型、目标成员或角色、变更前后和权限差异，批准完成后可返回成员与权限管理页。移动端长角色表单改为对话框内部滚动，底部提交操作保持可达。
 
 当前增量建立 R4 站内审批基础与导入确认：新增 `agent_approval`、审批状态机和按当前用户隔离的审批中心，导入确认拆分为 `ledger.import.confirm.prepare/commit`。预览卡片只能创建冻结参数、30 分钟有效的 R4 action 与审批单；模型工具目录不暴露任何 R4，普通聊天 action 的 approve/commit 也显式拒绝 R4。审批中心展示文件、账本、有效/重复/错误数量、执行影响和最多 50 行明细；批准后重新校验用户、账本权限和导入批次并立即执行，相同审批重复批准返回持久化终态，不重复写入。传统账本导入入口同步改为“上传预览 → 创建审批 → 站内批准”，旧直接确认接口保留兼容路由但拒绝绕过审批。当前重复策略仅支持 `SKIP`。
 
@@ -89,19 +91,19 @@
 本次明确未实施：
 
 - 评测结果数据库留存、聚合成本告警和运营仪表盘。
-- 账本删除、永久清除等其余 R4 executor。
 - MCP Server、PAT/OAuth、scope、站内审批与外部客户端兼容验证。
 - 文件、向量库和 RAG。
 
 后续正式增量顺序（已排期，不能遗漏）：
 
-1. 管理工具：周期任务、回收站恢复、导入导出、R4 导入审批及成员/角色审批已完成；下一增量把账本删除、永久清除接入统一审批 executor。
-2. 只读 MCP Server：Streamable HTTP、PAT、scope、撤销、审计、限流与 MCP Inspector/Codex/WorkBuddy 验证。
-3. MCP 写入与正式认证：prepare/commit、站内审批中心、OAuth 2.1 + PKCE 和外部客户端兼容回归。
+1. 只读 MCP Server：Streamable HTTP、PAT、scope、撤销、审计、限流与 MCP Inspector/Codex/WorkBuddy 验证。
+2. MCP 写入与正式认证：prepare/commit、既有站内审批中心、OAuth 2.1 + PKCE 和外部客户端兼容回归。
+3. 现有功能稳定化：真实同步投影、并发冲突、错误回放、成本告警和灰度运行手册。
 
 验证记录：
 
-- 2026-09-27 成员与角色 R4 审批增量：新增成员/角色 R1 查询及 create/update/delete R4 prepare/commit，管理页所有写入统一创建站内审批；通用审批服务按工具名选择执行器，批准时复用现有权限、revision、审计、同步与幂等逻辑。OWNER、系统角色和被成员引用角色均有领域保护，角色权限值严格校验。后端 `mvn test` 共 187 项，185 项通过、2 项按既有规则跳过，Flyway V1-V21、真实 MySQL、迁移回放和架构边界通过；新增真实 MySQL 覆盖添加成员、重复批准幂等、创建自定义角色和用户隔离。前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过；“创建审批 → 批准 → 返回成员/角色列表”在桌面 Chromium、桌面 WebKit和 375px 移动 Chromium共 3/3 通过，并修复长表单在移动端无法滚动到提交按钮的问题。下一增量转入账本删除和回收站永久清除的 R4 executor。
+- 2026-09-27 账本删除与永久清除 R4 审批增量：新增专用账本删除 prepare/commit、回收站单项/整本快照 purge prepare/commit 和 `LedgerDestructiveApprovalExecutor`。账本删除只允许 OWNER，展示完整影响统计并强制保留至少一个账本；回收站 BOOK 范围冻结当前项目及 revision，执行前全量校验并原子清除，不包含审批期间新增项目。管理页不再直接调用传统删除/清除接口，审批页支持账本影响和回收站冻结明细，批准后刷新账本选择或回收站本地投影。后端 `mvn test` 共 191 项，189 项通过、2 项按既有规则跳过，Flyway V1-V21、真实 MySQL、迁移回放和架构边界通过；前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过；完整审批主流程在桌面 Chromium、桌面 WebKit和 375px 移动 Chromium共 3/3 通过。下一正式阶段进入只读 MCP Server、PAT 和 scope。
+- 2026-09-27 成员与角色 R4 审批增量：新增成员/角色 R1 查询及 create/update/delete R4 prepare/commit，管理页所有写入统一创建站内审批；通用审批服务按工具名选择执行器，批准时复用现有权限、revision、审计、同步与幂等逻辑。OWNER、系统角色和被成员引用角色均有领域保护，角色权限值严格校验。后端 `mvn test` 共 187 项，185 项通过、2 项按既有规则跳过，Flyway V1-V21、真实 MySQL、迁移回放和架构边界通过；新增真实 MySQL 覆盖添加成员、重复批准幂等、创建自定义角色和用户隔离。前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过；“创建审批 → 批准 → 返回成员/角色列表”在桌面 Chromium、桌面 WebKit和 375px 移动 Chromium共 3/3 通过，并修复长表单在移动端无法滚动到提交按钮的问题。
 - 2026-09-27 R4 审批与导入确认增量：新增 V21 `agent_approval`、审批状态机、用户隔离审批 API 和独立审批中心；导入确认使用 R4 prepare/commit，模型不可见，普通聊天 approve/commit 明确拒绝，传统导入入口也必须经过审批。批准后立即执行，重复批准返回既有终态，当前仅支持 `SKIP` 重复策略。后端 `mvn test` 共 184 项，182 项通过、2 项按既有规则跳过；Flyway V1-V21、真实 MySQL、迁移回放和架构边界通过，工具测试覆盖 R4 创建、非法策略、未审批提交和模型不可见，集成测试覆盖导入成功、重复批准幂等和跨用户隔离。前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过；完整审批主流程在桌面 Chromium、桌面 WebKit和 375px 移动 Chromium共 3/3 通过。
 
 - 2026-09-27 回收站与导入导出基础增量：新增回收站查询/恢复、R4 永久清除影响预览、流水导出和只读导入预览。恢复固化 revision；导出 commit 先由领域服务生成文件完成可用性校验，前端再调用既有受认证导出接口下载，不保存 Agent 临时文件；导入文件不进入模型上下文，预览阶段零业务写入，并按当前用户、账本、状态和有效期重新读取批次。后端增加 10 MB/10,000 行上限和 CSV 公式注入防护；前端增加文件字段、解析摘要和最多 20 行明细，并明确禁用本轮导入确认。后端 `mvn clean test` 共 179 项，177 项通过、2 项按既有规则跳过；新增真实 MySQL 3/3 覆盖恢复 revision 冲突、恢复结果、跨用户隔离、导入预览零写入/用户隔离和 CSV 公式注入防护。前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过；三项新卡片在桌面 Chromium、桌面 WebKit与 375px 移动 Chromium 共 9/9 通过。下一增量转入导入确认、成员/角色与 R4 站内审批基础。
@@ -139,7 +141,7 @@
 - `cd backend && mvn -pl app -am -Dtest=ArchitectureBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false test` 成功；架构边界测试 7/7 通过。
 - `cd backend && mvn test` 已运行至 app 的 Testcontainers 阶段；Docker 客户端连接成功，但 Ryuk 容器持续停在启动状态且未出现在 `docker ps`。使用 `TESTCONTAINERS_RYUK_DISABLED=true` 复测后，目标 `mysql:8.0.36` 容器也停在相同状态，两次测试进程均已人工终止。真实 MySQL 门禁仍标记为未完成，不能用本次结果宣称通过。
 
-当前判定：Phase 3B/3D 已具备工时记录与设置、七类流水、批量账务、账本创建/修改、账户、分类、商家、项目、预算、周期任务和回收站恢复的受控写入主链，并具备受认证导出、零写入导入预览、导入确认及成员/角色管理的 R4 审批闭环；完整退出门禁仍缺账本删除、永久清除等其余 R4 executor 和真实同步投影专项回归。后续按“其余 R4 审批 → 只读 MCP/PAT → MCP 写入/站内审批 → OAuth”推进。
+当前判定：Phase 3B/3D 已具备工时记录与设置、七类流水、批量账务、账本创建/修改、账户、分类、商家、项目、预算、周期任务和回收站恢复的受控写入主链，并具备受认证导出、零写入导入预览，以及导入确认、成员/角色、账本删除和永久清除的 R4 审批闭环。现有用户级核心功能覆盖已经达到进入 Phase 3C 的前置条件，后续按“只读 MCP/PAT → MCP 写入/既有站内审批 → OAuth → 稳定化”推进；真实同步投影专项回归仍作为每个外部写入增量的共同门禁。
 
 ### 本地手动验证
 

@@ -333,10 +333,16 @@ public class LedgerTransactionService {
 
     @Transactional
     public DeletedResource purge(String bookPublicId, String transactionPublicId) {
+        return purge(bookPublicId, transactionPublicId, null);
+    }
+
+    @Transactional
+    public DeletedResource purge(String bookPublicId, String transactionPublicId, String ifMatch) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         if (!context.isAdmin()) throw new com.salarytracker.platform.ForbiddenException("只有主人或管理员可以永久删除");
         Transaction before = get(context, transactionPublicId, false);
         if (!before.deleted()) throw new IllegalArgumentException("请先将流水移入回收站");
+        if (ifMatch != null && !ifMatch.isBlank()) requireRevision(ifMatch, before.revision());
         List<Long> ids = transactionGroupIds(context, before);
         String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
         jdbc.update("DELETE FROM ledger_transaction_version WHERE transaction_id IN (" + placeholders + ")", ids.toArray());

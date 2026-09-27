@@ -2,6 +2,8 @@ package com.salarytracker.ai.tool.ledger;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.salarytracker.ai.action.PendingActionService;
+import com.salarytracker.ai.approval.AgentApprovalService;
+import com.salarytracker.ai.approval.LedgerDestructiveApprovalExecutor;
 import com.salarytracker.ai.tool.DomainTool;
 import com.salarytracker.identity.CurrentUserResolver;
 import com.salarytracker.ledger.LedgerBookService;
@@ -16,7 +18,8 @@ public class LedgerManagementToolsConfiguration {
     @Bean DomainTool ledgerBookCreateCommitTool(LedgerBookService b, PendingActionService a, CurrentUserResolver u, ObjectMapper m) { return commit(LedgerManagementToolMode.BOOK_CREATE, b, a, u, m); }
     @Bean DomainTool ledgerBookUpdatePrepareTool(LedgerBookService b, PendingActionService a, CurrentUserResolver u, ObjectMapper m) { return prepare(LedgerManagementToolMode.BOOK_UPDATE, b, a, u, m); }
     @Bean DomainTool ledgerBookUpdateCommitTool(LedgerBookService b, PendingActionService a, CurrentUserResolver u, ObjectMapper m) { return commit(LedgerManagementToolMode.BOOK_UPDATE, b, a, u, m); }
-    @Bean DomainTool ledgerBookDeletePrepareTool(LedgerBookService b, PendingActionService a, CurrentUserResolver u, ObjectMapper m) { return prepare(LedgerManagementToolMode.BOOK_DELETE, b, a, u, m); }
+    @Bean DomainTool ledgerBookDeletePrepareTool(LedgerBookService b, PendingActionService a, AgentApprovalService p, CurrentUserResolver u, ObjectMapper m) { return new LedgerBookDeletePrepareTool(b, a, p, u, m); }
+    @Bean DomainTool ledgerBookDeleteCommitTool(LedgerDestructiveApprovalExecutor e, ObjectMapper m) { return new LedgerDestructiveCommitTool("ledger.book.delete.commit", "删除账本", e, m); }
     @Bean DomainTool ledgerAccountCreatePrepareTool(LedgerBookService b, PendingActionService a, CurrentUserResolver u, ObjectMapper m) { return prepare(LedgerManagementToolMode.ACCOUNT_CREATE, b, a, u, m); }
     @Bean DomainTool ledgerAccountCreateCommitTool(LedgerBookService b, PendingActionService a, CurrentUserResolver u, ObjectMapper m) { return commit(LedgerManagementToolMode.ACCOUNT_CREATE, b, a, u, m); }
     @Bean DomainTool ledgerAccountUpdatePrepareTool(LedgerBookService b, PendingActionService a, CurrentUserResolver u, ObjectMapper m) { return prepare(LedgerManagementToolMode.ACCOUNT_UPDATE, b, a, u, m); }

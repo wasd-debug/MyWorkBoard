@@ -14,8 +14,10 @@ import com.salarytracker.ai.tool.ToolStatus;
 import com.salarytracker.identity.CurrentUser;
 import com.salarytracker.identity.CurrentUserResolver;
 import com.salarytracker.ledger.LedgerBookService;
+import com.salarytracker.ledger.LedgerRecyclePurgeService;
 import com.salarytracker.ledger.LedgerModels.Account;
 import com.salarytracker.ledger.LedgerModels.Book;
+import com.salarytracker.ledger.LedgerModels.BookDeletionImpact;
 import com.salarytracker.ledger.LedgerModels.Budget;
 import com.salarytracker.ledger.LedgerModels.Category;
 import com.salarytracker.ledger.LedgerModels.CategoryKind;
@@ -59,6 +61,7 @@ class LedgerWriteToolsTest {
     private final LedgerTransactionService transactions = mock(LedgerTransactionService.class);
     private final LedgerScheduledTaskService schedules = mock(LedgerScheduledTaskService.class);
     private final LedgerImportService imports = mock(LedgerImportService.class);
+    private final LedgerRecyclePurgeService recyclePurge = mock(LedgerRecyclePurgeService.class);
     private final CurrentUserResolver currentUser = mock(CurrentUserResolver.class);
     private final MemoryRepository repository = new MemoryRepository();
     private final PendingActionService actions = new PendingActionService(repository, mapper, new InteractionPolicy());
@@ -116,11 +119,13 @@ class LedgerWriteToolsTest {
         });
         when(schedules.previewFirstRun(any())).thenReturn(java.time.LocalDate.of(2026, 10, 1));
         when(schedules.list("book-1", false)).thenReturn(List.of(schedule()));
-        when(books.recycle("book-1", 1, 100)).thenReturn(new com.salarytracker.ledger.LedgerModels.RecyclePage(
-                List.of(new com.salarytracker.ledger.LedgerModels.RecycleItem(
+        List<com.salarytracker.ledger.LedgerModels.RecycleItem> recycleItems = List.of(
+                new com.salarytracker.ledger.LedgerModels.RecycleItem(
                         com.salarytracker.ledger.LedgerModels.ResourceType.transaction, "transaction-1", "午餐",
-                        "2026-09-27T10:00:00Z", 3, 7, "2026-09-26", new BigDecimal("29.90"))),
-                1, 100, 1, 1));
+                        "2026-09-27T10:00:00Z", 3, 7, "2026-09-26", new BigDecimal("29.90")));
+        when(books.recycle("book-1", 1, 100)).thenReturn(new com.salarytracker.ledger.LedgerModels.RecyclePage(
+                recycleItems, 1, 100, 1, 1));
+        when(recyclePurge.all("book-1")).thenReturn(recycleItems);
     }
 
     @Test
@@ -687,15 +692,21 @@ class LedgerWriteToolsTest {
     }
 
     @Test
-    void bookDeleteOnlyBuildsR4PreviewWithoutCommitTool() {
-        var prepare = new LedgerManagementPrepareTool(LedgerManagementToolMode.BOOK_DELETE,
-                books, actions, currentUser, mapper);
+    void bookDeleteCreatesR4WebApprovalWithCompleteImpact() {
+        Book book = new Book("book-1", "日常账本", "CNY", 7L, 1, false, "OWNER", "所有者",
+                List.of("TRANSACTION_ANY_WRITE"), 1, 0, "2026-09-01");
+        when(books.bookDeletionImpact("book-1")).thenReturn(new BookDeletionImpact(
+                book, 2, 8, 3, 4, 2, 1, 3, 12, 2, 5, 1));
+        var prepare = new LedgerBookDeletePrepareTool(books, actions, approvalServiceMock(), currentUser, mapper);
         var result = prepare.execute(mapper.createObjectNode().put("bookId", "book-1"));
 
         assertEquals(ToolStatus.NEEDS_CONFIRMATION, result.status());
         assertEquals(com.salarytracker.ai.tool.ToolRisk.R4, prepare.definition().riskLevel());
         assertTrue(result.structuredContent().path("webApprovalRequired").asBoolean());
         assertEquals(false, result.structuredContent().path("commitAvailable").asBoolean());
+        assertEquals(12, result.structuredContent().path("preview").path("transactionCount").asInt());
+        assertEquals("/approvals/approval-1", result.confirmationUrl());
+        assertEquals(1L, repository.find(result.actionId(), 7L).orElseThrow().expectedRevision());
         verify(books, never()).deleteBook(any(), any());
     }
 
@@ -783,17 +794,39 @@ class LedgerWriteToolsTest {
     }
 
     @Test
-    void recyclePurgeOnlyProducesR4WebApprovalPreview() {
-        var tool = new LedgerRecyclePurgePrepareTool(books, actions, currentUser, mapper);
+    void recyclePurgeCreatesR4ApprovalAndFreezesItemRevision() {
+        var tool = new LedgerRecyclePurgePrepareTool(recyclePurge, actions, approvalServiceMock(), currentUser, mapper);
 
         var result = tool.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("scope", "ITEM")
                 .put("itemId", "transaction-1").put("resourceType", "transaction"));
 
         assertEquals(ToolStatus.NEEDS_CONFIRMATION, result.status());
         assertEquals(com.salarytracker.ai.tool.ToolRisk.R4, tool.definition().riskLevel());
         assertTrue(result.structuredContent().path("webApprovalRequired").asBoolean());
         assertEquals(false, result.structuredContent().path("commitAvailable").asBoolean());
+        assertEquals(3, result.structuredContent().path("input").path("items").path(0).path("revision").asInt());
+        assertEquals("/approvals/approval-1", result.confirmationUrl());
         verify(transactions, never()).purge(any(), any());
+    }
+
+    @Test
+    void recycleBookPurgeFreezesOnlyCurrentSnapshot() {
+        when(recyclePurge.all("book-1")).thenReturn(List.of(
+                new com.salarytracker.ledger.LedgerModels.RecycleItem(
+                        com.salarytracker.ledger.LedgerModels.ResourceType.transaction, "transaction-1", "午餐",
+                        "2026-09-27T10:00:00Z", 3, 7, "2026-09-26", new BigDecimal("29.90")),
+                new com.salarytracker.ledger.LedgerModels.RecycleItem(
+                        com.salarytracker.ledger.LedgerModels.ResourceType.merchant, "merchant-1", "便利店",
+                        "2026-09-27T11:00:00Z", 2, 7, null, null)));
+        var tool = new LedgerRecyclePurgePrepareTool(recyclePurge, actions, approvalServiceMock(), currentUser, mapper);
+
+        var result = tool.execute(mapper.createObjectNode().put("bookId", "book-1").put("scope", "BOOK"));
+
+        assertEquals(2, result.structuredContent().path("input").path("items").size());
+        assertEquals(2, result.structuredContent().path("preview").path("count").asInt());
+        assertEquals(1, result.structuredContent().path("preview").path("countsByType").path("transaction").asInt());
+        assertTrue(result.structuredContent().path("effects").toString().contains("不包含审批期间新增"));
     }
 
     @Test

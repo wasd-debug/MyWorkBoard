@@ -34,11 +34,11 @@
 | 管理角色 | `ledger.role.create/update/delete.prepare/commit` | R4 | 已接入站内审批；系统角色受保护，被成员引用角色不可删除 | 大权限集、并发引用和同步游标专项回归 |
 | 管理周期任务 | `ledger.schedule.list/create/update/delete/run.prepare/commit` | R1-R3 | 已接入 Web Agent（固定日期、间隔、暂停恢复、手动执行） | 自动调度/手动执行去重、revision、权限与流水投影回归 |
 | 查询与恢复回收站 | `ledger.recycle.list`、`ledger.recycle.restore.prepare/commit` | R1/R3 | 已接入 Web Agent（流水/资源查询，恢复固化 revision 并强确认） | 大数据量分页、资源依赖和同步游标专项回归 |
-| 永久清除回收站 | `ledger.recycle.purge.prepare` | R4 | 仅生成站内审批影响预览；不向模型开放且无聊天 commit | 注册永久清除审批 executor |
+| 永久清除回收站 | `ledger.recycle.purge.prepare/commit` | R4 | 已接入站内审批；支持 ITEM/BOOK 冻结快照、revision 全量校验和原子清除，模型不可见 | 恢复/并发变更冲突与大回收站性能回归 |
 | 导出流水 | `ledger.export.prepare/commit` | R2 | 已接入 Web Agent（范围/格式/预计数量预览，确认后走受认证下载） | 超大范围性能、下载失效和审计回归 |
 | 导入流水预览 | `ledger.import.preview.prepare` | R2 | 已接入 Web Agent（CSV/XLS/XLSX 上传与结构化预览，零业务写入） | 超大文件、批次过期与同步投影回归 |
 | 导入确认 | `ledger.import.confirm.prepare/commit` | R4 | 已接入站内审批中心；模型不可见，批准后立即执行且重复批准不重复写入 | 并发审批、权限撤销和大批量性能回归 |
-| 删除账本 | `ledger.book.delete.prepare` | R4 | 仅影响预览；不向模型开放且无聊天 commit | 注册账本删除审批 executor |
+| 删除账本 | `ledger.book.delete.prepare/commit` | R4 | 已接入站内审批；仅 OWNER，可见完整影响，至少保留一个账本，模型不可见 | 权限撤销、revision 并发和同步游标专项回归 |
 | 成本估算 | `ai_usage` + 价格版本 | 只读元数据 | 已支持固定价与 DeepSeek 峰谷价 | 供应商账单抽样对账 |
 
 ## 2. 中文指令评测集
@@ -107,9 +107,9 @@
 - 两笔及以上明确流水优先生成一个批量 action；批量创建或删除任一子项失败时整批回滚，不允许把部分成功伪装成整批成功。
 - 批量删除只接受已查询出的明确流水 ID；prepare 必须固化每笔 revision，同一转账组不能重复加入批次。
 - 工时设置历史重算、账户/分类删除和资源修改必须固化原 revision；冲突时不得覆盖页面上的最新配置。
-- 账本删除保持 R4：当前只保留影响预览和审批数据结构，不向模型开放 prepare，也没有聊天 commit。
+- 账本删除保持 R4：prepare/commit 只供站内审批链使用，不向模型开放；prepare 固化账本 revision 和影响统计，commit 重新校验 OWNER、版本与剩余账本数量。
 - 周期任务修改、删除和手动执行必须先查询真实任务并固化 revision；手动执行沿用任务到期日唯一键，相同任务和到期日不得重复生成流水。
-- 回收站恢复必须先列出当前用户可见项并固化 revision；永久清除属于 R4，不向模型暴露，也没有聊天 commit。
+- 回收站恢复必须先列出当前用户可见项并固化 revision；永久清除属于 R4，不向模型暴露，ITEM/BOOK 审批均冻结项目清单和 revision，执行前必须全量校验后原子清除。
 - 导出 commit 不返回文件正文，只验证领域导出成功并让前端调用现有受认证接口下载；服务端不持久化临时导出文件。
 - 导入文件上限为 10 MB、单次最多解析 10,000 行；原始文件内容不得进入模型上下文，预览阶段只保存结构化摘要且不得写入业务流水。
 - 导入确认必须由已登录用户从预览卡片创建 R4 action 和审批单；普通聊天 action approve/commit 必须拒绝 R4。批准时重新校验用户、账本权限、批次状态和有效期，相同审批只能执行一次。

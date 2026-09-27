@@ -134,7 +134,7 @@ public class LedgerBookService {
     @Transactional
     public DeletedResource deleteBook(String bookPublicId, String ifMatch) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
-        if (!context.isOwner()) access.require(context, "BOOK_DELETE");
+        if (!context.isOwner()) throw new com.salarytracker.platform.ForbiddenException("只有账本主人可以删除账本");
         Book before = book(bookPublicId, context.userId());
         checkRevision(ifMatch, before.revision());
         long activeBooks = jdbc.queryForObject(
@@ -149,6 +149,28 @@ public class LedgerBookService {
         audit.record(context, "book.delete", "book", bookPublicId, before, result);
         appendSync(context, UUID.randomUUID().toString(), "book", bookPublicId, "DELETE", result);
         return result;
+    }
+
+    public BookDeletionImpact bookDeletionImpact(String bookPublicId) {
+        LedgerBookAccess.Context context = access.resolve(bookPublicId);
+        if (!context.isOwner()) throw new com.salarytracker.platform.ForbiddenException("只有账本主人可以删除账本");
+        Book value = book(bookPublicId, context.userId());
+        long activeBooks = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM ledger_book_member m JOIN ledger_book b ON b.id=m.book_id " +
+                        "WHERE m.user_id=? AND m.deleted=FALSE AND b.deleted=FALSE",
+                Long.class, context.userId());
+        return new BookDeletionImpact(value,
+                count(context, "ledger_account", "deleted=FALSE"),
+                count(context, "ledger_category", "deleted=FALSE"),
+                count(context, "ledger_merchant", "deleted=FALSE"),
+                count(context, "ledger_project", "deleted=FALSE"),
+                count(context, "ledger_budget", "deleted=FALSE"),
+                count(context, "ledger_book_member", "deleted=FALSE"),
+                count(context, "ledger_role", "deleted=FALSE"),
+                count(context, "ledger_transaction", "deleted=FALSE AND kind<>'TRANSFER_IN'"),
+                count(context, "ledger_scheduled_task", "deleted=FALSE"),
+                recycle(bookPublicId, 1, 1).total(),
+                Math.max(0, activeBooks - 1));
     }
 
     public List<Account> accounts(String bookPublicId, boolean includeHidden) {
@@ -791,10 +813,16 @@ public class LedgerBookService {
 
     @Transactional
     public DeletedResource purgeResource(String bookPublicId, String type, String resourceId) {
+        return purgeResource(bookPublicId, type, resourceId, null);
+    }
+
+    @Transactional
+    public DeletedResource purgeResource(String bookPublicId, String type, String resourceId, String ifMatch) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         if (!context.isAdmin()) throw new com.salarytracker.platform.ForbiddenException("只有主人或管理员可以永久删除");
         ResourceTable table = resourceTable(type);
         DeletedResource before = deletedResource(context, table, resourceId);
+        checkRevision(ifMatch, before.revision());
         if (isReferenced(table, context.bookId(), internalIdAny(context, table, resourceId))) {
             if ("member".equals(type) || "role".equals(type)) {
                 throw new IllegalArgumentException("该资源仍被历史数据引用，不能永久删除");
@@ -816,6 +844,11 @@ public class LedgerBookService {
         audit.record(context, type + ".purge", type, resourceId, before, null);
         return new DeletedResource(resourceId, before.revision(), true,
                 before.deletedAt(), before.createdBy(), null, true);
+    }
+
+    private long count(LedgerBookAccess.Context context, String table, String condition) {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE book_id=? AND " + condition,
+                Long.class, context.bookId());
     }
 
     Account account(LedgerBookAccess.Context context, String publicId, boolean includeHidden) {

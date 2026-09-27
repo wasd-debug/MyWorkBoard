@@ -5,7 +5,6 @@ import { createClientId } from '../utils/clientId.js'
 import {
   apiCreateLedgerBook,
   apiCreateLedgerScheduledTask,
-  apiDeleteLedgerBook,
   apiDeleteLedgerScheduledTask,
   apiImportLedgerPreview,
   apiInvokeAgentTool,
@@ -18,7 +17,6 @@ import {
   apiListLedgerNamed,
   apiListLedgerRoles,
   apiListLedgerTransactions,
-  apiPurgeLedgerRecycle,
   apiPullLedgerSync,
   apiPushLedgerSync,
   apiRestoreLedgerRecycle,
@@ -444,9 +442,7 @@ export const useLedgerStore = defineStore('ledger', {
 
     async deleteBook(book) {
       this.requireOnline('删除账本需要联网')
-      const result = await apiDeleteLedgerBook(book.id, book.revision)
-      await this.refreshServer()
-      return result
+      return apiInvokeAgentTool('ledger.book.delete.prepare', { bookId: book.id })
     },
 
     async restoreRecycle(item) {
@@ -458,9 +454,20 @@ export const useLedgerStore = defineStore('ledger', {
 
     async purgeRecycle(item) {
       this.requireOnline('永久删除需要联网')
-      const result = await apiPurgeLedgerRecycle(this.currentBookId, item.type, item.id)
-      await this.refreshCurrentBook()
-      return result
+      return apiInvokeAgentTool('ledger.recycle.purge.prepare', {
+        bookId: this.currentBookId,
+        scope: 'ITEM',
+        itemId: item.id,
+        resourceType: item.type
+      })
+    },
+
+    async purgeRecycleAll() {
+      this.requireOnline('清空回收站需要联网')
+      return apiInvokeAgentTool('ledger.recycle.purge.prepare', {
+        bookId: this.currentBookId,
+        scope: 'BOOK'
+      })
     },
 
     async createScheduledTask(payload) {

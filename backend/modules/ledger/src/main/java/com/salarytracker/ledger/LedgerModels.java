@@ -71,6 +71,7 @@ public final class LedgerModels {
 
     public record CopyTransactionCommand(String targetBookId, LocalDate occurredOn) { }
     public record TransactionDeleteCommand(String transactionId, long revision) { }
+    public record RecyclePurgeCommand(ResourceType type, String id, long revision) { }
     public record AuditClearCommand(List<Long> ids) { }
     public record AiPreviewCommand(String text) { }
     public record AiConfirmCommand(List<TransactionCommand> transactions) { }
@@ -79,6 +80,12 @@ public final class LedgerModels {
     public record Book(String id, String name, String currency, long ownerUserId, long revision,
                        boolean archived, String roleCode, String roleName, List<String> permissions,
                        long memberCount, long transactionCount, String createdAt) implements SyncEntity { }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record BookDeletionImpact(Book book, long accountCount, long categoryCount,
+                                     long merchantCount, long projectCount, long budgetCount,
+                                     long memberCount, long roleCount, long transactionCount,
+                                     long scheduleCount, long recycleCount, long remainingBookCount) { }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Account(String id, String name, String icon, String accountType, String currency,
