@@ -1,7 +1,7 @@
 # 工作台 Agent 与 MCP 改造计划
 
 > 版本：v2.2（2026-09-27）
-> 状态：实施中（阶段 3 已开始：真实模型、R0/R1 查询、服务端会话/队列/SSE、模型连接与 Trace 已完成；工时、七类账本流水、批量账务及首批基础管理工具已进入受控写入）
+> 状态：实施中（阶段 3 已开始：真实模型、R0/R1 查询、服务端会话/队列/SSE、模型连接与 Trace 已完成；工时、七类账本流水、批量账务及两批基础管理工具已进入受控写入）
 
 > 运维修正：迁移 `V8.1` 是在 `V8` 已发布后补充的索引迁移，已有数据库升级时需开启 `FLYWAY_OUT_OF_ORDER=true`；不得删除或改写 `flyway_schema_history`。
 
@@ -10,6 +10,8 @@
 > 总原则：先把现有业务能力收敛为可验证的领域工具，再接入 Web Agent 和 MCP；每一阶段独立交付、独立验证、可通过功能开关回滚，未通过退出门禁不得进入下一阶段。
 
 ## 0. 实施进度快照（2026-09-27）
+
+当前增量接入第二批管理工具：新增 `ledger.merchant.list`、`ledger.project.list`，以及商家 CRUD、项目 CRUD、预算 upsert/delete 的 prepare/commit。商家和项目删除预览会统计有效流水引用数量，提交后采用现有软删除、审计和 oplog；预算支持月度总预算及支出分类预算，预览显示月份、范围、当前已使用金额和调整后使用率，更新与删除均固化原 revision。前端管理卡片支持月份输入、分类搜索、完整编辑、差异、影响和危险态确认；模型仍只能看到 list/prepare，所有 commit 继续只由站内确认触发。
 
 当前增量接入首批管理工具：`worktime.settings.update.prepare/commit` 支持薪资、标准上下班、午休、计薪工作日和午休历史重算范围，重算与设置修改共用事务并固化原 revision；新增 `ledger.account.list`、`ledger.category.list`，以及账本创建/修改、账户 CRUD、分类 CRUD 的 prepare/commit。管理卡片沿用完整编辑、返回预览、差异、影响说明、单次 action 和提交后投影刷新。账本删除保持 R4，仅注册不向模型公开的影响预览工具，当前不提供聊天 commit，必须等待站内高风险审批中心。
 
@@ -81,17 +83,19 @@
 本次明确未实施：
 
 - 评测结果数据库留存、聚合成本告警和运营仪表盘。
-- 账本、账户、分类等账本资源管理工具，以及工时设置管理写工具。
+- 周期任务、回收站、导入导出、成员与角色等剩余用户级管理工具。
 - MCP Server、PAT/OAuth、scope、站内审批与外部客户端兼容验证。
 - 文件、向量库和 RAG。
 
 后续正式增量顺序（已排期，不能遗漏）：
 
-1. 管理工具：账本、账户、分类、商家、成员、项目、预算及工时设置，按 R2-R4 分级审批。
+1. 管理工具：继续补齐周期任务、回收站、导入导出、成员与角色，并建设 R4 站内审批基础。
 2. 只读 MCP Server：Streamable HTTP、PAT、scope、撤销、审计、限流与 MCP Inspector/Codex/WorkBuddy 验证。
 3. MCP 写入与正式认证：prepare/commit、站内审批中心、OAuth 2.1 + PKCE 和外部客户端兼容回归。
 
 验证记录：
+
+- 2026-09-27 第二批管理工具增量：后端 `mvn test` 共 165 项，163 项通过、2 项按既有规则跳过；AI 工具测试覆盖商家/项目查询与 CRUD、删除引用影响、预算缺参/预览/commit/revision，真实 MySQL 2/2 覆盖商家/项目关联流水软删除、预算支出统计和陈旧 revision 拒绝。前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过；Agent 桌面 Chromium 26/26，新预算和商家删除卡片在桌面 WebKit与 375px 移动 Chromium 4/4 通过。快速 E2E 运行时镜像修复 `.dockerignore` 的单个后端 JAR 白名单，其他 `target` 产物继续排除。
 
 - 2026-09-27 复杂流水与批量账务增量：后端 `mvn test` 共 153 项，151 项通过、2 项按既有规则跳过；AI 工具定向覆盖七类流水、转账双账户、复杂类型修改/删除、父级批量 action、明确 ID/revision 删除和 commit 隔离。真实 MySQL 4/4 覆盖混合批次、失败整批回滚、revision 冲突整批不删、转账双边删除、幂等重放与跨用户拒绝。前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过；Agent 桌面 Chromium 全量 22/22，新批量卡片在桌面 WebKit 与 375px 移动 Chromium 4/4 通过。真实本地 DeepSeek 生成一个含两笔流水的父级批量补参卡片，页面无错误覆盖层和横向溢出，未执行 commit、未产生业务写入。
 
@@ -122,7 +126,7 @@
 - `cd backend && mvn -pl app -am -Dtest=ArchitectureBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false test` 成功；架构边界测试 7/7 通过。
 - `cd backend && mvn test` 已运行至 app 的 Testcontainers 阶段；Docker 客户端连接成功，但 Ryuk 容器持续停在启动状态且未出现在 `docker ps`。使用 `TESTCONTAINERS_RYUK_DISABLED=true` 复测后，目标 `mysql:8.0.36` 容器也停在相同状态，两次测试进程均已人工终止。真实 MySQL 门禁仍标记为未完成，不能用本次结果宣称通过。
 
-当前判定：Phase 3B/3D 已具备工时记录与设置、七类流水、批量账务、账本创建/修改、账户和分类管理的受控写入主链；完整退出门禁仍缺商家、项目、预算、周期任务、回收站、导入导出等剩余用户级工具，R4 站内审批中心和真实同步投影专项回归。后续按“剩余管理工具与稳定化 → 只读 MCP/PAT → MCP 写入/站内审批 → OAuth”推进。
+当前判定：Phase 3B/3D 已具备工时记录与设置、七类流水、批量账务、账本创建/修改、账户、分类、商家、项目和预算管理的受控写入主链；完整退出门禁仍缺周期任务、回收站、导入导出、成员与角色等用户级工具，R4 站内审批中心和真实同步投影专项回归。后续按“剩余管理工具与稳定化 → 只读 MCP/PAT → MCP 写入/站内审批 → OAuth”推进。
 
 ### 本地手动验证
 

@@ -12,6 +12,7 @@ import com.salarytracker.identity.CurrentUserResolver;
 import com.salarytracker.ledger.LedgerBookService;
 import com.salarytracker.ledger.LedgerModels.Account;
 import com.salarytracker.ledger.LedgerModels.Book;
+import com.salarytracker.ledger.LedgerModels.Budget;
 import com.salarytracker.ledger.LedgerModels.Category;
 import com.salarytracker.ledger.LedgerModels.CategoryKind;
 import com.salarytracker.ledger.LedgerModels.Member;
@@ -74,8 +75,14 @@ class LedgerWriteToolsTest {
         when(books.categories("book-1", true)).thenAnswer(invocation -> books.categories("book-1", false));
         when(books.merchants("book-1", false)).thenReturn(List.of(
                 new NamedResource("merchant-1", "中转站", "shop", null, null, false, 1, "2026-09-01")));
+        when(books.merchants("book-1", true)).thenAnswer(invocation -> books.merchants("book-1", false));
         when(books.projects("book-1", false)).thenReturn(List.of(
                 new NamedResource("project-1", "个人成长", "folder", null, "#fff", false, 1, "2026-09-01")));
+        when(books.projects("book-1", true)).thenAnswer(invocation -> books.projects("book-1", false));
+        when(books.budgets("book-1", "2026-10")).thenReturn(List.of(
+                new Budget("budget-1", "parent-1", "餐饮", "CATEGORY", "2026-10",
+                        new BigDecimal("1500"), new BigDecimal("300"), 4)));
+        when(books.budgetSpent("book-1", "2026-10", "parent-1")).thenReturn(new BigDecimal("300"));
         when(books.members("book-1")).thenReturn(List.of(
                 new Member("member-1", 7L, 7L, "alice", "Alice", "Alice", "role-1",
                         "OWNER", "所有者", "user", 1, "2026-09-01")));
@@ -532,6 +539,116 @@ class LedgerWriteToolsTest {
                 .put("resourceId", "category-1"));
         assertEquals(ToolStatus.NEEDS_CONFIRMATION, deleting.status());
         assertTrue(deleting.structuredContent().path("effects").toString().contains("软删除"));
+    }
+
+    @Test
+    void merchantCreateAndDeleteReuseNamedResourceDomainService() {
+        var prepare = new LedgerManagementPrepareTool(LedgerManagementToolMode.MERCHANT_CREATE,
+                books, actions, currentUser, mapper);
+        var commit = new LedgerManagementCommitTool(LedgerManagementToolMode.MERCHANT_CREATE,
+                books, actions, currentUser, mapper);
+        when(books.createNamedResource(eq("book-1"), eq("merchant"), any(), any())).thenReturn(
+                new NamedResource("merchant-new", "京东", "shop", "电商平台", null,
+                        false, 1, "2026-09-27"));
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("name", "京东").put("note", "电商平台"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals("shop", prepared.structuredContent().path("input").path("icon").asText());
+        actions.approve(prepared.actionId(), 7L);
+        assertEquals(ToolStatus.COMPLETED,
+                commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())).status());
+        verify(books).createNamedResource(eq("book-1"), eq("merchant"),
+                org.mockito.ArgumentMatchers.argThat(command -> "京东".equals(command.name())
+                        && "电商平台".equals(command.note())), eq(prepared.actionId()));
+
+        when(books.namedResourceUsageCount("book-1", "merchant", "merchant-1")).thenReturn(12L);
+        var deleting = new LedgerManagementPrepareTool(LedgerManagementToolMode.MERCHANT_DELETE,
+                books, actions, currentUser, mapper).execute(mapper.createObjectNode()
+                .put("bookId", "book-1").put("resourceId", "merchant-1"));
+        assertEquals(1L, repository.find(deleting.actionId(), 7L).orElseThrow().expectedRevision());
+        assertTrue(deleting.structuredContent().path("effects").toString().contains("12 笔"));
+    }
+
+    @Test
+    void projectUpdateFreezesRevisionAndKeepsProjectSpecificFields() {
+        var prepare = new LedgerManagementPrepareTool(LedgerManagementToolMode.PROJECT_UPDATE,
+                books, actions, currentUser, mapper);
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("resourceId", "project-1").put("name", "职业成长").put("color", "#123456"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals(1L, repository.find(prepared.actionId(), 7L).orElseThrow().expectedRevision());
+        assertEquals("#123456", prepared.structuredContent().path("input").path("color").asText());
+        assertTrue(prepared.structuredContent().path("diff").toString().contains("职业成长"));
+    }
+
+    @Test
+    void budgetUpsertShowsUsageAndCommitUsesFrozenRevision() {
+        var prepare = new LedgerManagementPrepareTool(LedgerManagementToolMode.BUDGET_UPSERT,
+                books, actions, currentUser, mapper);
+        var commit = new LedgerManagementCommitTool(LedgerManagementToolMode.BUDGET_UPSERT,
+                books, actions, currentUser, mapper);
+        when(books.upsertBudget(eq("book-1"), any(), eq("4"), any())).thenReturn(
+                new Budget("budget-1", "parent-1", "餐饮", "CATEGORY", "2026-10",
+                        new BigDecimal("1800"), new BigDecimal("300"), 5));
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("monthKey", "2026-10").put("categoryId", "parent-1").put("budget", 1800));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals(4L, repository.find(prepared.actionId(), 7L).orElseThrow().expectedRevision());
+        assertEquals("餐饮", prepared.structuredContent().path("preview").path("categoryName").asText());
+        assertEquals("300", prepared.structuredContent().path("preview").path("spent").asText());
+        assertEquals("16.67", prepared.structuredContent().path("preview").path("usageRate").asText());
+        actions.approve(prepared.actionId(), 7L);
+        assertEquals(ToolStatus.COMPLETED,
+                commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())).status());
+        verify(books).upsertBudget(eq("book-1"), org.mockito.ArgumentMatchers.argThat(command ->
+                "2026-10".equals(command.monthKey()) && "parent-1".equals(command.categoryId())
+                        && new BigDecimal("1800").compareTo(command.budget()) == 0),
+                eq("4"), eq(prepared.actionId()));
+    }
+
+    @Test
+    void newTotalBudgetFreezesExpectedAbsenceBeforeCommit() {
+        when(books.budgets("book-1", "2026-11")).thenReturn(List.of());
+        when(books.budgetSpent("book-1", "2026-11", null)).thenReturn(BigDecimal.ZERO);
+        when(books.upsertBudget(eq("book-1"), any(), eq("0"), any())).thenReturn(
+                new Budget("budget-total", null, "月度总预算", "TOTAL", "2026-11",
+                        new BigDecimal("8000"), BigDecimal.ZERO, 1));
+        var prepare = new LedgerManagementPrepareTool(LedgerManagementToolMode.BUDGET_UPSERT,
+                books, actions, currentUser, mapper);
+        var commit = new LedgerManagementCommitTool(LedgerManagementToolMode.BUDGET_UPSERT,
+                books, actions, currentUser, mapper);
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("monthKey", "2026-11").put("budget", 8000));
+
+        assertEquals(0L, repository.find(prepared.actionId(), 7L).orElseThrow().expectedRevision());
+        assertEquals("月度总预算", prepared.structuredContent().path("preview").path("categoryName").asText());
+        actions.approve(prepared.actionId(), 7L);
+        assertEquals(ToolStatus.COMPLETED,
+                commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())).status());
+        verify(books).upsertBudget(eq("book-1"), any(), eq("0"), eq(prepared.actionId()));
+    }
+
+    @Test
+    void budgetDeleteRequiresMonthAndFreezesBudgetRevision() {
+        var prepare = new LedgerManagementPrepareTool(LedgerManagementToolMode.BUDGET_DELETE,
+                books, actions, currentUser, mapper);
+
+        var incomplete = prepare.execute(mapper.createObjectNode().put("bookId", "book-1"));
+        assertEquals(ToolStatus.NEEDS_INPUT, incomplete.status());
+        assertTrue(incomplete.structuredContent().path("missingFields").toString().contains("monthKey"));
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("monthKey", "2026-10").put("resourceId", "budget-1"));
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals(4L, repository.find(prepared.actionId(), 7L).orElseThrow().expectedRevision());
+        assertTrue(prepared.structuredContent().path("effects").toString().contains("当前已使用 300"));
     }
 
     @Test

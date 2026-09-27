@@ -315,6 +315,20 @@ public class LedgerBookService {
         return namedResources(access.resolve(bookPublicId), "project", includeHidden);
     }
 
+    public long namedResourceUsageCount(String bookPublicId, String type, String resourceId) {
+        LedgerBookAccess.Context context = access.resolve(bookPublicId);
+        String column = switch (type) {
+            case "merchant" -> "merchant_id";
+            case "project" -> "project_id";
+            default -> throw new IllegalArgumentException("仅支持查询商家或项目的流水引用数量");
+        };
+        long resourceIdValue = internalId(context, resourceTable(type).table(), resourceId, true);
+        Long count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM ledger_transaction WHERE book_id=? AND " + column + "=? AND deleted=FALSE",
+                Long.class, context.bookId(), resourceIdValue);
+        return count == null ? 0L : count;
+    }
+
     @Transactional
     public NamedResource createNamedResource(String bookPublicId,
                                                    String type,
@@ -569,8 +583,26 @@ public class LedgerBookService {
                 context.bookId(), monthKey).stream().map(this::budgetView).toList();
     }
 
+    public BigDecimal budgetSpent(String bookPublicId, String month, String categoryPublicId) {
+        LedgerBookAccess.Context context = access.resolve(bookPublicId);
+        String monthKey = YearMonth.parse(month).toString();
+        Long categoryId = budgetCategoryId(context, categoryPublicId);
+        BigDecimal spent = jdbc.queryForObject(
+                "SELECT COALESCE(SUM(t.amount),0) FROM ledger_transaction t WHERE t.book_id=? " +
+                        "AND t.kind='EXPENSE' AND t.deleted=FALSE AND DATE_FORMAT(t.occurred_on,'%Y-%m')=? " +
+                        "AND (? IS NULL OR t.category_id=? OR EXISTS " +
+                        "(SELECT 1 FROM ledger_category tc WHERE tc.id=t.category_id AND tc.parent_id=?))",
+                BigDecimal.class, context.bookId(), monthKey, categoryId, categoryId, categoryId);
+        return spent == null ? BigDecimal.ZERO : spent;
+    }
+
     @Transactional
     public Budget upsertBudget(String bookPublicId, BudgetCommand input, String opId) {
+        return upsertBudget(bookPublicId, input, null, opId);
+    }
+
+    @Transactional
+    public Budget upsertBudget(String bookPublicId, BudgetCommand input, String ifMatch, String opId) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         access.require(context, "RESOURCE_MANAGE");
         String month = budgetMonth(input);
@@ -584,6 +616,9 @@ public class LedgerBookService {
                 context.bookId(), month, categoryId, categoryId);
         Budget before = null;
         if (existing.isEmpty()) {
+            if (ifMatch != null && !ifMatch.isBlank() && !"0".equals(ifMatch.trim())) {
+                throw new ConflictException("预算已不存在或范围已变化", 0L);
+            }
             jdbc.update(
                     "INSERT INTO ledger_budget(public_id,user_id,book_id,category_id,month_key,amount,created_by) " +
                             "VALUES(?,?,?,?,?,?,?)",
@@ -592,6 +627,7 @@ public class LedgerBookService {
         } else {
             publicId = String.valueOf(existing.get(0).get("public_id"));
             before = budget(context, publicId, true);
+            checkRevision(ifMatch, before.revision());
             jdbc.update(
                     "UPDATE ledger_budget SET amount=?,deleted=FALSE,deleted_at=NULL,revision=revision+1 " +
                             "WHERE public_id=? AND book_id=?",

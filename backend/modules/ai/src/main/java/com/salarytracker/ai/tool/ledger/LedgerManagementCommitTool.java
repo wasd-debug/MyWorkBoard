@@ -17,8 +17,10 @@ import com.salarytracker.ledger.LedgerBookService;
 import com.salarytracker.ledger.LedgerModels.AccountCommand;
 import com.salarytracker.ledger.LedgerModels.BookCommand;
 import com.salarytracker.ledger.LedgerModels.BookMode;
+import com.salarytracker.ledger.LedgerModels.BudgetCommand;
 import com.salarytracker.ledger.LedgerModels.CategoryCommand;
 import com.salarytracker.ledger.LedgerModels.CategoryKind;
+import com.salarytracker.ledger.LedgerModels.NamedResourceCommand;
 import com.salarytracker.platform.ConflictException;
 
 import java.util.Set;
@@ -94,9 +96,22 @@ final class LedgerManagementCommitTool implements DomainTool {
             if (mode.update()) return books.updateAccount(bookId, resourceId, account(values), revision, actionId);
             return books.deleteAccount(bookId, resourceId, revision, actionId);
         }
-        if (mode.create()) return books.createCategory(bookId, category(values), actionId);
-        if (mode.update()) return books.updateCategory(bookId, resourceId, category(values), revision, actionId);
-        return books.deleteCategory(bookId, resourceId, revision, actionId);
+        if (mode.category()) {
+            if (mode.create()) return books.createCategory(bookId, category(values), actionId);
+            if (mode.update()) return books.updateCategory(bookId, resourceId, category(values), revision, actionId);
+            return books.deleteCategory(bookId, resourceId, revision, actionId);
+        }
+        if (mode.namedResource()) {
+            String type = mode.namedResourceType();
+            if (mode.create()) return books.createNamedResource(bookId, type, namedResource(values), actionId);
+            if (mode.update()) return books.updateNamedResource(bookId, type, resourceId,
+                    namedResource(values), revision, actionId);
+            return books.deleteNamedResource(bookId, type, resourceId, revision, actionId);
+        }
+        if (mode == LedgerManagementToolMode.BUDGET_UPSERT) {
+            return books.upsertBudget(bookId, budget(values), revision, actionId);
+        }
+        return books.deleteBudget(bookId, resourceId, revision, actionId);
     }
 
     private AccountCommand account(JsonNode values) {
@@ -108,6 +123,16 @@ final class LedgerManagementCommitTool implements DomainTool {
         return new CategoryCommand(null, text(values, "name"), text(values, "icon"),
                 CategoryKind.valueOf(text(values, "kind")), optional(values, "parentId"),
                 optional(values, "color"), booleanValue(values, "hidden"));
+    }
+
+    private NamedResourceCommand namedResource(JsonNode values) {
+        return new NamedResourceCommand(null, text(values, "name"), text(values, "icon"),
+                optional(values, "color"), optional(values, "note"), booleanValue(values, "hidden"));
+    }
+
+    private BudgetCommand budget(JsonNode values) {
+        return new BudgetCommand(null, optional(values, "categoryId"), optional(values, "scope"),
+                text(values, "monthKey"), values.path("budget").decimalValue());
     }
 
     private String text(JsonNode values, String field) {

@@ -472,8 +472,8 @@ function compactModelName(value) { const name = String(value || '模型').trim()
 function pricingTierLabel(value) { return value === 'PEAK' ? '高峰' : value === 'OFF_PEAK' ? '空闲' : '固定价' }
 function replyTokens(usage) { return Math.max(0, Number(usage?.outputTokens || 0) - Number(usage?.reasoningTokens || 0)) }
 function cacheHitRate(usage) { const hit = Number(usage?.cacheHitTokens || 0), miss = Number(usage?.cacheMissTokens || 0); return hit + miss ? Math.round(hit / (hit + miss) * 100) : 0 }
-function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledger.book.create.prepare': '准备新增账本', 'ledger.book.update.prepare': '准备修改账本', 'ledger.account.list': '查询账户', 'ledger.account.create.prepare': '准备新增账户', 'ledger.account.update.prepare': '准备修改账户', 'ledger.account.delete.prepare': '准备删除账户', 'ledger.category.list': '查询分类', 'ledger.category.create.prepare': '准备新增分类', 'ledger.category.update.prepare': '准备修改分类', 'ledger.category.delete.prepare': '准备删除分类', 'ledger.overview': '查询账本概览', 'ledger.transactions.search': '查询账本流水', 'ledger.transaction.history': '查询流水历史', 'ledger.transaction.create.prepare': '准备新增流水', 'ledger.transaction.update.prepare': '准备修改流水', 'ledger.transaction.delete.prepare': '准备删除流水', 'ledger.transactions.batch.create.prepare': '准备批量记账', 'ledger.transactions.batch.delete.prepare': '准备批量删除', 'ledger.reports.summary': '生成账本报表', 'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置', 'worktime.settings.update.prepare': '准备修改工时设置', 'worktime.records.search': '查询工时记录', 'worktime.record.create.prepare': '准备新增工时', 'worktime.record.update.prepare': '准备修改工时', 'worktime.record.delete.prepare': '准备删除工时' })[name] || name }
-function actionTypeLabel(action) { return ({ 'worktime.settings.update': '修改工时设置', 'worktime.record.create': '新增工时', 'worktime.record.update': '修改工时', 'worktime.record.delete': '删除工时', 'ledger.book.create': '新增账本', 'ledger.book.update': '修改账本', 'ledger.book.delete': '删除账本', 'ledger.account.create': '新增账户', 'ledger.account.update': '修改账户', 'ledger.account.delete': '删除账户', 'ledger.category.create': '新增分类', 'ledger.category.update': '修改分类', 'ledger.category.delete': '删除分类', 'ledger.transaction.create': '单笔记账', 'ledger.transaction.update': '修改流水', 'ledger.transaction.delete': '删除流水', 'ledger.transactions.batch.create': '批量记账', 'ledger.transactions.batch.delete': '批量删除流水' })[action.structuredContent?.actionType] || '待确认操作' }
+function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledger.book.create.prepare': '准备新增账本', 'ledger.book.update.prepare': '准备修改账本', 'ledger.account.list': '查询账户', 'ledger.account.create.prepare': '准备新增账户', 'ledger.account.update.prepare': '准备修改账户', 'ledger.account.delete.prepare': '准备删除账户', 'ledger.category.list': '查询分类', 'ledger.category.create.prepare': '准备新增分类', 'ledger.category.update.prepare': '准备修改分类', 'ledger.category.delete.prepare': '准备删除分类', 'ledger.merchant.list': '查询商家', 'ledger.merchant.create.prepare': '准备新增商家', 'ledger.merchant.update.prepare': '准备修改商家', 'ledger.merchant.delete.prepare': '准备删除商家', 'ledger.project.list': '查询项目', 'ledger.project.create.prepare': '准备新增项目', 'ledger.project.update.prepare': '准备修改项目', 'ledger.project.delete.prepare': '准备删除项目', 'ledger.budget.upsert.prepare': '准备设置预算', 'ledger.budget.delete.prepare': '准备删除预算', 'ledger.overview': '查询账本概览', 'ledger.transactions.search': '查询账本流水', 'ledger.transaction.history': '查询流水历史', 'ledger.transaction.create.prepare': '准备新增流水', 'ledger.transaction.update.prepare': '准备修改流水', 'ledger.transaction.delete.prepare': '准备删除流水', 'ledger.transactions.batch.create.prepare': '准备批量记账', 'ledger.transactions.batch.delete.prepare': '准备批量删除', 'ledger.reports.summary': '生成账本报表', 'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置', 'worktime.settings.update.prepare': '准备修改工时设置', 'worktime.records.search': '查询工时记录', 'worktime.record.create.prepare': '准备新增工时', 'worktime.record.update.prepare': '准备修改工时', 'worktime.record.delete.prepare': '准备删除工时' })[name] || name }
+function actionTypeLabel(action) { return ({ 'worktime.settings.update': '修改工时设置', 'worktime.record.create': '新增工时', 'worktime.record.update': '修改工时', 'worktime.record.delete': '删除工时', 'ledger.book.create': '新增账本', 'ledger.book.update': '修改账本', 'ledger.book.delete': '删除账本', 'ledger.account.create': '新增账户', 'ledger.account.update': '修改账户', 'ledger.account.delete': '删除账户', 'ledger.category.create': '新增分类', 'ledger.category.update': '修改分类', 'ledger.category.delete': '删除分类', 'ledger.merchant.create': '新增商家', 'ledger.merchant.update': '修改商家', 'ledger.merchant.delete': '删除商家', 'ledger.project.create': '新增项目', 'ledger.project.update': '修改项目', 'ledger.project.delete': '删除项目', 'ledger.budget.upsert': '设置预算', 'ledger.budget.delete': '删除预算', 'ledger.transaction.create': '单笔记账', 'ledger.transaction.update': '修改流水', 'ledger.transaction.delete': '删除流水', 'ledger.transactions.batch.create': '批量记账', 'ledger.transactions.batch.delete': '批量删除流水' })[action.structuredContent?.actionType] || '待确认操作' }
 function actionIsDelete(action) { return action.structuredContent?.actionType?.endsWith('.delete') }
 function actionRequiresWebApproval(action) { return action.structuredContent?.webApprovalRequired === true || action.structuredContent?.commitAvailable === false }
 function actionIsBatchCreate(action) { return action.structuredContent?.actionType === 'ledger.transactions.batch.create' }
@@ -491,7 +491,7 @@ function setActionField(action, name, value) {
     }
   }
 }
-function actionInputType(type) { return ({ money: 'number', number: 'number', date: 'date', time: 'time' })[type] || 'text' }
+function actionInputType(type) { return ({ money: 'number', number: 'number', date: 'date', time: 'time', month: 'month' })[type] || 'text' }
 function actionFormComplete(action) { return (action.structuredContent?.fields || []).every(field => !field.required || String(actionFieldValue(action, field.name)).trim()) }
 function actionEditable(action) { return !action.uiStatus && (action.status === 'NEEDS_INPUT' || (action.status === 'NEEDS_CONFIRMATION' && action.editing)) }
 function actionFieldSuggested(action, name) { return (action.structuredContent?.suggestedFields || []).includes(name) }
@@ -510,7 +510,7 @@ function closeEntityPicker(action, field) { updateEntityPicker(action, field, { 
 function searchEntityPicker(action, field, query) { setActionField(action, field.name, ''); updateEntityPicker(action, field, { query, open: true }) }
 function selectEntityOption(action, field, option) { setActionField(action, field.name, option.value); updateEntityPicker(action, field, { query: option.label, open: false }) }
 function clearEntityPicker(action, field) { setActionField(action, field.name, ''); updateEntityPicker(action, field, { query: '', open: true }) }
-function filteredEntityOptions(action, field) { const query = entityPickerText(action, field).trim().toLocaleLowerCase(); return (field.options || []).filter(option => !['categoryId', 'parentId'].includes(field.name) || !option.kind || option.kind === actionFieldValue(action, 'kind')).filter(option => !query || String(option.label || '').toLocaleLowerCase().includes(query)) }
+function filteredEntityOptions(action, field) { const query = entityPickerText(action, field).trim().toLocaleLowerCase(), kind = actionFieldValue(action, 'kind'); return (field.options || []).filter(option => !['categoryId', 'parentId'].includes(field.name) || !option.kind || !kind || option.kind === kind).filter(option => !query || String(option.label || '').toLocaleLowerCase().includes(query)) }
 function transactionKindLabel(kind) { return ({ EXPENSE: '支出', INCOME: '收入', TRANSFER: '转账', BORROW_IN: '借入', LEND_OUT: '借出', COLLECT_DEBT: '收债', REPAY_DEBT: '还款' })[kind] || '类型待补充' }
 function batchItemAction(action, index) {
   const content = action.structuredContent?.items?.[index] || {}
@@ -546,13 +546,17 @@ function actionPreviewRows(action) {
     ['工时', preview.workMin != null ? `${preview.workMin} 分钟` : null], ['加班', preview.overtimeMin != null ? `${preview.overtimeMin} 分钟` : null],
     ['实际时薪', preview.realHourlyWage != null ? `¥${Number(preview.realHourlyWage).toFixed(2)}` : null], ['备注', preview.note]
   ].filter(row => row[1] != null).map(([label, value]) => ({ label, value }))
-  if (/^ledger\.(book|account|category)\./.test(action.structuredContent?.actionType || '')) {
+  if (/^ledger\.(book|account|category|merchant|project|budget)\./.test(action.structuredContent?.actionType || '')) {
     const resource = actionIsDelete(action) ? (preview.before || preview.after || {}) : (preview.after || preview.before || {})
     return [
       ['操作', preview.operation], ['资源', preview.resourceType], ['名称', resource.name], ['币种', resource.currency],
       ['账户类型', resource.accountType], ['初始余额', resource.openingBalance != null ? formatMoney(resource.openingBalance) : null],
       ['收支类型', resource.kind === 'EXPENSE' ? '支出' : resource.kind === 'INCOME' ? '收入' : null],
-      ['父分类', resource.parentId], ['状态', resource.hidden === true || resource.hidden === 'true' ? '停用' : resource.archived === true || resource.archived === 'true' ? '已归档' : '启用'],
+      ['父分类', resource.parentId], ['备注', resource.note], ['月份', preview.monthKey || resource.monthKey],
+      ['预算范围', preview.categoryName || resource.category], ['预算金额', (preview.budget ?? resource.budget) != null ? formatMoney(preview.budget ?? resource.budget) : null],
+      ['已使用', (preview.spent ?? resource.spent) != null ? formatMoney(preview.spent ?? resource.spent) : null],
+      ['预计使用率', preview.usageRate != null ? `${Number(preview.usageRate).toFixed(2)}%` : null],
+      ['状态', resource.hidden === true || resource.hidden === 'true' ? '停用' : resource.archived === true || resource.archived === 'true' ? '已归档' : resource.hidden != null || resource.archived != null ? '启用' : null],
       ['版本', preview.before?.revision != null ? `rev ${preview.before.revision}` : null]
     ].filter(row => row[1] != null && row[1] !== '').map(([label, value]) => ({ label, value }))
   }
@@ -563,7 +567,7 @@ function actionAnswerPayload(value, key = '') {
   if (Array.isArray(value)) return value.map(item => actionAnswerPayload(item))
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([childKey, child]) => [childKey, actionAnswerPayload(child, childKey)]))
   if (['amount', 'rest'].includes(key) && value !== '') return Number(value)
-  if (['salaryPre', 'salaryPost', 'lunchMin', 'daysPerMonth', 'openingBalance'].includes(key) && value !== '') return Number(value)
+  if (['salaryPre', 'salaryPost', 'lunchMin', 'daysPerMonth', 'openingBalance', 'budget'].includes(key) && value !== '') return Number(value)
   if (['autoDays', 'hidden', 'archived'].includes(key) && value !== '') return value === true || value === 'true'
   return value === '' ? null : value
 }
@@ -588,7 +592,7 @@ async function confirmAction(item, action) {
     else message.error(result.summary || '操作未完成')
     if (result.status === 'COMPLETED' && action.structuredContent?.actionType?.startsWith('worktime.')) await worktimeStore.fetch().catch(() => {})
     if (result.status === 'COMPLETED' && /^ledger\.transactions?\./.test(action.structuredContent?.actionType || '')) await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {})
-    if (result.status === 'COMPLETED' && /^ledger\.(book|account|category)\./.test(action.structuredContent?.actionType || '')) { await ledgerStore.refreshBooks().catch(() => {}); await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {}) }
+    if (result.status === 'COMPLETED' && /^ledger\.(book|account|category|merchant|project|budget)\./.test(action.structuredContent?.actionType || '')) { await ledgerStore.refreshBooks().catch(() => {}); await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {}) }
     persist()
   } catch (error) { message.error(error?.response?.data?.detail || '保存失败') }
   finally { action.busy = false }

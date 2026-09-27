@@ -12,6 +12,8 @@ workboard.pem
 **/node_modules
 **/dist
 **/target
+!backend/target/
+!backend/target/salary-tracker-backend.jar
 **/coverage
 **/playwright-report
 **/test-results

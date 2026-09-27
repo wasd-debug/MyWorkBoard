@@ -6,6 +6,7 @@ import com.salarytracker.ledger.LedgerBookService;
 import com.salarytracker.ledger.LedgerModels.Book;
 import com.salarytracker.ledger.LedgerModels.Budget;
 import com.salarytracker.ledger.LedgerModels.Overview;
+import com.salarytracker.ledger.LedgerModels.NamedResource;
 import com.salarytracker.ledger.LedgerModels.TransactionPage;
 import com.salarytracker.ledger.LedgerModels.TransactionSummary;
 import com.salarytracker.ledger.LedgerModels.TransactionVersion;
@@ -87,6 +88,21 @@ class LedgerQueryToolsTest {
         assertEquals(1, result.structuredContent().path("returned").asInt());
         assertThrows(IllegalArgumentException.class, () -> tool.execute(mapper.createObjectNode()
                 .put("bookId", "book-1").put("month", "2026/09")));
+    }
+
+    @Test
+    void namedResourceListsDelegateBookVisibilityAndHiddenFilter() {
+        LedgerBookService service = mock(LedgerBookService.class);
+        when(service.merchants("book-1", true)).thenReturn(List.of(
+                new NamedResource("merchant-1", "京东", "shop", "电商", null,
+                        false, 1, "2026-09-27")));
+
+        var result = new LedgerNamedResourceListTool("merchant", "商家", service, mapper).execute(
+                mapper.createObjectNode().put("bookId", "book-1").put("includeHidden", true));
+
+        assertEquals(ToolStatus.COMPLETED, result.status());
+        assertEquals("京东", result.structuredContent().path(0).path("name").asText());
+        verify(service).merchants("book-1", true);
     }
 
     @Test

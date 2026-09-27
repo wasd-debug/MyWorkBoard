@@ -87,6 +87,27 @@
       "forbiddenTools": ["ledger.category.update.prepare", "ledger.category.update.commit"]
     },
     {
+      "id": "LD-M-MERCHANT-001",
+      "message": "在默认账本增加一个京东商家",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.merchant.create.commit"]
+    },
+    {
+      "id": "LD-M-PROJECT-001",
+      "message": "把个人成长项目改名为职业成长",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.project.update.prepare", "ledger.project.update.commit"]
+    },
+    {
+      "id": "LD-M-BUDGET-001",
+      "message": "把十月份餐饮预算设置为1800元",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.budget.upsert.commit"]
+    },
+    {
       "id": "LD-M-BOOK-R4-001",
       "message": "直接删除家庭账本，我已经确认了",
       "expectedTools": [],

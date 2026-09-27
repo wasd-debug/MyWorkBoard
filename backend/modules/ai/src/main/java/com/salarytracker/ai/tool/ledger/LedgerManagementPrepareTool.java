@@ -16,10 +16,15 @@ import com.salarytracker.identity.CurrentUserResolver;
 import com.salarytracker.ledger.LedgerBookService;
 import com.salarytracker.ledger.LedgerModels.Account;
 import com.salarytracker.ledger.LedgerModels.Book;
+import com.salarytracker.ledger.LedgerModels.Budget;
 import com.salarytracker.ledger.LedgerModels.Category;
+import com.salarytracker.ledger.LedgerModels.NamedResource;
 
+import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.YearMonth;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 final class LedgerManagementPrepareTool implements DomainTool {
@@ -42,8 +47,12 @@ final class LedgerManagementPrepareTool implements DomainTool {
         if (!mode.equals(LedgerManagementToolMode.BOOK_CREATE)) {
             ToolSchemas.stringProperty(schema, "bookId", "账本公开 ID", null);
         }
-        if ((mode.account() || mode.category()) && !mode.create()) {
+        if ((mode.account() || mode.category() || mode.namedResource() || mode == LedgerManagementToolMode.BUDGET_DELETE)
+                && !mode.create()) {
             ToolSchemas.stringProperty(schema, "resourceId", mode.resourceLabel() + "公开 ID", null);
+        }
+        if (mode == LedgerManagementToolMode.BUDGET_DELETE) {
+            ToolSchemas.stringProperty(schema, "monthKey", "预算月份，格式 YYYY-MM", null);
         }
         if (!mode.delete()) addEditableSchema(schema);
         ToolRisk risk = mode == LedgerManagementToolMode.BOOK_DELETE ? ToolRisk.R4
@@ -94,7 +103,7 @@ final class LedgerManagementPrepareTool implements DomainTool {
                         if (mode.update()) normalizeAccountUpdate(input, normalized, fields, account);
                     }
                 }
-            } else {
+            } else if (mode.category()) {
                 List<Category> categories = books.categories(bookId, true);
                 if (mode.create()) normalizeCategoryCreate(input, normalized, missing, fields, categories);
                 else {
@@ -110,6 +119,58 @@ final class LedgerManagementPrepareTool implements DomainTool {
                         if (mode.update()) normalizeCategoryUpdate(input, normalized, fields, category, categories);
                     }
                 }
+            } else if (mode.namedResource()) {
+                List<NamedResource> resources = mode.merchant()
+                        ? books.merchants(bookId, true) : books.projects(bookId, true);
+                if (mode.create()) normalizeNamedResourceCreate(input, normalized, missing, fields);
+                else {
+                    String resourceId = ToolInputs.optionalText(input, "resourceId");
+                    put(normalized, "resourceId", resourceId);
+                    if (resourceId == null) {
+                        missing.add("resourceId");
+                        entityField(fields, "resourceId", mode.resourceLabel(), true, namedResourceOptions(resources));
+                    } else {
+                        NamedResource resource = findNamedResource(resources, resourceId);
+                        before = resource;
+                        revision = resource.revision();
+                        if (mode.update()) normalizeNamedResourceUpdate(input, normalized, fields, resource);
+                    }
+                }
+            } else if (mode.budget()) {
+                List<Category> categories = books.categories(bookId, false).stream()
+                        .filter(category -> category.kind() == com.salarytracker.ledger.LedgerModels.CategoryKind.EXPENSE)
+                        .toList();
+                if (mode == LedgerManagementToolMode.BUDGET_UPSERT) {
+                    normalizeBudgetUpsert(input, normalized, missing, fields, categories);
+                    if (missing.isEmpty()) {
+                        String monthKey = normalized.path("monthKey").asText();
+                        String categoryId = nullable(normalized, "categoryId");
+                        Budget existing = books.budgets(bookId, monthKey).stream()
+                                .filter(value -> Objects.equals(value.categoryId(), categoryId))
+                                .findFirst().orElse(null);
+                        if (existing != null) {
+                            before = existing;
+                            revision = existing.revision();
+                            normalized.put("resourceId", existing.id());
+                        } else {
+                            revision = 0L;
+                        }
+                        BigDecimal spent = Objects.requireNonNullElse(
+                                books.budgetSpent(bookId, monthKey, categoryId), BigDecimal.ZERO);
+                        normalized.put("scope", categoryId == null ? "TOTAL" : "CATEGORY");
+                        normalized.put("categoryName", categoryLabel(categories, categoryId));
+                        normalized.put("spent", spent);
+                        normalized.put("usageRate", percentage(spent, normalized.path("budget").decimalValue()));
+                    }
+                } else {
+                    normalizeBudgetDelete(input, normalized, missing, fields, bookId);
+                    if (missing.isEmpty()) {
+                        String monthKey = normalized.path("monthKey").asText();
+                        Budget budget = findBudget(books.budgets(bookId, monthKey), normalized.path("resourceId").asText());
+                        before = budget;
+                        revision = budget.revision();
+                    }
+                }
             }
         }
 
@@ -122,8 +183,10 @@ final class LedgerManagementPrepareTool implements DomainTool {
         content.set("preview", preview(before, normalized));
         content.set("fields", fields);
         content.set("missingFields", missing);
-        if (mode.update() && before != null) content.set("diff", diff(before, normalized));
-        if (mode.delete() && before != null) content.set("effects", deleteEffects(before));
+        if ((mode.update() || mode == LedgerManagementToolMode.BUDGET_UPSERT) && before != null) {
+            content.set("diff", diff(before, normalized));
+        }
+        if (mode.delete() && before != null) content.set("effects", deleteEffects(before, normalized));
         if (mode == LedgerManagementToolMode.BOOK_DELETE) {
             content.put("webApprovalRequired", true);
             content.put("commitAvailable", false);
@@ -153,13 +216,23 @@ final class LedgerManagementPrepareTool implements DomainTool {
             ToolSchemas.stringProperty(schema, "currency", "三位货币代码", null);
             ToolSchemas.numberProperty(schema, "openingBalance", "初始余额", -1000000000000D);
             ToolSchemas.booleanProperty(schema, "hidden", "是否停用或隐藏");
-        } else {
+        } else if (mode.category()) {
             ToolSchemas.stringProperty(schema, "name", "分类名称", null);
             ToolSchemas.stringProperty(schema, "icon", "分类图标代码", null);
             ToolSchemas.enumProperty(schema, "kind", "分类类型", "INCOME", "EXPENSE");
             ToolSchemas.stringProperty(schema, "parentId", "父分类公开 ID", null);
             ToolSchemas.stringProperty(schema, "color", "分类颜色", null);
             ToolSchemas.booleanProperty(schema, "hidden", "是否停用或隐藏");
+        } else if (mode.namedResource()) {
+            ToolSchemas.stringProperty(schema, "name", mode.resourceLabel() + "名称", null);
+            ToolSchemas.stringProperty(schema, "icon", mode.resourceLabel() + "图标代码", null);
+            ToolSchemas.stringProperty(schema, "note", "备注", null);
+            if (mode.project()) ToolSchemas.stringProperty(schema, "color", "项目颜色", null);
+            ToolSchemas.booleanProperty(schema, "hidden", "是否停用或隐藏");
+        } else if (mode.budget()) {
+            ToolSchemas.stringProperty(schema, "monthKey", "预算月份，格式 YYYY-MM", null);
+            ToolSchemas.stringProperty(schema, "categoryId", "支出分类公开 ID；留空表示月度总预算", null);
+            ToolSchemas.numberProperty(schema, "budget", "预算金额，必须大于 0", 0.01D);
         }
     }
 
@@ -251,6 +324,81 @@ final class LedgerManagementPrepareTool implements DomainTool {
         select(fields, "hidden", "使用状态", true, new String[][]{{"false", "启用"}, {"true", "停用"}});
     }
 
+    private void normalizeNamedResourceCreate(JsonNode input, ObjectNode out, ArrayNode missing, ArrayNode fields) {
+        put(out, "name", ToolInputs.optionalText(input, "name"));
+        out.put("icon", value(input, "icon", mode.merchant() ? "shop" : "folder"));
+        put(out, "note", ToolInputs.optionalText(input, "note"));
+        if (mode.project()) out.put("color", value(input, "color", "#0f5132"));
+        out.put("hidden", bool(input, "hidden", false));
+        if (!out.hasNonNull("name")) missing.add("name");
+        addNamedResourceFields(fields);
+    }
+
+    private void normalizeNamedResourceUpdate(JsonNode input, ObjectNode out, ArrayNode fields,
+                                              NamedResource before) {
+        out.put("name", value(input, "name", before.name()));
+        out.put("icon", value(input, "icon", before.icon()));
+        put(out, "note", input != null && input.has("note")
+                ? ToolInputs.optionalText(input, "note") : before.note());
+        if (mode.project()) out.put("color", value(input, "color", before.color()));
+        out.put("hidden", bool(input, "hidden", before.hidden()));
+        addNamedResourceFields(fields);
+    }
+
+    private void addNamedResourceFields(ArrayNode fields) {
+        field(fields, "name", mode.resourceLabel() + "名称", "text", true);
+        field(fields, "icon", "图标", "text", true);
+        if (mode.project()) field(fields, "color", "颜色", "text", true);
+        field(fields, "note", "备注", "textarea", false);
+        select(fields, "hidden", "使用状态", true, new String[][]{{"false", "启用"}, {"true", "停用"}});
+    }
+
+    private void normalizeBudgetUpsert(JsonNode input, ObjectNode out, ArrayNode missing,
+                                       ArrayNode fields, List<Category> categories) {
+        String monthKey = ToolInputs.optionalText(input, "monthKey");
+        if (monthKey != null) {
+            try {
+                monthKey = YearMonth.parse(monthKey).toString();
+            } catch (Exception exception) {
+                throw new IllegalArgumentException("monthKey 格式不正确，应为 YYYY-MM");
+            }
+        }
+        put(out, "monthKey", monthKey);
+        put(out, "categoryId", ToolInputs.optionalText(input, "categoryId"));
+        BigDecimal amount = ToolInputs.optionalDecimal(input, "budget");
+        if (amount == null) out.putNull("budget");
+        else {
+            if (amount.signum() <= 0) throw new IllegalArgumentException("预算金额必须大于 0");
+            out.put("budget", amount);
+        }
+        if (monthKey == null) missing.add("monthKey");
+        if (amount == null) missing.add("budget");
+        field(fields, "monthKey", "预算月份", "month", true);
+        entityField(fields, "categoryId", "支出分类（留空为总预算）", false,
+                categoryOptions(categories, false));
+        field(fields, "budget", "预算金额", "money", true);
+    }
+
+    private void normalizeBudgetDelete(JsonNode input, ObjectNode out, ArrayNode missing,
+                                       ArrayNode fields, String bookId) {
+        String monthKey = ToolInputs.optionalText(input, "monthKey");
+        if (monthKey != null) {
+            try {
+                monthKey = YearMonth.parse(monthKey).toString();
+            } catch (Exception exception) {
+                throw new IllegalArgumentException("monthKey 格式不正确，应为 YYYY-MM");
+            }
+        }
+        put(out, "monthKey", monthKey);
+        String resourceId = ToolInputs.optionalText(input, "resourceId");
+        put(out, "resourceId", resourceId);
+        if (monthKey == null) missing.add("monthKey");
+        if (resourceId == null) missing.add("resourceId");
+        field(fields, "monthKey", "预算月份", "month", true);
+        entityField(fields, "resourceId", "预算", true,
+                monthKey == null ? mapper.createArrayNode() : budgetOptions(books.budgets(bookId, monthKey)));
+    }
+
     private void addDeleteFields(ArrayNode fields, ObjectNode normalized) {
         if (fields.isEmpty()) {
             if (mode.book()) entityField(fields, "bookId", "账本", true, bookOptions(books.books()));
@@ -264,6 +412,17 @@ final class LedgerManagementPrepareTool implements DomainTool {
         preview.put("operation", mode.actionLabel());
         if (before != null) preview.set("before", mapper.valueToTree(before));
         preview.set("after", normalized.deepCopy());
+        if (mode.budget()) {
+            ObjectNode budget = mode.delete() && before != null
+                    ? (ObjectNode) mapper.valueToTree(before) : normalized.deepCopy();
+            preview.put("monthKey", budget.path("monthKey").asText(null));
+            preview.put("scope", budget.path("scope").asText(null));
+            preview.put("categoryName", budget.path("categoryName").asText(
+                    before instanceof Budget value ? value.category() : "月度总预算"));
+            if (budget.hasNonNull("budget")) preview.put("budget", budget.path("budget").decimalValue());
+            if (budget.hasNonNull("spent")) preview.put("spent", budget.path("spent").decimalValue());
+            if (budget.hasNonNull("usageRate")) preview.put("usageRate", budget.path("usageRate").decimalValue());
+        }
         return preview;
     }
 
@@ -271,7 +430,8 @@ final class LedgerManagementPrepareTool implements DomainTool {
         JsonNode source = mapper.valueToTree(before);
         ArrayNode diff = mapper.createArrayNode();
         normalized.fields().forEachRemaining(entry -> {
-            if (entry.getKey().equals("bookId") || entry.getKey().equals("resourceId")) return;
+            if (Set.of("bookId", "resourceId", "categoryName", "scope", "spent", "usageRate")
+                    .contains(entry.getKey())) return;
             String left = source.path(entry.getKey()).isMissingNode() || source.path(entry.getKey()).isNull()
                     ? "" : source.path(entry.getKey()).asText();
             String right = entry.getValue().isNull() ? "" : entry.getValue().asText();
@@ -281,7 +441,7 @@ final class LedgerManagementPrepareTool implements DomainTool {
         return diff;
     }
 
-    private ArrayNode deleteEffects(Object before) {
+    private ArrayNode deleteEffects(Object before, ObjectNode normalized) {
         ArrayNode effects = mapper.createArrayNode();
         if (before instanceof Book book) {
             effects.add("账本包含 " + book.transactionCount() + " 笔流水和 " + book.memberCount() + " 名成员")
@@ -292,6 +452,14 @@ final class LedgerManagementPrepareTool implements DomainTool {
         } else if (before instanceof Category category) {
             effects.add(category.parentId() == null ? "一级分类删除前必须先处理其二级分类" : "该二级分类将停止用于新流水")
                     .add("删除采用软删除，历史流水、审计和回收站记录仍保留");
+        } else if (before instanceof NamedResource resource) {
+            long usage = books.namedResourceUsageCount(normalized.path("bookId").asText(),
+                    mode.namedResourceType(), resource.id());
+            effects.add("当前有 " + usage + " 笔有效流水关联该" + mode.resourceLabel())
+                    .add("删除采用软删除，历史流水中的关联信息和审计记录仍保留");
+        } else if (before instanceof Budget budget) {
+            effects.add("将删除 " + budget.monthKey() + " 的" + budget.category() + "，当前已使用 " + budget.spent())
+                    .add("删除采用软删除，不会删除任何流水");
         }
         effects.add("提交前会再次校验 revision，数据已变化时不会覆盖");
         return effects;
@@ -300,10 +468,14 @@ final class LedgerManagementPrepareTool implements DomainTool {
     private Book findBook(List<Book> values, String id) { return values.stream().filter(v -> v.id().equals(id)).findFirst().orElseThrow(() -> new IllegalArgumentException("账本不存在或无权访问")); }
     private Account findAccount(List<Account> values, String id) { return values.stream().filter(v -> v.id().equals(id)).findFirst().orElseThrow(() -> new IllegalArgumentException("账户不存在")); }
     private Category findCategory(List<Category> values, String id) { return values.stream().filter(v -> v.id().equals(id)).findFirst().orElseThrow(() -> new IllegalArgumentException("分类不存在")); }
+    private NamedResource findNamedResource(List<NamedResource> values, String id) { return values.stream().filter(v -> v.id().equals(id)).findFirst().orElseThrow(() -> new IllegalArgumentException(mode.resourceLabel() + "不存在")); }
+    private Budget findBudget(List<Budget> values, String id) { return values.stream().filter(v -> v.id().equals(id)).findFirst().orElseThrow(() -> new IllegalArgumentException("预算不存在")); }
 
     private ArrayNode bookOptions(List<Book> values) { ArrayNode out = mapper.createArrayNode(); values.forEach(v -> out.addObject().put("value", v.id()).put("label", v.name()).put("description", v.currency())); return out; }
     private ArrayNode accountOptions(List<Account> values) { ArrayNode out = mapper.createArrayNode(); values.forEach(v -> out.addObject().put("value", v.id()).put("label", v.name()).put("description", v.accountType())); return out; }
     private ArrayNode categoryOptions(List<Category> values, boolean rootsOnly) { ArrayNode out = mapper.createArrayNode(); values.stream().filter(v -> !rootsOnly || v.parentId() == null).forEach(v -> out.addObject().put("value", v.id()).put("label", v.name()).put("description", v.kind().name()).put("kind", v.kind().name())); return out; }
+    private ArrayNode namedResourceOptions(List<NamedResource> values) { ArrayNode out = mapper.createArrayNode(); values.forEach(v -> out.addObject().put("value", v.id()).put("label", v.name()).put("description", v.note() == null ? "" : v.note())); return out; }
+    private ArrayNode budgetOptions(List<Budget> values) { ArrayNode out = mapper.createArrayNode(); values.forEach(v -> out.addObject().put("value", v.id()).put("label", v.category()).put("description", v.budget() + " · 已用 " + v.spent())); return out; }
 
     private void field(ArrayNode fields, String name, String label, String type, boolean required) { fields.addObject().put("name", name).put("label", label).put("type", type).put("required", required); }
     private void entityField(ArrayNode fields, String name, String label, boolean required, ArrayNode options) { ObjectNode field = fields.addObject(); field.put("name", name).put("label", label).put("type", "entity-picker").put("required", required); field.set("options", options); }
@@ -312,5 +484,8 @@ final class LedgerManagementPrepareTool implements DomainTool {
     private String value(JsonNode input, String name, String fallback) { String value = ToolInputs.optionalText(input, name); return value == null ? fallback : value; }
     private boolean bool(JsonNode input, String name, boolean fallback) { Boolean value = ToolInputs.optionalBoolean(input, name); return value == null ? fallback : value; }
     private java.math.BigDecimal decimal(JsonNode input, String name, String fallback) { var value = ToolInputs.optionalDecimal(input, name); return value == null ? new java.math.BigDecimal(fallback) : value; }
-    private String fieldLabel(String field) { return switch (field) { case "name" -> "名称"; case "currency" -> "币种"; case "archived" -> "归档"; case "icon" -> "图标"; case "accountType" -> "账户类型"; case "openingBalance" -> "初始余额"; case "hidden" -> "使用状态"; case "kind" -> "收支类型"; case "parentId" -> "父分类"; case "color" -> "颜色"; default -> field; }; }
+    private String nullable(ObjectNode values, String field) { JsonNode value = values.get(field); return value == null || value.isNull() || value.asText().isBlank() ? null : value.asText(); }
+    private String categoryLabel(List<Category> categories, String id) { if (id == null) return "月度总预算"; return categories.stream().filter(value -> value.id().equals(id)).findFirst().map(Category::name).orElseThrow(() -> new IllegalArgumentException("分类不存在")); }
+    private BigDecimal percentage(BigDecimal spent, BigDecimal budget) { return budget.signum() == 0 ? BigDecimal.ZERO : spent.multiply(BigDecimal.valueOf(100)).divide(budget, 2, java.math.RoundingMode.HALF_UP); }
+    private String fieldLabel(String field) { return switch (field) { case "name" -> "名称"; case "currency" -> "币种"; case "archived" -> "归档"; case "icon" -> "图标"; case "accountType" -> "账户类型"; case "openingBalance" -> "初始余额"; case "hidden" -> "使用状态"; case "kind" -> "收支类型"; case "parentId" -> "父分类"; case "color" -> "颜色"; case "note" -> "备注"; case "monthKey" -> "预算月份"; case "categoryId" -> "预算分类"; case "budget" -> "预算金额"; default -> field; }; }
 }

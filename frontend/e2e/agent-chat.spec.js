@@ -604,6 +604,76 @@ test('shows ledger management card and blocks chat commit for R4 book deletion',
   await expect(card.getByRole('button', { name: '确认删除' })).toHaveCount(0)
 })
 
+test('edits and confirms a category budget with usage details', async ({ page }) => {
+  const now = new Date().toISOString()
+  const fields = [
+    { name: 'monthKey', label: '预算月份', type: 'month', required: true },
+    { name: 'categoryId', label: '支出分类（留空为总预算）', type: 'entity-picker', required: false, options: [{ value: 'food', label: '餐饮', kind: 'EXPENSE' }] },
+    { name: 'budget', label: '预算金额', type: 'money', required: true },
+  ]
+  const makeAction = (id, budget) => ({
+    status: 'NEEDS_CONFIRMATION', summary: '请确认设置预算', actionId: id, expiresAt: now,
+    structuredContent: {
+      actionType: 'ledger.budget.upsert', fields,
+      input: { bookId: 'book-1', monthKey: '2026-10', categoryId: 'food', categoryName: '餐饮', scope: 'CATEGORY', budget, spent: 300, usageRate: Number((30000 / budget).toFixed(2)) },
+      preview: { resourceType: '预算', operation: '设置预算', monthKey: '2026-10', categoryName: '餐饮', budget, spent: 300, usageRate: Number((30000 / budget).toFixed(2)), after: { monthKey: '2026-10', categoryId: 'food', budget } },
+      diff: [{ label: '预算金额', before: '1500', after: String(budget) }],
+    },
+  })
+  const calls = []
+  await setupAgent(page, 'agent-budget-card', {
+    sessions: [{ id: 'session-1', title: '设置预算', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [{ id: 1, turnId: 'turn-budget', role: 'assistant', content: '已生成预算调整预览。', metadataJson: JSON.stringify({ ...response, actions: [makeAction('budget-1', 1500)] }), createdAt: now }],
+  })
+  for (const id of ['budget-1', 'budget-2']) await page.route(`**/api/v1/agent/actions/${id}`, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_CONFIRMATION' } }) }))
+  await page.route('**/api/v1/agent/actions/budget-1/answer', async route => {
+    const body = route.request().postDataJSON(); calls.push('answer')
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: makeAction('budget-2', body.budget) }) })
+  })
+  await page.route('**/api/v1/agent/actions/budget-2/approve', route => { calls.push('approve'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'APPROVED' } }) }) })
+  await page.route('**/api/v1/agent/actions/budget-2/commit', route => { calls.push('commit'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'COMPLETED', summary: '预算已保存', structuredContent: { id: 'budget-food' } } }) }) })
+  await page.goto('/')
+
+  const card = page.locator('.agent-action-card')
+  await expect(card).toContainText('已使用')
+  await expect(card).toContainText('20.00%')
+  await card.getByRole('button', { name: '返回编辑' }).click()
+  await page.getByLabel('预算金额').fill('1800')
+  await card.getByRole('button', { name: '生成预览' }).click()
+  await expect(card).toContainText('16.67%')
+  await card.getByRole('button', { name: '确认并保存' }).click()
+  await expect.poll(() => calls).toEqual(['answer', 'approve', 'commit'])
+  await expect(card.locator('.agent-action-result b')).toHaveText('预算已保存')
+})
+
+test('shows named resource delete impact and confirms through the controlled card', async ({ page }) => {
+  const now = new Date().toISOString()
+  const action = {
+    status: 'NEEDS_CONFIRMATION', summary: '请确认删除商家', actionId: 'merchant-delete-1', expiresAt: now,
+    structuredContent: {
+      actionType: 'ledger.merchant.delete', input: { bookId: 'book-1', resourceId: 'merchant-1' },
+      preview: { resourceType: '商家', operation: '删除商家', before: { id: 'merchant-1', name: '家乐福', icon: 'shop', note: '超市', hidden: false, revision: 3 }, after: { bookId: 'book-1', resourceId: 'merchant-1' } },
+      effects: ['当前有 12 笔有效流水关联该商家', '删除采用软删除，历史流水中的关联信息和审计记录仍保留'],
+    },
+  }
+  const calls = []
+  await setupAgent(page, 'agent-merchant-delete-card', {
+    sessions: [{ id: 'session-1', title: '删除商家', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [{ id: 1, turnId: 'turn-merchant-delete', role: 'assistant', content: '已生成删除影响预览。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now }],
+  })
+  await page.route('**/api/v1/agent/actions/merchant-delete-1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_CONFIRMATION' } }) }))
+  await page.route('**/api/v1/agent/actions/merchant-delete-1/approve', route => { calls.push('approve'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'APPROVED' } }) }) })
+  await page.route('**/api/v1/agent/actions/merchant-delete-1/commit', route => { calls.push('commit'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'COMPLETED', summary: '删除商家已完成', structuredContent: { id: 'merchant-1', deleted: true } } }) }) })
+  await page.goto('/')
+
+  const card = page.locator('.agent-action-card.destructive')
+  await expect(card).toContainText('家乐福')
+  await expect(card.getByLabel('操作影响')).toContainText('12 笔有效流水')
+  await card.getByRole('button', { name: '确认删除' }).click()
+  await expect.poll(() => calls).toEqual(['approve', 'commit'])
+  await expect(card.locator('.agent-action-result b')).toHaveText('删除商家已完成')
+})
+
 test('confirms multiple ledger actions independently from the batch summary', async ({ page }) => {
   const now = new Date().toISOString()
   const makeAction = (id, amount, note) => ({
