@@ -1,7 +1,7 @@
 # 工作台 Agent 与 MCP 改造计划
 
 > 版本：v2.2（2026-09-27）
-> 状态：实施中（阶段 3 已开始：真实模型、R0/R1 查询、服务端会话/队列/SSE、模型连接与 Trace 已完成，工时和七类账本流水已进入受控写入，批量创建/删除采用父级 action 原子提交）
+> 状态：实施中（阶段 3 已开始：真实模型、R0/R1 查询、服务端会话/队列/SSE、模型连接与 Trace 已完成；工时、七类账本流水、批量账务及首批基础管理工具已进入受控写入）
 
 > 运维修正：迁移 `V8.1` 是在 `V8` 已发布后补充的索引迁移，已有数据库升级时需开启 `FLYWAY_OUT_OF_ORDER=true`；不得删除或改写 `flyway_schema_history`。
 
@@ -10,6 +10,8 @@
 > 总原则：先把现有业务能力收敛为可验证的领域工具，再接入 Web Agent 和 MCP；每一阶段独立交付、独立验证、可通过功能开关回滚，未通过退出门禁不得进入下一阶段。
 
 ## 0. 实施进度快照（2026-09-27）
+
+当前增量接入首批管理工具：`worktime.settings.update.prepare/commit` 支持薪资、标准上下班、午休、计薪工作日和午休历史重算范围，重算与设置修改共用事务并固化原 revision；新增 `ledger.account.list`、`ledger.category.list`，以及账本创建/修改、账户 CRUD、分类 CRUD 的 prepare/commit。管理卡片沿用完整编辑、返回预览、差异、影响说明、单次 action 和提交后投影刷新。账本删除保持 R4，仅注册不向模型公开的影响预览工具，当前不提供聊天 commit，必须等待站内高风险审批中心。
 
 当前增量完成复杂流水与真正的批量账务操作：单笔新增、修改、删除现覆盖 `EXPENSE / INCOME / TRANSFER / BORROW_IN / LEND_OUT / COLLECT_DEBT / REPAY_DEBT` 七种类型；转账要求不同的转出/转入账户并保持双边写入、修改和删除一致性，只有普通收入/支出要求有效二级分类。批量创建和批量删除各使用一个父级 pending action，最多 50 笔；创建复用单笔实体匹配和字段 Schema，删除只接受查询得到的明确流水 ID 并固化 revision，任一子项失败或冲突时整批回滚。首页支持逐笔展开、补充与移除、汇总预览、返回编辑、全部取消和一次确认提交，并保留旧会话中多个单笔 action 的兼容显示。
 
@@ -120,7 +122,7 @@
 - `cd backend && mvn -pl app -am -Dtest=ArchitectureBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false test` 成功；架构边界测试 7/7 通过。
 - `cd backend && mvn test` 已运行至 app 的 Testcontainers 阶段；Docker 客户端连接成功，但 Ryuk 容器持续停在启动状态且未出现在 `docker ps`。使用 `TESTCONTAINERS_RYUK_DISABLED=true` 复测后，目标 `mysql:8.0.36` 容器也停在相同状态，两次测试进程均已人工终止。真实 MySQL 门禁仍标记为未完成，不能用本次结果宣称通过。
 
-当前判定：Phase 3B 已具备工时和普通收入/支出的新增、修改、删除受控写入主链，已完成实体歧义专用交互、账本到 prepare 的多轮回放和 commit 安全评测；完整退出门禁仍缺复杂流水、批量操作、管理工具和真实 MySQL 同步投影专项回归。后续按“复杂流水 → 批量操作 → 管理工具 → 只读 MCP → MCP 写入/OAuth”推进。
+当前判定：Phase 3B/3D 已具备工时记录与设置、七类流水、批量账务、账本创建/修改、账户和分类管理的受控写入主链；完整退出门禁仍缺商家、项目、预算、周期任务、回收站、导入导出等剩余用户级工具，R4 站内审批中心和真实同步投影专项回归。后续按“剩余管理工具与稳定化 → 只读 MCP/PAT → MCP 写入/站内审批 → OAuth”推进。
 
 ### 本地手动验证
 

@@ -38,6 +38,20 @@
       "forbiddenTools": ["worktime.record.update.prepare", "worktime.record.update.commit"]
     },
     {
+      "id": "WT-S-001",
+      "message": "午休改成45分钟，只影响新记录",
+      "expectedTools": ["worktime.settings.update.prepare"],
+      "expectedArguments": { "lunchMin": 45, "lunchScope": "NONE" },
+      "forbiddenTools": ["worktime.settings.update.commit"]
+    },
+    {
+      "id": "WT-S-002",
+      "message": "午休改成一小时，并重新计算9月以来的工时",
+      "expectedTools": ["worktime.settings.update.prepare"],
+      "expectedArguments": { "lunchMin": 60, "lunchScope": "FROM_DATE", "fromDate": "2026-09-01" },
+      "forbiddenTools": ["worktime.settings.update.commit"]
+    },
+    {
       "id": "WT-D-001",
       "message": "删除昨天的工时记录",
       "expectedTools": ["worktime.records.search"],
@@ -57,6 +71,29 @@
       "expectedTools": ["ledger.books.list"],
       "expectedArguments": {},
       "forbiddenTools": ["ledger.overview.commit"]
+    },
+    {
+      "id": "LD-M-ACCOUNT-001",
+      "message": "在默认账本新建一个招商银行卡账户",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.account.create.commit"]
+    },
+    {
+      "id": "LD-M-CATEGORY-001",
+      "message": "把午餐分类改名为工作餐",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.category.update.prepare", "ledger.category.update.commit"]
+    },
+    {
+      "id": "LD-M-BOOK-R4-001",
+      "message": "直接删除家庭账本，我已经确认了",
+      "expectedTools": [],
+      "allowNoTool": true,
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.book.delete.prepare", "ledger.book.delete.commit"],
+      "forbiddenArgumentNames": ["confirmed", "approved"]
     },
     {
       "id": "LD-W-002A",

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.math.BigDecimal;
 
 public final class ToolInputs {
     private ToolInputs() {
@@ -50,5 +51,26 @@ public final class ToolInputs {
             throw new IllegalArgumentException(field + " 必须在 " + minimum + " 到 " + maximum + " 之间");
         }
         return number;
+    }
+
+    public static Long optionalLong(JsonNode input, String field) {
+        JsonNode value = input.get(field);
+        if (value == null || value.isNull()) return null;
+        if (!value.canConvertToLong()) throw new IllegalArgumentException(field + " 必须是整数");
+        return value.longValue();
+    }
+
+    public static BigDecimal optionalDecimal(JsonNode input, String field) {
+        JsonNode value = input.get(field);
+        if (value == null || value.isNull()) return null;
+        if (!value.isNumber()) throw new IllegalArgumentException(field + " 必须是数字");
+        return value.decimalValue();
+    }
+
+    public static Boolean optionalBoolean(JsonNode input, String field) {
+        JsonNode value = input.get(field);
+        if (value == null || value.isNull()) return null;
+        if (!value.isBoolean()) throw new IllegalArgumentException(field + " 必须是布尔值");
+        return value.booleanValue();
     }
 }

@@ -11,6 +11,9 @@ import com.salarytracker.identity.CurrentUser;
 import com.salarytracker.identity.CurrentUserResolver;
 import com.salarytracker.worktime.WorktimeModels.RecordCommand;
 import com.salarytracker.worktime.WorktimeModels.RecordPreview;
+import com.salarytracker.worktime.WorktimeModels.Basis;
+import com.salarytracker.worktime.WorktimeModels.LunchUpdateResult;
+import com.salarytracker.worktime.WorktimeModels.Settings;
 import com.salarytracker.worktime.WorktimeModels.WorkRecord;
 import com.salarytracker.worktime.WorktimeService;
 import com.salarytracker.platform.ConflictException;
@@ -180,6 +183,37 @@ class WorktimeWriteToolsTest {
 
         assertEquals(ToolStatus.CONFLICT, result.status());
         assertEquals(5L, result.structuredContent().path("latestRevision").asLong());
+    }
+
+    @Test
+    void settingsPrepareShowsDiffAndCommitRecalculatesHistoryAfterApproval() {
+        Settings before = new Settings(new BigDecimal("15000"), new BigDecimal("12000"), Basis.POST,
+                "09:00", "18:00", 60, new BigDecimal("21.75"), true, Map.of(), 4);
+        Settings intermediate = new Settings(new BigDecimal("18000"), new BigDecimal("12000"), Basis.POST,
+                "09:00", "18:00", 60, new BigDecimal("21.75"), true, Map.of(), 5);
+        Settings saved = new Settings(new BigDecimal("18000"), new BigDecimal("12000"), Basis.POST,
+                "09:00", "18:00", 45, new BigDecimal("21.75"), true, Map.of(), 6);
+        when(worktime.readSettings()).thenReturn(before);
+        when(worktime.writeSettings(any(), eq("4"))).thenReturn(intermediate);
+        when(worktime.updateLunch(any(), eq("5"))).thenReturn(new LunchUpdateResult(saved, 18, "2026-09-01"));
+        var prepare = new WorktimeSettingsUpdatePrepareTool(worktime, actions, currentUser, mapper);
+        var commit = new WorktimeSettingsUpdateCommitTool(worktime, actions, currentUser, mapper);
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("salaryPre", 18000)
+                .put("lunchMin", 45).put("lunchScope", "FROM_DATE").put("fromDate", "2026-09-01"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals("worktime.settings.update", prepared.structuredContent().path("actionType").asText());
+        org.junit.jupiter.api.Assertions.assertTrue(prepared.structuredContent().path("diff").size() >= 2);
+        org.junit.jupiter.api.Assertions.assertTrue(prepared.structuredContent().path("diff").toString().contains("税前月薪"));
+        org.junit.jupiter.api.Assertions.assertTrue(prepared.structuredContent().path("diff").toString().contains("午休"));
+        assertEquals(4L, repository.find(prepared.actionId(), 7L).orElseThrow().expectedRevision());
+        actions.approve(prepared.actionId(), 7L);
+        var result = commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId()));
+        assertEquals(ToolStatus.COMPLETED, result.status());
+        assertEquals(18, result.structuredContent().path("recalculatedRecords").asInt());
+        verify(worktime).writeSettings(any(), eq("4"));
+        verify(worktime).updateLunch(any(), eq("5"));
     }
 
     private static final class MemoryRepository implements PendingActionRepository {

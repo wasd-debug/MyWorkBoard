@@ -61,6 +61,7 @@ class LedgerWriteToolsTest {
                         BigDecimal.ZERO, false, 1, "2026-09-01"),
                 new Account("account-2", "中行卡", "bank-boc", "BANK", "CNY", BigDecimal.ZERO,
                         BigDecimal.ZERO, false, 1, "2026-09-01")));
+        when(books.accounts("book-1", true)).thenAnswer(invocation -> books.accounts("book-1", false));
         when(books.categories("book-1", false)).thenReturn(List.of(
                 new Category("parent-1", "餐饮", "tag", CategoryKind.EXPENSE, null,
                         "#fff", false, 1, "2026-09-01"),
@@ -70,6 +71,7 @@ class LedgerWriteToolsTest {
                         "#fff", false, 1, "2026-09-01"),
                 new Category("category-2", "软件", "tag", CategoryKind.EXPENSE, "parent-2",
                         "#fff", false, 1, "2026-09-01")));
+        when(books.categories("book-1", true)).thenAnswer(invocation -> books.categories("book-1", false));
         when(books.merchants("book-1", false)).thenReturn(List.of(
                 new NamedResource("merchant-1", "中转站", "shop", null, null, false, 1, "2026-09-01")));
         when(books.projects("book-1", false)).thenReturn(List.of(
@@ -489,6 +491,60 @@ class LedgerWriteToolsTest {
         assertEquals(ToolStatus.COMPLETED, commit.execute(input).status());
         assertThrows(IllegalStateException.class, () -> commit.execute(input));
         verify(transactions).create(eq("book-1"), any(), eq(prepared.actionId()));
+    }
+
+    @Test
+    void accountCreatePrepareUsesBookDefaultsAndCommitCallsExistingDomainService() {
+        var prepare = new LedgerManagementPrepareTool(LedgerManagementToolMode.ACCOUNT_CREATE,
+                books, actions, currentUser, mapper);
+        var commit = new LedgerManagementCommitTool(LedgerManagementToolMode.ACCOUNT_CREATE,
+                books, actions, currentUser, mapper);
+        when(books.createAccount(eq("book-1"), any(), any())).thenReturn(
+                new Account("account-new", "招商银行卡", "bank-card", "bank", "CNY",
+                        BigDecimal.ZERO, BigDecimal.ZERO, false, 1, "2026-09-27"));
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("name", "招商银行卡").put("accountType", "bank"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals("CNY", prepared.structuredContent().path("input").path("currency").asText());
+        assertEquals(6, prepared.structuredContent().path("fields").size());
+        actions.approve(prepared.actionId(), 7L);
+        assertEquals(ToolStatus.COMPLETED,
+                commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())).status());
+        verify(books).createAccount(eq("book-1"), org.mockito.ArgumentMatchers.argThat(command ->
+                "招商银行卡".equals(command.name()) && "bank".equals(command.accountType())), eq(prepared.actionId()));
+    }
+
+    @Test
+    void categoryUpdateFreezesRevisionAndDeleteShowsSoftDeleteEffects() {
+        var update = new LedgerManagementPrepareTool(LedgerManagementToolMode.CATEGORY_UPDATE,
+                books, actions, currentUser, mapper);
+        var prepared = update.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("resourceId", "category-1").put("name", "工作餐"));
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals(1L, repository.find(prepared.actionId(), 7L).orElseThrow().expectedRevision());
+        assertTrue(prepared.structuredContent().path("diff").toString().contains("工作餐"));
+
+        var delete = new LedgerManagementPrepareTool(LedgerManagementToolMode.CATEGORY_DELETE,
+                books, actions, currentUser, mapper);
+        var deleting = delete.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("resourceId", "category-1"));
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, deleting.status());
+        assertTrue(deleting.structuredContent().path("effects").toString().contains("软删除"));
+    }
+
+    @Test
+    void bookDeleteOnlyBuildsR4PreviewWithoutCommitTool() {
+        var prepare = new LedgerManagementPrepareTool(LedgerManagementToolMode.BOOK_DELETE,
+                books, actions, currentUser, mapper);
+        var result = prepare.execute(mapper.createObjectNode().put("bookId", "book-1"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, result.status());
+        assertEquals(com.salarytracker.ai.tool.ToolRisk.R4, prepare.definition().riskLevel());
+        assertTrue(result.structuredContent().path("webApprovalRequired").asBoolean());
+        assertEquals(false, result.structuredContent().path("commitAvailable").asBoolean());
+        verify(books, never()).deleteBook(any(), any());
     }
 
     private Transaction transaction(long revision, BigDecimal amount, String note) {

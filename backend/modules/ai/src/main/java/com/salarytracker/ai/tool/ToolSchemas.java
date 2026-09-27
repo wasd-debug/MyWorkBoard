@@ -40,6 +40,20 @@ public final class ToolSchemas {
         property.put("exclusiveMinimum", minimum);
     }
 
+    public static void booleanProperty(ObjectNode schema, String name, String description) {
+        ObjectNode property = properties(schema).putObject(name);
+        property.put("type", "boolean");
+        property.put("description", description);
+    }
+
+    public static void enumProperty(ObjectNode schema, String name, String description, String... values) {
+        ObjectNode property = properties(schema).putObject(name);
+        property.put("type", "string");
+        property.put("description", description);
+        var options = property.putArray("enum");
+        for (String value : values) options.add(value);
+    }
+
     public static ObjectNode arrayProperty(ObjectNode schema, String name, String description,
                                            JsonNode itemSchema, int minimum, int maximum) {
         ObjectNode property = properties(schema).putObject(name);

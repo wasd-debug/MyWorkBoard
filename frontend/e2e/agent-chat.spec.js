@@ -536,6 +536,74 @@ test('can cancel a worktime deletion without calling approve or commit', async (
   await expect(card).toContainText('已取消，本次未写入任何数据')
 })
 
+test('edits and confirms worktime settings with history recalculation', async ({ page }) => {
+  const now = new Date().toISOString()
+  const fields = [
+    { name: 'salaryPre', label: '税前月薪', type: 'money', required: false },
+    { name: 'workStart', label: '标准上班时间', type: 'time', required: true },
+    { name: 'workEnd', label: '标准下班时间', type: 'time', required: true },
+    { name: 'lunchMin', label: '午休（分钟）', type: 'number', required: true },
+    { name: 'lunchScope', label: '历史工时处理', type: 'select', required: true, options: [{ value: 'NONE', label: '仅影响新记录' }, { value: 'ALL', label: '重算全部历史' }, { value: 'FROM_DATE', label: '从指定日期重算' }] },
+    { name: 'fromDate', label: '重算起始日期', type: 'date', required: false },
+  ]
+  const makeAction = (id, input) => ({
+    status: 'NEEDS_CONFIRMATION', summary: '请确认修改设置并重算历史工时', actionId: id, expiresAt: now,
+    structuredContent: {
+      actionType: 'worktime.settings.update', fields, input, preview: input,
+      diff: [{ label: '税前月薪', before: '15000', after: String(input.salaryPre) }, { label: '午休', before: '60', after: String(input.lunchMin) }],
+      effects: ['将重新计算范围内工时记录的午休快照、加班分钟和实际时薪'],
+    },
+  })
+  const action = makeAction('settings-1', { salaryPre: 18000, workStart: '09:00', workEnd: '18:00', lunchMin: 45, lunchScope: 'FROM_DATE', fromDate: '2026-09-01' })
+  const calls = []
+  await setupAgent(page, 'agent-settings-card', {
+    sessions: [{ id: 'session-1', title: '工时设置', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [{ id: 1, turnId: 'turn-settings', role: 'assistant', content: '已生成设置修改预览。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now }],
+  })
+  for (const id of ['settings-1', 'settings-2']) await page.route(`**/api/v1/agent/actions/${id}`, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_CONFIRMATION' } }) }))
+  await page.route('**/api/v1/agent/actions/settings-1/answer', async route => {
+    const body = route.request().postDataJSON(); calls.push('answer')
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: makeAction('settings-2', body) }) })
+  })
+  await page.route('**/api/v1/agent/actions/settings-2/approve', route => { calls.push('approve'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'APPROVED' } }) }) })
+  await page.route('**/api/v1/agent/actions/settings-2/commit', route => { calls.push('commit'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'COMPLETED', summary: '工时设置已更新', structuredContent: { recalculatedRecords: 18 } } }) }) })
+  await page.goto('/')
+
+  const card = page.locator('.agent-action-card')
+  await expect(card).toContainText('从 2026-09-01 重算')
+  await expect(card.getByLabel('操作影响')).toContainText('实际时薪')
+  await card.getByRole('button', { name: '返回编辑' }).click()
+  await page.getByLabel('午休（分钟）').fill('50')
+  await card.getByRole('button', { name: '生成预览' }).click()
+  await card.getByRole('button', { name: '确认并保存' }).click()
+  await expect.poll(() => calls).toEqual(['answer', 'approve', 'commit'])
+  await expect(card.locator('.agent-action-result b')).toHaveText('工时设置已更新')
+})
+
+test('shows ledger management card and blocks chat commit for R4 book deletion', async ({ page }) => {
+  const now = new Date().toISOString()
+  const action = {
+    status: 'NEEDS_CONFIRMATION', summary: '账本删除属于高风险操作，当前仅生成影响预览', actionId: 'book-delete-1', expiresAt: now,
+    structuredContent: {
+      actionType: 'ledger.book.delete', input: { bookId: 'book-1' }, webApprovalRequired: true, commitAvailable: false,
+      preview: { resourceType: '账本', operation: '删除账本', before: { id: 'book-1', name: '家庭账本', currency: 'CNY', revision: 4, memberCount: 2, transactionCount: 36 }, after: { bookId: 'book-1' } },
+      effects: ['账本包含 36 笔流水和 2 名成员', '当前增量不会执行账本删除，需等待站内高风险审批中心'],
+    },
+  }
+  await setupAgent(page, 'agent-book-delete-r4', {
+    sessions: [{ id: 'session-1', title: '删除账本', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [{ id: 1, turnId: 'turn-book-delete', role: 'assistant', content: '只能先查看影响。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now }],
+  })
+  await page.route('**/api/v1/agent/actions/book-delete-1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_CONFIRMATION' } }) }))
+  await page.goto('/')
+
+  const card = page.locator('.agent-action-card.destructive')
+  await expect(card).toContainText('家庭账本')
+  await expect(card.getByLabel('操作影响')).toContainText('36 笔流水')
+  await expect(card.getByRole('button', { name: '需要站内高风险审批' })).toBeDisabled()
+  await expect(card.getByRole('button', { name: '确认删除' })).toHaveCount(0)
+})
+
 test('confirms multiple ledger actions independently from the batch summary', async ({ page }) => {
   const now = new Date().toISOString()
   const makeAction = (id, amount, note) => ({

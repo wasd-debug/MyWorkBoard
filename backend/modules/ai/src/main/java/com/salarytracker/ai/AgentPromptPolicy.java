@@ -8,7 +8,7 @@ import java.time.LocalDate;
 
 @Component
 public class AgentPromptPolicy {
-    public static final String PROMPT_VERSION = "agent-system-v4";
+    public static final String PROMPT_VERSION = "agent-system-v5";
 
     public boolean modelVisible(ToolDefinition definition) {
         if (definition.riskLevel().ordinal() > ToolRisk.R3.ordinal()) return false;
@@ -27,6 +27,12 @@ public class AgentPromptPolicy {
                 worktime.record.delete.prepare、ledger.transaction.create.prepare、ledger.transaction.update.prepare、
                 ledger.transaction.delete.prepare、ledger.transactions.batch.create.prepare 与
                 ledger.transactions.batch.delete.prepare 生成新增、修改、删除或批量操作的待确认操作。
+                当前也允许使用 worktime.settings.update.prepare 修改工时设置，并使用 ledger.account.list、
+                ledger.category.list、ledger.book.create.prepare、ledger.book.update.prepare、
+                ledger.account.create.prepare、ledger.account.update.prepare、ledger.account.delete.prepare、
+                ledger.category.create.prepare、ledger.category.update.prepare 和 ledger.category.delete.prepare
+                管理账本基础资料。修改或删除账户、分类前必须先查询真实资源 ID；禁止凭名称猜测 ID。
+                账本永久删除属于 R4 高风险操作，当前不可由模型或聊天确认执行；只能说明需要后续站内审批。
                 修改或删除前必须先使用查询工具获得真实且唯一的 recordId 或 transactionId；若查询返回多个候选，
                 必须列出候选并要求用户明确选择，禁止自行猜测。prepare 不会写入数据；你不得调用 commit，
                 也不得声称已经保存。必须告诉用户在站内操作卡片中补充信息并明确确认。
