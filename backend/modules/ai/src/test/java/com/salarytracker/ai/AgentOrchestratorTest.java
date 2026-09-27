@@ -46,11 +46,17 @@ class AgentOrchestratorTest {
         when(tools.invoke(org.mockito.ArgumentMatchers.eq("ledger.books.list"), any()))
                 .thenReturn(ToolResult.completed("找到一个账本", mapper.createArrayNode().addObject().put("name", "日常账本")));
         when(model.agentTurn(any(), any()))
-                .thenReturn(new LlmGateway.AgentTurn("", List.of(
+                .thenReturn(new LlmGateway.AgentTurn("", "先查询用户可见账本", List.of(
                                 new LlmGateway.AgentToolCall("call-1", "ledger__books__list", "{}")),
                                 "deepseek", true))
-                .thenReturn(new LlmGateway.AgentTurn("你有一个账本：**日常账本**。", List.of(),
-                        "deepseek", true));
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    List<LlmGateway.AgentMessage> messages = invocation.getArgument(0);
+                    assertEquals("先查询用户可见账本",
+                            messages.get(messages.size() - 2).reasoningContent());
+                    return new LlmGateway.AgentTurn("你有一个账本：**日常账本**。", List.of(),
+                            "deepseek", true);
+                });
 
         LlmGateway.ChatResponse response = orchestrator().chat("我有哪些账本？");
 
@@ -179,8 +185,17 @@ class AgentOrchestratorTest {
         when(tools.invoke(org.mockito.ArgumentMatchers.eq("ledger.books.list"), any()))
                 .thenReturn(ToolResult.completed("ok", mapper.createObjectNode()));
         when(model.agentTurnStreaming(any(), any(), any()))
-                .thenReturn(new LlmGateway.AgentTurn("", calls, "deepseek", true))
-                .thenReturn(new LlmGateway.AgentTurn("流式查询完成。", List.of(), "deepseek", true));
+                .thenReturn(new LlmGateway.AgentTurn("", "逐项查询账本", calls, "deepseek", true))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    List<LlmGateway.AgentMessage> messages = invocation.getArgument(0);
+                    LlmGateway.AgentMessage assistant = messages.stream()
+                            .filter(item -> "assistant".equals(item.role()))
+                            .findFirst()
+                            .orElseThrow();
+                    assertEquals("逐项查询账本", assistant.reasoningContent());
+                    return new LlmGateway.AgentTurn("流式查询完成。", List.of(), "deepseek", true);
+                });
         AgentOrchestrator.StreamListener listener = mock(AgentOrchestrator.StreamListener.class);
 
         LlmGateway.ChatResponse response = orchestrator().chatStreaming("session-1", "查询多个账本信息", listener);

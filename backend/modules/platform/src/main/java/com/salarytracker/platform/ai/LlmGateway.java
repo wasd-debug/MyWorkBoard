@@ -107,6 +107,7 @@ public class LlmGateway {
                         call.path("function").path("arguments").asText("{}")));
             }
             String rawContent = message.path("content").asText("");
+            String reasoningContent = message.path("reasoning_content").asText(null);
             ParsedContent parsed = parseContent(rawContent, calls);
             JsonNode usage = mapper.readTree(body).path("usage");
             TokenUsage tokenUsage = new TokenUsage(
@@ -117,7 +118,7 @@ public class LlmGateway {
                     usage.path("prompt_cache_miss_tokens").asLong(0),
                     usage.path("completion_tokens_details").path("reasoning_tokens").asLong(0));
             return new AgentTurn(parsed.content(), parsed.toolCalls(), endpoint, true,
-                    tokenUsage, 0, 0);
+                    tokenUsage, 0, 0, reasoningContent);
         } catch (Exception exception) {
             throw new IllegalStateException("DeepSeek 返回了无法解析的 Agent 响应", exception);
         }
@@ -141,6 +142,7 @@ public class LlmGateway {
         long startedAt = System.nanoTime();
         long firstTokenMs = 0;
         StringBuilder content = new StringBuilder();
+        StringBuilder reasoningContent = new StringBuilder();
         StreamingContentFilter contentFilter = new StreamingContentFilter(contentConsumer);
         Map<Integer, ToolCallBuilder> calls = new LinkedHashMap<>();
         TokenUsage usage = TokenUsage.empty();
@@ -166,6 +168,8 @@ public class LlmGateway {
                     JsonNode usageNode = chunk.path("usage");
                     if (!usageNode.isMissingNode() && !usageNode.isNull()) usage = tokenUsage(usageNode);
                     JsonNode delta = chunk.path("choices").path(0).path("delta");
+                    String reasoningPart = delta.path("reasoning_content").asText("");
+                    if (!reasoningPart.isEmpty()) reasoningContent.append(reasoningPart);
                     String part = delta.path("content").asText("");
                     if (!part.isEmpty()) {
                         if (firstTokenMs == 0) firstTokenMs = elapsedMs(startedAt);
@@ -186,7 +190,8 @@ public class LlmGateway {
             ParsedContent parsed = parseContent(content.toString(), providerCalls);
             contentFilter.finish();
             return new AgentTurn(parsed.content(), parsed.toolCalls(), config.endpoint(), true, usage,
-                    elapsedMs(startedAt), firstTokenMs);
+                    elapsedMs(startedAt), firstTokenMs,
+                    reasoningContent.isEmpty() ? null : reasoningContent.toString());
         } catch (IllegalStateException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -381,25 +386,30 @@ public class LlmGateway {
             String role,
             String content,
             @JsonProperty("tool_call_id") String toolCallId,
-            @JsonProperty("tool_calls") List<ProviderToolCall> toolCalls) {
+            @JsonProperty("tool_calls") List<ProviderToolCall> toolCalls,
+            @JsonProperty("reasoning_content") String reasoningContent) {
         public static AgentMessage system(String content) {
-            return new AgentMessage("system", content, null, null);
+            return new AgentMessage("system", content, null, null, null);
         }
 
         public static AgentMessage user(String content) {
-            return new AgentMessage("user", content, null, null);
+            return new AgentMessage("user", content, null, null, null);
         }
 
         public static AgentMessage assistant(String content, List<AgentToolCall> calls) {
+            return assistant(content, null, calls);
+        }
+
+        public static AgentMessage assistant(String content, String reasoningContent, List<AgentToolCall> calls) {
             List<ProviderToolCall> providerCalls = calls == null || calls.isEmpty() ? null : calls.stream()
                     .map(call -> new ProviderToolCall(call.id(), "function",
                             new ProviderFunctionCall(call.name(), call.arguments())))
                     .toList();
-            return new AgentMessage("assistant", content, null, providerCalls);
+            return new AgentMessage("assistant", content, null, providerCalls, reasoningContent);
         }
 
         public static AgentMessage tool(String callId, String content) {
-            return new AgentMessage("tool", content, callId, null);
+            return new AgentMessage("tool", content, callId, null, null);
         }
     }
 
@@ -416,14 +426,19 @@ public class LlmGateway {
     }
 
     public record AgentTurn(String content, List<AgentToolCall> toolCalls, String provider, boolean configured,
-                            TokenUsage usage, long durationMs, long firstTokenMs) {
+                            TokenUsage usage, long durationMs, long firstTokenMs, String reasoningContent) {
         public AgentTurn(String content, List<AgentToolCall> toolCalls, String provider, boolean configured) {
-            this(content, toolCalls, provider, configured, TokenUsage.empty(), 0, 0);
+            this(content, toolCalls, provider, configured, TokenUsage.empty(), 0, 0, null);
+        }
+
+        public AgentTurn(String content, String reasoningContent, List<AgentToolCall> toolCalls,
+                         String provider, boolean configured) {
+            this(content, toolCalls, provider, configured, TokenUsage.empty(), 0, 0, reasoningContent);
         }
 
         public AgentTurn(String content, List<AgentToolCall> toolCalls, String provider, boolean configured,
                          TokenUsage usage) {
-            this(content, toolCalls, provider, configured, usage, 0, 0);
+            this(content, toolCalls, provider, configured, usage, 0, 0, null);
         }
     }
 

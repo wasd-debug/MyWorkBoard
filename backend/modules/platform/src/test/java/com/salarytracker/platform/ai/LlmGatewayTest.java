@@ -33,7 +33,7 @@ class LlmGatewayTest {
         server.createContext("/chat", exchange -> {
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             byte[] response = """
-                    {"choices":[{"message":{"role":"assistant","content":"","tool_calls":[
+                    {"choices":[{"message":{"role":"assistant","content":"","reasoning_content":"先查询账本概览","tool_calls":[
                       {"id":"call-2","type":"function","function":{"name":"ledger__overview","arguments":"{\\"bookId\\":\\"book-1\\"}"}}
                     ]}}],"usage":{"prompt_tokens":120,"completion_tokens":8,"total_tokens":128,
                     "prompt_cache_hit_tokens":80,"prompt_cache_miss_tokens":40}}
@@ -50,7 +50,7 @@ class LlmGatewayTest {
         List<LlmGateway.AgentMessage> messages = List.of(
                 LlmGateway.AgentMessage.system("只读"),
                 LlmGateway.AgentMessage.user("查看概览"),
-                LlmGateway.AgentMessage.assistant("", List.of(
+                LlmGateway.AgentMessage.assistant("", "先列出可访问账本", List.of(
                         new LlmGateway.AgentToolCall("call-1", "ledger__books__list", "{}"))),
                 LlmGateway.AgentMessage.tool("call-1", "{\"status\":\"completed\"}"));
         JsonNode parameters = mapper.readTree("{\"type\":\"object\",\"properties\":{}}");
@@ -63,11 +63,14 @@ class LlmGatewayTest {
         assertEquals("auto", sent.path("tool_choice").asText());
         assertEquals("ledger__overview", sent.path("tools").path(0).path("function").path("name").asText());
         assertEquals("call-1", sent.path("messages").path(2).path("tool_calls").path(0).path("id").asText());
+        assertEquals("先列出可访问账本",
+                sent.path("messages").path(2).path("reasoning_content").asText());
         assertEquals("call-1", sent.path("messages").path(3).path("tool_call_id").asText());
         assertTrue(sent.path("messages").path(3).path("tool_calls").isMissingNode());
         assertEquals("call-2", turn.toolCalls().get(0).id());
         assertEquals("ledger__overview", turn.toolCalls().get(0).name());
         assertEquals("{\"bookId\":\"book-1\"}", turn.toolCalls().get(0).arguments());
+        assertEquals("先查询账本概览", turn.reasoningContent());
         assertEquals(120, turn.usage().inputTokens());
         assertEquals(8, turn.usage().outputTokens());
         assertEquals(80, turn.usage().cacheHitTokens());
@@ -179,7 +182,8 @@ class LlmGatewayTest {
     void streamsTextToolArgumentsAndUsage() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/chat", exchange -> {
-            byte[] response = ("data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\n"
+            byte[] response = ("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"先分析\"}}]}\n\n"
+                    + "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\n"
                     + "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",\"function\":{\"name\":\"ledger__overview\",\"arguments\":\"{\\\"bookId\\\":\"}}]}}]}\n\n"
                     + "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"book-1\\\"}\"}}]}}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":4,\"total_tokens\":14,\"prompt_cache_hit_tokens\":6,\"prompt_cache_miss_tokens\":4,\"completion_tokens_details\":{\"reasoning_tokens\":2}}}\n\n"
                     + "data: [DONE]\n\n").getBytes(StandardCharsets.UTF_8);
@@ -200,6 +204,7 @@ class LlmGatewayTest {
         assertEquals("你好", turn.content());
         assertEquals("ledger__overview", turn.toolCalls().get(0).name());
         assertEquals("{\"bookId\":\"book-1\"}", turn.toolCalls().get(0).arguments());
+        assertEquals("先分析", turn.reasoningContent());
         assertEquals(14, turn.usage().totalTokens());
         assertEquals(2, turn.usage().reasoningTokens());
         assertTrue(turn.durationMs() >= 0);

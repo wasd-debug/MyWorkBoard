@@ -107,7 +107,8 @@ public class AgentOrchestrator {
                         turn.provider(), true, usage, modelExecutions, executions, actionRequests, startedAt, 0);
             }
 
-            messages.add(LlmGateway.AgentMessage.assistant(turn.content(), turn.toolCalls()));
+            messages.add(LlmGateway.AgentMessage.assistant(
+                    turn.content(), turn.reasoningContent(), turn.toolCalls()));
             for (LlmGateway.AgentToolCall call : turn.toolCalls()) {
                 long toolStartedAt = System.nanoTime();
                 ToolResult result;
@@ -197,7 +198,8 @@ public class AgentOrchestrator {
                 listener.delta(finalContent);
                 break;
             }
-            messages.add(LlmGateway.AgentMessage.assistant(turn.content(), turn.toolCalls()));
+            messages.add(LlmGateway.AgentMessage.assistant(
+                    turn.content(), turn.reasoningContent(), turn.toolCalls()));
             for (LlmGateway.AgentToolCall call : turn.toolCalls()) {
                 long toolStartedAt = System.nanoTime();
                 ToolDefinition definition = exposed.get(call.name());
