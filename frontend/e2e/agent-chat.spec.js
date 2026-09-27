@@ -674,6 +674,64 @@ test('shows named resource delete impact and confirms through the controlled car
   await expect(card.locator('.agent-action-result b')).toHaveText('删除商家已完成')
 })
 
+test('shows a complete recurring transaction preview and confirms creation', async ({ page }) => {
+  const now = new Date().toISOString()
+  const action = {
+    status: 'NEEDS_CONFIRMATION', summary: '请确认创建周期任务', actionId: 'schedule-create-1', expiresAt: now,
+    structuredContent: {
+      actionType: 'ledger.schedule.create',
+      input: { bookId: 'book-1', name: '每月房租', enabled: true, scheduleMode: 'CALENDAR', frequency: 'MONTHLY', intervalValue: 1, startOn: '2026-10-01', monthlyMode: 'DAY_OF_MONTH', dayOfMonth: 1, kind: 'EXPENSE', amount: 3500, accountId: 'boc', categoryId: 'rent', memberId: 'me', note: '房租' },
+      fields: [{ name: 'name', label: '任务名称', type: 'text', required: true }],
+      preview: { operation: '创建周期任务', after: { name: '每月房租', enabled: true, scheduleMode: 'CALENDAR', frequency: 'MONTHLY', intervalValue: 1, startOn: '2026-10-01', nextRunOn: '2026-10-01', monthlyMode: 'DAY_OF_MONTH', dayOfMonth: 1, kind: 'EXPENSE', amount: 3500, accountName: '中行卡', categoryName: '住房 / 房租', memberName: '我', note: '房租' } },
+    },
+  }
+  const calls = []
+  await setupAgent(page, 'agent-schedule-create-card', {
+    sessions: [{ id: 'session-1', title: '创建周期任务', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [{ id: 1, turnId: 'turn-schedule-create', role: 'assistant', content: '已生成周期任务预览。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now }],
+  })
+  await page.route('**/api/v1/agent/actions/schedule-create-1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_CONFIRMATION' } }) }))
+  await page.route('**/api/v1/agent/actions/schedule-create-1/approve', route => { calls.push('approve'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'APPROVED' } }) }) })
+  await page.route('**/api/v1/agent/actions/schedule-create-1/commit', route => { calls.push('commit'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'COMPLETED', summary: '创建周期任务已完成', structuredContent: { id: 'schedule-1' } } }) }) })
+  await page.goto('/')
+
+  const card = page.locator('.agent-action-card')
+  await expect(card).toContainText('每月房租')
+  await expect(card).toContainText('每月 1 日')
+  await expect(card).toContainText('¥3500.00')
+  await expect(card).toContainText('住房 / 房租')
+  await card.getByRole('button', { name: '确认并保存' }).click()
+  await expect.poll(() => calls).toEqual(['approve', 'commit'])
+  await expect(card.locator('.agent-action-result b')).toHaveText('创建周期任务已完成')
+})
+
+test('uses an explicit immediate-run confirmation and shows duplicate protection', async ({ page }) => {
+  const now = new Date().toISOString()
+  const action = {
+    status: 'NEEDS_CONFIRMATION', summary: '请确认立即执行周期任务', actionId: 'schedule-run-1', expiresAt: now,
+    structuredContent: {
+      actionType: 'ledger.schedule.run', input: { bookId: 'book-1', taskId: 'schedule-1' },
+      preview: { operation: '立即执行周期任务', dueOn: '2026-10-01', before: { id: 'schedule-1', name: '每月房租', enabled: true, scheduleMode: 'CALENDAR', frequency: 'MONTHLY', intervalValue: 1, calendarRule: { monthlyMode: 'DAY_OF_MONTH', dayOfMonth: 1 }, nextRunOn: '2026-10-01', runCount: 2, revision: 3, payload: { kind: 'EXPENSE', amount: 3500, accountId: 'boc', categoryId: 'rent', note: '房租' } } },
+      effects: ['确认后将立即生成一笔真实流水并刷新账户余额与报表', '同一任务和到期日已执行时将返回重复，不会再次记账'],
+    },
+  }
+  const calls = []
+  await setupAgent(page, 'agent-schedule-run-card', {
+    sessions: [{ id: 'session-1', title: '执行周期任务', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [{ id: 1, turnId: 'turn-schedule-run', role: 'assistant', content: '执行前需要确认。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now }],
+  })
+  await page.route('**/api/v1/agent/actions/schedule-run-1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_CONFIRMATION' } }) }))
+  await page.route('**/api/v1/agent/actions/schedule-run-1/approve', route => { calls.push('approve'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'APPROVED' } }) }) })
+  await page.route('**/api/v1/agent/actions/schedule-run-1/commit', route => { calls.push('commit'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'COMPLETED', summary: '立即执行周期任务已完成', structuredContent: { status: 'APPLIED', transactionId: 'transaction-1' } } }) }) })
+  await page.goto('/')
+
+  const card = page.locator('.agent-action-card')
+  await expect(card).toContainText('不会再次记账')
+  await expect(card.getByRole('button', { name: '确认并立即执行' })).toBeVisible()
+  await card.getByRole('button', { name: '确认并立即执行' }).click()
+  await expect.poll(() => calls).toEqual(['approve', 'commit'])
+})
+
 test('confirms multiple ledger actions independently from the batch summary', async ({ page }) => {
   const now = new Date().toISOString()
   const makeAction = (id, amount, note) => ({

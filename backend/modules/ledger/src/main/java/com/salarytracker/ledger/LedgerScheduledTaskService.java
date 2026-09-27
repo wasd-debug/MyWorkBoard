@@ -5,6 +5,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.salarytracker.platform.ConflictException;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -40,6 +41,10 @@ public class LedgerScheduledTaskService {
                         "last_run_at,last_run_status,last_error,revision,deleted FROM ledger_scheduled_task " +
                         "WHERE book_id=?" + deleted + " ORDER BY enabled DESC,next_run_on,id",
                 context.bookId()).stream().map(this::view).toList();
+    }
+
+    public LocalDate previewFirstRun(ScheduledTaskCommand input) {
+        return values(input, null).firstRunOn();
     }
 
     @Transactional
@@ -81,9 +86,15 @@ public class LedgerScheduledTaskService {
 
     @Transactional
     public DeletedResource delete(String bookPublicId, String publicId) {
+        return delete(bookPublicId, publicId, null);
+    }
+
+    @Transactional
+    public DeletedResource delete(String bookPublicId, String publicId, String ifMatch) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         access.require(context, "RESOURCE_MANAGE");
         ScheduledTask before = byPublicId(context, publicId);
+        if (ifMatch != null) requireRevision(ifMatch, before.revision());
         jdbc.update("UPDATE ledger_scheduled_task SET deleted=TRUE,deleted_at=CURRENT_TIMESTAMP," +
                 "enabled=FALSE,revision=revision+1 WHERE public_id=? AND book_id=? AND deleted=FALSE",
                 publicId, context.bookId());
@@ -93,9 +104,15 @@ public class LedgerScheduledTaskService {
 
     @Transactional
     public ScheduledTaskRun run(String bookPublicId, String publicId) {
+        return run(bookPublicId, publicId, null);
+    }
+
+    @Transactional
+    public ScheduledTaskRun run(String bookPublicId, String publicId, String ifMatch) {
         LedgerBookAccess.Context context = access.resolve(bookPublicId);
         access.require(context, "TRANSACTION_OWN_WRITE");
         ScheduledTask task = byPublicId(context, publicId);
+        if (ifMatch != null) requireRevision(ifMatch, task.revision());
         return execute(context, task, task.nextRunOn(), true);
     }
 
@@ -291,7 +308,7 @@ public class LedgerScheduledTaskService {
     private void requireRevision(String raw, long expected) {
         if (raw == null || raw.isBlank()) throw new IllegalArgumentException("If-Match 必填");
         long actual = Long.parseLong(raw.replace("W/", "").replace("\"", ""));
-        if (actual != expected) throw new IllegalArgumentException("定时任务版本已变化");
+        if (actual != expected) throw new ConflictException("定时任务版本已变化", expected);
     }
 
     private record TaskValues(String type, String name, boolean enabled, String scheduleMode,

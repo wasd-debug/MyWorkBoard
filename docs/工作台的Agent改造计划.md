@@ -89,11 +89,13 @@
 
 后续正式增量顺序（已排期，不能遗漏）：
 
-1. 管理工具：继续补齐周期任务、回收站、导入导出、成员与角色，并建设 R4 站内审批基础。
+1. 管理工具：周期任务已完成；继续补齐回收站、导入导出、成员与角色，并建设 R4 站内审批基础。
 2. 只读 MCP Server：Streamable HTTP、PAT、scope、撤销、审计、限流与 MCP Inspector/Codex/WorkBuddy 验证。
 3. MCP 写入与正式认证：prepare/commit、站内审批中心、OAuth 2.1 + PKCE 和外部客户端兼容回归。
 
 验证记录：
+
+- 2026-09-27 周期任务 Agent 增量：新增 `ledger.schedule.list` 及 create/update/delete/run prepare/commit，复用现有固定日期、间隔规则、任务权限、真实流水生成和到期日唯一键；修改、删除和手动执行固化 revision，模型继续不可见 commit。前端增加完整周期规则与流水预览、差异、危险删除和“确认并立即执行”卡片。后端 `mvn test` 共 171 项，169 项通过、2 项按既有规则跳过；新增真实 MySQL 集成测试 3/3 通过，覆盖手动执行、同任务同到期日去重、update/delete revision 冲突、删除任务保留已生成流水和跨用户隔离。前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过；周期任务卡片在桌面 Chromium、桌面 WebKit与 375px 移动 Chromium 共 6/6 通过。下一增量转入回收站与导入导出。
 
 - 2026-09-27 第二批管理工具增量：后端 `mvn test` 共 165 项，163 项通过、2 项按既有规则跳过；AI 工具测试覆盖商家/项目查询与 CRUD、删除引用影响、预算缺参/预览/commit/revision，真实 MySQL 2/2 覆盖商家/项目关联流水软删除、预算支出统计和陈旧 revision 拒绝。前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过；Agent 桌面 Chromium 26/26，新预算和商家删除卡片在桌面 WebKit与 375px 移动 Chromium 4/4 通过。快速 E2E 运行时镜像修复 `.dockerignore` 的单个后端 JAR 白名单，其他 `target` 产物继续排除。
 

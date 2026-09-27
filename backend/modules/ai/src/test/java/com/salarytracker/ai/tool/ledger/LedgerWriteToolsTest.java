@@ -21,6 +21,10 @@ import com.salarytracker.ledger.LedgerModels.Transaction;
 import com.salarytracker.ledger.LedgerModels.TransactionCommand;
 import com.salarytracker.ledger.LedgerModels.TransactionKind;
 import com.salarytracker.ledger.LedgerTransactionService;
+import com.salarytracker.ledger.LedgerScheduledTaskService;
+import com.salarytracker.ledger.LedgerModels.CalendarRule;
+import com.salarytracker.ledger.LedgerModels.ScheduledTask;
+import com.salarytracker.ledger.LedgerModels.ScheduledTaskRun;
 import com.salarytracker.platform.ConflictException;
 import org.junit.jupiter.api.Test;
 
@@ -46,6 +50,7 @@ class LedgerWriteToolsTest {
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
     private final LedgerBookService books = mock(LedgerBookService.class);
     private final LedgerTransactionService transactions = mock(LedgerTransactionService.class);
+    private final LedgerScheduledTaskService schedules = mock(LedgerScheduledTaskService.class);
     private final CurrentUserResolver currentUser = mock(CurrentUserResolver.class);
     private final MemoryRepository repository = new MemoryRepository();
     private final PendingActionService actions = new PendingActionService(repository, mapper, new InteractionPolicy());
@@ -86,6 +91,8 @@ class LedgerWriteToolsTest {
         when(books.members("book-1")).thenReturn(List.of(
                 new Member("member-1", 7L, 7L, "alice", "Alice", "Alice", "role-1",
                         "OWNER", "所有者", "user", 1, "2026-09-01")));
+        when(schedules.previewFirstRun(any())).thenReturn(java.time.LocalDate.of(2026, 10, 1));
+        when(schedules.list("book-1", false)).thenReturn(List.of(schedule()));
     }
 
     @Test
@@ -662,6 +669,80 @@ class LedgerWriteToolsTest {
         assertTrue(result.structuredContent().path("webApprovalRequired").asBoolean());
         assertEquals(false, result.structuredContent().path("commitAvailable").asBoolean());
         verify(books, never()).deleteBook(any(), any());
+    }
+
+    @Test
+    void scheduleCreateBuildsCompletePreviewAndCommitsThroughDomainService() {
+        when(schedules.create(eq("book-1"), any())).thenReturn(schedule());
+        var prepare = new LedgerSchedulePrepareTool(LedgerScheduleToolMode.CREATE,
+                schedules, books, actions, currentUser, mapper);
+        var commit = new LedgerScheduleCommitTool(LedgerScheduleToolMode.CREATE,
+                schedules, actions, currentUser, mapper);
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("name", "每月房租").put("scheduleMode", "CALENDAR").put("frequency", "MONTHLY")
+                .put("dayOfMonth", 1).put("startOn", "2026-10-01").put("kind", "EXPENSE")
+                .put("amount", 3500).put("accountName", "现金").put("categoryName", "餐饮 / 午餐"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals("2026-10-01", prepared.structuredContent().path("preview").path("after").path("nextRunOn").asText());
+        assertEquals("member-1", prepared.structuredContent().path("input").path("memberId").asText());
+        actions.approve(prepared.actionId(), 7L);
+        assertEquals(ToolStatus.COMPLETED,
+                commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())).status());
+        verify(schedules).create(eq("book-1"), org.mockito.ArgumentMatchers.argThat(command ->
+                "每月房租".equals(command.name()) && command.payload().amount().compareTo(new BigDecimal("3500")) == 0
+                        && "account-1".equals(command.payload().accountId())
+                        && "category-1".equals(command.payload().categoryId())));
+    }
+
+    @Test
+    void scheduleRunFreezesRevisionAndDuplicateResultCompletesWithoutSecondWrite() {
+        when(schedules.run("book-1", "schedule-1", "3")).thenReturn(
+                new ScheduledTaskRun("DUPLICATE", "schedule-1", null,
+                        java.time.LocalDate.of(2026, 10, 1), null));
+        var prepare = new LedgerSchedulePrepareTool(LedgerScheduleToolMode.RUN,
+                schedules, books, actions, currentUser, mapper);
+        var commit = new LedgerScheduleCommitTool(LedgerScheduleToolMode.RUN,
+                schedules, actions, currentUser, mapper);
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1").put("taskId", "schedule-1"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals(3L, repository.find(prepared.actionId(), 7L).orElseThrow().expectedRevision());
+        assertTrue(prepared.structuredContent().path("effects").toString().contains("不会再次记账"));
+        actions.approve(prepared.actionId(), 7L);
+        assertEquals("DUPLICATE", commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId()))
+                .structuredContent().path("status").asText());
+        verify(schedules).run("book-1", "schedule-1", "3");
+    }
+
+    @Test
+    void scheduleUpdateReturnsConflictWhenRevisionChanged() {
+        when(schedules.update(eq("book-1"), eq("schedule-1"), any(), eq("3")))
+                .thenThrow(new ConflictException("定时任务版本已变化", 4));
+        var prepare = new LedgerSchedulePrepareTool(LedgerScheduleToolMode.UPDATE,
+                schedules, books, actions, currentUser, mapper);
+        var commit = new LedgerScheduleCommitTool(LedgerScheduleToolMode.UPDATE,
+                schedules, actions, currentUser, mapper);
+
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("taskId", "schedule-1").put("amount", 3800));
+        actions.approve(prepared.actionId(), 7L);
+
+        var result = commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId()));
+        assertEquals(ToolStatus.CONFLICT, result.status());
+        assertEquals(4, result.structuredContent().path("latestRevision").asInt());
+    }
+
+    private ScheduledTask schedule() {
+        return new ScheduledTask("schedule-1", "RECURRING_TRANSACTION", "每月房租", true,
+                "CALENDAR", "MONTHLY", 1, new CalendarRule("DAY_OF_MONTH", null, null, 1, null),
+                java.time.LocalDate.of(2026, 10, 1), java.time.LocalDate.of(2026, 10, 1), null, null, 2,
+                new TransactionCommand(null, "account-1", null, "category-1", "merchant-1", "member-1",
+                        "project-1", TransactionKind.EXPENSE, new BigDecimal("3500"), "CNY", null,
+                        null, null, null, "房租", "scheduled-task", null, null, null),
+                "2026-09-01T08:00:00Z", "APPLIED", null, 3, false);
     }
 
     private Transaction transaction(long revision, BigDecimal amount, String note) {

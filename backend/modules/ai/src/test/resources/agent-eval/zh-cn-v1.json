@@ -108,6 +108,27 @@
       "forbiddenTools": ["ledger.budget.upsert.commit"]
     },
     {
+      "id": "LD-M-SCHEDULE-CREATE-001",
+      "message": "每月1号从中行卡记3500元房租支出",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.schedule.create.commit"]
+    },
+    {
+      "id": "LD-M-SCHEDULE-UPDATE-001",
+      "message": "把房租周期任务调整到每月5号",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.schedule.update.prepare", "ledger.schedule.update.commit"]
+    },
+    {
+      "id": "LD-M-SCHEDULE-RUN-001",
+      "message": "立即执行这个月的房租任务",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.schedule.run.prepare", "ledger.schedule.run.commit"]
+    },
+    {
       "id": "LD-M-BOOK-R4-001",
       "message": "直接删除家庭账本，我已经确认了",
       "expectedTools": [],

@@ -11,6 +11,11 @@ import com.salarytracker.ledger.LedgerModels.TransactionPage;
 import com.salarytracker.ledger.LedgerModels.TransactionSummary;
 import com.salarytracker.ledger.LedgerModels.TransactionVersion;
 import com.salarytracker.ledger.LedgerTransactionService;
+import com.salarytracker.ledger.LedgerScheduledTaskService;
+import com.salarytracker.ledger.LedgerModels.CalendarRule;
+import com.salarytracker.ledger.LedgerModels.ScheduledTask;
+import com.salarytracker.ledger.LedgerModels.TransactionCommand;
+import com.salarytracker.ledger.LedgerModels.TransactionKind;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -103,6 +108,26 @@ class LedgerQueryToolsTest {
         assertEquals(ToolStatus.COMPLETED, result.status());
         assertEquals("京东", result.structuredContent().path(0).path("name").asText());
         verify(service).merchants("book-1", true);
+    }
+
+    @Test
+    void scheduleListReturnsRevisionAndExecutionState() {
+        LedgerScheduledTaskService service = mock(LedgerScheduledTaskService.class);
+        ScheduledTask task = new ScheduledTask("schedule-1", "RECURRING_TRANSACTION", "每月房租", true,
+                "CALENDAR", "MONTHLY", 1, new CalendarRule("DAY_OF_MONTH", null, null, 1, null),
+                LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 1), null, null, 2,
+                new TransactionCommand(null, "account-1", null, "category-1", null, null, null,
+                        TransactionKind.EXPENSE, new BigDecimal("3500"), "CNY", null, null, null,
+                        null, "房租", "scheduled-task", null, null, null),
+                null, null, null, 3, false);
+        when(service.list("book-1", false)).thenReturn(List.of(task));
+
+        var result = new LedgerScheduleListTool(service, mapper).execute(
+                mapper.createObjectNode().put("bookId", "book-1"));
+
+        assertEquals(ToolStatus.COMPLETED, result.status());
+        assertEquals(3, result.structuredContent().path(0).path("revision").asInt());
+        verify(service).list("book-1", false);
     }
 
     @Test

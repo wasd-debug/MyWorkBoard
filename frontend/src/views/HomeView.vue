@@ -208,8 +208,8 @@
                       <template v-for="row in actionPreviewRows(action)" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template>
                     </dl>
                     <div v-if="action.structuredContent?.effects?.length" class="agent-action-effects" aria-label="操作影响"><strong>删除影响</strong><ul><li v-for="effect in action.structuredContent.effects" :key="effect">{{ effect }}</li></ul></div>
-                    <p><ShieldCheck />{{ actionIsDelete(action) ? '确认后才会执行删除；提交前会再次校验记录版本。' : '确认后才会写入业务数据；重复点击不会重复创建。' }}</p>
-                    <footer><button v-if="action.structuredContent?.fields?.length" type="button" @click="editAction(action)">返回编辑</button><button type="button" @click="rejectAction(action)">取消</button><button v-if="actionRequiresWebApproval(action)" class="danger" type="button" disabled>需要站内高风险审批</button><button v-else :class="actionIsDelete(action) ? 'danger' : 'primary'" type="button" :disabled="action.busy" @click="confirmAction(item, action)">{{ action.busy ? (actionIsDelete(action) ? '正在删除…' : '正在保存…') : (actionIsDelete(action) ? '确认删除' : '确认并保存') }}</button></footer>
+                    <p><ShieldCheck />{{ actionIsDelete(action) ? '确认后才会执行删除；提交前会再次校验记录版本。' : actionIsRun(action) ? '确认后将立即生成真实流水；相同到期日不会重复记账。' : '确认后才会写入业务数据；重复点击不会重复创建。' }}</p>
+                    <footer><button v-if="action.structuredContent?.fields?.length" type="button" @click="editAction(action)">返回编辑</button><button type="button" @click="rejectAction(action)">取消</button><button v-if="actionRequiresWebApproval(action)" class="danger" type="button" disabled>需要站内高风险审批</button><button v-else :class="actionIsDelete(action) ? 'danger' : 'primary'" type="button" :disabled="action.busy" @click="confirmAction(item, action)">{{ action.busy ? (actionIsDelete(action) ? '正在删除…' : actionIsRun(action) ? '正在执行…' : '正在保存…') : (actionIsDelete(action) ? '确认删除' : actionIsRun(action) ? '确认并立即执行' : '确认并保存') }}</button></footer>
                   </div>
                   <div v-else class="agent-action-result">
                     <CheckCircle2 v-if="action.uiStatus === 'COMPLETED'" />
@@ -472,9 +472,10 @@ function compactModelName(value) { const name = String(value || '模型').trim()
 function pricingTierLabel(value) { return value === 'PEAK' ? '高峰' : value === 'OFF_PEAK' ? '空闲' : '固定价' }
 function replyTokens(usage) { return Math.max(0, Number(usage?.outputTokens || 0) - Number(usage?.reasoningTokens || 0)) }
 function cacheHitRate(usage) { const hit = Number(usage?.cacheHitTokens || 0), miss = Number(usage?.cacheMissTokens || 0); return hit + miss ? Math.round(hit / (hit + miss) * 100) : 0 }
-function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledger.book.create.prepare': '准备新增账本', 'ledger.book.update.prepare': '准备修改账本', 'ledger.account.list': '查询账户', 'ledger.account.create.prepare': '准备新增账户', 'ledger.account.update.prepare': '准备修改账户', 'ledger.account.delete.prepare': '准备删除账户', 'ledger.category.list': '查询分类', 'ledger.category.create.prepare': '准备新增分类', 'ledger.category.update.prepare': '准备修改分类', 'ledger.category.delete.prepare': '准备删除分类', 'ledger.merchant.list': '查询商家', 'ledger.merchant.create.prepare': '准备新增商家', 'ledger.merchant.update.prepare': '准备修改商家', 'ledger.merchant.delete.prepare': '准备删除商家', 'ledger.project.list': '查询项目', 'ledger.project.create.prepare': '准备新增项目', 'ledger.project.update.prepare': '准备修改项目', 'ledger.project.delete.prepare': '准备删除项目', 'ledger.budget.upsert.prepare': '准备设置预算', 'ledger.budget.delete.prepare': '准备删除预算', 'ledger.overview': '查询账本概览', 'ledger.transactions.search': '查询账本流水', 'ledger.transaction.history': '查询流水历史', 'ledger.transaction.create.prepare': '准备新增流水', 'ledger.transaction.update.prepare': '准备修改流水', 'ledger.transaction.delete.prepare': '准备删除流水', 'ledger.transactions.batch.create.prepare': '准备批量记账', 'ledger.transactions.batch.delete.prepare': '准备批量删除', 'ledger.reports.summary': '生成账本报表', 'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置', 'worktime.settings.update.prepare': '准备修改工时设置', 'worktime.records.search': '查询工时记录', 'worktime.record.create.prepare': '准备新增工时', 'worktime.record.update.prepare': '准备修改工时', 'worktime.record.delete.prepare': '准备删除工时' })[name] || name }
-function actionTypeLabel(action) { return ({ 'worktime.settings.update': '修改工时设置', 'worktime.record.create': '新增工时', 'worktime.record.update': '修改工时', 'worktime.record.delete': '删除工时', 'ledger.book.create': '新增账本', 'ledger.book.update': '修改账本', 'ledger.book.delete': '删除账本', 'ledger.account.create': '新增账户', 'ledger.account.update': '修改账户', 'ledger.account.delete': '删除账户', 'ledger.category.create': '新增分类', 'ledger.category.update': '修改分类', 'ledger.category.delete': '删除分类', 'ledger.merchant.create': '新增商家', 'ledger.merchant.update': '修改商家', 'ledger.merchant.delete': '删除商家', 'ledger.project.create': '新增项目', 'ledger.project.update': '修改项目', 'ledger.project.delete': '删除项目', 'ledger.budget.upsert': '设置预算', 'ledger.budget.delete': '删除预算', 'ledger.transaction.create': '单笔记账', 'ledger.transaction.update': '修改流水', 'ledger.transaction.delete': '删除流水', 'ledger.transactions.batch.create': '批量记账', 'ledger.transactions.batch.delete': '批量删除流水' })[action.structuredContent?.actionType] || '待确认操作' }
+function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledger.book.create.prepare': '准备新增账本', 'ledger.book.update.prepare': '准备修改账本', 'ledger.account.list': '查询账户', 'ledger.account.create.prepare': '准备新增账户', 'ledger.account.update.prepare': '准备修改账户', 'ledger.account.delete.prepare': '准备删除账户', 'ledger.category.list': '查询分类', 'ledger.category.create.prepare': '准备新增分类', 'ledger.category.update.prepare': '准备修改分类', 'ledger.category.delete.prepare': '准备删除分类', 'ledger.merchant.list': '查询商家', 'ledger.merchant.create.prepare': '准备新增商家', 'ledger.merchant.update.prepare': '准备修改商家', 'ledger.merchant.delete.prepare': '准备删除商家', 'ledger.project.list': '查询项目', 'ledger.project.create.prepare': '准备新增项目', 'ledger.project.update.prepare': '准备修改项目', 'ledger.project.delete.prepare': '准备删除项目', 'ledger.budget.upsert.prepare': '准备设置预算', 'ledger.budget.delete.prepare': '准备删除预算', 'ledger.schedule.list': '查询周期任务', 'ledger.schedule.create.prepare': '准备创建周期任务', 'ledger.schedule.update.prepare': '准备修改周期任务', 'ledger.schedule.delete.prepare': '准备删除周期任务', 'ledger.schedule.run.prepare': '准备执行周期任务', 'ledger.overview': '查询账本概览', 'ledger.transactions.search': '查询账本流水', 'ledger.transaction.history': '查询流水历史', 'ledger.transaction.create.prepare': '准备新增流水', 'ledger.transaction.update.prepare': '准备修改流水', 'ledger.transaction.delete.prepare': '准备删除流水', 'ledger.transactions.batch.create.prepare': '准备批量记账', 'ledger.transactions.batch.delete.prepare': '准备批量删除', 'ledger.reports.summary': '生成账本报表', 'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置', 'worktime.settings.update.prepare': '准备修改工时设置', 'worktime.records.search': '查询工时记录', 'worktime.record.create.prepare': '准备新增工时', 'worktime.record.update.prepare': '准备修改工时', 'worktime.record.delete.prepare': '准备删除工时' })[name] || name }
+function actionTypeLabel(action) { return ({ 'worktime.settings.update': '修改工时设置', 'worktime.record.create': '新增工时', 'worktime.record.update': '修改工时', 'worktime.record.delete': '删除工时', 'ledger.book.create': '新增账本', 'ledger.book.update': '修改账本', 'ledger.book.delete': '删除账本', 'ledger.account.create': '新增账户', 'ledger.account.update': '修改账户', 'ledger.account.delete': '删除账户', 'ledger.category.create': '新增分类', 'ledger.category.update': '修改分类', 'ledger.category.delete': '删除分类', 'ledger.merchant.create': '新增商家', 'ledger.merchant.update': '修改商家', 'ledger.merchant.delete': '删除商家', 'ledger.project.create': '新增项目', 'ledger.project.update': '修改项目', 'ledger.project.delete': '删除项目', 'ledger.budget.upsert': '设置预算', 'ledger.budget.delete': '删除预算', 'ledger.schedule.create': '创建周期任务', 'ledger.schedule.update': '修改周期任务', 'ledger.schedule.delete': '删除周期任务', 'ledger.schedule.run': '立即执行周期任务', 'ledger.transaction.create': '单笔记账', 'ledger.transaction.update': '修改流水', 'ledger.transaction.delete': '删除流水', 'ledger.transactions.batch.create': '批量记账', 'ledger.transactions.batch.delete': '批量删除流水' })[action.structuredContent?.actionType] || '待确认操作' }
 function actionIsDelete(action) { return action.structuredContent?.actionType?.endsWith('.delete') }
+function actionIsRun(action) { return action.structuredContent?.actionType === 'ledger.schedule.run' }
 function actionRequiresWebApproval(action) { return action.structuredContent?.webApprovalRequired === true || action.structuredContent?.commitAvailable === false }
 function actionIsBatchCreate(action) { return action.structuredContent?.actionType === 'ledger.transactions.batch.create' }
 function actionIsBatch(action) { return action.structuredContent?.actionType?.startsWith('ledger.transactions.batch.') }
@@ -533,6 +534,15 @@ function transactionPreviewRows(preview = {}) {
     ['版本', preview.revision != null ? `rev ${preview.revision}` : null]
   ].filter(row => row[1] != null && row[1] !== '').map(([label, value]) => ({ label, value }))
 }
+function scheduleFrequencyLabel(value) { return ({ ONCE: '仅一次', DAILY: '每日', WEEKLY: '每周', MONTHLY: '每月', YEARLY: '每年' })[value] || value }
+function scheduleRuleLabel(value = {}) {
+  if (value.scheduleMode === 'INTERVAL') return `每 ${value.intervalValue || 1} ${scheduleFrequencyLabel(value.frequency)}`
+  if (value.frequency === 'WEEKLY') return `每周星期${['', '一', '二', '三', '四', '五', '六', '日'][Number(value.dayOfWeek || value.calendarRule?.dayOfWeek)] || ''}`
+  if (value.frequency === 'YEARLY') return `每年 ${value.month || value.calendarRule?.month} 月 ${value.dayOfMonth || value.calendarRule?.dayOfMonth} 日`
+  if ((value.monthlyMode || value.calendarRule?.monthlyMode) === 'NTH_WEEKDAY') return `每月第 ${value.weekOfMonth || value.calendarRule?.weekOfMonth} 周星期${['', '一', '二', '三', '四', '五', '六', '日'][Number(value.dayOfWeek || value.calendarRule?.dayOfWeek)] || ''}`
+  if (value.frequency === 'MONTHLY') return `每月 ${value.dayOfMonth || value.calendarRule?.dayOfMonth} 日`
+  return scheduleFrequencyLabel(value.frequency)
+}
 function actionPreviewRows(action) {
   const preview = action.structuredContent?.preview || {}
   if (action.structuredContent?.actionType === 'worktime.settings.update') return [
@@ -560,6 +570,20 @@ function actionPreviewRows(action) {
       ['版本', preview.before?.revision != null ? `rev ${preview.before.revision}` : null]
     ].filter(row => row[1] != null && row[1] !== '').map(([label, value]) => ({ label, value }))
   }
+  if (/^ledger\.schedule\./.test(action.structuredContent?.actionType || '')) {
+    const resource = preview.after || preview.before || {}
+    const payload = resource.payload || resource
+    return [
+      ['操作', preview.operation], ['任务名称', resource.name], ['状态', resource.enabled === false || resource.enabled === 'false' ? '暂停' : '启用'],
+      ['执行规则', scheduleRuleLabel(resource)], ['生效日期', resource.startOn], ['下次执行', resource.nextRunOn || preview.dueOn],
+      ['结束日期', resource.endOn], ['最大次数', resource.maxRuns], ['已执行', resource.runCount != null ? `${resource.runCount} 次` : null],
+      ['流水类型', transactionKindLabel(payload.kind)], ['金额', payload.amount != null ? formatMoney(payload.amount) : null],
+      ['账户', resource.accountName || payload.accountName || payload.accountId], ['分类', resource.categoryName || payload.categoryName || payload.categoryId],
+      ['商家', resource.merchantName || payload.merchantName], ['成员', resource.memberName || payload.memberName],
+      ['项目', resource.projectName || payload.projectName], ['备注', payload.note], ['最近结果', resource.lastRunStatus],
+      ['版本', resource.revision != null ? `rev ${resource.revision}` : null]
+    ].filter(row => row[1] != null && row[1] !== '').map(([label, value]) => ({ label, value }))
+  }
   return transactionPreviewRows(preview)
 }
 function replaceAction(item, previous, next) { const index = (item.actions || []).findIndex(action => action.actionId === previous.actionId); if (index >= 0) item.actions.splice(index, 1, { ...next, editing: false, form: cloneValue(next.structuredContent?.input || {}) }); persist() }
@@ -567,8 +591,8 @@ function actionAnswerPayload(value, key = '') {
   if (Array.isArray(value)) return value.map(item => actionAnswerPayload(item))
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([childKey, child]) => [childKey, actionAnswerPayload(child, childKey)]))
   if (['amount', 'rest'].includes(key) && value !== '') return Number(value)
-  if (['salaryPre', 'salaryPost', 'lunchMin', 'daysPerMonth', 'openingBalance', 'budget'].includes(key) && value !== '') return Number(value)
-  if (['autoDays', 'hidden', 'archived'].includes(key) && value !== '') return value === true || value === 'true'
+  if (['salaryPre', 'salaryPost', 'lunchMin', 'daysPerMonth', 'openingBalance', 'budget', 'intervalValue', 'maxRuns', 'weekOfMonth', 'dayOfWeek', 'dayOfMonth', 'month'].includes(key) && value !== '') return Number(value)
+  if (['autoDays', 'hidden', 'archived', 'enabled'].includes(key) && value !== '') return value === true || value === 'true'
   return value === '' ? null : value
 }
 async function answerAction(item, action) {
@@ -593,6 +617,7 @@ async function confirmAction(item, action) {
     if (result.status === 'COMPLETED' && action.structuredContent?.actionType?.startsWith('worktime.')) await worktimeStore.fetch().catch(() => {})
     if (result.status === 'COMPLETED' && /^ledger\.transactions?\./.test(action.structuredContent?.actionType || '')) await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {})
     if (result.status === 'COMPLETED' && /^ledger\.(book|account|category|merchant|project|budget)\./.test(action.structuredContent?.actionType || '')) { await ledgerStore.refreshBooks().catch(() => {}); await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {}) }
+    if (result.status === 'COMPLETED' && /^ledger\.schedule\./.test(action.structuredContent?.actionType || '')) await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {})
     persist()
   } catch (error) { message.error(error?.response?.data?.detail || '保存失败') }
   finally { action.busy = false }

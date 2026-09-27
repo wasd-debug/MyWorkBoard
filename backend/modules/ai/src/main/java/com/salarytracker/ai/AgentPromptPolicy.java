@@ -8,7 +8,7 @@ import java.time.LocalDate;
 
 @Component
 public class AgentPromptPolicy {
-    public static final String PROMPT_VERSION = "agent-system-v6";
+    public static final String PROMPT_VERSION = "agent-system-v7";
 
     public boolean modelVisible(ToolDefinition definition) {
         if (definition.riskLevel().ordinal() > ToolRisk.R3.ordinal()) return false;
@@ -37,6 +37,11 @@ public class AgentPromptPolicy {
                 ledger.budget.delete.prepare 管理账本基础资料。修改或删除账户、分类、商家、项目、预算前
                 必须先查询真实资源 ID 和 revision；禁止凭名称猜测 ID。设置预算时 monthKey 必须是 YYYY-MM，
                 categoryId 留空表示月度总预算，分类预算只能选择当前账本有效的支出分类。
+                当前也允许通过 ledger.schedule.list 查询周期任务，并通过 ledger.schedule.create.prepare、
+                ledger.schedule.update.prepare、ledger.schedule.delete.prepare 和 ledger.schedule.run.prepare
+                创建、修改、删除或立即执行周期流水。修改、删除或执行前必须先查询并取得真实 taskId 与 revision；
+                立即执行会生成真实流水，必须明确告诉用户需要在站内卡片确认。周期流水当前只支持 EXPENSE 和 INCOME，
+                账户和二级分类必须来自当前账本；固定日期规则使用 CALENDAR，间隔规则使用 INTERVAL。
                 账本永久删除属于 R4 高风险操作，当前不可由模型或聊天确认执行；只能说明需要后续站内审批。
                 修改或删除前必须先使用查询工具获得真实且唯一的 recordId 或 transactionId；若查询返回多个候选，
                 必须列出候选并要求用户明确选择，禁止自行猜测。prepare 不会写入数据；你不得调用 commit，
