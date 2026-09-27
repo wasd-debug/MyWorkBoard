@@ -67,6 +67,7 @@ public final class LedgerModels {
             Long recurringId, Long revision) { }
 
     public record CopyTransactionCommand(String targetBookId, LocalDate occurredOn) { }
+    public record TransactionDeleteCommand(String transactionId, long revision) { }
     public record AuditClearCommand(List<Long> ids) { }
     public record AiPreviewCommand(String text) { }
     public record AiConfirmCommand(List<TransactionCommand> transactions) { }

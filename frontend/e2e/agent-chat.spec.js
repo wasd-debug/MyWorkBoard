@@ -572,6 +572,99 @@ test('confirms multiple ledger actions independently from the batch summary', as
   await expect(page.getByText('2 笔待处理')).toBeHidden()
 })
 
+test('edits and atomically confirms one parent batch action', async ({ page }) => {
+  const now = new Date().toISOString()
+  const fields = [
+    { name: 'kind', label: '流水类型', type: 'select', required: true, options: [{ value: 'EXPENSE', label: '支出' }, { value: 'TRANSFER', label: '转账' }] },
+    { name: 'amount', label: '金额', type: 'money', required: true },
+    { name: 'occurredOn', label: '发生日期', type: 'date', required: true },
+    { name: 'accountId', label: '账户', type: 'entity-picker', required: true, options: [{ value: 'cash', label: '现金' }, { value: 'boc', label: '中行卡' }] },
+    { name: 'categoryId', label: '二级分类', type: 'entity-picker', required: true, options: [{ value: 'meal', label: '餐饮 / 午餐', kind: 'EXPENSE' }] },
+    { name: 'note', label: '备注', type: 'textarea', required: false },
+  ]
+  const inputs = [
+    { bookId: 'book-1', kind: 'EXPENSE', amount: 35, accountId: 'cash', categoryId: 'meal', occurredOn: '2026-09-27', note: '午餐' },
+    { bookId: 'book-1', kind: 'EXPENSE', amount: 18, accountId: 'boc', categoryId: 'meal', occurredOn: '2026-09-27', note: '加餐' },
+  ]
+  const itemContent = input => ({ input, fields, preview: { ...input, accountName: input.accountId === 'cash' ? '现金' : '中行卡', categoryPath: '餐饮 / 午餐' } })
+  const makeAction = (id, status, batchInputs) => ({
+    status, summary: status === 'NEEDS_INPUT' ? '请补充批量流水信息' : '请确认批量保存 2 笔流水', actionId: id, expiresAt: now,
+    structuredContent: {
+      actionType: 'ledger.transactions.batch.create', input: { bookId: 'book-1', items: batchInputs },
+      items: batchInputs.map(itemContent), totals: { count: 2, income: 0, expense: batchInputs.reduce((sum, item) => sum + Number(item.amount), 0), transfer: 0 },
+    },
+  })
+  const action = makeAction('batch-parent-1', 'NEEDS_INPUT', inputs)
+  const calls = []
+  await setupAgent(page, 'agent-real-batch-card', {
+    sessions: [{ id: 'session-1', title: '真正批量记账', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [{ id: 1, turnId: 'turn-batch-parent', role: 'assistant', content: '已整理成一个批量操作。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now }],
+  })
+  for (const id of ['batch-parent-1', 'batch-parent-2', 'batch-parent-3']) {
+    await page.route(`**/api/v1/agent/actions/${id}`, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: id.endsWith('1') ? 'WAITING_INPUT' : 'WAITING_CONFIRMATION' } }) }))
+  }
+  await page.route('**/api/v1/agent/actions/batch-parent-1/answer', async route => {
+    const body = route.request().postDataJSON()
+    calls.push({ type: 'answer', body })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: makeAction('batch-parent-2', 'NEEDS_CONFIRMATION', body.items) }) })
+  })
+  await page.route('**/api/v1/agent/actions/batch-parent-2/answer', async route => {
+    const body = route.request().postDataJSON()
+    calls.push({ type: 'answer', body })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: makeAction('batch-parent-3', 'NEEDS_CONFIRMATION', body.items) }) })
+  })
+  await page.route('**/api/v1/agent/actions/batch-parent-3/approve', route => { calls.push({ type: 'approve' }); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'APPROVED' } }) }) })
+  await page.route('**/api/v1/agent/actions/batch-parent-3/commit', route => { calls.push({ type: 'commit' }); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'COMPLETED', summary: '已批量保存 2 笔流水', structuredContent: { count: 2 } } }) }) })
+  await page.goto('/')
+
+  const items = page.locator('.agent-batch-item')
+  await expect(items).toHaveCount(2)
+  await items.nth(1).getByLabel('金额').fill('20')
+  await page.getByRole('button', { name: '生成批量预览' }).click()
+  await expect.poll(() => calls[0]?.body.items[1].amount).toBe(20)
+  await expect(page.getByText('支出 ¥55.00')).toBeVisible()
+  await page.getByRole('button', { name: '返回编辑' }).click()
+  await expect(page.locator('.agent-batch-item')).toHaveCount(2)
+  await page.getByRole('button', { name: '生成批量预览' }).click()
+  await page.getByRole('button', { name: '确认并保存全部' }).click()
+  await expect.poll(() => calls.map(item => item.type)).toEqual(['answer', 'answer', 'approve', 'commit'])
+  await expect(page.locator('.agent-action-result b')).toHaveText('已批量保存 2 笔流水')
+})
+
+test('shows every fixed item before a strong batch delete confirmation', async ({ page }) => {
+  const now = new Date().toISOString()
+  const action = {
+    status: 'NEEDS_CONFIRMATION', summary: '请确认批量删除 2 笔流水', actionId: 'batch-delete-parent', expiresAt: now,
+    structuredContent: {
+      actionType: 'ledger.transactions.batch.delete', input: { bookId: 'book-1', items: [{ transactionId: 't1', revision: 2 }, { transactionId: 't2', revision: 4 }] },
+      items: [
+        { transactionId: 't1', revision: 2, kind: 'TRANSFER', amount: 500, occurredOn: '2026-09-27', accountName: '中行卡', targetAccountName: '支付宝', note: '资金归集' },
+        { transactionId: 't2', revision: 4, kind: 'REPAY_DEBT', amount: 200, occurredOn: '2026-09-26', accountName: '现金', merchantName: '小李', note: '还款' },
+      ],
+      totals: { count: 2, income: 0, expense: 200, transfer: 500 },
+      effects: ['仅删除本次预览中固化 ID 与 revision 的流水', '任意一笔版本变化时整批不执行', '转账的关联两端会同步删除', '删除结果进入回收站、审计和同步链路'],
+    },
+  }
+  const calls = []
+  await setupAgent(page, 'agent-batch-delete-card', {
+    sessions: [{ id: 'session-1', title: '批量删除', createdAt: now, updatedAt: now, archivedAt: null }],
+    messages: [{ id: 1, turnId: 'turn-batch-delete', role: 'assistant', content: '已固定两笔目标流水。', metadataJson: JSON.stringify({ ...response, actions: [action] }), createdAt: now }],
+  })
+  await page.route('**/api/v1/agent/actions/batch-delete-parent', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'WAITING_CONFIRMATION' } }) }))
+  await page.route('**/api/v1/agent/actions/batch-delete-parent/reject', route => { calls.push('reject'); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'DENIED' } }) }) })
+  await page.goto('/')
+
+  const card = page.locator('.agent-action-card.destructive')
+  await expect(card).toContainText('转出账户')
+  await expect(card).toContainText('支付宝')
+  await card.locator('.agent-batch-preview').nth(1).click()
+  await expect(card).toContainText('还款')
+  await expect(card).toContainText('rev 4')
+  await expect(card).toContainText('任意一笔版本变化时整批不执行')
+  await card.getByRole('button', { name: '全部取消' }).click()
+  await expect.poll(() => calls).toEqual(['reject'])
+})
+
 test('falls back before the first SSE event', async ({ page }) => {
   const state = await setupAgent(page, 'agent-fallback-e2e')
   await page.route('**/api/v1/agent/turns/fallback-turn/trace', route => route.fulfill({ status: 404, contentType: 'application/json', body: '{}' }))

@@ -1,7 +1,7 @@
 # 工作台 Agent 与 MCP 改造计划
 
-> 版本：v2.1（2026-09-24）
-> 状态：实施中（阶段 3 已开始：真实模型、R0/R1 查询、服务端会话/队列/SSE、模型连接与 Trace 已完成，工时和普通收入/支出的新增、修改、删除已进入受控写入）
+> 版本：v2.2（2026-09-27）
+> 状态：实施中（阶段 3 已开始：真实模型、R0/R1 查询、服务端会话/队列/SSE、模型连接与 Trace 已完成，工时和七类账本流水已进入受控写入，批量创建/删除采用父级 action 原子提交）
 
 > 运维修正：迁移 `V8.1` 是在 `V8` 已发布后补充的索引迁移，已有数据库升级时需开启 `FLYWAY_OUT_OF_ORDER=true`；不得删除或改写 `flyway_schema_history`。
 
@@ -9,7 +9,9 @@
 > 适用范围：现有工时、账本和 AI 工作台；任务、文件、向量库与 RAG 按后续阶段接入
 > 总原则：先把现有业务能力收敛为可验证的领域工具，再接入 Web Agent 和 MCP；每一阶段独立交付、独立验证、可通过功能开关回滚，未通过退出门禁不得进入下一阶段。
 
-## 0. 实施进度快照（2026-09-24）
+## 0. 实施进度快照（2026-09-27）
+
+当前增量完成复杂流水与真正的批量账务操作：单笔新增、修改、删除现覆盖 `EXPENSE / INCOME / TRANSFER / BORROW_IN / LEND_OUT / COLLECT_DEBT / REPAY_DEBT` 七种类型；转账要求不同的转出/转入账户并保持双边写入、修改和删除一致性，只有普通收入/支出要求有效二级分类。批量创建和批量删除各使用一个父级 pending action，最多 50 笔；创建复用单笔实体匹配和字段 Schema，删除只接受查询得到的明确流水 ID 并固化 revision，任一子项失败或冲突时整批回滚。首页支持逐笔展开、补充与移除、汇总预览、返回编辑、全部取消和一次确认提交，并保留旧会话中多个单笔 action 的兼容显示。
 
 当前增量完成 Phase 3B 实体消歧与多轮回放：账本、账户、二级分类、商家、成员和项目统一返回 `exact / suggested / ambiguous / missing` 匹配状态；唯一候选可以预填，多个候选必须在可搜索卡片中明确选择，不再默认取列表第一项。普通与流式编排在生成 pending action 后均关闭模型工具目录，只允许模型说明下一步，不能继续调用工具或尝试 commit。
 
@@ -58,7 +60,8 @@
 - 补参生成新 action 时，服务端同步替换 `agent_message.metadata_json` 中的旧 action 快照；页面刷新后不再回退到旧 `CANCELLED` 节点，可恢复待确认、已拒绝、已完成等最新终态。
 - V19 为用户模型和系统环境模型增加固定价/DeepSeek 峰谷计价。北京时间工作日 09:00–12:00、14:00–18:00 采用高峰配置，其余采用空闲配置；每轮 Usage 保存实际档位、价格版本和估算费用。前端可编辑两套单价，消息元数据显示本次费用和逐轮档位。
 - 首页模型选择器已移入输入框工具区；“滚动到底部”按钮移至输入区右上方并保留足够间距。业务导航按钮仅在助手消息显示，用户原始消息不再附加“进入账本/工时”等按钮。
-- 新增 `ledger.transaction.create.prepare/commit`，首版只接受 `EXPENSE / INCOME`，复用现有账本权限、账户、有效二级分类、金额、审计、同步和幂等规则；转账、借贷、还款和批量写入仍未开放。
+- `ledger.transaction.create/update/delete.prepare/commit` 已覆盖普通收支、转账、借入、借出、收债和还款；转账固化双账户及关联影响，借贷类不虚构二级分类，修改继续受原 revision 保护。
+- 新增 `ledger.transactions.batch.create.prepare/commit` 与 `ledger.transactions.batch.delete.prepare/commit`：单批 1–50 笔、同一账本、一个父级 action 和一个数据库事务；批量创建复用单笔解析，批量删除必须传明确 ID 并固化 revision，不支持按模糊条件直接删除。
 - 新增 `ledger.transaction.history` 与 `ledger.transaction.update.prepare/commit`：修改前必须通过只读查询取得当前用户可访问的真实流水 ID；prepare 保留未修改字段并加载完整账户、二级分类、商家、成员和项目编辑选项，返回原值、新值和逐字段差异；commit 使用 prepare 保存的原 revision 和 actionId 调用现有账本服务，冲突时返回最新 revision 且禁止覆盖。
 - 新增 `worktime.record.update.prepare/commit`：prepare 读取当前用户记录并复用 `WorktimeService` 重新计算加班分钟和实际时薪，卡片同时展示直接字段与派生字段差异；commit 仅接受已批准 action，并以原 revision 调用现有工时更新服务。
 - 模型可看到 R3 `*.prepare`，但继续禁止看到或调用任何 `*.commit`；系统提示要求修改前先查询真实记录，多候选时必须让用户选择，不得猜测 ID。
@@ -76,20 +79,19 @@
 本次明确未实施：
 
 - 评测结果数据库留存、聚合成本告警和运营仪表盘。
-- 转账、借入、借出、还款等复杂流水类型，以及批量记账和批量删除。
 - 账本、账户、分类等账本资源管理工具，以及工时设置管理写工具。
 - MCP Server、PAT/OAuth、scope、站内审批与外部客户端兼容验证。
 - 文件、向量库和 RAG。
 
 后续正式增量顺序（已排期，不能遗漏）：
 
-1. 复杂流水工具：转账、借入、借出、还款及其修改/删除/冲突保护。
-2. 批量操作：多笔自然语言记账、批量预览、逐项失败隔离、批量删除的强确认。
-3. 管理工具：账本、账户、分类、商家、成员、项目、预算及工时设置，按 R2-R4 分级审批。
-4. 只读 MCP Server：Streamable HTTP、PAT、scope、撤销、审计、限流与 MCP Inspector/Codex/WorkBuddy 验证。
-5. MCP 写入与正式认证：prepare/commit、站内审批中心、OAuth 2.1 + PKCE 和外部客户端兼容回归。
+1. 管理工具：账本、账户、分类、商家、成员、项目、预算及工时设置，按 R2-R4 分级审批。
+2. 只读 MCP Server：Streamable HTTP、PAT、scope、撤销、审计、限流与 MCP Inspector/Codex/WorkBuddy 验证。
+3. MCP 写入与正式认证：prepare/commit、站内审批中心、OAuth 2.1 + PKCE 和外部客户端兼容回归。
 
 验证记录：
+
+- 2026-09-27 复杂流水与批量账务增量：后端 `mvn test` 共 153 项，151 项通过、2 项按既有规则跳过；AI 工具定向覆盖七类流水、转账双账户、复杂类型修改/删除、父级批量 action、明确 ID/revision 删除和 commit 隔离。真实 MySQL 4/4 覆盖混合批次、失败整批回滚、revision 冲突整批不删、转账双边删除、幂等重放与跨用户拒绝。前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过；Agent 桌面 Chromium 全量 22/22，新批量卡片在桌面 WebKit 与 375px 移动 Chromium 4/4 通过。真实本地 DeepSeek 生成一个含两笔流水的父级批量补参卡片，页面无错误覆盖层和横向溢出，未执行 commit、未产生业务写入。
 
 - 2026-09-27 thinking mode 协议增量：网关回归覆盖普通响应的 `reasoning_content` 解析/序列化和 SSE 分片聚合，编排回归覆盖普通与 SSE 工具结果回放时携带思考内容；AI 相关 Reactor 共执行 66 项，65 项通过、1 项真实模型测试按既有规则跳过。
 - 2026-09-27 工具调用上限增量：普通与 SSE 两条编排回归均覆盖同一轮返回 51 个工具调用时仅执行前 50 个，并验证下一轮模型工具目录为空；AI 相关 Reactor 共执行 66 项，65 项通过、1 项真实模型测试按既有规则跳过。

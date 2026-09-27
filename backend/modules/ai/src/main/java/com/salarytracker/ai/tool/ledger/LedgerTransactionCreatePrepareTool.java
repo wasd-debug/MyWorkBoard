@@ -29,6 +29,8 @@ import java.util.Set;
 
 @Component
 public class LedgerTransactionCreatePrepareTool implements DomainTool {
+    static final Set<String> SUPPORTED_KINDS = Set.of(
+            "EXPENSE", "INCOME", "TRANSFER", "BORROW_IN", "LEND_OUT", "COLLECT_DEBT", "REPAY_DEBT");
     private final LedgerBookService books;
     private final PendingActionService actions;
     private final CurrentUserResolver currentUser;
@@ -44,10 +46,13 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         ObjectNode schema = ToolSchemas.object(mapper);
         ToolSchemas.stringProperty(schema, "bookId", "账本公开 ID", null);
         ToolSchemas.stringProperty(schema, "bookName", "账本名称", null);
-        ToolSchemas.stringProperty(schema, "kind", "只支持 EXPENSE 或 INCOME", null);
+        ToolSchemas.stringProperty(schema, "kind",
+                "流水类型：EXPENSE、INCOME、TRANSFER、BORROW_IN、LEND_OUT、COLLECT_DEBT 或 REPAY_DEBT", null);
         ToolSchemas.numberProperty(schema, "amount", "金额，必须大于 0", 0);
         ToolSchemas.stringProperty(schema, "accountId", "账户公开 ID", null);
         ToolSchemas.stringProperty(schema, "accountName", "账户名称或简称", null);
+        ToolSchemas.stringProperty(schema, "targetAccountId", "转账的转入账户公开 ID", null);
+        ToolSchemas.stringProperty(schema, "targetAccountName", "转账的转入账户名称或简称", null);
         ToolSchemas.stringProperty(schema, "categoryId", "有效二级分类公开 ID", null);
         ToolSchemas.stringProperty(schema, "categoryName", "二级分类名称", null);
         ToolSchemas.stringProperty(schema, "merchantId", "商家公开 ID", null);
@@ -58,8 +63,8 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         ToolSchemas.stringProperty(schema, "projectName", "项目名称", null);
         ToolSchemas.stringProperty(schema, "occurredOn", "发生日期 yyyy-MM-dd，缺省为今天", "date");
         ToolSchemas.stringProperty(schema, "note", "备注", null);
-        definition = new ToolDefinition("ledger.transaction.create.prepare", 1,
-                "校验单笔收入或支出并生成确认预览；不写入账本数据。",
+        definition = new ToolDefinition("ledger.transaction.create.prepare", 2,
+                "校验单笔收入、支出、转账或借贷流水并生成确认预览；不写入账本数据。",
                 ToolRisk.R2, Set.of("ledger:write"), schema);
     }
 
@@ -67,16 +72,30 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
 
     @Override
     public ToolResult execute(JsonNode input) {
+        ResolvedDraft resolved = resolve(input);
+        PendingAction action = actions.prepare(currentUser.id(), definition, resolved.normalized(), null,
+                !resolved.complete(), Duration.ofMinutes(15));
+        if (!resolved.complete()) {
+            return ToolResult.needsInput(resolved.summary(), resolved.content(),
+                    action.id(), action.expiresAt().toString());
+        }
+        return ToolResult.needsConfirmation(resolved.summary(), resolved.content(),
+                action.id(), action.expiresAt().toString());
+    }
+
+    ResolvedDraft resolve(JsonNode input) {
         String bookId = ToolInputs.optionalText(input, "bookId");
         String bookName = ToolInputs.optionalText(input, "bookName");
         String kind = ToolInputs.optionalText(input, "kind");
-        if (kind != null && !Set.of("EXPENSE", "INCOME").contains(kind.toUpperCase())) {
-            throw new IllegalArgumentException("kind 只支持 EXPENSE 或 INCOME");
+        if (kind != null && !SUPPORTED_KINDS.contains(kind.toUpperCase())) {
+            throw new IllegalArgumentException("不支持的流水类型: " + kind);
         }
         if (kind != null) kind = kind.toUpperCase();
         BigDecimal amount = decimal(input, "amount");
         String accountId = ToolInputs.optionalText(input, "accountId");
         String accountName = ToolInputs.optionalText(input, "accountName");
+        String targetAccountId = ToolInputs.optionalText(input, "targetAccountId");
+        String targetAccountName = ToolInputs.optionalText(input, "targetAccountName");
         String categoryId = ToolInputs.optionalText(input, "categoryId");
         String categoryName = ToolInputs.optionalText(input, "categoryName");
         String merchantId = ToolInputs.optionalText(input, "merchantId");
@@ -110,12 +129,30 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
             suggested.add("kind");
         }
         final String requestedKind = kind;
+        boolean transfer = "TRANSFER".equals(requestedKind);
+        boolean requiresCategory = Set.of("EXPENSE", "INCOME").contains(requestedKind);
         List<Category> secondaryCategories = categories.stream().filter(item -> item.parentId() != null)
-                .filter(item -> requestedKind == null || item.kind().name().equals(requestedKind)).toList();
+                .filter(item -> requestedKind == null || requiresCategory && item.kind().name().equals(requestedKind)).toList();
         Match<Account> accountMatch = matchAccounts(accountOptions, accountId, accountName);
         if (accountId == null && accountMatch.selected() != null) { accountId = accountMatch.selected().id(); suggested.add("accountId"); }
-        Match<Category> categoryMatch = matchCategories(secondaryCategories, categories, categoryId, categoryName);
+        final String selectedAccountId = accountId;
+        List<Account> targetAccountOptions = selectedAccountId == null ? accountOptions : accountOptions.stream()
+                .filter(item -> !item.id().equals(selectedAccountId)).toList();
+        Match<Account> targetAccountMatch = transfer
+                ? matchAccounts(targetAccountOptions, targetAccountId, targetAccountName)
+                : new Match<>("missing", null, List.of());
+        if (transfer && targetAccountId == null && targetAccountMatch.selected() != null) {
+            targetAccountId = targetAccountMatch.selected().id();
+            suggested.add("targetAccountId");
+        }
+        Match<Category> categoryMatch = requiresCategory
+                ? matchCategories(secondaryCategories, categories, categoryId, categoryName)
+                : new Match<>("missing", null, List.of());
         if (categoryId == null && categoryMatch.selected() != null) { categoryId = categoryMatch.selected().id(); suggested.add("categoryId"); }
+        if (!requiresCategory) {
+            categoryId = null;
+            categoryName = null;
+        }
         Match<NamedResource> merchantMatch = matchNamed(merchants, merchantId, merchantName);
         if (merchantId == null && merchantMatch.selected() != null) { merchantId = merchantMatch.selected().id(); suggested.add("merchantId"); }
         Match<Member> memberMatch = matchMembers(members, memberId, memberName);
@@ -134,8 +171,14 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         if (projectId == null && projectMatch.selected() != null) { projectId = projectMatch.selected().id(); suggested.add("projectId"); }
         writeMatch(entityMatches, ambiguous, resolutionRequired, "accountId", accountName, accountMatch,
                 accountOptions.stream().map(this::accountOption).toList(), true);
-        writeMatch(entityMatches, ambiguous, resolutionRequired, "categoryId", categoryName, categoryMatch,
-                secondaryCategories.stream().map(item -> categoryOption(item, categories)).toList(), true);
+        if (transfer) {
+            writeMatch(entityMatches, ambiguous, resolutionRequired, "targetAccountId", targetAccountName,
+                    targetAccountMatch, targetAccountOptions.stream().map(this::accountOption).toList(), true);
+        }
+        if (requiresCategory) {
+            writeMatch(entityMatches, ambiguous, resolutionRequired, "categoryId", categoryName, categoryMatch,
+                    secondaryCategories.stream().map(item -> categoryOption(item, categories)).toList(), true);
+        }
         writeMatch(entityMatches, ambiguous, resolutionRequired, "merchantId", merchantName, merchantMatch,
                 merchants.stream().map(item -> namedOption(item, "商家")).toList(),
                 "ambiguous".equals(merchantMatch.status()));
@@ -149,7 +192,9 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         put(normalized, "bookId", bookId); put(normalized, "bookName", bookName); put(normalized, "kind", kind);
         if (amount == null) normalized.putNull("amount"); else normalized.put("amount", amount);
         put(normalized, "accountId", accountId); put(normalized, "categoryId", categoryId);
+        put(normalized, "targetAccountId", targetAccountId);
         put(normalized, "accountName", accountName); put(normalized, "categoryName", categoryName);
+        put(normalized, "targetAccountName", targetAccountName);
         put(normalized, "merchantId", merchantId); put(normalized, "memberId", memberId);
         put(normalized, "projectId", projectId);
         put(normalized, "merchantName", merchantName); put(normalized, "memberName", memberName);
@@ -161,7 +206,8 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         if (kind == null) missing.add("kind");
         if (amount == null) missing.add("amount");
         if (accountId == null) missing.add("accountId");
-        if (categoryId == null) missing.add("categoryId");
+        if (transfer && targetAccountId == null) missing.add("targetAccountId");
+        if (requiresCategory && categoryId == null) missing.add("categoryId");
         addResolutionMissing(missing, resolutionRequired, "merchantId");
         addResolutionMissing(missing, resolutionRequired, "memberId");
         addResolutionMissing(missing, resolutionRequired, "projectId");
@@ -171,12 +217,20 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         if (normalizedAccountId != null && accountOptions.stream().noneMatch(item -> item.id().equals(normalizedAccountId))) {
             throw new IllegalArgumentException("账户不存在或不可用");
         }
+        final String normalizedTargetAccountId = targetAccountId;
+        if (normalizedTargetAccountId != null
+                && accountOptions.stream().noneMatch(item -> item.id().equals(normalizedTargetAccountId))) {
+            throw new IllegalArgumentException("转入账户不存在或不可用");
+        }
+        if (normalizedAccountId != null && normalizedAccountId.equals(normalizedTargetAccountId)) {
+            throw new IllegalArgumentException("转出账户与转入账户不能相同");
+        }
         Category category = normalizedCategoryId == null ? null : categories.stream()
                 .filter(item -> item.id().equals(normalizedCategoryId)).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("分类不存在或不可用"));
         if (category != null) {
             if (category.parentId() == null) throw new IllegalArgumentException("分类必须选择到二级");
-            if (kind != null && !category.kind().name().equals(kind)) {
+            if (kind != null && requiresCategory && !category.kind().name().equals(kind)) {
                 throw new IllegalArgumentException("分类类型与流水类型不匹配");
             }
         }
@@ -184,8 +238,6 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         validateMember(members, memberId);
         validateNamed(projects, projectId, "项目");
 
-        PendingAction action = actions.prepare(currentUser.id(), definition, normalized, null,
-                !missing.isEmpty(), Duration.ofMinutes(15));
         ObjectNode content = mapper.createObjectNode();
         content.put("actionType", "ledger.transaction.create");
         content.set("input", normalized);
@@ -194,18 +246,23 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         content.set("ambiguousFields", ambiguous);
         content.set("resolutionRequiredFields", resolutionRequired);
         ArrayNode fields = content.putArray("fields");
-        field(fields, "kind", "收支类型", "select", true,
-                List.of(option("EXPENSE", "支出"), option("INCOME", "收入")));
+        field(fields, "kind", "流水类型", "select", true, kindOptions());
         field(fields, "amount", "金额", "money", true, null);
         field(fields, "occurredOn", "发生日期", "date", true, null);
         if (bookId == null) field(fields, "bookId", "账本", "entity-picker", true,
                 bookOptions.stream().map(item -> option(item.id(), item.name())).toList());
         if (bookId != null) {
-            field(fields, "accountId", "账户", "entity-picker", true,
+            field(fields, "accountId", transfer ? "转出账户" : "账户", "entity-picker", true,
                     accountOptions.stream().map(this::accountOption).toList());
-            field(fields, "categoryId", "二级分类", "entity-picker", true,
-                    categories.stream().filter(item -> item.parentId() != null)
-                            .map(item -> categoryOption(item, categories)).toList());
+            if (transfer) {
+                field(fields, "targetAccountId", "转入账户", "entity-picker", true,
+                        targetAccountOptions.stream().map(this::accountOption).toList());
+            }
+            if (requiresCategory) {
+                field(fields, "categoryId", "二级分类", "entity-picker", true,
+                        categories.stream().filter(item -> item.parentId() != null)
+                                .map(item -> categoryOption(item, categories)).toList());
+            }
             field(fields, "merchantId", "商家 / 对方", "entity-picker",
                     contains(resolutionRequired, "merchantId"),
                     merchants.stream().map(item -> namedOption(item, "商家")).toList());
@@ -219,20 +276,43 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         if (!missing.isEmpty()) {
             content.set("missingFields", missing);
             String summary = ambiguous.isEmpty() ? "请补充记账所需信息" : "请选择存在歧义的记账信息";
-            return ToolResult.needsInput(summary, content, action.id(), action.expiresAt().toString());
+            return new ResolvedDraft(normalized, content, false, summary);
         }
         ObjectNode preview = content.putObject("preview");
         preview.put("bookId", bookId); preview.put("kind", kind); preview.put("amount", amount);
         preview.put("accountId", accountId); preview.put("accountName", name(accountOptions, accountId));
-        preview.put("categoryId", categoryId); preview.put("categoryName", category.name());
-        preview.put("categoryPath", categoryLabel(category, categories));
+        if (targetAccountId != null) {
+            preview.put("targetAccountId", targetAccountId);
+            preview.put("targetAccountName", name(accountOptions, targetAccountId));
+        }
+        if (category != null) {
+            preview.put("categoryId", categoryId); preview.put("categoryName", category.name());
+            preview.put("categoryPath", categoryLabel(category, categories));
+        }
         preview.put("merchantId", merchantId); preview.put("merchantName", namedName(merchants, merchantId));
         preview.put("memberId", memberId); preview.put("memberName", memberName(members, memberId));
         preview.put("projectId", projectId); preview.put("projectName", namedName(projects, projectId));
         if (occurredOn != null) preview.put("occurredOn", occurredOn);
         if (note != null) preview.put("note", note);
-        return ToolResult.needsConfirmation("请确认这笔" + ("INCOME".equals(kind) ? "收入" : "支出"),
-                content, action.id(), action.expiresAt().toString());
+        return new ResolvedDraft(normalized, content, true, "请确认这笔" + kindLabel(kind));
+    }
+
+    private List<ObjectNode> kindOptions() {
+        return List.of(option("EXPENSE", "支出"), option("INCOME", "收入"),
+                option("TRANSFER", "转账"), option("BORROW_IN", "借入"), option("LEND_OUT", "借出"),
+                option("COLLECT_DEBT", "收债"), option("REPAY_DEBT", "还款"));
+    }
+
+    static String kindLabel(String kind) {
+        return switch (kind) {
+            case "INCOME" -> "收入";
+            case "TRANSFER" -> "转账";
+            case "BORROW_IN" -> "借入";
+            case "LEND_OUT" -> "借出";
+            case "COLLECT_DEBT" -> "收债";
+            case "REPAY_DEBT" -> "还款";
+            default -> "支出";
+        };
     }
 
     private BigDecimal decimal(JsonNode input, String field) {
@@ -405,6 +485,8 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
     }
 
     private record Match<T>(String status, T selected, List<T> candidates) { }
+
+    record ResolvedDraft(ObjectNode normalized, ObjectNode content, boolean complete, String summary) { }
 
     private String compact(String value) {
         return value == null ? "" : value.toLowerCase().replaceAll("[\\s/／_-]+", "");

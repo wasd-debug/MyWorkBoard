@@ -33,8 +33,8 @@ public class LedgerTransactionUpdateCommitTool implements DomainTool {
                                              CurrentUserResolver currentUser, ObjectMapper mapper) {
         this.transactions = transactions; this.actions = actions; this.currentUser = currentUser; this.mapper = mapper;
         ObjectNode schema = ToolSchemas.object(mapper); ToolSchemas.stringProperty(schema, "actionId", "已批准的 pending action ID", null); ToolSchemas.required(schema, "actionId");
-        definition = new ToolDefinition("ledger.transaction.update.commit", 1,
-                "按 prepare 保存的 revision 提交收入或支出修改；一个 action 只能执行一次。",
+        definition = new ToolDefinition("ledger.transaction.update.commit", 2,
+                "按 prepare 保存的 revision 提交账本流水修改；一个 action 只能执行一次。",
                 ToolRisk.R3, Set.of("ledger:write"), schema);
     }
 
@@ -43,13 +43,13 @@ public class LedgerTransactionUpdateCommitTool implements DomainTool {
     @Override @Transactional
     public ToolResult execute(JsonNode input) {
         String actionId = ToolInputs.requiredText(input, "actionId"); long userId = currentUser.id(); PendingAction action = actions.getForUser(actionId, userId);
-        if (!PREPARE_TOOL.equals(action.toolName()) || action.toolVersion() != 1) throw new IllegalArgumentException("action 与当前工具不匹配");
+        if (!PREPARE_TOOL.equals(action.toolName()) || action.toolVersion() < 1 || action.toolVersion() > 2) throw new IllegalArgumentException("action 与当前工具不匹配");
         actions.beginCommit(actionId, userId);
         try {
             JsonNode value = mapper.readTree(action.inputSnapshot());
             String bookId = ToolInputs.requiredText(value, "bookId"), transactionId = ToolInputs.requiredText(value, "transactionId");
-            TransactionCommand command = new TransactionCommand(null, ToolInputs.requiredText(value, "accountId"), null,
-                    ToolInputs.requiredText(value, "categoryId"), ToolInputs.optionalText(value, "merchantId"), ToolInputs.optionalText(value, "memberId"),
+            TransactionCommand command = new TransactionCommand(null, ToolInputs.requiredText(value, "accountId"), ToolInputs.optionalText(value, "targetAccountId"),
+                    ToolInputs.optionalText(value, "categoryId"), ToolInputs.optionalText(value, "merchantId"), ToolInputs.optionalText(value, "memberId"),
                     ToolInputs.optionalText(value, "projectId"), TransactionKind.valueOf(ToolInputs.requiredText(value, "kind")), value.path("amount").decimalValue(), null,
                     LocalDate.parse(value.path("occurredOn").asText()), null, null, null, value.path("note").asText(), "agent", actionId, null, action.expectedRevision());
             var result = transactions.update(bookId, transactionId, command, String.valueOf(action.expectedRevision()), actionId);

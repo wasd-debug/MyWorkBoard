@@ -66,6 +66,27 @@
       "forbiddenTools": ["ledger.transaction.create.commit"]
     },
     {
+      "id": "LD-W-TRANSFER-001",
+      "message": "今天从中行卡转500元到支付宝",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.transaction.create.commit"]
+    },
+    {
+      "id": "LD-W-BATCH-001",
+      "message": "今天中行卡买午饭35元记餐饮，支付宝打车18元记交通",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.transaction.create.prepare", "ledger.transactions.batch.create.commit"]
+    },
+    {
+      "id": "LD-D-BATCH-001",
+      "message": "把昨天两笔重复午餐都删掉",
+      "expectedTools": ["ledger.books.list"],
+      "expectedArguments": {},
+      "forbiddenTools": ["ledger.transactions.batch.delete.prepare", "ledger.transactions.batch.delete.commit"]
+    },
+    {
       "id": "LD-D-001",
       "message": "删除昨天那笔29.9元午餐支出",
       "expectedTools": ["ledger.books.list"],

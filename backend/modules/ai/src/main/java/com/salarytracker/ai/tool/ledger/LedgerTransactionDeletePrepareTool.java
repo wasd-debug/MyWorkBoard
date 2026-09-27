@@ -13,7 +13,6 @@ import com.salarytracker.ai.tool.ToolRisk;
 import com.salarytracker.ai.tool.ToolSchemas;
 import com.salarytracker.identity.CurrentUserResolver;
 import com.salarytracker.ledger.LedgerModels.Transaction;
-import com.salarytracker.ledger.LedgerModels.TransactionKind;
 import com.salarytracker.ledger.LedgerTransactionService;
 import org.springframework.stereotype.Component;
 
@@ -38,8 +37,8 @@ public class LedgerTransactionDeletePrepareTool implements DomainTool {
         ToolSchemas.stringProperty(schema, "bookId", "账本公开 ID", null);
         ToolSchemas.stringProperty(schema, "transactionId", "要删除的流水公开 ID", null);
         ToolSchemas.required(schema, "bookId", "transactionId");
-        definition = new ToolDefinition("ledger.transaction.delete.prepare", 1,
-                "读取一笔收入或支出并生成完整删除影响预览；不写入数据。",
+        definition = new ToolDefinition("ledger.transaction.delete.prepare", 2,
+                "读取一笔账本流水并生成完整删除影响预览；转账会同时影响关联两端，不写入数据。",
                 ToolRisk.R3, Set.of("ledger:write"), schema);
     }
 
@@ -50,9 +49,6 @@ public class LedgerTransactionDeletePrepareTool implements DomainTool {
         String bookId = ToolInputs.requiredText(input, "bookId");
         String transactionId = ToolInputs.requiredText(input, "transactionId");
         Transaction transaction = transactions.transaction(bookId, transactionId);
-        if (!Set.of(TransactionKind.EXPENSE, TransactionKind.INCOME).contains(transaction.kind())) {
-            throw new IllegalArgumentException("首版只支持删除普通收入或支出流水");
-        }
         ObjectNode snapshot = mapper.createObjectNode().put("bookId", bookId).put("transactionId", transactionId);
         PendingAction action = actions.prepare(currentUser.id(), definition, snapshot, transaction.revision(),
                 false, Duration.ofMinutes(15));
@@ -62,6 +58,7 @@ public class LedgerTransactionDeletePrepareTool implements DomainTool {
         preview.put("kind", transaction.kind().name());
         preview.put("amount", transaction.amount());
         nullable(preview, "accountName", transaction.accountName());
+        nullable(preview, "targetAccountName", transaction.targetAccountName());
         nullable(preview, "categoryName", transaction.categoryName());
         String categoryPath = transaction.parentCategoryName() == null ? transaction.categoryName()
                 : transaction.parentCategoryName() + " / " + transaction.categoryName();
@@ -77,9 +74,12 @@ public class LedgerTransactionDeletePrepareTool implements DomainTool {
         content.put("actionType", "ledger.transaction.delete");
         content.set("input", snapshot);
         content.set("preview", preview);
-        content.putArray("effects")
-                .add("该流水将从账本列表、报表和统计中移除")
-                .add("对应账户余额和本地账本投影将重新计算")
+        var effects = content.putArray("effects");
+        effects.add("该流水将从账本列表、报表和统计中移除");
+        if (transaction.kind() == com.salarytracker.ledger.LedgerModels.TransactionKind.TRANSFER) {
+            effects.add("关联的转出和转入流水将作为一个转账组同时删除");
+        }
+        effects.add("对应账户余额和本地账本投影将重新计算")
                 .add("删除会进入现有回收站和审计链路，不会立即永久清除");
         return ToolResult.needsConfirmation("请确认删除这笔流水", content,
                 action.id(), action.expiresAt().toString());

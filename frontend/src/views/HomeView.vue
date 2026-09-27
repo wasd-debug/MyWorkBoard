@@ -138,7 +138,35 @@
                     <div><b>{{ action.summary }}</b><small>{{ actionTypeLabel(action) }}</small></div>
                     <em>{{ actionStatusLabel(action) }}</em>
                   </header>
-                  <form v-if="actionEditable(action)" class="agent-action-form" @submit.prevent="answerAction(item, action)">
+                  <form v-if="actionEditable(action) && actionIsBatchCreate(action)" class="agent-action-form agent-batch-form" @submit.prevent="answerAction(item, action)">
+                    <div class="agent-batch-overview">
+                      <span><b>{{ action.form?.items?.length || 0 }} 笔流水</b><small>整批校验、整批保存，任一笔失败均不会写入</small></span>
+                      <em>最多 50 笔</em>
+                    </div>
+                    <article v-for="(batchItem, batchIndex) in action.form?.items || []" :key="`${action.actionId}-${batchIndex}`" class="agent-batch-item">
+                      <header><span>第 {{ batchIndex + 1 }} 笔</span><b>{{ transactionKindLabel(batchItem.kind) }} · {{ formatMoney(batchItem.amount) }}</b><button v-if="action.form.items.length > 1" type="button" :aria-label="`移除第 ${batchIndex + 1} 笔`" @click="removeBatchItem(action, batchIndex)"><Trash2 /></button></header>
+                      <div class="agent-batch-fields">
+                        <label v-for="field in batchItemFields(action, batchIndex)" :key="field.name" :class="{ 'entity-picker-field': field.type === 'entity-picker' }">
+                          <span>{{ field.label }}<i v-if="field.required">必填</i><i v-if="actionFieldAmbiguous(batchItemAction(action, batchIndex), field.name)" class="ambiguous">多个候选 · 请选择</i><i v-else-if="actionFieldSuggested(batchItemAction(action, batchIndex), field.name)" class="suggested">智能匹配</i></span>
+                          <select v-if="field.type === 'select'" :value="actionFieldValue(batchItemAction(action, batchIndex), field.name)" :required="field.required" @change="setActionField(batchItemAction(action, batchIndex), field.name, $event.target.value)">
+                            <option value="">请选择</option><option v-for="option in field.options || []" :key="option.value" :value="option.value">{{ option.label }}</option>
+                          </select>
+                          <div v-else-if="field.type === 'entity-picker'" class="agent-entity-picker" @keydown.esc="closeEntityPicker(batchItemAction(action, batchIndex), field)">
+                            <input type="search" autocomplete="off" :placeholder="`输入${field.label}名称筛选`" :value="entityPickerText(batchItemAction(action, batchIndex), field)" :required="field.required && !actionFieldValue(batchItemAction(action, batchIndex), field.name)" role="combobox" :aria-label="`${field.label}筛选`" aria-autocomplete="list" :aria-expanded="isEntityPickerOpen(batchItemAction(action, batchIndex), field)" @focus="openEntityPicker(batchItemAction(action, batchIndex), field)" @input="searchEntityPicker(batchItemAction(action, batchIndex), field, $event.target.value)" />
+                            <button v-if="actionFieldValue(batchItemAction(action, batchIndex), field.name)" type="button" :aria-label="`清除${field.label}`" @click="clearEntityPicker(batchItemAction(action, batchIndex), field)"><X /></button>
+                            <div v-if="isEntityPickerOpen(batchItemAction(action, batchIndex), field)" class="agent-entity-options" role="listbox" :aria-label="`${field.label}候选项`">
+                              <button v-for="option in filteredEntityOptions(batchItemAction(action, batchIndex), field)" :key="option.value" type="button" role="option" :aria-selected="actionFieldValue(batchItemAction(action, batchIndex), field.name) === option.value" @pointerdown.prevent="selectEntityOption(batchItemAction(action, batchIndex), field, option)"><Check v-if="actionFieldValue(batchItemAction(action, batchIndex), field.name) === option.value" /><span><b>{{ option.label }}</b><small v-if="option.description">{{ option.description }}</small></span></button>
+                              <p v-if="!filteredEntityOptions(batchItemAction(action, batchIndex), field).length">没有匹配项</p>
+                            </div>
+                          </div>
+                          <textarea v-else-if="field.type === 'textarea'" :value="actionFieldValue(batchItemAction(action, batchIndex), field.name)" rows="2" :required="field.required" @input="setActionField(batchItemAction(action, batchIndex), field.name, $event.target.value)"></textarea>
+                          <input v-else :type="actionInputType(field.type)" :step="field.type === 'money' ? '0.01' : field.type === 'number' ? '1' : undefined" :min="field.type === 'money' ? '0.01' : undefined" :value="actionFieldValue(batchItemAction(action, batchIndex), field.name)" :required="field.required" @input="setActionField(batchItemAction(action, batchIndex), field.name, $event.target.value)" />
+                        </label>
+                      </div>
+                    </article>
+                    <footer><button type="button" @click="rejectAction(action)">全部取消</button><button class="primary" type="submit" :disabled="action.busy || !batchActionFormComplete(action)">{{ action.busy ? '正在生成批量预览…' : '生成批量预览' }}</button></footer>
+                  </form>
+                  <form v-else-if="actionEditable(action)" class="agent-action-form" @submit.prevent="answerAction(item, action)">
                     <label v-for="field in action.structuredContent?.fields || []" :key="field.name" :class="{ 'entity-picker-field': field.type === 'entity-picker' }">
                       <span>{{ field.label }}<i v-if="field.required">必填</i><i v-if="actionFieldAmbiguous(action, field.name)" class="ambiguous">多个候选 · 请选择</i><i v-else-if="actionFieldSuggested(action, field.name)" class="suggested">智能匹配</i></span>
                       <select v-if="field.type === 'select'" :value="actionFieldValue(action, field.name)" :required="field.required" @change="setActionField(action, field.name, $event.target.value)">
@@ -158,6 +186,19 @@
                     </label>
                     <footer><button type="button" @click="rejectAction(action)">取消</button><button class="primary" type="submit" :disabled="action.busy || !actionFormComplete(action)">{{ action.busy ? '正在生成预览…' : '生成预览' }}</button></footer>
                   </form>
+                  <div v-else-if="action.status === 'NEEDS_CONFIRMATION' && !action.uiStatus && actionIsBatch(action)" class="agent-confirmation-summary agent-batch-confirmation">
+                    <div class="agent-batch-overview">
+                      <span><b>{{ action.structuredContent?.totals?.count || action.structuredContent?.items?.length || 0 }} 笔{{ actionIsDelete(action) ? '待删除流水' : '待保存流水' }}</b><small>{{ batchTotalsLabel(action) }}</small></span>
+                      <em>{{ actionIsDelete(action) ? '整批强确认' : '原子提交' }}</em>
+                    </div>
+                    <details v-for="(batchItem, batchIndex) in action.structuredContent?.items || []" :key="`${action.actionId}-preview-${batchIndex}`" class="agent-batch-preview" :open="batchIndex === 0">
+                      <summary><span>第 {{ batchIndex + 1 }} 笔 · {{ transactionKindLabel(batchPreview(batchItem).kind) }}</span><b>{{ formatMoney(batchPreview(batchItem).amount) }}</b><ChevronDown /></summary>
+                      <dl><template v-for="row in transactionPreviewRows(batchPreview(batchItem))" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template></dl>
+                    </details>
+                    <div v-if="action.structuredContent?.effects?.length" class="agent-action-effects" aria-label="操作影响"><strong>批量删除影响</strong><ul><li v-for="effect in action.structuredContent.effects" :key="effect">{{ effect }}</li></ul></div>
+                    <p><ShieldCheck />{{ actionIsDelete(action) ? '确认后才会整批删除；任意一笔版本变化时全部不执行。' : '确认后整批写入；任意一笔失败时全部回滚，重复点击不会重复创建。' }}</p>
+                    <footer><button v-if="actionIsBatchCreate(action)" type="button" @click="editAction(action)">返回编辑</button><button type="button" @click="rejectAction(action)">全部取消</button><button :class="actionIsDelete(action) ? 'danger' : 'primary'" type="button" :disabled="action.busy" @click="confirmAction(item, action)">{{ action.busy ? (actionIsDelete(action) ? '正在整批删除…' : '正在整批保存…') : (actionIsDelete(action) ? '确认删除全部' : '确认并保存全部') }}</button></footer>
+                  </div>
                   <div v-else-if="action.status === 'NEEDS_CONFIRMATION' && !action.uiStatus" class="agent-confirmation-summary">
                     <div v-if="action.structuredContent?.diff?.length" class="agent-action-diff" aria-label="修改差异">
                       <strong>本次修改</strong>
@@ -334,7 +375,8 @@ const cards = [
 function uid() { return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}` }
 function persist() { localStorage.setItem(historyKey.value, JSON.stringify(conversations.value.slice(0, 60))) }
 function parseMetadata(value) { if (!value) return {}; if (typeof value === 'object') return value; try { return JSON.parse(value) } catch { return {} } }
-function normalizeActions(actions = []) { return actions.map(action => ({ ...action, form: { ...(action.structuredContent?.input || {}) } })) }
+function cloneValue(value) { return value == null ? value : JSON.parse(JSON.stringify(value)) }
+function normalizeActions(actions = []) { return actions.map(action => ({ ...action, form: cloneValue(action.structuredContent?.input || {}) })) }
 function responseFields(value = {}) { return { usage: value.usage, durationMs: value.durationMs, firstTokenMs: value.firstTokenMs, modelExecutions: value.modelExecutions || [], toolExecutions: value.toolExecutions || [], actions: normalizeActions(value.actions || []) } }
 function inferRoute(text) { if (/工时|打卡|上班|下班/.test(text)) return { route: '/punch', routeLabel: '工时' }; if (/报表/.test(text)) return { route: '/ledger/reports', routeLabel: '账本报表' }; if (/流水/.test(text)) return { route: '/ledger/transactions', routeLabel: '账本流水' }; if (/记账|支出|收入|账本/.test(text)) return { route: '/ledger', routeLabel: '账本' }; return {} }
 function assistantRoute(role, text) { return role === 'assistant' ? inferRoute(text) : {} }
@@ -425,13 +467,16 @@ function formatMessageTime(value) { return new Intl.DateTimeFormat('zh-CN', { ho
 function formatNumber(value) { return new Intl.NumberFormat('zh-CN').format(Number(value || 0)) }
 function formatDuration(value) { const ms = Math.max(0, Number(value || 0)); if (ms < 1000) return `${ms}ms`; if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`; return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s` }
 function formatCost(value, currency = 'CNY') { const amount = Number(value || 0); return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: currency || 'CNY', minimumFractionDigits: amount < 0.01 ? 6 : 2, maximumFractionDigits: 8 }).format(amount) }
+function formatMoney(value) { const amount = Number(value); return Number.isFinite(amount) && value !== '' && value != null ? `¥${amount.toFixed(2)}` : '金额待补充' }
 function compactModelName(value) { const name = String(value || '模型').trim(); if (name === '系统环境配置') return '环境模型'; return name.length > 7 ? `${name.slice(0, 7)}…` : name }
 function pricingTierLabel(value) { return value === 'PEAK' ? '高峰' : value === 'OFF_PEAK' ? '空闲' : '固定价' }
 function replyTokens(usage) { return Math.max(0, Number(usage?.outputTokens || 0) - Number(usage?.reasoningTokens || 0)) }
 function cacheHitRate(usage) { const hit = Number(usage?.cacheHitTokens || 0), miss = Number(usage?.cacheMissTokens || 0); return hit + miss ? Math.round(hit / (hit + miss) * 100) : 0 }
-function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledger.overview': '查询账本概览', 'ledger.transactions.search': '查询账本流水', 'ledger.transaction.history': '查询流水历史', 'ledger.transaction.update.prepare': '准备修改流水', 'ledger.transaction.delete.prepare': '准备删除流水', 'ledger.reports.summary': '生成账本报表', 'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置', 'worktime.records.search': '查询工时记录', 'worktime.record.update.prepare': '准备修改工时', 'worktime.record.delete.prepare': '准备删除工时' })[name] || name }
-function actionTypeLabel(action) { return ({ 'worktime.record.create': '新增工时', 'worktime.record.update': '修改工时', 'worktime.record.delete': '删除工时', 'ledger.transaction.update': '修改流水', 'ledger.transaction.delete': '删除流水' })[action.structuredContent?.actionType] || '单笔记账' }
+function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledger.overview': '查询账本概览', 'ledger.transactions.search': '查询账本流水', 'ledger.transaction.history': '查询流水历史', 'ledger.transaction.create.prepare': '准备新增流水', 'ledger.transaction.update.prepare': '准备修改流水', 'ledger.transaction.delete.prepare': '准备删除流水', 'ledger.transactions.batch.create.prepare': '准备批量记账', 'ledger.transactions.batch.delete.prepare': '准备批量删除', 'ledger.reports.summary': '生成账本报表', 'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置', 'worktime.records.search': '查询工时记录', 'worktime.record.create.prepare': '准备新增工时', 'worktime.record.update.prepare': '准备修改工时', 'worktime.record.delete.prepare': '准备删除工时' })[name] || name }
+function actionTypeLabel(action) { return ({ 'worktime.record.create': '新增工时', 'worktime.record.update': '修改工时', 'worktime.record.delete': '删除工时', 'ledger.transaction.create': '单笔记账', 'ledger.transaction.update': '修改流水', 'ledger.transaction.delete': '删除流水', 'ledger.transactions.batch.create': '批量记账', 'ledger.transactions.batch.delete': '批量删除流水' })[action.structuredContent?.actionType] || '待确认操作' }
 function actionIsDelete(action) { return action.structuredContent?.actionType?.endsWith('.delete') }
+function actionIsBatchCreate(action) { return action.structuredContent?.actionType === 'ledger.transactions.batch.create' }
+function actionIsBatch(action) { return action.structuredContent?.actionType?.startsWith('ledger.transactions.batch.') }
 function actionStatusLabel(action) { return ({ NEEDS_INPUT: '待补充', NEEDS_CONFIRMATION: '待确认', COMPLETED: '已完成', DENIED: '已拒绝', CONFLICT: '有冲突', FAILED: '失败', EXPIRED: '已过期' })[action.uiStatus || action.status] || action.uiStatus || action.status }
 function actionFieldValue(action, name) { const value = action.form?.[name]; return value == null ? '' : value }
 function setActionField(action, name, value) {
@@ -450,7 +495,7 @@ function actionFormComplete(action) { return (action.structuredContent?.fields |
 function actionEditable(action) { return !action.uiStatus && (action.status === 'NEEDS_INPUT' || (action.status === 'NEEDS_CONFIRMATION' && action.editing)) }
 function actionFieldSuggested(action, name) { return (action.structuredContent?.suggestedFields || []).includes(name) }
 function actionFieldAmbiguous(action, name) { return action.structuredContent?.entityMatches?.[name]?.status === 'ambiguous' && !actionFieldValue(action, name) }
-function editAction(action) { action.editing = true; action.form = { ...(action.structuredContent?.input || {}), ...(action.form || {}) }; persist() }
+function editAction(action) { action.editing = true; action.form = { ...cloneValue(action.structuredContent?.input || {}), ...cloneValue(action.form || {}) }; persist() }
 function pendingLedgerActions(item) { return (item.actions || []).filter(action => action.structuredContent?.actionType === 'ledger.transaction.create' && !action.uiStatus && ['NEEDS_INPUT', 'NEEDS_CONFIRMATION'].includes(action.status)) }
 function batchAmount(item, kind) { const total = pendingLedgerActions(item).filter(action => action.structuredContent?.input?.kind === kind).reduce((sum, action) => sum + Number(action.structuredContent?.input?.amount || 0), 0); return `¥${total.toFixed(2)}` }
 function allLedgerActionsConfirmable(item) { const actions = pendingLedgerActions(item); return actions.length > 1 && actions.every(action => action.status === 'NEEDS_CONFIRMATION' && !action.editing) }
@@ -465,6 +510,28 @@ function searchEntityPicker(action, field, query) { setActionField(action, field
 function selectEntityOption(action, field, option) { setActionField(action, field.name, option.value); updateEntityPicker(action, field, { query: option.label, open: false }) }
 function clearEntityPicker(action, field) { setActionField(action, field.name, ''); updateEntityPicker(action, field, { query: '', open: true }) }
 function filteredEntityOptions(action, field) { const query = entityPickerText(action, field).trim().toLocaleLowerCase(); return (field.options || []).filter(option => field.name !== 'categoryId' || !option.kind || option.kind === actionFieldValue(action, 'kind')).filter(option => !query || String(option.label || '').toLocaleLowerCase().includes(query)) }
+function transactionKindLabel(kind) { return ({ EXPENSE: '支出', INCOME: '收入', TRANSFER: '转账', BORROW_IN: '借入', LEND_OUT: '借出', COLLECT_DEBT: '收债', REPAY_DEBT: '还款' })[kind] || '类型待补充' }
+function batchItemAction(action, index) {
+  const content = action.structuredContent?.items?.[index] || {}
+  return { actionId: `${action.actionId}:${index}`, structuredContent: content, form: action.form?.items?.[index] || {} }
+}
+function batchItemFields(action, index) { return action.structuredContent?.items?.[index]?.fields || [] }
+function batchActionFormComplete(action) { return (action.form?.items || []).length > 0 && (action.form.items || []).every((_, index) => actionFormComplete(batchItemAction(action, index))) }
+function removeBatchItem(action, index) { if ((action.form?.items || []).length <= 1) return; action.form.items.splice(index, 1); action.structuredContent?.items?.splice(index, 1); persist() }
+function batchPreview(item) { return item?.preview || item || {} }
+function batchTotalsLabel(action) {
+  const totals = action.structuredContent?.totals || {}
+  return [`收入 ${formatMoney(totals.income || 0)}`, `支出 ${formatMoney(totals.expense || 0)}`, `转账 ${formatMoney(totals.transfer || 0)}`].join(' · ')
+}
+function transactionPreviewRows(preview = {}) {
+  return [
+    ['类型', transactionKindLabel(preview.kind)], ['金额', preview.amount != null ? formatMoney(preview.amount) : null],
+    [preview.kind === 'TRANSFER' ? '转出账户' : '账户', preview.accountName], ['转入账户', preview.targetAccountName],
+    ['分类', preview.categoryPath || preview.categoryName], ['商家 / 对方', preview.merchantName], ['成员', preview.memberName],
+    ['项目', preview.projectName], ['日期', preview.occurredOn || '今天'], ['备注', preview.note],
+    ['版本', preview.revision != null ? `rev ${preview.revision}` : null]
+  ].filter(row => row[1] != null && row[1] !== '').map(([label, value]) => ({ label, value }))
+}
 function actionPreviewRows(action) {
   const preview = action.structuredContent?.preview || {}
   if (['worktime.record.create', 'worktime.record.update', 'worktime.record.delete'].includes(action.structuredContent?.actionType)) return [
@@ -472,17 +539,19 @@ function actionPreviewRows(action) {
     ['工时', preview.workMin != null ? `${preview.workMin} 分钟` : null], ['加班', preview.overtimeMin != null ? `${preview.overtimeMin} 分钟` : null],
     ['实际时薪', preview.realHourlyWage != null ? `¥${Number(preview.realHourlyWage).toFixed(2)}` : null], ['备注', preview.note]
   ].filter(row => row[1] != null).map(([label, value]) => ({ label, value }))
-  return [
-    ['类型', preview.kind === 'INCOME' ? '收入' : '支出'], ['金额', preview.amount != null ? `¥${Number(preview.amount).toFixed(2)}` : null],
-    ['账户', preview.accountName], ['分类', preview.categoryPath || preview.categoryName], ['商家 / 对方', preview.merchantName],
-    ['成员', preview.memberName], ['项目', preview.projectName], ['日期', preview.occurredOn || '今天'], ['备注', preview.note]
-  ].filter(row => row[1]).map(([label, value]) => ({ label, value }))
+  return transactionPreviewRows(preview)
 }
-function replaceAction(item, previous, next) { const index = (item.actions || []).findIndex(action => action.actionId === previous.actionId); if (index >= 0) item.actions.splice(index, 1, { ...next, editing: false, form: { ...(next.structuredContent?.input || {}) } }); persist() }
+function replaceAction(item, previous, next) { const index = (item.actions || []).findIndex(action => action.actionId === previous.actionId); if (index >= 0) item.actions.splice(index, 1, { ...next, editing: false, form: cloneValue(next.structuredContent?.input || {}) }); persist() }
+function actionAnswerPayload(value, key = '') {
+  if (Array.isArray(value)) return value.map(item => actionAnswerPayload(item))
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([childKey, child]) => [childKey, actionAnswerPayload(child, childKey)]))
+  if (['amount', 'rest'].includes(key) && value !== '') return Number(value)
+  return value === '' ? null : value
+}
 async function answerAction(item, action) {
   action.busy = true
   try {
-    const payload = Object.fromEntries(Object.entries(action.form || {}).map(([key, value]) => [key, ['amount', 'rest'].includes(key) && value !== '' ? Number(value) : value || null]))
+    const payload = actionAnswerPayload(action.form || {})
     replaceAction(item, action, await apiAnswerAgentAction(action.actionId, payload))
   } catch (error) { message.error(error?.response?.data?.detail || '无法生成操作预览') }
   finally { action.busy = false }
@@ -499,7 +568,7 @@ async function confirmAction(item, action) {
     if (result.status === 'COMPLETED') message.success(result.summary || '操作已完成')
     else message.error(result.summary || '操作未完成')
     if (result.status === 'COMPLETED' && action.structuredContent?.actionType?.startsWith('worktime.record.')) await worktimeStore.fetch().catch(() => {})
-    if (result.status === 'COMPLETED' && action.structuredContent?.actionType?.startsWith('ledger.transaction.')) await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {})
+    if (result.status === 'COMPLETED' && /^ledger\.transactions?\./.test(action.structuredContent?.actionType || '')) await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {})
     persist()
   } catch (error) { message.error(error?.response?.data?.detail || '保存失败') }
   finally { action.busy = false }
@@ -615,7 +684,7 @@ async function executePrompt(pending) {
       else if (event === 'assistant.delta') { assistant.content += data.content || ''; await scrollToBottom() }
       else if (event === 'tool.started') assistant.toolExecutions.push({ name: data.name, status: 'RUNNING', summary: '正在调用', durationMs: 0 })
       else if (event === 'tool.completed') { const index = assistant.toolExecutions.findIndex(tool => tool.name === data.execution?.name && tool.status === 'RUNNING'); if (index >= 0) assistant.toolExecutions.splice(index, 1, data.execution); else assistant.toolExecutions.push(data.execution) }
-      else if (['input.required', 'confirmation.required'].includes(event)) { assistant.actions ||= []; if (!assistant.actions.some(action => action.actionId === data.action?.actionId)) assistant.actions.push({ ...data.action, form: { ...(data.action?.structuredContent?.input || {}) } }); persist() }
+      else if (['input.required', 'confirmation.required'].includes(event)) { assistant.actions ||= []; if (!assistant.actions.some(action => action.actionId === data.action?.actionId)) assistant.actions.push({ ...data.action, form: cloneValue(data.action?.structuredContent?.input || {}) }); persist() }
       else if (event === 'turn.completed') { await applyReply(assistant, data.response || {}); replyReconciled = true }
       else if (event === 'turn.cancelled') Object.assign(assistant, { content: assistant.content || '本轮对话已取消。', typing: false, status: 'CANCELLED' })
       else if (event === 'turn.failed') throw new Error(data.message || 'Agent 执行失败')

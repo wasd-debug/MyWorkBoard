@@ -149,6 +149,20 @@ public class LedgerTransactionService {
         return createWithContext(context, input, idempotencyKey);
     }
 
+    @Transactional
+    public List<Transaction> createBatch(String bookPublicId,
+                                         List<TransactionCommand> inputs,
+                                         String idempotencyKey) {
+        if (inputs == null || inputs.isEmpty()) throw new IllegalArgumentException("批量记账至少包含一笔流水");
+        if (inputs.size() > 50) throw new IllegalArgumentException("单次批量记账最多 50 笔");
+        LedgerBookAccess.Context context = access.resolve(bookPublicId);
+        List<Transaction> created = new ArrayList<>();
+        for (int index = 0; index < inputs.size(); index++) {
+            created.add(createWithContext(context, inputs.get(index), idempotencyKey + ":" + index));
+        }
+        return List.copyOf(created);
+    }
+
     /** Used by ShedLock background jobs after the job has resolved the book owner context. */
     @Transactional
     Transaction createForSystem(LedgerBookAccess.Context context,
@@ -245,6 +259,21 @@ public class LedgerTransactionService {
         resources.appendSync(context, operationId, "transaction", transactionPublicId, "DELETE", result);
         audit.record(context, "transaction.delete", "transaction", transactionPublicId, before, result);
         return result;
+    }
+
+    @Transactional
+    public List<DeletedResource> deleteBatch(String bookPublicId,
+                                             List<com.salarytracker.ledger.LedgerModels.TransactionDeleteCommand> inputs,
+                                             String operationId) {
+        if (inputs == null || inputs.isEmpty()) throw new IllegalArgumentException("批量删除至少包含一笔流水");
+        if (inputs.size() > 50) throw new IllegalArgumentException("单次批量删除最多 50 笔");
+        List<DeletedResource> deleted = new ArrayList<>();
+        for (int index = 0; index < inputs.size(); index++) {
+            var input = inputs.get(index);
+            deleted.add(delete(bookPublicId, input.transactionId(), String.valueOf(input.revision()),
+                    operationId + ":" + index));
+        }
+        return List.copyOf(deleted);
     }
 
     public List<TransactionVersion> history(String bookPublicId, String transactionPublicId) {

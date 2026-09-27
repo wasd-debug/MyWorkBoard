@@ -253,6 +253,41 @@ class LedgerWriteToolsTest {
     }
 
     @Test
+    void prepareAndCommitSupportTransferWithoutCategory() {
+        var prepare = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
+        var commit = new LedgerTransactionCreateCommitTool(transactions, actions, currentUser, mapper);
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("kind", "TRANSFER").put("amount", 1000)
+                .put("accountId", "account-1").put("targetAccountId", "account-2")
+                .put("occurredOn", "2026-09-27").put("note", "资金归集"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals("中行卡", prepared.structuredContent().path("preview").path("targetAccountName").asText());
+        assertTrue(prepared.structuredContent().path("input").path("categoryId").isNull());
+        actions.approve(prepared.actionId(), 7L);
+        assertEquals(ToolStatus.COMPLETED,
+                commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())).status());
+        verify(transactions).create(eq("book-1"), org.mockito.ArgumentMatchers.argThat(command ->
+                command.kind() == TransactionKind.TRANSFER
+                        && "account-1".equals(command.accountId())
+                        && "account-2".equals(command.targetAccountId())
+                        && command.categoryId() == null), eq(prepared.actionId()));
+    }
+
+    @Test
+    void prepareSupportsDebtKindsWithoutInventingCategory() {
+        var prepare = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
+        for (String kind : List.of("BORROW_IN", "LEND_OUT", "COLLECT_DEBT", "REPAY_DEBT")) {
+            var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                    .put("kind", kind).put("amount", 500).put("accountId", "account-1")
+                    .put("merchantId", "merchant-1").put("occurredOn", "2026-09-27"));
+            assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+            assertEquals(kind, prepared.structuredContent().path("preview").path("kind").asText());
+            assertTrue(prepared.structuredContent().path("input").path("categoryId").isNull());
+        }
+    }
+
+    @Test
     void prepareRejectsPrimaryOrMismatchedCategory() {
         var tool = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
         var base = mapper.createObjectNode().put("bookId", "book-1").put("kind", "EXPENSE")
@@ -290,17 +325,24 @@ class LedgerWriteToolsTest {
     }
 
     @Test
-    void updatePrepareRejectsUnsupportedTransactionKind() {
-        when(transactions.transaction("book-1", "transaction-1")).thenReturn(new Transaction(
+    void updatePrepareSupportsTransferAndKeepsPairedAccounts() {
+        Transaction transfer = new Transaction(
                 1L, "transaction-1", "account-1", "现金", "wallet", "account-2", "中行卡", "bank", "group-1",
                 null, null, null, null, null, null, null, null, null, null, null, null,
                 "member-1", "user", "alice", "Alice", null, null, null, null, null,
                 "TRANSFER", TransactionKind.TRANSFER, new BigDecimal("100"), "CNY", java.time.LocalDate.of(2026, 9, 24),
-                "", "manual", "op-1", 2, false, null, 7L, "2026-09-24", "2026-09-24"));
+                "", "manual", "op-1", 2, false, null, 7L, "2026-09-24", "2026-09-24");
+        when(transactions.transaction("book-1", "transaction-1")).thenReturn(transfer);
         var prepare = new LedgerTransactionUpdatePrepareTool(transactions, books, actions, currentUser, mapper);
 
+        var prepared = prepare.execute(mapper.createObjectNode()
+                .put("bookId", "book-1").put("transactionId", "transaction-1").put("amount", 120));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals("account-2", prepared.structuredContent().path("preview").path("targetAccountId").asText());
+        assertEquals("中行卡", prepared.structuredContent().path("preview").path("targetAccountName").asText());
         assertThrows(IllegalArgumentException.class, () -> prepare.execute(mapper.createObjectNode()
-                .put("bookId", "book-1").put("transactionId", "transaction-1").put("amount", 120)));
+                .put("bookId", "book-1").put("transactionId", "transaction-1").put("kind", "EXPENSE")));
     }
 
     @Test
@@ -349,7 +391,7 @@ class LedgerWriteToolsTest {
     }
 
     @Test
-    void deletePrepareRejectsTransferAndCommitReportsRevisionConflict() {
+    void deletePrepareSupportsTransferAndCommitReportsRevisionConflict() {
         Transaction transfer = new Transaction(
                 1L, "transaction-1", "account-1", "现金", "wallet", "account-2", "中行卡", "bank", "group-1",
                 null, null, null, null, null, null, null, null, null, null, null, null,
@@ -358,8 +400,11 @@ class LedgerWriteToolsTest {
                 "", "manual", "op-1", 2, false, null, 7L, "2026-09-24", "2026-09-24");
         when(transactions.transaction("book-1", "transaction-1")).thenReturn(transfer);
         var prepare = new LedgerTransactionDeletePrepareTool(transactions, actions, currentUser, mapper);
-        assertThrows(IllegalArgumentException.class, () -> prepare.execute(mapper.createObjectNode()
-                .put("bookId", "book-1").put("transactionId", "transaction-1")));
+        var transferPrepared = prepare.execute(mapper.createObjectNode()
+                .put("bookId", "book-1").put("transactionId", "transaction-1"));
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, transferPrepared.status());
+        assertEquals("中行卡", transferPrepared.structuredContent().path("preview").path("targetAccountName").asText());
+        assertEquals(4, transferPrepared.structuredContent().path("effects").size());
 
         when(transactions.transaction("book-1", "transaction-1"))
                 .thenReturn(transaction(4L, new BigDecimal("29.90"), "午餐"));
@@ -372,6 +417,61 @@ class LedgerWriteToolsTest {
         var result = commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId()));
         assertEquals(ToolStatus.CONFLICT, result.status());
         assertEquals(5L, result.structuredContent().path("latestRevision").asLong());
+    }
+
+    @Test
+    void batchCreateUsesOneActionAndOneTransactionalServiceCall() {
+        var single = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
+        var prepare = new LedgerTransactionsBatchCreatePrepareTool(single, actions, currentUser, mapper);
+        var commit = new LedgerTransactionsBatchCreateCommitTool(transactions, actions, currentUser, mapper);
+        var items = mapper.createArrayNode();
+        items.addObject().put("kind", "EXPENSE").put("amount", 28)
+                .put("accountId", "account-1").put("categoryId", "category-1").put("occurredOn", "2026-09-27");
+        items.addObject().put("kind", "TRANSFER").put("amount", 1000)
+                .put("accountId", "account-1").put("targetAccountId", "account-2").put("occurredOn", "2026-09-27");
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1").set("items", items));
+        when(transactions.createBatch(eq("book-1"), any(), eq(prepared.actionId())))
+                .thenReturn(List.of(transaction(1, new BigDecimal("28"), "午餐"), transaction(1, new BigDecimal("1000"), "转账")));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals(2, prepared.structuredContent().path("totals").path("count").asInt());
+        assertEquals(1000, prepared.structuredContent().path("totals").path("transfer").decimalValue().intValue());
+        actions.approve(prepared.actionId(), 7L);
+        assertEquals(ToolStatus.COMPLETED,
+                commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())).status());
+        verify(transactions).createBatch(eq("book-1"), org.mockito.ArgumentMatchers.argThat(commands ->
+                commands.size() == 2 && commands.get(1).kind() == TransactionKind.TRANSFER), eq(prepared.actionId()));
+    }
+
+    @Test
+    void batchDeleteFreezesIdsAndRevisionsBeforeCommit() {
+        Transaction first = transaction(4L, new BigDecimal("29.90"), "午餐");
+        Transaction second = new Transaction(2L, "transaction-2", "account-2", "中行卡", "bank",
+                null, null, null, null,
+                null, null, null, null, null, null, null, null,
+                "merchant-1", "中转站", "shop", "张三",
+                "member-1", "user", "alice", "Alice",
+                null, null, null, null, null,
+                "BORROW_IN", TransactionKind.BORROW_IN,
+                new BigDecimal("500"), "CNY", java.time.LocalDate.of(2026, 9, 27), "借入",
+                "manual", "op-2", 6, false, null, 7L, "2026-09-27", "2026-09-27");
+        when(transactions.transaction("book-1", "transaction-1")).thenReturn(first);
+        when(transactions.transaction("book-1", "transaction-2")).thenReturn(second);
+        var prepare = new LedgerTransactionsBatchDeletePrepareTool(transactions, actions, currentUser, mapper);
+        var commit = new LedgerTransactionsBatchDeleteCommitTool(transactions, actions, currentUser, mapper);
+        var ids = mapper.createArrayNode().add("transaction-1").add("transaction-2");
+        var prepared = prepare.execute(mapper.createObjectNode().put("bookId", "book-1").set("transactionIds", ids));
+        when(transactions.deleteBatch(eq("book-1"), any(), eq(prepared.actionId()))).thenReturn(List.of());
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, prepared.status());
+        assertEquals(4, prepared.structuredContent().path("input").path("items").path(0).path("revision").asLong());
+        assertEquals(6, prepared.structuredContent().path("input").path("items").path(1).path("revision").asLong());
+        actions.approve(prepared.actionId(), 7L);
+        assertEquals(ToolStatus.COMPLETED,
+                commit.execute(mapper.createObjectNode().put("actionId", prepared.actionId())).status());
+        verify(transactions).deleteBatch(eq("book-1"), org.mockito.ArgumentMatchers.argThat(commands ->
+                commands.size() == 2 && commands.get(0).revision() == 4 && commands.get(1).revision() == 6),
+                eq(prepared.actionId()));
     }
 
     @Test

@@ -40,6 +40,17 @@ public final class ToolSchemas {
         property.put("exclusiveMinimum", minimum);
     }
 
+    public static ObjectNode arrayProperty(ObjectNode schema, String name, String description,
+                                           JsonNode itemSchema, int minimum, int maximum) {
+        ObjectNode property = properties(schema).putObject(name);
+        property.put("type", "array");
+        property.put("description", description);
+        property.put("minItems", minimum);
+        property.put("maxItems", maximum);
+        property.set("items", itemSchema);
+        return property;
+    }
+
     public static ObjectNode required(ObjectNode schema, String... names) {
         var required = schema.putArray("required");
         for (String name : names) required.add(name);

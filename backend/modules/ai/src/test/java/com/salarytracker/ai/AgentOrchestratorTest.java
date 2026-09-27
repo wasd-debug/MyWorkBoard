@@ -94,6 +94,25 @@ class AgentOrchestratorTest {
     }
 
     @Test
+    void exposesBatchPrepareButNeverBatchCommitToModel() {
+        ToolDefinition prepare = definition("ledger.transactions.batch.create.prepare", ToolRisk.R2);
+        ToolDefinition commit = definition("ledger.transactions.batch.create.commit", ToolRisk.R2);
+        when(model.configured()).thenReturn(true);
+        when(tools.definitionsForCurrentUser()).thenReturn(List.of(prepare, commit));
+        when(model.agentTurn(any(), any())).thenReturn(
+                new LlmGateway.AgentTurn("请在批量卡片中确认。", List.of(), "deepseek", true));
+
+        orchestrator().chat("午饭 35 元，打车 18 元");
+
+        var captor = ArgumentCaptor.forClass(List.class);
+        verify(model).agentTurn(any(), captor.capture());
+        @SuppressWarnings("unchecked")
+        List<LlmGateway.AgentTool> exposed = (List<LlmGateway.AgentTool>) captor.getValue();
+        assertEquals(List.of("ledger__transactions__batch__create__prepare"),
+                exposed.stream().map(tool -> tool.function().name()).toList());
+    }
+
+    @Test
     void rejectsForgedCommitToolCallWithoutEnteringDomainRegistry() {
         ToolDefinition prepare = definition("ledger.transaction.delete.prepare", ToolRisk.R3);
         when(model.configured()).thenReturn(true);
