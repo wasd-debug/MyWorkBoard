@@ -1,7 +1,7 @@
 # 个人工作台项目总览
 
 > 状态日期：2026-09-27
-> 当前主线：Phase 3B/3D Web Agent 核心闭环已完成，真实模型已能调用只读工具及获准的 R2/R3 prepare；R4 站内审批已覆盖导入确认、成员/角色、账本删除和永久清除，模型仍不可调用 R4。下一阶段进入只读 MCP、PAT 与 scope，继续按“现有功能 Agent 化 → MCP → 文件/RAG”顺序推进
+> 当前主线：Phase 3B/3D Web Agent 核心闭环已完成；Phase 3C-1 已交付只读 Streamable HTTP MCP、PAT、scope、撤销、审计与限流，并完成基础协议联调。下一增量进入 MCP prepare 与站内审批衔接，随后再做 commit、OAuth 与外部客户端兼容收口，继续按“现有功能 Agent 化 → MCP → 文件/RAG”顺序推进
 
 ## 项目定位
 
@@ -73,7 +73,7 @@
 ### Phase 2-6
 
 - **Phase 2 任务管理：未启动。** 导航只有禁用占位，没有 task/file/notification 模块或表结构。
-- **Phase 3A-D Agent/MCP：Phase 3A/3B Web 核心闭环完成，Phase 3C 待启动。** 会话、队列、SSE、模型连接、Usage 与 Trace 已落地；首页已支持工时记录/设置、七类流水、批量账务、账本基础资料、预算、周期任务、回收站恢复、导出和导入预览的受控卡片。统一 R4 审批中心已覆盖导入确认、成员/角色、账本删除和永久清除，批准后执行且可幂等恢复；MCP Server 尚未实现。
+- **Phase 3A-D Agent/MCP：Phase 3A/3B Web 核心闭环完成，Phase 3C-1 已完成。** 会话、队列、SSE、模型连接、Usage 与 Trace 已落地；首页支持 DeepSeek 深度思考开关及默认收起的思考块。只读 MCP 已通过 `/mcp` 暴露 8 个工时/账本查询工具，设置页可管理 PAT、scope 与账本范围；R4 审批仍只允许网站内执行。
 - **Phase 4 文件/RAG：未启动。** 尚无 MinIO/NAS 文件域、Tika、Qdrant 和知识库。
 - **Phase 5 跨域洞察：未启动。** 只有 `domain_event` 预留表，无事件发布/消费、`report_fact`、`report_snapshot` 或洞察页面。
 - **Phase 6 持续打磨：部分能力提前实现。** 已有响应式布局、主题、共享账本和可重复恢复演练；PWA、全局搜索和完整可观测体系尚未实现。
@@ -135,13 +135,14 @@
 1. 完成 Android Chrome 与 iOS Safari 真机验收记录。
 2. 确认 MoneyWiz 与外部账单源范围。
 3. 将恢复脚本纳入季度生产运维并持续留存发布/回滚记录。
-4. 继续 [工作台的 Agent 改造计划](工作台的Agent改造计划.md)：下一增量进入只读 MCP Server、PAT、scope、撤销、审计、限流与 Inspector/Codex/WorkBuddy 连接验证，随后开放 MCP prepare/commit 和 OAuth；真实同步投影回归作为每个写入增量的共同门禁。
+4. 继续 [工作台的 Agent 改造计划](工作台的Agent改造计划.md)：下一增量开放 MCP R2/R3 prepare 与 action 查询，并复用现有网站审批中心；commit、OAuth 2.1 + PKCE、Inspector/Codex/WorkBuddy 正式兼容收口随后推进。连接方法见 [MCP 连接指南](MCP连接指南.md)。
 5. Phase 2 任务域与现有工时/账本 Agent 可分别推进；任务能力完成后再注册为新的 Domain Tool，不阻塞 Phase 3A-D。
 
 ## 文档约定
 
 - `ARCHITECTURE.md`：长期目标、阶段计划、架构门禁和当前状态。
 - `工作台的Agent改造计划.md`：Agent、MCP、受控写入、工具覆盖和逐阶段验证计划。
+- `MCP连接指南.md`：PAT 创建、Streamable HTTP 配置、scope、联调与故障排查。
 - `Phase 1 —— 账本设计具体展开.md`：账本产品约定、已实现能力和剩余验收项。
 - `DEPLOY.md`：本地联调、构建、部署与排障。
 - `docs/superpowers/plans/`：阶段性实施计划记录。

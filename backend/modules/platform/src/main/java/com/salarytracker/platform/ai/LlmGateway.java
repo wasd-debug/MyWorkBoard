@@ -126,19 +126,33 @@ public class LlmGateway {
 
     public AgentTurn agentTurnStreaming(List<AgentMessage> messages, List<AgentTool> tools,
                                         Consumer<String> contentConsumer) {
-        return agentTurnStreaming(new RuntimeConfig(endpoint, model, apiKey, 0.1, 60_000), messages, tools,
+        return agentTurnStreaming(new RuntimeConfig(endpoint, model, apiKey, 0.1, 60_000, "DEEPSEEK"), messages, tools,
                 contentConsumer);
+    }
+
+    public AgentTurn agentTurnStreaming(List<AgentMessage> messages, List<AgentTool> tools,
+                                        Consumer<String> contentConsumer, Consumer<String> reasoningConsumer,
+                                        boolean deepThinking) {
+        return agentTurnStreaming(new RuntimeConfig(endpoint, model, apiKey, 0.1, 60_000, "DEEPSEEK"), messages,
+                tools, contentConsumer, reasoningConsumer, deepThinking);
     }
 
     public AgentTurn agentTurnStreaming(RuntimeConfig config, List<AgentMessage> messages, List<AgentTool> tools,
                                         Consumer<String> contentConsumer) {
+        return agentTurnStreaming(config, messages, tools, contentConsumer, ignored -> { }, false);
+    }
+
+    public AgentTurn agentTurnStreaming(RuntimeConfig config, List<AgentMessage> messages, List<AgentTool> tools,
+                                        Consumer<String> contentConsumer, Consumer<String> reasoningConsumer,
+                                        boolean deepThinking) {
         if (config == null || !config.configured()) {
             return new AgentTurn("DeepSeek 尚未配置。请设置 DEEPSEEK_API_KEY 后重启后端。",
                     List.of(), "not-configured", false);
         }
         ChatCompletionRequest payload = new ChatCompletionRequest(config.model(), messages, config.temperature(), null,
                 tools.isEmpty() ? null : tools, tools.isEmpty() ? null : "auto", true,
-                new StreamOptions(true));
+                new StreamOptions(true), config.supportsDeepThinking()
+                ? new Thinking(deepThinking ? "enabled" : "disabled") : null);
         long startedAt = System.nanoTime();
         long firstTokenMs = 0;
         StringBuilder content = new StringBuilder();
@@ -169,7 +183,11 @@ public class LlmGateway {
                     if (!usageNode.isMissingNode() && !usageNode.isNull()) usage = tokenUsage(usageNode);
                     JsonNode delta = chunk.path("choices").path(0).path("delta");
                     String reasoningPart = delta.path("reasoning_content").asText("");
-                    if (!reasoningPart.isEmpty()) reasoningContent.append(reasoningPart);
+                    if (!reasoningPart.isEmpty()) {
+                        if (firstTokenMs == 0) firstTokenMs = elapsedMs(startedAt);
+                        reasoningContent.append(reasoningPart);
+                        reasoningConsumer.accept(reasoningPart);
+                    }
                     String part = delta.path("content").asText("");
                     if (!part.isEmpty()) {
                         if (firstTokenMs == 0) firstTokenMs = elapsedMs(startedAt);
@@ -336,13 +354,13 @@ public class LlmGateway {
     public record ChatResponse(String content, String provider, boolean configured, String sessionId,
                                TokenUsage usage, long durationMs, long firstTokenMs,
                                List<ModelExecution> modelExecutions, List<ToolExecution> toolExecutions,
-                               List<ActionRequest> actions) {
+                               List<ActionRequest> actions, String reasoningContent, boolean deepThinking) {
         public ChatResponse(String content, String provider, boolean configured) {
-            this(content, provider, configured, null, TokenUsage.empty(), 0, 0, List.of(), List.of(), List.of());
+            this(content, provider, configured, null, TokenUsage.empty(), 0, 0, List.of(), List.of(), List.of(), null, false);
         }
 
         public ChatResponse(String content, String provider, boolean configured, String sessionId) {
-            this(content, provider, configured, sessionId, TokenUsage.empty(), 0, 0, List.of(), List.of(), List.of());
+            this(content, provider, configured, sessionId, TokenUsage.empty(), 0, 0, List.of(), List.of(), List.of(), null, false);
         }
     }
 
@@ -374,11 +392,16 @@ public class LlmGateway {
     public record ToolExecution(String name, String status, String summary, long durationMs) {
     }
 
-    public record RuntimeConfig(String endpoint, String model, String apiKey, double temperature, int timeoutMs) {
+    public record RuntimeConfig(String endpoint, String model, String apiKey, double temperature, int timeoutMs,
+                                String providerType) {
+        public RuntimeConfig(String endpoint, String model, String apiKey, double temperature, int timeoutMs) {
+            this(endpoint, model, apiKey, temperature, timeoutMs, "DEEPSEEK");
+        }
         public boolean configured() {
             return endpoint != null && !endpoint.isBlank() && model != null && !model.isBlank()
                     && apiKey != null && !apiKey.isBlank();
         }
+        public boolean supportsDeepThinking() { return "DEEPSEEK".equalsIgnoreCase(providerType); }
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -524,21 +547,24 @@ public class LlmGateway {
     private record StreamOptions(@JsonProperty("include_usage") boolean includeUsage) {
     }
 
+    private record Thinking(String type) { }
+
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private record ChatCompletionRequest(String model, List<?> messages, double temperature,
                                          @JsonProperty("response_format") ResponseFormat responseFormat,
                                          List<AgentTool> tools,
                                          @JsonProperty("tool_choice") String toolChoice,
                                          Boolean stream,
-                                         @JsonProperty("stream_options") StreamOptions streamOptions) {
+                                         @JsonProperty("stream_options") StreamOptions streamOptions,
+                                         Thinking thinking) {
         private ChatCompletionRequest(String model, List<?> messages, double temperature,
                                       ResponseFormat responseFormat) {
-            this(model, messages, temperature, responseFormat, null, null, null, null);
+            this(model, messages, temperature, responseFormat, null, null, null, null, null);
         }
 
         private ChatCompletionRequest(String model, List<?> messages, double temperature,
                                       ResponseFormat responseFormat, List<AgentTool> tools, String toolChoice) {
-            this(model, messages, temperature, responseFormat, tools, toolChoice, null, null);
+            this(model, messages, temperature, responseFormat, tools, toolChoice, null, null, null);
         }
     }
 }

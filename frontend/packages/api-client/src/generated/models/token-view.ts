@@ -14,8 +14,14 @@
 
 
 
-export interface TurnCommand {
-    'clientRequestId'?: string;
-    'message'?: string;
-    'deepThinking'?: boolean;
+export interface TokenView {
+    'id'?: string;
+    'name'?: string;
+    'tokenHint'?: string;
+    'scopes'?: Set<string>;
+    'bookIds'?: Set<string>;
+    'expiresAt'?: string;
+    'revokedAt'?: string;
+    'lastUsedAt'?: string;
+    'createdAt'?: string;
 }

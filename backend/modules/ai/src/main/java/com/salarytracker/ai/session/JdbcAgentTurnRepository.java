@@ -20,17 +20,17 @@ public class JdbcAgentTurnRepository implements AgentTurnRepository {
     @Override
     @Transactional
     public AgentTurnView enqueue(String turnId, String sessionId, long userId, String clientRequestId,
-                                 String userMessage, String retryOfTurnId) {
+                                 String userMessage, boolean deepThinking, String retryOfTurnId) {
         try {
             Long next = jdbc.queryForObject("""
                     SELECT COALESCE(MAX(queue_position),0)+1000 FROM agent_turn
                     WHERE session_id=? AND user_id=? AND status IN ('QUEUED','RECEIVED','PLANNING')
                     """, Long.class, sessionId, userId);
             jdbc.update("""
-                    INSERT INTO agent_turn(id,session_id,user_id,client_request_id,retry_of_turn_id,status,queue_position,user_message)
-                    VALUES(?,?,?,?,?,?,?,?)
+                    INSERT INTO agent_turn(id,session_id,user_id,client_request_id,retry_of_turn_id,status,queue_position,user_message,deep_thinking)
+                    VALUES(?,?,?,?,?,?,?,?,?)
                     """, turnId, sessionId, userId, clientRequestId, retryOfTurnId,
-                    AgentTurnStatus.QUEUED.name(), next == null ? 1000 : next, userMessage);
+                    AgentTurnStatus.QUEUED.name(), next == null ? 1000 : next, userMessage, deepThinking);
             bumpRevision(sessionId, userId);
         } catch (DuplicateKeyException ignored) {
             // request id and retry source are both idempotency boundaries.
@@ -144,12 +144,12 @@ public class JdbcAgentTurnRepository implements AgentTurnRepository {
         return changed;
     }
 
-    @Override @Transactional public boolean complete(String id, long userId, String content, String json) {
+    @Override @Transactional public boolean complete(String id, long userId, String content, String reasoning, String json) {
         Optional<AgentTurnView> before = find(id, userId);
         boolean changed = jdbc.update("""
-                UPDATE agent_turn SET status='COMPLETED',assistant_content=?,response_json=?,completed_at=CURRENT_TIMESTAMP(6)
+                UPDATE agent_turn SET status='COMPLETED',assistant_content=?,reasoning_content=?,response_json=?,completed_at=CURRENT_TIMESTAMP(6)
                 WHERE id=? AND user_id=? AND status IN ('RECEIVED','PLANNING')
-                """, content, json, id, userId) == 1;
+                """, content, reasoning, json, id, userId) == 1;
         if (changed && before.isPresent()) bumpRevision(before.get().sessionId(), userId);
         return changed;
     }
@@ -193,7 +193,8 @@ public class JdbcAgentTurnRepository implements AgentTurnRepository {
     private AgentTurnView map(ResultSet r) throws SQLException {
         return new AgentTurnView(r.getString("id"), r.getString("session_id"), r.getLong("user_id"),
                 r.getString("client_request_id"), r.getString("retry_of_turn_id"), AgentTurnStatus.valueOf(r.getString("status")),
-                r.getLong("queue_position"), r.getString("user_message"), r.getString("assistant_content"),
+                r.getLong("queue_position"), r.getString("user_message"), r.getBoolean("deep_thinking"),
+                r.getString("assistant_content"), r.getString("reasoning_content"),
                 r.getString("response_json"), r.getString("error_message"), instant(r, "created_at"),
                 instant(r, "started_at"), instant(r, "completed_at"));
     }

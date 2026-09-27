@@ -12,7 +12,7 @@
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
 | Phase 2 任务 | 未启动 | 只有禁用导航占位，无领域模块、数据表和页面 |
-| Phase 3A-D Agent/MCP | Phase 3A/3B/3D 增量实施 | R1 查询、action JDBC、会话/队列/SSE、模型连接与 Trace 已落地；工时、七类流水、批量账务、基础管理、预算、周期任务、回收站恢复、导出和导入预览支持受控流程；R4 审批覆盖导入确认、成员/角色、账本删除和永久清除，下一阶段进入 MCP |
+| Phase 3A-D Agent/MCP | Phase 3A/3B/3D 核心闭环，Phase 3C-1 完成 | Web Agent、受控写入和 R4 审批已落地；只读 Streamable HTTP MCP、PAT、scope、撤销、审计与限流已上线本地环境，下一步接入 MCP prepare 与站内审批 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
 | Phase 6 打磨 | 部分提前实现 | 已有响应式布局、主题、共享账本、自动视觉/无障碍和恢复演练；PWA、搜索及完整可观测体系未实现 |
@@ -637,7 +637,7 @@ Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后
 
 - [~] 已新增 `ai` Maven 模块、Domain Tool 注册表、风险分级、统一结果、action JDBC repository 和 V12 Flyway 表
 - [~] 已实现工时、账本、账户、分类、流水、报表、预算、周期任务、回收站、成员和角色 R1 查询；已实现工时记录/设置、七类流水、父级批量账务、账本基础资料、预算、周期任务、回收站恢复和导出 prepare/commit、零写入导入预览，以及导入确认、成员/角色、账本删除和永久清除 R4 审批执行器；删除/恢复复用软删除、版本历史、同步和审计
-- [~] 已覆盖当前用户、authority、工具目录过滤、未知字段、重名注册、过期、用户隔离、重复 commit、服务端预览和模块边界；真实 MySQL Testcontainers 与 Flyway V1-V21 已通过，MCP 尚未对外启用
+- [~] 已覆盖当前用户、authority、工具目录过滤、未知字段、重名注册、过期、用户隔离、重复 commit、服务端预览和模块边界；真实 MySQL Testcontainers 与 Flyway V1-V22 已通过，只读 MCP 已在本地启用
 - **验收**：每个工具具备成功、缺参、无权限、冲突和重复提交测试；prepare 不产生业务写入。
 
 ### Phase 3B —— Web 工作台 Agent
@@ -653,11 +653,13 @@ Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后
 
 ### Phase 3C —— MCP 对外接入
 
-- [ ] Streamable HTTP MCP Server，Domain Tool 到 MCP Tool 的单一适配层
-- [ ] PAT、read/prepare/commit scope、撤销、账本限制、审计和限流
+- [x] Streamable HTTP MCP Server，Domain Tool 到 MCP Tool 的单一适配层
+- [~] PAT、read scope、撤销、账本限制、审计和限流已完成；prepare/commit scope 待下一增量
 - [ ] OAuth 2.1 + PKCE 和外部客户端高风险 confirmation URL；Web 站内审批基础已先行落地
 - [ ] MCP Inspector、Codex 和 WorkBuddy 真实兼容验证
 - **验收**：默认只读；未审批、过期、重放、伪造用户和越权账本均不能写入；真实客户端完成查询和低风险写入。
+
+当前实现使用官方 Java MCP SDK `2.0.1`、协议版本 `2025-06-18` 和 Servlet Streamable HTTP。`POST /mcp` 在后端逐请求校验 PAT，并按 scope 选择只读工具目录；Vite 与 Nginx 同源代理 `/mcp`。完整连接与验收步骤见 [`MCP连接指南.md`](MCP连接指南.md)。
 
 ### Phase 3D —— 现有功能全量覆盖与稳定化
 

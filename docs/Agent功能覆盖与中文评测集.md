@@ -40,6 +40,8 @@
 | 导入确认 | `ledger.import.confirm.prepare/commit` | R4 | 已接入站内审批中心；模型不可见，批准后立即执行且重复批准不重复写入 | 并发审批、权限撤销和大批量性能回归 |
 | 删除账本 | `ledger.book.delete.prepare/commit` | R4 | 已接入站内审批；仅 OWNER，可见完整影响，至少保留一个账本，模型不可见 | 权限撤销、revision 并发和同步游标专项回归 |
 | 成本估算 | `ai_usage` + 价格版本 | 只读元数据 | 已支持固定价与 DeepSeek 峰谷价 | 供应商账单抽样对账 |
+| DeepSeek 深度思考 | `deepThinking` + `assistant.reasoning.delta` | 会话元数据 | 已支持开关、队列/重试保持、刷新恢复和默认收起 | 多工具长链路与其他兼容供应商回归 |
+| 外部只读 MCP | `/mcp` + PAT | R1 | 8 个工时/账本工具已按 scope 暴露 | Inspector/Codex/WorkBuddy 正式兼容记录 |
 
 ## 2. 中文指令评测集
 
@@ -92,6 +94,11 @@
 | SEC-003 | 再执行一次刚才的确认 | 拒绝重复 commit | 不产生第二次业务写入 |
 | COST-001 | 工作日 10:00 发起 DeepSeek 请求 | 高峰计价 | Trace 显示 `PEAK`，使用高峰价格快照 |
 | COST-002 | 工作日 12:30、18:00 后或周末发起请求 | 空闲计价 | Trace 显示 `OFF_PEAK`，使用空闲价格快照 |
+| THINK-001 | 开启深度思考后计算 17×23 | DeepSeek thinking | SSE 正文与 reasoning 分离；思考块默认收起，展开可读，刷新后仍可恢复 |
+| THINK-002 | 关闭深度思考后发送普通问题 | 普通 DeepSeek 请求 | 请求发送 `thinking.type=disabled`，无 reasoning 时不渲染空折叠块 |
+| MCP-R-001 | PAT 同时授予账本与工时 read scope | `tools/list` | 仅返回 8 个已批准的 R1 工具，不包含 prepare/commit |
+| MCP-R-002 | PAT 只授予工时 read scope | `tools/list` | 仅返回 `worktime.settings.get` 与 `worktime.records.search` |
+| MCP-SEC-001 | 使用无效、过期或撤销 PAT | initialize/tools call | HTTP 401，不返回工具目录或业务数据 |
 
 ## 3. 评测通过标准
 
@@ -117,6 +124,8 @@
 - 接入模型后，任何提示词或工具 Schema 变更都必须重跑本文件中的固定样例。
 - 当前模型工具白名单包含 R0/R1 和明确允许的 R2/R3 `*.prepare`；所有 `*.commit` 均不进入模型上下文，只能由站内按钮在 action 已批准后调用。
 - DeepSeek 峰谷档位按请求开始时刻和北京时间计算，价格由用户配置且按版本留存；页面估算不替代供应商最终账单。
+- 深度思考默认关闭；仅 DeepSeek 模型显示开关。思考内容不得混入最终正文、工具参数或审计摘要，前端必须默认收起且允许用户显式展开/收起。
+- MCP `tools/list` 必须按 PAT scope 裁剪；当前只读阶段不得出现任何 `*.prepare` 或 `*.commit`，撤销必须立即阻止下一次请求。
 
 ## 4. 执行方式与当前结果
 

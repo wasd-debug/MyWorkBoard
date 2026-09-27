@@ -56,6 +56,9 @@ export async function apiEnqueueAgentTurn(sessionId, payload) { return data(awai
 export async function apiReorderAgentQueue(sessionId, payload) { return data(await api.put(`/api/v1/agent/sessions/${sessionId}/queue/order`, payload)) }
 export async function apiRemoveQueuedAgentTurn(turnId) { return data(await api.delete(`/api/v1/agent/queue/${turnId}`)) }
 export async function apiRetryAgentTurn(turnId, clientRequestId) { return data(await api.post(`/api/v1/agent/turns/${turnId}/retry`, { clientRequestId })) }
+export async function apiListMcpTokens() { return data(await api.get('/api/v1/mcp/tokens')) }
+export async function apiCreateMcpToken(payload) { return data(await api.post('/api/v1/mcp/tokens', payload)) }
+export async function apiRevokeMcpToken(id) { return data(await api.delete(`/api/v1/mcp/tokens/${id}`)) }
 
 export async function apiStreamAgentTurn(sessionId, payload, onEvent, signal) {
   const request = () => fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/turns`, {

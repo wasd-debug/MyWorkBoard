@@ -180,8 +180,10 @@ class LlmGatewayTest {
 
     @Test
     void streamsTextToolArgumentsAndUsage() throws Exception {
+        AtomicReference<String> requestBody = new AtomicReference<>();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/chat", exchange -> {
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             byte[] response = ("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"先分析\"}}]}\n\n"
                     + "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\n"
                     + "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",\"function\":{\"name\":\"ledger__overview\",\"arguments\":\"{\\\"bookId\\\":\"}}]}}]}\n\n"
@@ -196,11 +198,17 @@ class LlmGatewayTest {
         LlmGateway gateway = new LlmGateway(mapper, RestClient.builder(),
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/chat", "deepseek-chat", "test-key");
         List<String> deltas = new ArrayList<>();
+        List<String> reasoningDeltas = new ArrayList<>();
 
-        LlmGateway.AgentTurn turn = gateway.agentTurnStreaming(List.of(LlmGateway.AgentMessage.user("查询")),
-                List.of(), deltas::add);
+        LlmGateway.AgentTurn turn = gateway.agentTurnStreaming(
+                new LlmGateway.RuntimeConfig("http://127.0.0.1:" + server.getAddress().getPort() + "/chat",
+                        "deepseek-chat", "test-key", 0.1, 60_000, "DEEPSEEK"),
+                List.of(LlmGateway.AgentMessage.user("查询")), List.of(), deltas::add,
+                reasoningDeltas::add, true);
 
         assertEquals(List.of("你好"), deltas);
+        assertEquals(List.of("先分析"), reasoningDeltas);
+        assertEquals("enabled", mapper.readTree(requestBody.get()).path("thinking").path("type").asText());
         assertEquals("你好", turn.content());
         assertEquals("ledger__overview", turn.toolCalls().get(0).name());
         assertEquals("{\"bookId\":\"book-1\"}", turn.toolCalls().get(0).arguments());
@@ -212,8 +220,10 @@ class LlmGatewayTest {
 
     @Test
     void suppressesStreamedDsmlAndRestoresMultipleToolCalls() throws Exception {
+        AtomicReference<String> requestBody = new AtomicReference<>();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/chat", exchange -> {
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             String first = mapper.writeValueAsString(Map.of("choices", List.of(Map.of("delta",
                     Map.of("content", "正在生成预览：\n<|DS")))));
             String second = mapper.writeValueAsString(Map.of(
@@ -249,6 +259,7 @@ class LlmGatewayTest {
         assertEquals(29.9, mapper.readTree(turn.toolCalls().get(0).arguments()).path("amount").asDouble());
         assertEquals(50, mapper.readTree(turn.toolCalls().get(1).arguments()).path("amount").asInt());
         assertTrue(deltas.stream().noneMatch(part -> part.contains("DSML")));
+        assertEquals("disabled", mapper.readTree(requestBody.get()).path("thinking").path("type").asText());
     }
 
     @Test

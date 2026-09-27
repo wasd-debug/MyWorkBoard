@@ -37,4 +37,6 @@ export interface ChatResponse {
     'modelExecutions'?: Array<ModelExecution>;
     'toolExecutions'?: Array<ToolExecution>;
     'actions'?: Array<ActionRequest>;
+    'reasoningContent'?: string;
+    'deepThinking'?: boolean;
 }

@@ -141,17 +141,18 @@ public class AgentOrchestrator {
                                                         StreamListener listener) {
         AiModelConnectionService.RuntimeConnection connection = modelConnections == null
                 ? null : modelConnections.resolveForSession(sessionId, userId);
-        return chatStreaming(conversations.openOwned(userId, sessionId, message), message, listener, connection);
+        return chatStreaming(conversations.openOwned(userId, sessionId, message), message, listener, connection, false);
     }
 
     private LlmGateway.ChatResponse chatStreaming(AgentConversationService.SessionContext context, String message,
                                                   StreamListener listener) {
-        return chatStreaming(context, message, listener, null);
+        return chatStreaming(context, message, listener, null, false);
     }
 
     private LlmGateway.ChatResponse chatStreaming(AgentConversationService.SessionContext context, String message,
                                                   StreamListener listener,
-                                                  AiModelConnectionService.RuntimeConnection connection) {
+                                                  AiModelConnectionService.RuntimeConnection connection,
+                                                  boolean deepThinking) {
         // A session-bound connection is authoritative; only fall back to the
         // process environment when no runtime connection was resolved.
         if (connection == null && !model.configured()) return model.chat(message);
@@ -169,15 +170,30 @@ public class AgentOrchestrator {
         int callCount = 0;
         String provider = "agent-limit";
         String finalContent = "";
+        StringBuilder reasoningContent = new StringBuilder();
         for (int round = 0; round <= MAX_TOOL_CALLS + 1; round++) {
             boolean finalRound = callCount >= MAX_TOOL_CALLS || !actionRequests.isEmpty();
             Consumer<String> consumer = part -> {
                 if (!part.isEmpty()) listener.delta(part);
             };
-            LlmGateway.AgentTurn turn = connection == null
-                    ? model.agentTurnStreaming(messages, finalRound ? List.of() : modelTools, consumer)
-                    : model.agentTurnStreaming(connection.gatewayConfig(), messages,
-                    finalRound ? List.of() : modelTools, consumer);
+            Consumer<String> reasoningConsumer = part -> {
+                if (!part.isEmpty()) {
+                    reasoningContent.append(part);
+                    listener.reasoningDelta(part);
+                }
+            };
+            List<LlmGateway.AgentTool> availableTools = finalRound ? List.of() : modelTools;
+            LlmGateway.AgentTurn turn;
+            if (connection == null) {
+                turn = deepThinking
+                        ? model.agentTurnStreaming(messages, availableTools, consumer, reasoningConsumer, true)
+                        : model.agentTurnStreaming(messages, availableTools, consumer);
+            } else {
+                turn = deepThinking
+                        ? model.agentTurnStreaming(connection.gatewayConfig(), messages, availableTools,
+                        consumer, reasoningConsumer, true)
+                        : model.agentTurnStreaming(connection.gatewayConfig(), messages, availableTools, consumer);
+            }
             provider = turn.provider();
             usage = usage.plus(turn.usage());
             modelExecutions.add(new LlmGateway.ModelExecution(round + 1, turn.durationMs(),
@@ -230,14 +246,23 @@ public class AgentOrchestrator {
         if (finalContent.isBlank()) finalContent = "本轮查询未能在限制步骤内完成，请缩小问题范围后重试。";
         LlmGateway.ChatResponse response = new LlmGateway.ChatResponse(finalContent, provider, true,
                 context.sessionId(), usage, elapsedMs(startedAt), Math.max(0, firstTokenMs),
-                List.copyOf(modelExecutions), List.copyOf(executions), List.copyOf(actionRequests));
+                List.copyOf(modelExecutions), List.copyOf(executions), List.copyOf(actionRequests),
+                reasoningContent.isEmpty() ? null : reasoningContent.toString(), deepThinking);
         return response;
     }
 
     public LlmGateway.ChatResponse chatStreamingForUser(String sessionId, long userId, String message,
                                                         StreamListener listener,
                                                         AiModelConnectionService.RuntimeConnection connection) {
-        return chatStreaming(conversations.openOwned(userId, sessionId, message), message, listener, connection);
+        return chatStreaming(conversations.openOwned(userId, sessionId, message), message, listener, connection, false);
+    }
+
+    public LlmGateway.ChatResponse chatStreamingForUser(String sessionId, long userId, String message,
+                                                        StreamListener listener,
+                                                        AiModelConnectionService.RuntimeConnection connection,
+                                                        boolean deepThinking) {
+        return chatStreaming(conversations.openOwned(userId, sessionId, message), message, listener, connection,
+                deepThinking);
     }
 
     private LlmGateway.ChatResponse response(AgentConversationService.SessionContext context, String userMessage,
@@ -250,7 +275,7 @@ public class AgentOrchestrator {
         conversations.complete(context, userMessage, content);
         return new LlmGateway.ChatResponse(content, provider, configured, context.sessionId(), usage,
                 elapsedMs(startedAt), firstTokenMs, List.copyOf(modelExecutions), List.copyOf(executions),
-                List.copyOf(actionRequests));
+                List.copyOf(actionRequests), null, false);
     }
 
     private List<LlmGateway.AgentMessage> messages(AgentConversationService.SessionContext context, String message) {
@@ -267,6 +292,8 @@ public class AgentOrchestrator {
 
     public interface StreamListener {
         void delta(String content);
+
+        default void reasoningDelta(String content) { }
 
         void toolStarted(String name);
 

@@ -1,7 +1,7 @@
 # 工作台 Agent 与 MCP 改造计划
 
-> 版本：v2.5（2026-09-27）
-> 状态：实施中（阶段 3 已开始：真实模型、R0/R1 查询、服务端会话/队列/SSE、模型连接与 Trace 已完成；R2/R3 现有功能持续覆盖，R4 站内审批已覆盖导入确认、成员与角色管理、账本删除和回收站永久清除）
+> 版本：v2.6（2026-09-27）
+> 状态：实施中（Phase 3C-1 已完成：只读 Streamable HTTP MCP、PAT、scope、撤销、审计和限流已落地；Web Agent 新增可选 DeepSeek 深度思考，默认关闭且思考块默认收起）
 
 > 运维修正：迁移 `V8.1` 是在 `V8` 已发布后补充的索引迁移，已有数据库升级时需开启 `FLYWAY_OUT_OF_ORDER=true`；不得删除或改写 `flyway_schema_history`。
 
@@ -10,6 +10,12 @@
 > 总原则：先把现有业务能力收敛为可验证的领域工具，再接入 Web Agent 和 MCP；每一阶段独立交付、独立验证、可通过功能开关回滚，未通过退出门禁不得进入下一阶段。
 
 ## 0. 实施进度快照（2026-09-27）
+
+当前增量完成 Phase 3C-1 只读 MCP 与深度思考：同一 Spring Boot 进程通过官方 Java MCP SDK `2.0.1` 提供 `POST /mcp` Streamable HTTP，MCP 与站内 Agent 共享 `DomainToolRegistry`，没有反向 HTTP 调用。首批只读暴露 8 个工具：`worktime.settings.get`、`worktime.records.search`、`ledger.books.list`、`ledger.overview`、`ledger.transactions.search`、`ledger.transaction.history`、`ledger.reports.summary`、`ledger.budgets.list`；`tools/list` 按 PAT scope 动态裁剪，账本结果和工具参数继续受 Token 账本范围及领域权限约束。设置页支持创建、一次性复制、列出和撤销 PAT；数据库只保存 SHA-256 hash，Token 默认 90 天、最长 366 天，支持 `mcp:ledger:read` 与 `mcp:worktime:read`，并记录调用状态、耗时和脱敏参数摘要。服务端增加每 Token 每分钟 120 次基础限流、1 MiB 请求体、30 秒协议请求超时和 366 天查询跨度上限。Vite 与 Nginx 均代理 `/mcp`，页面显示的同源地址可直接用于本地或部署环境。
+
+Web Agent 同时增加 DeepSeek 深度思考开关：仅 DeepSeek 模型显示，默认关闭并按本地用户作用域记忆选择；请求、服务端队列、重试和持久化 turn 均携带 `deepThinking`。SSE 新增 `assistant.reasoning.delta`，正文与思考内容分离保存；助手消息使用原生折叠块展示思考内容，默认收起，刷新恢复后仍保持收起。真实 DeepSeek 联调已验证开启后返回 `reasoning_content`，关闭或供应商不支持时不展示思考块。
+
+本轮协议联调已通过：双 scope `tools/list` 返回 8 个工具，工时单 scope 仅返回 2 个工时工具，`ledger.books.list` 调用返回 `completed`；无效 Token 与撤销 Token 均为 HTTP 401。前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 生成一致性和生产构建通过；Flyway V1-V22 在空库及旧工时数据升级场景通过。连接步骤见 [MCP 连接指南](MCP连接指南.md)。下一增量进入 Phase 3C-2：MCP 写入 prepare、外部 action 查询与既有站内审批衔接，commit 和 OAuth 仍分别后置。
 
 当前增量完成账本删除与回收站永久清除的 R4 站内审批：`ledger.book.delete.prepare/commit` 仅允许 OWNER 创建和执行审批，prepare 展示账户、分类、商家、项目、预算、成员、角色、流水、周期任务和回收站影响数量，并固化账本 revision；批准时重新检查 OWNER、账本存在性、revision 和至少保留一个可用账本。`ledger.recycle.purge.prepare/commit` 支持单项 `ITEM` 与当前回收站快照 `BOOK` 两种范围，冻结每个项目的 `type/id/revision`，批准时先校验全部快照再在独立事务中原子清除；审批期间新增项目不会被本次审批意外清除，已恢复、消失或版本变化会冲突失败。管理页的删除账本、单项永久删除与清空回收站入口均改为创建审批并跳转审批中心，批准后刷新账本列表或回收站与本地投影。模型工具目录继续隐藏全部 R4 prepare/commit。
 
@@ -31,7 +37,7 @@
 
 2026-09-27 将单轮 Agent 工具调用上限由 4 次提升到 50 次；普通与 SSE 编排共用同一上限，第 51 次调用返回失败工具结果，随后关闭工具目录并要求模型基于前 50 次结果完成总结。权限、Schema、prepare/commit 隔离和产生待确认 action 后立即关闭工具目录的规则保持不变。
 
-2026-09-27 修复思考模型多轮工具调用：普通和 SSE 网关均解析 `reasoning_content`，编排器在同一 turn 的下一轮 assistant 消息中原样回传，满足 DeepSeek thinking mode 的协议要求；思考内容不发送到页面，也不写入长期会话历史。
+2026-09-27 修复思考模型多轮工具调用：普通和 SSE 网关均解析 `reasoning_content`，编排器在同一 turn 的下一轮 assistant 消息中原样回传，满足 DeepSeek thinking mode 的协议要求。Phase 3C-1 起仅在用户主动开启深度思考时，通过独立 SSE 事件发送并持久化思考内容；页面默认折叠，正文、工具调用与思考内容保持分离。
 
 已完成：
 
@@ -283,7 +289,7 @@ com.salarytracker.ai/
 - 保留现有 OpenAI 兼容网关配置和服务端密钥管理。
 - 在其上增加 `AgentModel` 抽象，首个实现支持工具调用、结构化 JSON 和流式文本。
 - Domain Tool、action 状态机和确认策略不得依赖特定模型 SDK。
-- MCP 采用官方 Java MCP SDK 的 Spring WebMVC/Streamable HTTP 传输；具体版本在开始 Phase 3C 时锁定并记录兼容矩阵。
+- MCP 采用官方 Java MCP SDK `2.0.1` 的 Servlet Streamable HTTP 传输；首轮协议版本已使用 `2025-06-18` 完成 initialize、tools/list 和 tools/call 联调，后续客户端兼容结果持续记录在连接指南。
 - 更换模型或 MCP SDK 不能改变领域工具的名称、Schema、风险级别和业务结果。
 
 ## 4. 工具契约与执行模型
@@ -816,15 +822,16 @@ mcp:worktime:commit
 
 实施：
 
-- 接入官方 MCP Java SDK 和 Streamable HTTP。
-- 实现 PAT 管理页面和 token scope。
-- 只暴露工时、账本 R1 工具。
-- 增加客户端、工具和用户维度审计与限流。
+- [x] 接入官方 MCP Java SDK `2.0.1` 和 Streamable HTTP。
+- [x] 实现 PAT 管理页面、token scope、账本范围、过期与撤销。
+- [x] 只暴露 8 个工时、账本 R1 工具。
+- [x] 增加 Token、工具和用户维度审计与基础限流。
+- [ ] 使用 MCP Inspector、Codex 和 WorkBuddy 分别记录正式客户端版本与连接结果。
 
 验证：
 
-- MCP Inspector 完成 initialize、tools/list、tools/call 和错误场景。
-- Codex 和 WorkBuddy 分别完成真实连接。
+- curl 协议联调已完成 initialize、tools/list、tools/call、单 scope 过滤、无效 Token 和撤销 Token；MCP Inspector 仍需补正式验收记录。
+- Codex 和 WorkBuddy 分别完成真实连接后，Phase 3C-1 才视为客户端兼容性完全关闭。
 - 验证跨用户隔离、scope 隐藏与调用时二次校验。
 - 验证 PAT 过期、撤销、账本限制、分页和限流。
 

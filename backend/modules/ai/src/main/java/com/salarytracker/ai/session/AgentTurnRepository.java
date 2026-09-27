@@ -5,8 +5,13 @@ import java.util.List;
 import java.util.Optional;
 
 public interface AgentTurnRepository {
+    default AgentTurnView enqueue(String turnId, String sessionId, long userId, String clientRequestId,
+                                  String userMessage, String retryOfTurnId) {
+        return enqueue(turnId, sessionId, userId, clientRequestId, userMessage, false, retryOfTurnId);
+    }
+
     AgentTurnView enqueue(String turnId, String sessionId, long userId, String clientRequestId,
-                          String userMessage, String retryOfTurnId);
+                          String userMessage, boolean deepThinking, String retryOfTurnId);
 
     Optional<AgentTurnView> find(String turnId, long userId);
 
@@ -24,7 +29,11 @@ public interface AgentTurnRepository {
 
     int requeueInterrupted();
 
-    boolean complete(String turnId, long userId, String assistantContent, String responseJson);
+    boolean complete(String turnId, long userId, String assistantContent, String reasoningContent, String responseJson);
+
+    default boolean complete(String turnId, long userId, String assistantContent, String responseJson) {
+        return complete(turnId, userId, assistantContent, null, responseJson);
+    }
 
     boolean fail(String turnId, long userId, String errorMessage);
 
@@ -34,7 +43,8 @@ public interface AgentTurnRepository {
 
     record AgentTurnView(String id, String sessionId, long userId, String clientRequestId, String retryOfTurnId,
                          AgentTurnStatus status, long queuePosition, String userMessage,
-                         String assistantContent, String responseJson, String errorMessage,
+                         boolean deepThinking, String assistantContent, String reasoningContent,
+                         String responseJson, String errorMessage,
                          Instant createdAt, Instant startedAt, Instant completedAt) {
     }
 

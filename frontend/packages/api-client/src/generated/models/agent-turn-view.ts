@@ -23,7 +23,9 @@ export interface AgentTurnView {
     'status'?: AgentTurnViewStatusEnum;
     'queuePosition'?: number;
     'userMessage'?: string;
+    'deepThinking'?: boolean;
     'assistantContent'?: string;
+    'reasoningContent'?: string;
     'responseJson'?: string;
     'errorMessage'?: string;
     'createdAt'?: string;

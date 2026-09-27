@@ -58,8 +58,9 @@ public class AgentTurnService {
         this.traces = traces;
     }
 
-    public TurnStart start(String sessionId, String clientRequestId, String message, TurnEvents events) {
-        AgentTurnRepository.AgentTurnView turn = enqueue(sessionId, clientRequestId, message, null);
+    public TurnStart start(String sessionId, String clientRequestId, String message, boolean deepThinking,
+                           TurnEvents events) {
+        AgentTurnRepository.AgentTurnView turn = enqueue(sessionId, clientRequestId, message, deepThinking, null);
         boolean terminal = List.of(AgentTurnStatus.COMPLETED, AgentTurnStatus.FAILED,
                 AgentTurnStatus.CANCELLED).contains(turn.status());
         events.received(turn.id(), turn.status(), terminal);
@@ -74,19 +75,24 @@ public class AgentTurnService {
     }
 
     public AgentTurnRepository.AgentTurnView enqueue(String sessionId, String clientRequestId, String message) {
-        AgentTurnRepository.AgentTurnView turn = enqueue(sessionId, clientRequestId, message, null);
+        return enqueue(sessionId, clientRequestId, message, false);
+    }
+
+    public AgentTurnRepository.AgentTurnView enqueue(String sessionId, String clientRequestId, String message,
+                                                      boolean deepThinking) {
+        AgentTurnRepository.AgentTurnView turn = enqueue(sessionId, clientRequestId, message, deepThinking, null);
         dispatch(sessionId, currentUser.id());
         return turn;
     }
 
     private AgentTurnRepository.AgentTurnView enqueue(String sessionId, String clientRequestId, String message,
-                                                       String retryOfTurnId) {
+                                                       boolean deepThinking, String retryOfTurnId) {
         long userId = currentUser.id();
         conversations.openOwned(userId, sessionId, message);
         String requestId = normalizeId(clientRequestId, "clientRequestId");
         String proposedTurnId = UUID.randomUUID().toString();
         return turns.enqueue(proposedTurnId, sessionId, userId, requestId,
-                message == null ? "" : message.trim(), retryOfTurnId);
+                message == null ? "" : message.trim(), deepThinking, retryOfTurnId);
     }
 
     public AgentTurnRepository.QueueView queue(String sessionId) {
@@ -111,7 +117,7 @@ public class AgentTurnService {
             throw new IllegalArgumentException("只有失败或已取消的 turn 可以重试");
         }
         AgentTurnRepository.AgentTurnView retried = enqueue(original.sessionId(), clientRequestId,
-                original.userMessage(), original.id());
+                original.userMessage(), original.deepThinking(), original.id());
         dispatch(original.sessionId(), userId);
         return retried;
     }
@@ -190,6 +196,7 @@ public class AgentTurnService {
             LlmGateway.ChatResponse response = orchestrator.chatStreamingForUser(turn.sessionId(), userId,
                     turn.userMessage(), new AgentOrchestrator.StreamListener() {
                         @Override public void delta(String content) { events.delta(turn.id(), content); }
+                        @Override public void reasoningDelta(String content) { events.reasoningDelta(turn.id(), content); }
                         @Override public void toolStarted(String name) { events.toolStarted(turn.id(), name); }
                         @Override public void toolCompleted(LlmGateway.ToolExecution execution) {
                             events.toolCompleted(turn.id(), execution);
@@ -200,10 +207,10 @@ public class AgentTurnService {
                         @Override public void confirmationRequired(com.salarytracker.ai.tool.ToolResult result) {
                             events.confirmationRequired(turn.id(), result);
                         }
-                    }, model);
+                    }, model, turn.deepThinking());
             String json = mapper.writeValueAsString(response);
             try { traces.persist(turn, model, response); } catch (Exception ignored) { /* trace must not block replies */ }
-            if (turns.complete(turn.id(), userId, response.content(), json)) {
+            if (turns.complete(turn.id(), userId, response.content(), response.reasoningContent(), json)) {
                 conversations.complete(conversations.openOwned(userId, turn.sessionId(), turn.userMessage()),
                         turn.id(), turn.userMessage(), response.content(), json);
                 events.completed(turn.id(), response);
@@ -255,6 +262,7 @@ public class AgentTurnService {
         default void received(String turnId, AgentTurnStatus status, boolean replayed) { }
         default void status(String turnId, AgentTurnStatus status) { }
         default void delta(String turnId, String content) { }
+        default void reasoningDelta(String turnId, String content) { }
         default void toolStarted(String turnId, String name) { }
         default void toolCompleted(String turnId, LlmGateway.ToolExecution execution) { }
         default void inputRequired(String turnId, com.salarytracker.ai.tool.ToolResult result) { }

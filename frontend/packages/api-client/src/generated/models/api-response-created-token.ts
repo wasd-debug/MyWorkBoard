@@ -13,9 +13,11 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { CreatedToken } from './created-token.ts';
 
-export interface TurnCommand {
-    'clientRequestId'?: string;
-    'message'?: string;
-    'deepThinking'?: boolean;
+export interface ApiResponseCreatedToken {
+    'data'?: CreatedToken;
+    'traceId'?: string;
 }

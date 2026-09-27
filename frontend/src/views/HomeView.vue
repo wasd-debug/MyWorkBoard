@@ -126,6 +126,10 @@
             <span v-if="item.role === 'assistant'" class="message-avatar"><Sparkles /></span>
             <div class="message-content">
               <template v-if="item.role === 'assistant'">
+                <details v-if="item.reasoningContent" class="message-reasoning">
+                  <summary><Sparkles />深度思考<ChevronDown /></summary>
+                  <div class="message-markdown" v-html="renderMarkdown(item.reasoningContent)"></div>
+                </details>
                 <div class="message-markdown" v-html="renderMarkdown(item.content)"></div>
                 <span v-if="item.typing" class="typing-cursor" aria-label="正在输入">▍</span>
                 <div v-if="pendingLedgerActions(item).length > 1" class="agent-action-batch">
@@ -313,6 +317,7 @@
               </select>
               <ChevronDown aria-hidden="true" />
             </label>
+            <button v-if="deepThinkingSupported" class="deep-thinking-toggle" :class="{ active: deepThinking }" type="button" :aria-pressed="deepThinking" :title="deepThinking ? '关闭深度思考' : '开启深度思考'" @click="toggleDeepThinking"><Sparkles /><span>深度思考</span></button>
             <button class="composer-send" type="submit" title="发送" aria-label="发送" :disabled="!canSubmit"><ArrowUp /></button>
           </div>
           <input ref="fileInput" class="sr-only" type="file" multiple @change="event => addFiles(event, 'file')" />
@@ -346,6 +351,7 @@ const conversationDialog = ref({ type: '', item: null }), renameTitle = ref(''),
 const sessionGroups = ref([]), collapsedGroups = ref({}), groupName = ref(''), groupNameInput = ref(null)
 const queuedPrompts = ref([]), queueRevisions = ref({}), turnRunning = ref(false), draggedQueueId = ref(''), queueDropIndex = ref(-1)
 const modelConnections = ref([])
+const deepThinking = ref(localStorage.getItem(`workspace_deep_thinking:${store.accountScope || 'local'}`) === 'true')
 const draggedConversationId = ref(''), conversationDropTarget = ref('')
 const entityPickerState = ref({})
 let mediaRecorder = null, mediaStream = null, recordingStartedAt = 0, activeTurnController = null, conversationCreationPromise = null, queuePollTimer = null, composerResizeObserver = null, lastMessageScrollTop = 0, programmaticScroll = false, userPausedFollow = false
@@ -358,6 +364,8 @@ const canSubmit = computed(() => Boolean(prompt.value.trim() || attachments.valu
 const activeQueuedPrompts = computed(() => queuedPrompts.value.filter(item => item.conversationId === activeId.value))
 const defaultModelId = computed(() => modelConnections.value.find(item => item.isDefault)?.id || modelConnections.value[0]?.id || '')
 const activeModelName = computed(() => modelConnections.value.find(item => item.id === (activeConversation.value?.modelConnectionId || defaultModelId.value))?.displayName || '选择模型')
+const activeModel = computed(() => modelConnections.value.find(item => item.id === (activeConversation.value?.modelConnectionId || defaultModelId.value)))
+const deepThinkingSupported = computed(() => activeModel.value?.providerType === 'DEEPSEEK')
 const conversationMenuStyle = computed(() => ({ left: `${conversationMenu.value.x}px`, top: `${conversationMenu.value.y}px` }))
 const groupMenuStyle = computed(() => ({ left: `${groupMenu.value.x}px`, top: `${groupMenu.value.y}px` }))
 const conversationSections = computed(() => {
@@ -382,7 +390,7 @@ function persist() { localStorage.setItem(historyKey.value, JSON.stringify(conve
 function parseMetadata(value) { if (!value) return {}; if (typeof value === 'object') return value; try { return JSON.parse(value) } catch { return {} } }
 function cloneValue(value) { return value == null ? value : JSON.parse(JSON.stringify(value)) }
 function normalizeActions(actions = []) { return actions.map(action => ({ ...action, form: cloneValue(action.structuredContent?.input || {}) })) }
-function responseFields(value = {}) { return { usage: value.usage, durationMs: value.durationMs, firstTokenMs: value.firstTokenMs, modelExecutions: value.modelExecutions || [], toolExecutions: value.toolExecutions || [], actions: normalizeActions(value.actions || []) } }
+function responseFields(value = {}) { return { usage: value.usage, durationMs: value.durationMs, firstTokenMs: value.firstTokenMs, modelExecutions: value.modelExecutions || [], toolExecutions: value.toolExecutions || [], actions: normalizeActions(value.actions || []), reasoningContent: value.reasoningContent || '', deepThinking: Boolean(value.deepThinking) } }
 function inferRoute(text) { if (/工时|打卡|上班|下班/.test(text)) return { route: '/punch', routeLabel: '工时' }; if (/报表/.test(text)) return { route: '/ledger/reports', routeLabel: '账本报表' }; if (/流水/.test(text)) return { route: '/ledger/transactions', routeLabel: '账本流水' }; if (/记账|支出|收入|账本/.test(text)) return { route: '/ledger', routeLabel: '账本' }; return {} }
 function assistantRoute(role, text) { return role === 'assistant' ? inferRoute(text) : {} }
 function loadLocalConversations() { try { conversations.value = JSON.parse(localStorage.getItem(historyKey.value) || '[]').map(item => ({ ...item, messages: (item.messages || []).map(row => { const normalized = { ...row, typing: false }; if (row.role !== 'assistant') { delete normalized.route; delete normalized.routeLabel } return normalized }) })) } catch { conversations.value = [] }; activeId.value = conversations.value[0]?.id || '' }
@@ -409,10 +417,11 @@ async function loadMessages(id, forceScroll = false) {
   else await scrollToBottom()
 }
 async function reconcileActionStates(messages) { const actions = messages.flatMap(item => item.actions || []); await Promise.all(actions.map(async action => { try { const state = await apiGetAgentAction(action.actionId); if (!['WAITING_INPUT', 'WAITING_CONFIRMATION', 'APPROVED'].includes(state.status)) action.uiStatus = state.status } catch { action.uiStatus ||= 'EXPIRED' } })) }
-function normalizeQueueItem(item) { return { id: item.id, conversationId: item.sessionId, text: item.userMessage, status: item.status, createdAt: item.createdAt, retryOfTurnId: item.retryOfTurnId } }
+function normalizeQueueItem(item) { return { id: item.id, conversationId: item.sessionId, text: item.userMessage, status: item.status, createdAt: item.createdAt, retryOfTurnId: item.retryOfTurnId, deepThinking: Boolean(item.deepThinking) } }
 async function loadQueue(id) { if (!id || !store.authUser || store.offlineSession) return; const queue = await apiListAgentQueue(id); queueRevisions.value = { ...queueRevisions.value, [id]: Number(queue?.revision || 0) }; const others = queuedPrompts.value.filter(item => item.conversationId !== id); queuedPrompts.value = [...others, ...(queue?.items || []).map(normalizeQueueItem)]; if (id === activeId.value) turnRunning.value = activeQueuedPrompts.value.some(item => item.status !== 'QUEUED') }
 async function loadConversations() { if (!store.authUser || store.offlineSession) return loadLocalConversations(); try { const [sessions, groups, models] = await Promise.all([apiListAgentSessions(), apiListAgentSessionGroups(), apiListAgentModelConnections()]); conversations.value = (sessions || []).map(item => ({ ...item, messages: [] })); sessionGroups.value = groups || []; modelConnections.value = models || []; activeId.value = conversations.value[0]?.id || ''; if (activeId.value) await Promise.all([loadMessages(activeId.value, true), loadQueue(activeId.value)]) } catch { loadLocalConversations() } }
 async function changeConversationModel(event) { const id = event.target.value; if (!activeConversation.value || !id) return; try { const updated = await apiChangeAgentSessionModel(activeConversation.value.id, id); Object.assign(activeConversation.value, updated); message.success('当前会话模型已切换') } catch (error) { event.target.value = activeConversation.value.modelConnectionId || defaultModelId.value; message.error(error?.response?.data?.detail || '切换模型失败') } }
+function toggleDeepThinking() { deepThinking.value = !deepThinking.value; localStorage.setItem(`workspace_deep_thinking:${store.accountScope || 'local'}`, String(deepThinking.value)) }
 function closeConversationMenu() { conversationMenu.value = { item: null, x: 0, y: 0 } }
 function closeGroupMenu() { groupMenu.value = { item: null, x: 0, y: 0 } }
 async function openConversationMenu(event, item, fromButton = false) {
@@ -729,7 +738,7 @@ function handleMessageScroll() {
   else if (!programmaticScroll && userPausedFollow) autoFollow.value = false
   lastMessageScrollTop = viewport.scrollTop
 }
-function createReplyPlaceholder(conversation) { const reply = { id: uid(), role: 'assistant', content: '', createdAt: Date.now(), typing: true, status: 'RECEIVED', toolExecutions: [] }; conversation.messages.push(reply); persist(); scrollToBottom(); return conversation.messages.at(-1) }
+function createReplyPlaceholder(conversation, useDeepThinking = false) { const reply = { id: uid(), role: 'assistant', content: '', reasoningContent: '', deepThinking: useDeepThinking, createdAt: Date.now(), typing: true, status: 'RECEIVED', toolExecutions: [] }; conversation.messages.push(reply); persist(); scrollToBottom(); return conversation.messages.at(-1) }
 async function hydrateTrace(target, keepBottom = true) { if (!target?.turnId || !store.authUser || store.offlineSession) return; try { const trace = await apiGetAgentTrace(target.turnId); const usage = (trace.modelExecutions || []).reduce((sum, row) => ({ inputTokens: sum.inputTokens + Number(row.inputTokens || 0), outputTokens: sum.outputTokens + Number(row.outputTokens || 0), cacheHitTokens: sum.cacheHitTokens + Number(row.cacheHitTokens || 0), cacheMissTokens: sum.cacheMissTokens + Number(row.cacheMissTokens || 0), reasoningTokens: sum.reasoningTokens + Number(row.reasoningTokens || 0), totalTokens: sum.totalTokens + Number(row.totalTokens || 0) }), { inputTokens: 0, outputTokens: 0, cacheHitTokens: 0, cacheMissTokens: 0, reasoningTokens: 0, totalTokens: 0 }); Object.assign(target, { usage, durationMs: trace.totalDurationMs, firstTokenMs: trace.firstTokenMs, modelName: trace.modelName, providerType: trace.providerType, currency: trace.currency, estimatedCost: trace.estimatedCost, modelExecutions: trace.modelExecutions || [], toolExecutions: trace.toolExecutions || [] }); persist(); if (keepBottom) await scrollToBottom() } catch { /* Trace is optional and must never hide the answer. */ } }
 async function hydrateMessageTraces(messages, keepBottom = true) { await Promise.all((messages || []).filter(item => item.role === 'assistant' && item.turnId && item.status === 'COMPLETED').map(item => hydrateTrace(item, keepBottom))) }
 async function applyReply(target, response) { const existingActions = target.actions || [], fields = responseFields(response); if (!fields.actions.length && existingActions.length) fields.actions = existingActions; Object.assign(target, fields, inferRoute(response.content || ''), { content: response.content || '模型没有返回可显示的内容，请稍后重试。', typing: false, status: 'COMPLETED' }); persist(); await scrollToBottom(); void hydrateTrace(target) }
@@ -753,10 +762,10 @@ async function submitPrompt() {
   prompt.value = ''; attachments.value = []
   const conversation = await ensureConversation(text, pendingAttachments)
   if (!conversation) return
-  const pending = { id: uid(), conversationId: conversation.id, text, attachments: pendingAttachments }
+  const pending = { id: uid(), conversationId: conversation.id, text, attachments: pendingAttachments, deepThinking: deepThinkingSupported.value && deepThinking.value }
   if (turnRunning.value || activeQueuedPrompts.value.length) {
     try {
-      const turn = await apiEnqueueAgentTurn(conversation.id, { clientRequestId: pending.id, message: text })
+      const turn = await apiEnqueueAgentTurn(conversation.id, { clientRequestId: pending.id, message: text, deepThinking: pending.deepThinking })
       queuedPrompts.value = [...queuedPrompts.value, normalizeQueueItem(turn)]
       await loadQueue(conversation.id)
       message.success('消息已加入服务端队列')
@@ -773,14 +782,15 @@ async function executePrompt(pending) {
   conversation.messages ||= []
   conversation.messages.push({ id: uid(), role: 'user', content: text, createdAt: now, attachments: pendingAttachments })
   conversation.updatedAt = now; conversations.value = [conversation, ...conversations.value.filter(item => item.id !== conversation.id)]; persist(); await scrollToBottom()
-  const assistant = createReplyPlaceholder(conversation), clientRequestId = uid(); let received = false, replyReconciled = false
+  const assistant = createReplyPlaceholder(conversation, Boolean(pending.deepThinking)), clientRequestId = uid(); let received = false, replyReconciled = false
   activeTurnController = new AbortController()
   try {
-    await apiStreamAgentTurn(conversation.id, { clientRequestId, message: text }, async (event, data) => {
+    await apiStreamAgentTurn(conversation.id, { clientRequestId, message: text, deepThinking: Boolean(pending.deepThinking) }, async (event, data) => {
       received = true
       if (event === 'turn.received') { assistant.turnId = data.turnId; assistant.status = data.status }
       else if (event === 'turn.status') assistant.status = data.status
       else if (event === 'assistant.delta') { assistant.content += data.content || ''; await scrollToBottom() }
+      else if (event === 'assistant.reasoning.delta') { assistant.reasoningContent += data.content || ''; await scrollToBottom() }
       else if (event === 'tool.started') assistant.toolExecutions.push({ name: data.name, status: 'RUNNING', summary: '正在调用', durationMs: 0 })
       else if (event === 'tool.completed') { const index = assistant.toolExecutions.findIndex(tool => tool.name === data.execution?.name && tool.status === 'RUNNING'); if (index >= 0) assistant.toolExecutions.splice(index, 1, data.execution); else assistant.toolExecutions.push(data.execution) }
       else if (['input.required', 'confirmation.required'].includes(event)) { assistant.actions ||= []; if (!assistant.actions.some(action => action.actionId === data.action?.actionId)) assistant.actions.push({ ...data.action, form: cloneValue(data.action?.structuredContent?.input || {}) }); persist() }

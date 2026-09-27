@@ -119,6 +119,44 @@
       </div>
     </div>
 
+    <div class="card set-group mcp-config">
+      <h2>外部 Agent / MCP</h2>
+      <p class="hint">创建只读 Personal Access Token，供 Codex、WorkBuddy 或 MCP Inspector 连接。完整 Token 只显示一次，请妥善保存。</p>
+      <div class="mcp-create-grid">
+        <label>Token 名称<input v-model="mcpForm.name" maxlength="120" placeholder="例如 本地 Codex" /></label>
+        <label>有效期<input v-model="mcpForm.expiresAt" type="datetime-local" /></label>
+        <fieldset>
+          <legend>只读权限</legend>
+          <label><input v-model="mcpForm.scopes" type="checkbox" value="mcp:ledger:read" />账本查询</label>
+          <label><input v-model="mcpForm.scopes" type="checkbox" value="mcp:worktime:read" />工时查询</label>
+        </fieldset>
+        <fieldset v-if="mcpForm.scopes.includes('mcp:ledger:read')">
+          <legend>账本范围</legend>
+          <label v-for="book in ledgerBooks" :key="book.id || book.publicId"><input v-model="mcpForm.bookIds" type="checkbox" :value="book.id || book.publicId" />{{ book.name }}</label>
+          <small>不选择表示允许读取当前用户有权访问的全部账本。</small>
+        </fieldset>
+      </div>
+      <div class="io-row">
+        <Button size="sm" :disabled="creatingMcpToken || !mcpForm.name.trim() || !mcpForm.scopes.length" @click="createMcpToken">{{ creatingMcpToken ? '创建中…' : '创建 Token' }}</Button>
+        <Button size="sm" variant="ghost" @click="loadMcpTokens">刷新</Button>
+      </div>
+      <div v-if="createdMcpToken" class="mcp-token-once" role="status">
+        <strong>请立即复制，关闭后无法再次查看</strong>
+        <code>{{ createdMcpToken }}</code>
+        <Button size="sm" @click="copyMcpToken">复制 Token</Button>
+        <Button size="sm" variant="ghost" @click="createdMcpToken = ''">我已保存</Button>
+      </div>
+      <div class="mcp-endpoint"><span>Streamable HTTP 地址</span><code>{{ mcpEndpoint }}</code></div>
+      <div v-if="mcpTokens.length" class="mcp-token-list">
+        <article v-for="token in mcpTokens" :key="token.id">
+          <div><b>{{ token.name }}</b><code>{{ token.tokenHint }}</code><small>{{ token.scopes.join(' · ') }}</small></div>
+          <div><span>{{ token.revokedAt ? '已撤销' : token.expiresAt ? `到期 ${formatDateTime(token.expiresAt)}` : '长期有效' }}</span><small>最后使用：{{ token.lastUsedAt ? formatDateTime(token.lastUsedAt) : '尚未使用' }}</small></div>
+          <Button v-if="!token.revokedAt" size="sm" variant="danger" @click="revokeMcpToken(token)">撤销</Button>
+        </article>
+      </div>
+      <p v-else class="hint">尚未创建 MCP Token。</p>
+    </div>
+
   </section>
 </template>
 
@@ -132,7 +170,7 @@ import Dialog from '../components/ui/Dialog.vue'
 import { useAppStore } from '../stores/app'
 import { DEFAULT_WORKTIME_SETTINGS as DEFAULTS, useWorktimeStore } from '../stores/worktime.js'
 import { CALC } from '../utils/calc'
-import { apiCreateAgentModelConnection, apiDeleteAgentModelConnection, apiListAgentModelConnections, apiSetDefaultAgentModelConnection, apiTestAgentModelConnection, apiUpdateAgentModelConnection } from '../../packages/api-client/src/index.js'
+import { apiCreateAgentModelConnection, apiCreateMcpToken, apiDeleteAgentModelConnection, apiListAgentModelConnections, apiListLedgerBooks, apiListMcpTokens, apiRevokeMcpToken, apiSetDefaultAgentModelConnection, apiTestAgentModelConnection, apiUpdateAgentModelConnection } from '../../packages/api-client/src/index.js'
 
 const appStore = useAppStore()
 const store = useWorktimeStore()
@@ -147,6 +185,10 @@ const accents = [
 const ioArea = ref('')
 const lunchDialogOpen = ref(false), pendingLunchMin = ref(0), lunchScope = ref('NONE'), lunchFromDate = ref(CALC.dateKey(new Date())), savingLunch = ref(false)
 const modelConnections = ref([]), selectedModelId = ref(''), modelStatus = ref('')
+const mcpTokens = ref([]), ledgerBooks = ref([]), createdMcpToken = ref(''), creatingMcpToken = ref(false)
+const defaultMcpExpiry = () => { const date = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); date.setSeconds(0, 0); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16) }
+const mcpForm = ref({ name: '本地 Agent', scopes: ['mcp:ledger:read', 'mcp:worktime:read'], bookIds: [], expiresAt: defaultMcpExpiry() })
+const mcpEndpoint = computed(() => `${window.location.origin}/mcp`)
 const blankModel = () => ({ displayName: '', providerType: 'DEEPSEEK', baseUrl: 'https://api.deepseek.com/chat/completions', modelName: 'deepseek-chat', apiKey: '', timeoutMs: 60000, pricing: { currency: 'CNY', pricingMode: 'FLAT', inputPerMillion: 0, outputPerMillion: 0, cacheHitPerMillion: 0, cacheMissPerMillion: 0, reasoningPerMillion: 0, offPeakInputPerMillion: 0, offPeakOutputPerMillion: 0, offPeakCacheHitPerMillion: 0, offPeakCacheMissPerMillion: 0, offPeakReasoningPerMillion: 0 } })
 const modelForm = ref(blankModel())
 const curMonthKey = CALC.dateKey(new Date()).slice(0, 7)
@@ -166,6 +208,21 @@ async function saveModel() { try { const payload = { ...modelForm.value, pricing
 async function testModel() { try { const result = await apiTestAgentModelConnection(selectedModelId.value); modelStatus.value = result.success ? `连接成功，耗时 ${result.durationMs}ms` : `连接失败：${result.status}` } catch { modelStatus.value = '连接测试失败' } }
 async function makeDefault() { try { await apiSetDefaultAgentModelConnection(selectedModelId.value); await loadModels(); modelStatus.value = '已设为默认模型' } catch { modelStatus.value = '设置默认模型失败' } }
 async function removeModel() { if (!window.confirm('删除此模型配置？')) return; try { await apiDeleteAgentModelConnection(selectedModelId.value); await loadModels(); modelStatus.value = '模型配置已删除' } catch { modelStatus.value = '删除模型配置失败' } }
+async function loadMcpTokens() { try { [mcpTokens.value, ledgerBooks.value] = await Promise.all([apiListMcpTokens(), apiListLedgerBooks()]) } catch { message.error('MCP Token 列表加载失败') } }
+async function createMcpToken() {
+  creatingMcpToken.value = true
+  try {
+    const result = await apiCreateMcpToken({ ...mcpForm.value, expiresAt: mcpForm.value.expiresAt ? new Date(mcpForm.value.expiresAt).toISOString() : null })
+    createdMcpToken.value = result.rawToken
+    mcpForm.value = { name: '本地 Agent', scopes: [...mcpForm.value.scopes], bookIds: [], expiresAt: defaultMcpExpiry() }
+    await loadMcpTokens()
+    message.success('MCP Token 已创建，请立即复制')
+  } catch (error) { message.error(error?.response?.data?.detail || '创建 MCP Token 失败') }
+  finally { creatingMcpToken.value = false }
+}
+async function copyMcpToken() { try { await navigator.clipboard.writeText(createdMcpToken.value); message.success('Token 已复制') } catch { message.warning('复制失败，请手动复制') } }
+async function revokeMcpToken(token) { if (!window.confirm(`撤销“${token.name}”？已连接的外部 Agent 将立即失效。`)) return; try { await apiRevokeMcpToken(token.id); await loadMcpTokens(); message.success('Token 已撤销') } catch { message.error('撤销 Token 失败') } }
+function formatDateTime(value) { return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
 function setNumber(key, value, fallback) {
   const number = Number(value)
   set(key, Number.isFinite(number) ? number : fallback)
@@ -207,5 +264,5 @@ async function doClear() {
   await store.clearResources(DEFAULTS)
   message.success('已清空')
 }
-onMounted(loadModels)
+onMounted(() => Promise.all([loadModels(), loadMcpTokens()]))
 </script>

@@ -14,8 +14,9 @@
 
 
 
-export interface TurnCommand {
-    'clientRequestId'?: string;
-    'message'?: string;
-    'deepThinking'?: boolean;
+export interface CreateToken {
+    'name'?: string;
+    'scopes'?: Set<string>;
+    'bookIds'?: Set<string>;
+    'expiresAt'?: string;
 }

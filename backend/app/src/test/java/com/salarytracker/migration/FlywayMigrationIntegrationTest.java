@@ -34,7 +34,7 @@ class FlywayMigrationIntegrationTest {
         flyway.migrate();
         flyway.validate();
 
-        assertEquals("21", flyway.info().current().getVersion().getVersion());
+        assertEquals("22", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement()) {
@@ -47,6 +47,8 @@ class FlywayMigrationIntegrationTest {
             assertTrue(tableExists(connection, "ai_usage"));
             assertTrue(tableExists(connection, "agent_tool_call"));
             assertTrue(tableExists(connection, "agent_approval"));
+            assertTrue(tableExists(connection, "mcp_personal_token"));
+            assertTrue(tableExists(connection, "mcp_tool_call"));
             assertTrue(indexExists(connection, "ledger_transaction", "idx_ledger_transaction_book_date"));
             assertEquals(0L, scalar(statement, "SELECT COUNT(*) FROM work_record WHERE lunch_min IS NULL"));
         }
@@ -77,7 +79,7 @@ class FlywayMigrationIntegrationTest {
         flyway.migrate();
         flyway.validate();
 
-        assertEquals("21", flyway.info().current().getVersion().getVersion());
+        assertEquals("22", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement()) {

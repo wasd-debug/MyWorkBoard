@@ -9,3 +9,4 @@ deploy/.env
 /docs/*
 !/docs/工作台的Agent改造计划.md
 !/docs/Agent功能覆盖与中文评测集.md
+!/docs/MCP连接指南.md

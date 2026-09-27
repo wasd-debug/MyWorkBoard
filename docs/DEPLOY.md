@@ -3,7 +3,7 @@
 > 状态日期：2026-09-18
 > SSH 规则：所有连接必须使用仓库根目录的 `workboard.pem`，禁止密码认证。
 
-本项目通过 Docker Compose 运行三个服务：MySQL、Spring Boot 后端和 Nginx 前端。前端对外提供 80 端口，并将 `/api` 请求转发到后端。
+本项目通过 Docker Compose 运行三个服务：MySQL、Spring Boot 后端和 Nginx 前端。前端对外提供 80 端口，并将 `/api` 与 MCP Streamable HTTP `/mcp` 请求转发到后端。
 
 ## 已配置服务器
 
@@ -40,6 +40,7 @@ ssh -i ./workboard.pem ubuntu@212.64.29.21
    - `JWT_REFRESH_TTL`：refresh token 有效期，单位秒，默认 `2592000`（30 天）。
    - `LEGACY_ADMIN_PASSWORD`：旧数据回填的 `admin` 账户初始密码。
    - `COOKIE_SECURE`：仅 HTTPS 生产环境设为 `true`；通过服务器 IP + HTTP 访问时必须为 `false`，否则浏览器不会发送 refresh cookie，刷新页面会反复回到登录页。
+   - `APP_MCP_ENABLED`（映射到 `app.mcp.enabled` 时使用）：控制只读 MCP 入口；关闭后 `/mcp` 返回 404，不影响传统页面和 Web Agent。
 
 ## 从源码构建并启动
 
@@ -56,6 +57,8 @@ sudo bash deploy/deploy.sh
 脚本会检查 Docker、启动 Docker 服务、检查 80 端口、构建镜像、启动容器，并验证 `http://127.0.0.1/api/health`。
 
 部署完成后，通过服务器的 80 端口访问应用。若服务器有防火墙或云安全组，请放行 TCP 80。
+
+MCP 使用与网站相同的公开地址，例如 `https://work.example.com/mcp`。Nginx 必须保持 `/mcp` 的 `proxy_buffering off`、HTTP/1.1 和长读取超时；PAT 在网站设置页创建，完整值只显示一次。详细连接与验证见 [MCP 连接指南](MCP连接指南.md)。
 
 ## 使用已构建镜像
 

@@ -144,7 +144,7 @@ public class AgentSessionController {
         try {
             turns.start(sessionId,
                     command == null ? null : command.clientRequestId(),
-                    command == null ? "" : command.message(), events);
+                    command == null ? "" : command.message(), command != null && command.deepThinking(), events);
         } catch (Exception exception) {
             events.failed("", exception.getMessage() == null ? "无法创建 turn" : exception.getMessage());
             events.close();
@@ -191,7 +191,7 @@ public class AgentSessionController {
     public ApiResponse<AgentTurnRepository.AgentTurnView> enqueue(@PathVariable String sessionId,
                                                                   @RequestBody TurnCommand command) {
         return ApiResponse.ok(turns.enqueue(sessionId, command == null ? null : command.clientRequestId(),
-                command == null ? "" : command.message()));
+                command == null ? "" : command.message(), command != null && command.deepThinking()));
     }
 
     @PutMapping(value = "/sessions/{sessionId}/queue/order", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -224,7 +224,7 @@ public class AgentSessionController {
     public record MoveGroupCommand(String groupId) {
     }
 
-    public record TurnCommand(String clientRequestId, String message) {
+    public record TurnCommand(String clientRequestId, String message, boolean deepThinking) {
     }
 
     public record QueueOrderCommand(long revision, List<String> turnIds) {
@@ -253,6 +253,9 @@ public class AgentSessionController {
         }
         @Override public void delta(String turnId, String content) {
             send("assistant.delta", Map.of("turnId", turnId, "content", content));
+        }
+        @Override public void reasoningDelta(String turnId, String content) {
+            send("assistant.reasoning.delta", Map.of("turnId", turnId, "content", content));
         }
         @Override public void toolStarted(String turnId, String name) {
             send("tool.started", Map.of("turnId", turnId, "name", name));

@@ -13,9 +13,11 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { TokenView } from './token-view.ts';
 
-export interface TurnCommand {
-    'clientRequestId'?: string;
-    'message'?: string;
-    'deepThinking'?: boolean;
+export interface ApiResponseListTokenView {
+    'data'?: Array<TokenView>;
+    'traceId'?: string;
 }
