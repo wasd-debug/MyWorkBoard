@@ -273,6 +273,14 @@ unset VERIFY_DB_PASSWORD
 - 服务器内网、服务器 IP 和 `jsn1024.cn` 的 HTTP `/api/health` 均返回 200，公网 `/v3/api-docs` 返回 200，未认证访问 `/api/v1/agent/sessions` 返回预期 401。当前 Compose 只对外暴露 80 端口，未配置 443 HTTPS 入口。
 - 本次热修复兼容 DeepSeek 偶发返回的全角双竖线、标签名前空格和关闭标签反斜杠 DSML 变体；普通响应会恢复结构化工具调用，SSE 会过滤协议片段，避免原始工具调用标记显示在聊天消息中。
 
+### 2026-09-27 Agent 工具调用上限调整生产发布记录
+
+- 后端提交：`06acaad`，发布目录：`/home/ubuntu/salary-tracker/releases/06acaad`；仅构建并切换 `amd64` 镜像 `salary-backend:06acaad`，前端继续运行 `salary-frontend:d6ef378`，MySQL 容器和数据卷未重建。
+- 发布前完成逻辑备份 `backups/salary-before-06acaad-20260927-161625.sql.gz`，使用 `mysqldump --no-tablespaces --single-transaction` 并通过 `gzip -t` 校验；旧后端镜像保留为 `salary-backend:pre-06acaad`，Compose 配置备份为 `docker-compose.prod.yml.bak.06acaad`。
+- Flyway 成功校验 22 条迁移，schema 保持 v20 且无需执行新迁移；后端在第 6 次探测恢复健康，启动日志确认 `Started SalaryTrackerApplication`，近 10 分钟未发现 `ERROR`、应用启动失败或 Flyway 失败。
+- 服务器 IP 和 `jsn1024.cn` 的 HTTP `/api/health` 均返回 200，公网 `/v3/api-docs` 返回 200，未认证访问 `/api/v1/agent/sessions` 返回预期 401。
+- 本次发布将单轮 Agent 工具调用上限从 4 次提升到 50 次，普通与 SSE 编排使用同一限制；第 51 次调用不会进入领域工具，随后关闭模型工具目录并进入总结轮，既有权限、Schema 和受控写入边界保持不变。
+
 ### 2026-09-23 本地 Agent SSE 增量说明
 
 - 本地后端启动会由 Flyway 从 v14 升级至 v15，新增 `agent_turn`、会话归档字段和消息元数据；不得改写或忽略已应用迁移。
