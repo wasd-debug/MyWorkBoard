@@ -1,6 +1,6 @@
 # 个人工作台
 
-一个正在从“真实时薪与加班追踪”演进为“工时 + 账本 + 任务 + AI + 洞察”的个人效率平台。
+一个正在从“真实时薪与加班追踪”演进为“身份与设置 + 工时 + 账本 + 任务 + AI + 通知 + 音乐 + 洞察”的个人效率平台。
 
 当前可用主线是多用户工时与个人账本。Phase 0/1 已完成资源化、local-first、物理模块拆分、唯一 v1 API、OpenAPI 生成客户端、视觉/无障碍和自动化验收收口；Android Chrome 与 iOS Safari 真机记录仍需在目标设备上执行，任务、RAG 知识库和跨域洞察属于后续阶段。
 
@@ -38,16 +38,17 @@
 - **Phase 4 文件/RAG：未启动。** 计划在 Agent/MCP 稳定后建设文件域、向量库和知识库。
 - **Phase 5 跨域洞察：未启动。** 计划通过领域事件生成日/周/月/年报。
 - **Phase 6 持续打磨：部分能力提前实现。** 响应式布局、主题和共享账本已存在；PWA、搜索和可观测体系尚未实现。
+- **Future F1-F5：已完成规划。** 后续按设置/用户资料、Redis/RabbitMQ 与任务平台、站内信/账本邀请、NAS 音乐 MVP 和音乐增强五组增量推进。
 
-详细现状见 [项目总览](docs/overview.md)，长期设计和阶段门禁见 [架构文档](docs/ARCHITECTURE.md)，Agent/MCP 实施步骤见 [工作台 Agent 改造计划](<docs/工作台的Agent改造计划.md>)，账本细节见 [Phase 1 设计](<docs/Phase 1 —— 账本设计具体展开.md>)。
+详细现状见 [项目总览](docs/overview.md)，长期设计和阶段门禁见 [架构文档](docs/ARCHITECTURE.md)，新增特性拆解见 [后续特性路线图](<docs/后续特性路线图.md>)，Agent/MCP 实施步骤见 [工作台 Agent 改造计划](<docs/工作台的Agent改造计划.md>)，账本细节见 [Phase 1 设计](<docs/Phase 1 —— 账本设计具体展开.md>)。
 
 ## 技术栈
 
 | 层 | 当前实现 | 后续目标 |
 |---|---|---|
 | 前端 | Vue 3、Vite、Pinia、Vue Router、ECharts、Tailwind CSS 4、Reka UI、Lucide、OpenAPI 生成客户端 | PWA，并把 local-first 模式扩展到后续领域 |
-| 后端 | Java 17、Spring Boot 3.2、Spring Security、Spring Modulith、JDBC/MyBatis-Plus、Flyway、EasyExcel、ShedLock；platform/identity/worktime/ledger/ai/app 物理模块 | 按阶段引入 Agent 会话、MCP、文件、RAG 和洞察能力 |
-| 数据库 | MySQL 8，Flyway V1-V19 | 后续按需增加 Redis、MinIO/NAS、Qdrant 和搜索服务 |
+| 后端 | Java 17、Spring Boot 3.2、Spring Security、Spring Modulith、JDBC/MyBatis-Plus、Flyway、EasyExcel、ShedLock；platform/identity/worktime/ledger/ai/app 物理模块 | 按阶段引入通知、任务运行、文件、音乐、RAG 和洞察模块 |
+| 数据库/中间件 | MySQL 8，Flyway V1-V22 | 后续按需增加 Redis、RabbitMQ、MinIO/NAS、Qdrant 和搜索服务；MySQL 保持权威数据源 |
 | 部署 | Docker Compose、Nginx、Spring Boot、MySQL | 健康检查、备份恢复和可观测体系持续完善 |
 
 当前请求关系：
@@ -219,3 +220,4 @@ sudo bash deploy/deploy.sh
 2. 确定 MoneyWiz 专用模板范围，并按实际需求接入支付宝、微信和银行卡账单源。
 3. 将已验证的恢复脚本纳入季度生产演练和监控告警。
 4. 启动 Phase 2 任务域时继续沿用 v1 契约、生成客户端和 local-first 门禁。
+5. 后续跨模块需求按 [后续特性路线图](<docs/后续特性路线图.md>) 的 F1-F5 推进：先拆设置与用户资料，再建可靠异步和站内信，最后建设 NAS 音乐模块。

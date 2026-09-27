@@ -1,11 +1,11 @@
 # 个人效率中枢 · 整体架构设计与长期发展规划
 
-> 版本：v1.11（2026-09-27）
-> 范围：基于现有 salary-sync（加班时长与时薪计算）系统，规划"工时 + 账本 + 任务 + AI"一体化个人效率平台的整体架构与演进路线。
+> 版本：v1.12（2026-09-27）
+> 范围：基于现有 salary-sync（加班时长与时薪计算）系统，规划“身份与设置 + 工时 + 账本 + 任务 + AI + 通知 + 音乐”一体化个人效率平台的整体架构与演进路线。
 
 > 实施状态：Phase 0/Phase 1 自动化收口已完成，真机验收和周期生产运维按发布记录持续执行。本文同时包含目标架构与实施计划；除明确标注“当前实现”的内容外，其余技术组件和阶段能力均为目标状态，不代表已经上线。
 
-## 0. 当前实施快照（2026-09-24）
+## 0. 当前实施快照（2026-09-27）
 
 | 阶段 | 状态 | 结论 |
 |---|---|---|
@@ -16,6 +16,7 @@
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
 | Phase 6 打磨 | 部分提前实现 | 已有响应式布局、主题、共享账本、自动视觉/无障碍和恢复演练；PWA、搜索及完整可观测体系未实现 |
+| Future F1-F5 | 已完成规划，未编码 | 公共/模块设置拆分、用户资料、Redis/RabbitMQ、站内信与邀请、NAS 音乐模块按独立增量推进，详见 [后续特性路线图](后续特性路线图.md) |
 
 2026-09-24 执行 `mvn -pl modules/ai -am test`，platform 5/5、worktime 11/11、ledger 37 通过（1 个既有 Excel fixture 跳过）、AI 43/43；前端生产构建、TypeScript 与 OpenAPI 客户端检查通过。Agent 桌面 Chromium 全套 13/13 通过，完整记账卡片、返回编辑和多笔批次操作在桌面 WebKit 与 375px Chromium 专项 4/4 通过。第 12.6 节中的 Android Chrome 与 iOS Safari 真机验收仍需在实际设备上留档。
 
@@ -64,7 +65,7 @@
 
 ### 2.1 目标
 
-- 以现有加班追踪为核心，演进出 **工时（Worktime）/ 账本（Ledger）/ 任务（Task）三大领域**，辅以 **洞察报表（Insight）** 与 **AI 能力（RAG + Agent）**，共同构成"个人效率中枢"。
+- 以现有加班追踪为核心，演进出 **工时（Worktime）/ 账本（Ledger）/ 任务（Task）/ 音乐（Music）四个核心领域**，辅以 **身份与公共设置、站内信、洞察报表（Insight）** 与 **AI 能力（RAG + Agent）**，共同构成“个人效率中枢”。
 - 支撑离线优先（local-first）的多端使用体验。
 - 架构可在 1～N 个开发者规模下持续演进 3～5 年，不因早期偷懒而被迫推倒重来。
 
@@ -78,7 +79,8 @@
 | **Local-first** | 客户端 IndexedDB 为主存储，操作日志（oplog）双向增量同步，断网可用；IndexedDB、当前账本选择和业务本地缓存必须以不可变用户 ID 分区，登出仅清理内存会话而不读取或上传其他用户缓存 |
 | **多用户就绪** | 从第一天起所有业务表带 `user_id`、审计字段与行版本，即使当前只有一个人用 |
 | **附件只存链接，blob 落 NAS** | 数据库只存 `storage_uri`，原始文件存 NAS（经 MinIO S3 网关暴露），RAG 管道按链接动态拉取 |
-| **演进式引入** | 每个新技术组件（Redis/Qdrant/MinIO）只在对应阶段引入，避免一次搭完空转 |
+| **可靠异步而非队列主数据** | MySQL 事务写 outbox，RabbitMQ 负责异步分发，消费者幂等；站内信、任务状态和业务事实不得只存在队列或 Redis 中 |
+| **演进式引入** | 每个新技术组件（Redis/RabbitMQ/Qdrant/MinIO）只在出现明确用例的阶段引入，避免一次搭完空转 |
 
 ---
 
@@ -91,19 +93,19 @@
 ├─────────────────────────────────────────────────────────────────┤
 │  应用层   模块化单体 Spring Boot（Spring Modulith）                │
 │  ┌──────────┬──────────┬──────────┬──────────┬──────────┐      │
-│  │ identity │ worktime │  ledger  │   task   │ insight  │      │
-│  │ 用户/权限 │ 工时/时薪 │ 账本/报表 │ 清单/日历 │ 报表聚合  │      │
+│  │ identity │ worktime │  ledger  │   task   │ music    │      │
+│  │ 用户/权限 │ 工时/时薪 │ 账本/报表 │ 清单/日历 │ NAS曲库   │      │
 │  └──────────┴──────────┴──────────┴──────────┴──────────┘      │
-│  ┌──────────┬──────────┬──────────┐                            │
-│  │ ai(agent)│ file     │ schedule │   ← 支撑域                  │
-│  │ RAG+Agent│ NAS/附件  │ 定时任务  │                            │
-│  └──────────┴──────────┴──────────┘                            │
+│  ┌──────────┬──────────┬──────────┬──────────────┐             │
+│  │ ai(agent)│ file     │ schedule │ notification │ ← 支撑域    │
+│  │ RAG+Agent│ NAS/附件  │ 定时/重试 │ 站内信/提醒    │             │
+│  └──────────┴──────────┴──────────┴──────────────┘             │
 │  公共横切：JWT 鉴权 · RBAC · 操作日志(AOP) · 统一异常/响应体        │
 ├─────────────────────────────────────────────────────────────────┤
-│  领域事件层  Spring Modulith 事件表（进程内发布 + 持久化 + 可重放）  │
+│  领域事件层  MySQL Outbox + Spring Modulith + RabbitMQ（可重放）   │
 ├─────────────────────────────────────────────────────────────────┤
-│  基础设施层 MySQL 8(主数据) · Redis(缓存/令牌/限流) ·               │
-│             MinIO→NAS(附件blob) · Qdrant(向量) · LLM API 网关      │
+│  基础设施层 MySQL 8(主数据) · Redis(缓存/令牌/限流) · RabbitMQ      │
+│             MinIO→NAS(附件/音乐) · Qdrant(向量) · LLM API 网关     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -148,6 +150,7 @@ frontend/
 | `worktime` | 打卡记录、工时计算、加班统计、时薪计算（权威口径）、节假日 | 已有功能迁入 |
 | `ledger` | 账户、交易流水、分类、预算、账单周期、账本报表 | 账本（随手记形态）；预算支持月度总预算及一级/二级支出分类 |
 | `task` | 清单、任务、标签、筛选器、附件、提醒、日历视图、番茄钟、习惯打卡、倒数日、搜索 | 任务管理（滴答清单形态） |
+| `music` | NAS 音乐源、扫描索引、曲目/专辑/艺术家、播放列表、收藏、播放历史和在线播放 | 个人音乐库 |
 | `insight` | 跨域数据聚合、日/周/月/年报生成与快照 | 数据联动 |
 
 **支撑域（通用能力）**
@@ -159,7 +162,9 @@ frontend/
 | `file` | 附件上传、NAS 存储链接管理、签名 URL、生命周期 | 附件 NAS 备份 |
 | `ai` | LLM 网关、RAG 管道、Agent 编排与工具注册 | AI 助手、RAG+Agent |
 | `schedule` | 定时任务注册中心（业务定时逻辑仍归各领域模块） | 定时任务 |
-| `notification` | 提醒投递（站内/Web Push/邮件，策略路由） | 提醒 |
+| `notification` | 站内信、未读数、偏好、摘要、深链及 Web Push/邮件策略路由 | 邀请、审批、任务结果、成员动态与提醒 |
+
+顶层“设置”仅是前端信息架构：个人资料/安全/社交绑定归 `identity`，外观归用户偏好，模型与 MCP 归 `ai`；工时、账本、任务和音乐配置必须由各自模块拥有，禁止建设可跨表写入的万能 settings 模块。详细拆分见 [后续特性路线图](后续特性路线图.md)。
 
 ### 4.2 依赖规则（强制）
 
@@ -213,7 +218,8 @@ com.hub.<module>/
 | 安全        | **Spring Security + JWT 双令牌** | 当前 access token 默认 2 小时、refresh token 默认 30 天并持久化到 MySQL；密码 bcrypt。Redis 吊销/限流仍是后续目标 |
 | 权限        | **RBAC 三表模型 + `@PreAuthorize`**                                          | user / role / permission + 关联表；够用且可演进到数据级权限                                        |
 | 缓存/限流     | **Redis 7**（Compose 新增）                                                  | 刷新令牌、验证码、接口限流、报表缓存；单机初期可延后到 Phase 2                                                |
-| 定时任务      | **Spring Scheduling + ShedLock**（起步）→ **XXL-Job**（任务量 >20 或需可视化时）        | 周期账单、报表聚合、节假日抓取、提醒投递；ShedLock 保证多实例不重复执行                                           |
+| 消息队列      | **RabbitMQ**（Compose 新增）                                                   | 领域事件、通知、扫描/转码、失败重试和削峰；业务事务通过 MySQL outbox 可靠投递，消费者通过 inbox/业务键幂等             |
+| 定时任务      | **Spring Scheduling + ShedLock 触发 + RabbitMQ Worker 执行**                       | 周期账单、报表聚合、节假日抓取、提醒投递；任务运行/尝试落 MySQL，指数退避后进入 DLQ；任务规模显著增长时再评估 XXL-Job |
 | Excel/CSV | **EasyExcel**                                                            | 当前已实现随手记/通用 CSV 与 Excel 导入导出；MoneyWiz 专用映射仍是待确认目标                              |
 | 文档解析      | **Apache Tika**                                                          | RAG 附件文本抽取（PDF/Office/文本）                                                          |
 | AI 框架     | **LangChain4j**（首选）或 Spring AI                                           | Java 原生、Tool/Function Calling 成熟、与 Spring Boot 集成好；LLM 网关抽象支持 DeepSeek/OpenAI 兼容端点 |
@@ -293,17 +299,19 @@ shadcn-vue 组件采用“组合而非大而全”的方式：例如设置页由
 ### 5.3 部署形态演进
 
 ```text
-Phase 0-2（现有形态增强）          Phase 3+（AI 阶段）
+Phase 0-2（现有形态增强）          Future F2+（异步、文件与媒体阶段）
 ┌─────────────────────┐          ┌─────────────────────────────┐
 │ nginx               │          │ nginx                        │
 │ ├─ web 静态资源      │          │ ├─ web（PWA）                │
 │ └─ /api → backend   │          │ └─ /api → backend            │
 ├─────────────────────┤          ├─────────────────────────────┤
-│ backend (boot)      │          │ backend (boot + LangChain4j) │
-├─────────────────────┤          ├──────┬──────┬──────┬─────────┤
-│ mysql   [redis]     │          │mysql │redis │qdrant│minio    │
-└─────────────────────┘          │      │      │      └→ NAS卷  │
-                                 └──────┴──────┴──────┴─────────┘
+│ backend (boot)      │          │ backend (boot + workers)      │
+├─────────────────────┤          ├──────┬──────┬────────┬───────┤
+│ mysql   [redis]     │          │mysql │redis │rabbitmq│minio  │
+└─────────────────────┘          │      │      │        │ →NAS卷│
+                                 ├──────┴──────┴────────┴───────┤
+                                 │ qdrant（RAG 启用后按需加入）    │
+                                 └───────────────────────────────┘
 ```
 
 所有新组件均以 Docker Compose service 加入，`deploy.sh` 演进为带健康检查的服务编排；NAS 以 host volume 挂给 MinIO。
@@ -559,6 +567,11 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 | `BudgetExceeded` | ledger | notification | 预算超支提醒 |
 | `ReminderDue` | task | notification | 提醒投递 |
 | `ReportGenerated` | insight | notification | 日报推送（早 8 点站内/Push） |
+| `LedgerInvitationCreated` | ledger | notification | 向被邀请成员发送待处理邀请 |
+| `LedgerInvitationResponded` | ledger | notification | 通知邀请人接受、拒绝或过期结果 |
+| `ScheduledJobFinished` | schedule/各领域 | notification | 失败即时通知，成功按偏好即时或摘要 |
+| `MemberActivityRecorded` | ledger | notification | 合并生成共享账本成员操作动态 |
+| `MusicScanFinished` | music | notification | 音乐扫描/转码完成、部分失败或重试耗尽 |
 
 ### 9.3 报表内容矩阵
 
@@ -683,6 +696,7 @@ Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后
 - [ ] Tika 解析、分块、embedding 和 Qdrant，按用户与业务域强隔离
 - [ ] 附件知识库页面、解析重试、引用定位和向量联动清除
 - [ ] `knowledge.*` MCP 工具和 Agent RAG 检索，文档内容按不可信输入处理
+- [ ] 在完整 RAG 之外复用 file/NAS 存储适配器建设独立 music 模块；音乐扫描、Range 播放、播放列表与转码不依赖 Qdrant
 - **验收**：上传 PDF 后可就其内容问答并定位引用；越权检索为零；失败可重试。
 
 ### Phase 5 —— 数据联动与全景报表
@@ -697,7 +711,7 @@ Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后
 
 - 全局搜索升级 Meilisearch；多端适配（PWA 安装体验、平板布局）
 - 视觉系统收敛：移除所有 Element Plus 依赖；统一 shadcn-vue 组件版本、设计 token、响应式回归和无障碍基线
-- 数据级权限（家庭/团队共享账本与清单：share 表 + 邀请机制）
+- 数据级权限（家庭/团队共享账本与清单）；账本邀请接受流程、通知中心和成员动态按 Future F3 提前独立落地
 - 可观测体系：Actuator + Prometheus + Grafana；慢查询治理
 - 备份演练自动化（季度性恢复演练）；XXL-Job（如任务规模需要）
 
@@ -709,6 +723,8 @@ Phase 0 地基 → Phase 1 账本 ─┬→ Phase 2 任务核心 ─────
   审计/API       周期/AI记账 │                                  ▼
                              └→ Phase 3A-D Agent/MCP → Phase 4 文件/RAG → Phase 5 联动报表 → Phase 6 打磨
                                 工具/工作台/外部接入      向量库/知识库      事件/周期报告       规模化
+
+Future 横向增量：F1 设置/资料 → F2 Redis/RabbitMQ/任务平台 → F3 站内信/邀请 → F4-F5 NAS 音乐
 ```
 
 ---

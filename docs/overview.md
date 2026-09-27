@@ -1,17 +1,19 @@
 # 个人工作台项目总览
 
 > 状态日期：2026-09-27
-> 当前主线：Phase 3B/3D Web Agent 核心闭环已完成；Phase 3C-1 已交付只读 Streamable HTTP MCP、PAT、scope、撤销、审计与限流，并完成基础协议联调。下一增量进入 MCP prepare 与站内审批衔接，随后再做 commit、OAuth 与外部客户端兼容收口，继续按“现有功能 Agent 化 → MCP → 文件/RAG”顺序推进
+> 当前主线：Phase 3B/3D Web Agent 核心闭环已完成；Phase 3C-1 已交付只读 Streamable HTTP MCP、PAT、scope、撤销、审计与限流，并完成基础协议联调。下一增量进入 MCP prepare 与站内审批衔接，随后再做 commit、OAuth 与外部客户端兼容收口。公共/模块设置拆分、用户资料、Redis/RabbitMQ、站内信与 NAS 音乐已形成独立 Future F1-F5 路线图，不与当前 Agent/MCP 收口混为一次交付
 
 ## 项目定位
 
-本项目从“加班时长与真实时薪计算”工具演进为个人效率工作台，长期由五类能力组成：
+本项目从“加班时长与真实时薪计算”工具演进为个人效率工作台，长期由七类能力组成：
 
 1. **工时**：打卡、工资、加班、真实时薪与节假日。
 2. **账本**：账本、账户、流水、分类、预算、成员与权限、报表、导入导出、周期流水和 AI 记账。
 3. **任务**：清单、任务、日历、提醒、番茄钟、习惯和倒数日。
 4. **AI 与知识库**：附件、NAS、RAG、Agent 工具调用。
 5. **洞察**：工时、账本和任务的跨域日报、周报、月报及年报。
+6. **身份、设置与通知**：个人资料、社交绑定、公共/模块设置、站内信、邀请、审批与任务结果。
+7. **音乐**：个人 NAS 曲库扫描、在线 Range 播放、播放列表、收藏和播放历史。
 
 目标架构保持为 Java 17 + Spring Boot 模块化单体、MySQL/Flyway、Vue 3/Vite/Pinia、Tailwind CSS + 源码组件、IndexedDB/oplog local-first。完整目标与阶段门禁见 [ARCHITECTURE.md](ARCHITECTURE.md)，Agent、MCP、受控确认和逐阶段验证见 [工作台的 Agent 改造计划](工作台的Agent改造计划.md)。
 
@@ -77,6 +79,7 @@
 - **Phase 4 文件/RAG：未启动。** 尚无 MinIO/NAS 文件域、Tika、Qdrant 和知识库。
 - **Phase 5 跨域洞察：未启动。** 只有 `domain_event` 预留表，无事件发布/消费、`report_fact`、`report_snapshot` 或洞察页面。
 - **Phase 6 持续打磨：部分能力提前实现。** 已有响应式布局、主题、共享账本和可重复恢复演练；PWA、全局搜索和完整可观测体系尚未实现。
+- **Future F1-F5：已完成规划，未启动编码。** 依次拆分公共/模块设置和用户资料，建设 Redis/RabbitMQ/outbox/任务运行平台，上线站内信与账本邀请，再基于 NAS/file 能力建设独立音乐模块。详见 [后续特性路线图](后续特性路线图.md)。
 
 ## 当前验证基线
 
@@ -137,6 +140,7 @@
 3. 将恢复脚本纳入季度生产运维并持续留存发布/回滚记录。
 4. 继续 [工作台的 Agent 改造计划](工作台的Agent改造计划.md)：下一增量开放 MCP R2/R3 prepare 与 action 查询，并复用现有网站审批中心；commit、OAuth 2.1 + PKCE、Inspector/Codex/WorkBuddy 正式兼容收口随后推进。连接方法见 [MCP 连接指南](MCP连接指南.md)。
 5. Phase 2 任务域与现有工时/账本 Agent 可分别推进；任务能力完成后再注册为新的 Domain Tool，不阻塞 Phase 3A-D。
+6. 按 [后续特性路线图](后续特性路线图.md) 的 F0 先冻结设置归属、事件信封、邀请/任务状态机与 NAS 接入决策，再分别启动 F1 设置/资料和 F2 异步基础设施；站内信与音乐不得绕过这些前置门禁。
 
 ## 文档约定
 
@@ -145,6 +149,7 @@
 - `MCP连接指南.md`：PAT 创建、Streamable HTTP 配置、scope、联调与故障排查。
 - `Phase 1 —— 账本设计具体展开.md`：账本产品约定、已实现能力和剩余验收项。
 - `DEPLOY.md`：本地联调、构建、部署与排障。
+- `后续特性路线图.md`：公共/模块设置、用户资料、Redis/RabbitMQ、站内信/邀请和 NAS 音乐的详细拆解、依赖与验收门禁。
 - `docs/superpowers/plans/`：阶段性实施计划记录。
 
 根 `.gitignore` 继续忽略未纳入交付的 `docs/` 新文件；本轮 `ARCHITECTURE.md`、`overview.md` 和工作台 Agent 计划已显式纳入版本控制。后续新增文档仍需评估是否加入白名单。
