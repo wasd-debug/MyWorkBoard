@@ -14,12 +14,18 @@ public class McpOAuthUrls {
 
     public String baseUrl(HttpServletRequest request) {
         if (!configuredBaseUrl.isBlank()) return configuredBaseUrl;
+        return requestBaseUrl(request);
+    }
+
+    public String requestBaseUrl(HttpServletRequest request) {
         String scheme = first(request.getHeader("X-Forwarded-Proto"), request.getScheme());
         String host = first(request.getHeader("X-Forwarded-Host"), request.getHeader("Host"));
         return trim(scheme + "://" + host);
     }
 
     public String resource(HttpServletRequest request) { return baseUrl(request) + "/mcp"; }
+
+    public String configuredBaseUrl() { return configuredBaseUrl; }
 
     private static String first(String preferred, String fallback) {
         return preferred == null || preferred.isBlank() ? fallback : preferred.split(",")[0].trim();

@@ -1,7 +1,7 @@
 # MCP 连接指南
 
-> 状态：Phase 3C-4（2026-09-28）
-> 范围：Streamable HTTP、PAT、OAuth 2.1 Authorization Code + PKCE、账本/工时 read/prepare/commit scope、外部 action、站内确认与 R2 单次提交
+> 状态：Phase 3C-5（2026-09-28）
+> 范围：Streamable HTTP、PAT、OAuth 2.1 Authorization Code + PKCE、账本/工时 read/prepare/commit scope、外部 action、站内确认、R2 单次提交、客户端诊断与运维审计
 
 ## 1. 当前能力
 
@@ -116,7 +116,7 @@ APP_PUBLIC_BASE_URL=https://work.example.com
 }
 ```
 
-首版只支持无客户端密钥的公共客户端。redirect URI 必须是 HTTPS、环回 HTTP 或安全自定义 scheme；授权时必须与登记值精确相等，不能使用前缀或通配匹配。
+首版只支持无客户端密钥的公共客户端。redirect URI 必须是 HTTPS、环回 HTTP 或安全自定义 scheme；授权时必须与登记值精确相等，不能使用前缀或通配匹配。动态注册按来源 IP 限制为每小时最多 20 次、最多保留 100 个未撤销客户端，超过限制返回 HTTP 429 和标准 OAuth `rate_limited` 错误。
 
 ### 2.3 授权与 Token 生命周期
 
@@ -140,6 +140,24 @@ Authorization: Bearer wbo_...
 ```
 
 工具目录、账本范围、领域权限、限流和审计与 PAT 相同；认证方式不会绕过 R2/R3/R4 风险策略。
+
+### 2.4 诊断、客户端与协议事件
+
+登录网站后，“设置 → 外部 Agent / MCP”使用以下用户隔离接口：
+
+```text
+GET    /api/v1/mcp/diagnostics
+GET    /api/v1/mcp/oauth/clients
+DELETE /api/v1/mcp/oauth/clients/{clientId}
+GET    /api/v1/mcp/events?limit=30
+```
+
+- 诊断结果包含 MCP 与 discovery 地址、功能开关、当前用户有效 PAT/授权数、最近 24 小时调用与失败数、支持的协议版本和公开地址告警。
+- 未配置 `APP_PUBLIC_BASE_URL`、配置值与当前访问 Origin 不一致，或远程 OAuth 使用 HTTP 时会出现告警；告警不会自动修改配置。
+- 客户端列表显示注册时间、授权时间、最近使用时间、最近 User-Agent、scope 和账本范围。
+- “断开客户端”只撤销当前用户授予该客户端的 grant、关联 access/refresh token 和未使用授权码；不会全局删除动态客户端，也不会影响其他用户对同一客户端的授权。
+- 协议事件最多返回 100 条，只展示当前用户事件；IP 在响应中脱敏，Token 原文、密钥和完整业务数据不进入事件详情。
+- 每天北京时间 03:35 清理过期或已消费超过 1 天的授权码、超过 90 天的协议事件，并清除已撤销或过期超过 30 天的 OAuth 凭据 hash。
 
 ## 3. 创建 PAT
 
@@ -211,6 +229,8 @@ curl -i \
 
 服务端会在响应头返回 `Mcp-Session-Id`。后续 `tools/list` 和 `tools/call` 请求必须同时携带 PAT 与该 session ID。
 
+初始化时可以不带 `MCP-Protocol-Version`，由 initialize 完成版本协商；后续显式发送时当前只接受 `2025-06-18`。显式不支持的版本返回 HTTP 400 `unsupported_protocol_version`，不会误报成认证失败；无效 Token 返回 HTTP 401 并通过 `WWW-Authenticate` 提供 `resource_metadata`，限流返回 HTTP 429。
+
 预期行为：
 
 - 双 read scope：`tools/list` 返回 8 个只读工具。
@@ -274,7 +294,7 @@ curl -i \
 6. 在网站撤销 OAuth grant 或 PAT。
 7. 再次调用，确认立即失败且没有返回缓存业务数据。
 
-Phase 3C-4 已完成服务级与纯 HTTP OAuth 验证：DCR、PKCE S256、无 JWT 的 authorize 302、站内授权、授权码单次消费、OAuth access token `initialize/tools/list`、scope 裁剪、refresh 轮换、旧 access/refresh 失效和 grant 撤销即时失效均通过。Phase 3C-3 的 R2 commit、幂等回放、账本同步 oplog 和 R3 拒绝保持不变。根据项目规则，MCP Inspector、Codex、WorkBuddy 的真实 UI 连接、浏览器授权页和视觉检查由用户按 [`前端手工检查清单.md`](前端手工检查清单.md) 执行，当前不宣称已自动完成。
+Phase 3C-5 已完成服务端兼容与运维自动化验证：显式不支持协议版本返回 400、无效凭据返回 401、限流返回 429；DCR 限流、用户隔离诊断、协议事件、客户端级断开和定时清理均有集成测试。Phase 3C-4 的 DCR、PKCE S256、授权码单次消费、refresh 轮换和授权撤销，以及 Phase 3C-3 的 R2 commit、幂等回放、账本同步 oplog 和 R3 拒绝保持不变。根据项目规则，MCP Inspector、Codex、WorkBuddy 的真实 UI 连接、浏览器授权页和视觉检查由用户按 [`前端手工检查清单.md`](前端手工检查清单.md) 执行，当前不宣称已自动完成。
 
 ## 8. 故障排查
 
@@ -286,6 +306,16 @@ Phase 3C-4 已完成服务级与纯 HTTP OAuth 验证：DCR、PKCE S256、无 JW
 - 重新创建独立 PAT，不要尝试从数据库恢复原文。
 - OAuth 客户端检查 access token 是否过期、refresh 是否已轮换，或用户是否已经在设置页撤销授权。
 - 401 的 `WWW-Authenticate` 包含 `resource_metadata`，支持 OAuth 的客户端应重新发现并发起授权。
+
+### 400 unsupported_protocol_version
+
+- 当前服务端仅支持 MCP `2025-06-18`；升级或调整客户端显式发送的 `MCP-Protocol-Version`。
+- initialize 首次协商可以不发送该请求头，不要把协议版本错误当作 Token 失效处理。
+
+### 429 rate_limited
+
+- MCP 单 Token 每分钟最多 120 次调用，按 `Retry-After` 等待后重试。
+- 动态注册按来源 IP 每小时最多 20 次，同时最多保留 100 个未撤销客户端；不要在每次连接时重复注册新客户端。
 
 ### 404
 
@@ -325,4 +355,5 @@ Phase 3C-4 已完成服务级与纯 HTTP OAuth 验证：DCR、PKCE S256、无 JW
 
 - 检查 Nginx `/mcp` 是否关闭代理缓冲并使用 HTTP/1.1。
 - 检查客户端是否同时发送 `application/json, text/event-stream`。
-- 检查后端日志与 `mcp_tool_call` 审计状态；审计不保存 PAT 原文或完整敏感内容。
+- 检查设置页诊断摘要和最近协议事件，再检查后端日志与 `mcp_tool_call` 审计状态；审计不保存 PAT 原文或完整敏感内容。
+- 复制诊断报告时仍应在对外发送前复核内容；页面只提供脱敏运维信息，不替代服务端日志授权管理。

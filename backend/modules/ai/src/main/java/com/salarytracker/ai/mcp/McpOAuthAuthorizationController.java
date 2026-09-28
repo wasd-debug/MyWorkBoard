@@ -64,7 +64,7 @@ public class McpOAuthAuthorizationController {
             throw new IllegalArgumentException("授权请求不能为空");
         }
         requireResource(command.request().resource(), servletRequest);
-        return ApiResponse.ok(oauth.decide(command));
+        return ApiResponse.ok(oauth.decide(command, requestContext(servletRequest)));
     }
 
     @GetMapping("/grants")
@@ -86,6 +86,11 @@ public class McpOAuthAuthorizationController {
         if (!urls.resource(request).equals(resource)) {
             throw new IllegalArgumentException("resource 必须是当前站点的 MCP /mcp 端点");
         }
+    }
+    private McpOperationsService.RequestContext requestContext(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        String ip = forwarded == null || forwarded.isBlank() ? request.getRemoteAddr() : forwarded.split(",")[0].trim();
+        return new McpOperationsService.RequestContext(ip, request.getHeader("User-Agent"));
     }
     private void requireEnabled() { if (!enabled) throw new ResponseStatusException(HttpStatus.NOT_FOUND); }
 }

@@ -14,13 +14,12 @@
 
 
 
-export interface GrantView {
-    'id'?: string;
+export interface EventView {
+    'eventType'?: string;
+    'status'?: string;
     'clientId'?: string;
-    'clientName'?: string;
-    'scopes'?: Set<string>;
-    'bookIds'?: Set<string>;
+    'maskedIp'?: string;
+    'userAgent'?: string;
+    'detail'?: { [key: string]: object; };
     'createdAt'?: string;
-    'updatedAt'?: string;
-    'lastUsedAt'?: string;
 }

@@ -1,7 +1,7 @@
 # 工作台 Agent 与 MCP 改造计划
 
-> 版本：v2.9（2026-09-28）
-> 状态：实施中（Phase 3C-4 已完成：MCP OAuth 2.1 Authorization Code + PKCE、动态客户端注册、refresh 轮换与授权撤销已落地；R3/R4 commit 继续关闭，Inspector/Codex/WorkBuddy 真实客户端验收待用户执行）
+> 版本：v3.0（2026-09-28）
+> 状态：实施中（Phase 3C-5 已完成服务端兼容与运维收口：协议错误分类、连接诊断、客户端级断开、协议事件、DCR 限流与凭据清理已落地；R3/R4 commit 继续关闭，Inspector/Codex/WorkBuddy 真实客户端验收待用户执行）
 
 > 运维修正：迁移 `V8.1` 是在 `V8` 已发布后补充的索引迁移，已有数据库升级时需开启 `FLYWAY_OUT_OF_ORDER=true`；不得删除或改写 `flyway_schema_history`。
 
@@ -11,7 +11,11 @@
 
 ## 0. 实施进度快照（2026-09-28）
 
-当前增量完成 Phase 3C-4：新增 OAuth 2.1 Authorization Code + PKCE S256，提供 Protected Resource Metadata、Authorization Server Metadata、Dynamic Client Registration、authorize/token/revoke 端点和站内授权页。OAuth access token 有效期 1 小时，refresh token 有效期 30 天并在每次刷新时轮换；授权码只保存 SHA-256 hash、5 分钟有效且只能消费一次，access/refresh token 同样只保存 hash。回调地址按注册值精确匹配，只接受 HTTPS、环回 HTTP 或安全自定义 scheme；RFC 8707 `resource` 必须精确等于当前站点 `/mcp`。授权按用户、客户端、scope 和账本范围持久化，设置页可查看及撤销，撤销后该 grant 下的 access/refresh token 立即失效。公共 `/oauth/authorize` 只校验客户端、scope、resource 和 PKCE 后跳转前端授权页，不依赖浏览器导航携带站内 JWT；用户与账本权限在登录后的站内 API 再读取。
+当前增量完成 Phase 3C-5 服务端兼容与运维收口：`MCP-Protocol-Version` 未携带时保留 initialize 协商兼容，显式携带不支持版本时返回 400；无效 Token 返回带 `resource_metadata` 的 401，调用限流返回 429，不再把协议错误和服务端错误统一伪装成认证失败。已登记的可信 `redirect_uri` 在 authorize 参数错误时收到标准 `error/error_description/state` 回调，未知客户端或未登记 redirect 禁止跳转；token 与 revoke 的成功、失败响应均禁止缓存。DCR 按来源 IP 增加每小时 20 次和 100 个有效客户端上限。
+
+V26 为 OAuth 客户端和 grant 增加最近使用、来源和客户端摘要，`mcp_tool_call` 增加 PAT/OAuth 与 OAuth client 维度，并新增 `mcp_protocol_event`。设置页增加 MCP 开关状态、协议版本、24 小时调用/失败、公开地址告警、已连接客户端、最近事件和脱敏诊断复制；客户端级断开会撤销当前用户对该客户端的全部 grant、access/refresh token 和未使用授权码，不影响其他用户。每天清理过期或已消费授权码、90 天前协议事件，并在保留审计外键的前提下清除长期失效 OAuth token 的可用 hash。诊断和事件严格按当前用户隔离，不返回环境变量、完整 IP、Token、授权码、JWT 或 API key。
+
+上一增量完成 Phase 3C-4：新增 OAuth 2.1 Authorization Code + PKCE S256，提供 Protected Resource Metadata、Authorization Server Metadata、Dynamic Client Registration、authorize/token/revoke 端点和站内授权页。OAuth access token 有效期 1 小时，refresh token 有效期 30 天并在每次刷新时轮换；授权码只保存 SHA-256 hash、5 分钟有效且只能消费一次，access/refresh token 同样只保存 hash。回调地址按注册值精确匹配，只接受 HTTPS、环回 HTTP 或安全自定义 scheme；RFC 8707 `resource` 必须精确等于当前站点 `/mcp`。授权按用户、客户端、scope 和账本范围持久化，设置页可查看及撤销，撤销后该 grant 下的 access/refresh token 立即失效。公共 `/oauth/authorize` 只校验客户端、scope、resource 和 PKCE 后跳转前端授权页，不依赖浏览器导航携带站内 JWT；用户与账本权限在登录后的站内 API 再读取。
 
 V25 新增 `mcp_oauth_client`、`mcp_grant`、`mcp_oauth_code`，并扩展 `mcp_personal_token` 复用既有 MCP scope、账本范围、限流和审计。PAT 与 OAuth token 用 `token_type` 隔离，OAuth token 不出现在 PAT 列表，关闭 `APP_MCP_OAUTH_ENABLED` 后已有 OAuth token 也无法访问 `/mcp`。本地纯 HTTP 联调已验证 DCR、无 JWT 的 authorize 302、登录后授权预览/批准、授权码交换、OAuth access token initialize/tools/list、worktime-only scope 裁剪、refresh 轮换、旧 access/refresh 失效和 grant 撤销后的即时失效；没有输出或记录完整 token。后端全量 `mvn test` 共 203 项，201 项通过、2 项按既有规则跳过；前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过。真实 MCP Inspector、Codex 和 WorkBuddy UI 连接留在手工检查清单，不宣称已自动完成浏览器验收。
 
@@ -111,7 +115,8 @@ Phase 3C-1 协议联调已通过：双 scope `tools/list` 返回 8 个工具，�
 后续正式增量顺序（已排期，不能遗漏）：
 
 1. [x] 低风险 MCP commit：新增 commit scope、单次幂等、审批后权限/revision 复检与投影同步；R3/R4 继续不开放 MCP commit。
-2. [ ] MCP 正式认证与兼容收口：OAuth 2.1 + PKCE、MCP Inspector/Codex/WorkBuddy 真实兼容回归。
+2. [x] MCP 正式认证与服务端兼容收口：OAuth 2.1 + PKCE、协议错误分类、诊断、审计、限流、客户端撤销与清理。
+3. [ ] MCP Inspector/Codex/WorkBuddy 真实客户端兼容回归；按项目规则由用户执行并记录版本与结果。
 3. [ ] 现有功能稳定化：并发冲突、错误回放、成本告警和灰度运行手册。
 
 验证记录：

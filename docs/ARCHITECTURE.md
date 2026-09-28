@@ -785,6 +785,8 @@ Future 横向增量：F1 设置/资料 → F2 Redis/RabbitMQ/任务平台 → F3
 
 2026-09-28 MCP prepare 与站内确认增量：V23 新增 `mcp_external_action`，PAT 增加账本/工时 prepare scope；MCP 开放 6 个 create/update/delete prepare 和 3 个 action 管理工具，但 `.commit` 数量保持为 0。后端 `mvn test` 共 196 项，194 项通过、2 项按既有规则跳过，Flyway V1-V23、真实 MySQL、历史库混合 collation 和架构边界通过；前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过。真实协议联调覆盖 prepare、站内批准、状态回查、取消、PAT 撤销和零业务写入；确认页通过桌面与 375px 移动端亮暗主题验收。
 
+2026-09-28 MCP 客户端兼容与运维收口增量：V26 新增 `mcp_protocol_event`，为 OAuth client/grant 增加最近使用、来源和客户端摘要，并为工具调用增加认证类型与 OAuth client 维度。`/mcp` 显式区分不支持协议版本 400、无效 Token 401 和限流 429；authorize 仅在 client 与 redirect URI 均可信时执行标准错误回调。新增连接诊断、客户端列表/断开和用户隔离事件 API，设置页可复制不含密钥的诊断报告。DCR 增加数据库计数限流，定时任务清理过期 code、旧事件和长期失效 token hash；SDK session 处理仍由官方 Java MCP SDK 负责，没有自建旁路状态机。真实 Inspector/Codex/WorkBuddy UI 兼容仍是独立人工门禁。
+
 2026-09-27 回收站与导入导出基础增量：后端 `mvn clean test` 共 179 项，177 项通过、2 项按既有规则跳过，Flyway V1-V20、真实 MySQL 和架构边界通过；新增数据生命周期集成测试 3/3，覆盖恢复 revision 冲突、跨用户隔离、导入预览零写入与 CSV 公式注入防护。前端 Node 49/49、sync-engine 8/8、类型检查、OpenAPI 一致性和生产构建通过；回收站恢复、受认证导出和只读导入预览在桌面 Chromium、桌面 WebKit与 375px 移动 Chromium 共 9/9 通过。
 
 2026-09-27 R4 审批与导入确认增量：后端 `mvn test` 共 184 项，182 项通过、2 项按既有规则跳过，Flyway V1-V21、真实 MySQL、迁移回放和架构边界通过；新增工具契约覆盖 R4 prepare、非法重复策略、未审批 commit 和模型不可见策略，真实 MySQL 覆盖批准导入、重复批准幂等与跨用户隔离。前端 Node 49/49、sync-engine 8/8、类型检查、OpenAPI 一致性和生产构建通过；“上传预览 → 创建审批 → 批准导入”在桌面 Chromium、桌面 WebKit与 375px 移动 Chromium 共 3/3 通过。

@@ -63,6 +63,17 @@ sudo bash deploy/deploy.sh
 
 MCP 使用与网站相同的公开地址，例如 `https://work.example.com/mcp`。Nginx 必须保持 `/mcp` 的 `proxy_buffering off`、HTTP/1.1 和长读取超时，并转发 `/.well-known/*`、`/oauth/authorize`、`/oauth/token`、`/oauth/register`、`/oauth/revoke`。PAT 在网站设置页创建，完整值只显示一次；OAuth 正式接入必须同时设置 `APP_MCP_OAUTH_ENABLED=true` 和正确的 HTTPS `APP_PUBLIC_BASE_URL`。生产环境建议先保持 `APP_MCP_WRITE_ENABLED=false`，先验证只读 OAuth，再灰度开放 prepare/R2 commit。详细连接与验证见 [MCP 连接指南](MCP连接指南.md)。
 
+### MCP 上线检查与数据保留
+
+1. 发布包含 `V26__mcp_client_diagnostics.sql` 的版本后，确认 Flyway schema 为 v26，`mcp_protocol_event` 表及 OAuth 客户端/授权最近使用字段存在；不得修改或忽略已经应用的 V25/V26。
+2. 使用站内登录态访问 `GET /api/v1/mcp/diagnostics`，确认 `configuredBaseUrl` 与 `observedBaseUrl` 一致、远程 OAuth 使用 HTTPS 且 `warnings` 为空。
+3. initialize 首次协商可不带版本头；显式 `MCP-Protocol-Version` 当前只接受 `2025-06-18`。发布验收要区分 400 协议错误、401 凭据错误和 429 限流，不能把三者统一改写成登录失败。
+4. 动态注册按来源 IP 限制为每小时 20 次和最多 100 个未撤销客户端；MCP 调用继续按 Token 每分钟 120 次限流。反向代理必须传递可信的客户端地址头，并限制只有受信代理能覆盖这些头。
+5. 设置页断开 OAuth 客户端只撤销当前用户 grant、关联 Token 和未使用授权码，不应删除其他用户授权。诊断、客户端和协议事件 API 均需要网站 JWT，禁止由 Nginx 配置成匿名路径。
+6. 每天北京时间 03:35 自动清理超过 1 天的过期/已消费授权码、超过 90 天的协议事件，并清除已撤销或过期超过 30 天的 OAuth 凭据 hash；该任务不删除业务审计与 `mcp_tool_call`。
+
+上线后先查看设置页诊断摘要和最近协议事件，再按 [前端手工检查清单](前端手工检查清单.md) 分别记录 MCP Inspector、Codex 与 WorkBuddy 的真实客户端版本和结果。当前自动化验证不替代真实客户端及浏览器验收。
+
 ## 使用已构建镜像
 
 `deploy/docker-compose.prod.yml` 用于运行本地已有的 `salary-backend:latest` 和 `salary-frontend:latest` 镜像：

@@ -1,6 +1,6 @@
 # Agent 功能覆盖与中文评测集
 
-> 版本：v1.8（2026-09-28）
+> 版本：v1.9（2026-09-28）
 > 用途：Phase 3A/3B 自动回归基线。当前首页真实模型已接入 R0/R1 查询和获准的 R2/R3 prepare；commit 仅能由站内确认卡片触发。
 
 ## 1. 功能覆盖矩阵
@@ -45,6 +45,7 @@
 | 外部 MCP prepare | 6 个 `*.prepare` + `agent.action.get/list/cancel` | R2-R3 | 已按独立 scope 暴露；支持查询、取消和站内确认 | Inspector/Codex/WorkBuddy 真实兼容记录 |
 | 外部 MCP 低风险提交 | `agent.action.commit` | R2 | 已按独立 commit scope 开放新增工时/新增流水；绑定原 PAT、站内批准、单次幂等，账本写入产生同步 oplog | Inspector/Codex/WorkBuddy 真实兼容与故障恢复 |
 | 外部 MCP OAuth | OAuth 2.1 Authorization Code + PKCE | 认证 | 已支持 metadata、DCR、S256、resource、refresh 轮换、账本范围和 grant 撤销 | Inspector/Codex/WorkBuddy 真实授权回调与版本兼容记录 |
+| MCP 客户端诊断与运维 | 诊断、客户端断开、协议事件、清理任务 | 运维 | 已支持用户隔离诊断、协议错误分层、DCR 限流、客户端级撤销和保留期清理 | 真实客户端版本矩阵与长期运行观察 |
 
 ## 2. 中文指令评测集
 
@@ -110,6 +111,12 @@
 | MCP-OAUTH-002 | 使用 refresh token 刷新 | token | 返回新 access/refresh，旧 access 和旧 refresh 立即失效，scope 不得扩大 |
 | MCP-OAUTH-003 | 用户在设置页撤销外部应用 | grants/revoke | grant 下全部 access/refresh 立即失效，PAT 不受影响 |
 | MCP-OAUTH-004 | 伪造 redirect_uri、resource、plain PKCE 或扩大 scope | authorize/token | 请求被拒绝，不签发 token，不产生 MCP 业务访问 |
+| MCP-COMPAT-001 | 显式发送不支持的 `MCP-Protocol-Version` | initialize/后续请求 | HTTP 400 `unsupported_protocol_version`，不带认证 challenge |
+| MCP-COMPAT-002 | 未带协议版本头发起 initialize | initialize | 允许进入 `2025-06-18` 版本协商，不因缺少请求头被拒绝 |
+| MCP-OPS-001 | 用户查看诊断、客户端和协议事件 | 站内设置 | 只返回当前用户数据，IP 脱敏，不返回 Token、密钥或完整业务参数 |
+| MCP-OPS-002 | 用户断开一个 OAuth 客户端 | disconnect | 当前用户 grant、关联 Token 和未用授权码失效；其他用户授权不受影响 |
+| MCP-OPS-003 | 同一 IP 高频动态注册 | register | 每小时第 21 次或活动客户端达到 100 个时返回 HTTP 429 |
+| MCP-OPS-004 | 执行定时清理 | cleanup | 按 1/30/90 天策略清理授权码、OAuth hash 和协议事件，不删除业务数据 |
 
 ## 3. 评测通过标准
 
@@ -137,6 +144,9 @@
 - DeepSeek 峰谷档位按请求开始时刻和北京时间计算，价格由用户配置且按版本留存；页面估算不替代供应商最终账单。
 - 深度思考默认关闭；仅 DeepSeek 模型显示开关。思考内容不得混入最终正文、工具参数或审计摘要，前端必须默认收起且允许用户显式展开/收起。
 - MCP `tools/list` 必须按 PAT scope 与写功能开关裁剪；read Token 不得看到 prepare，prepare Token 只能看到获准 prepare 与 action 管理工具，当前任何 Token 均不得看到 `*.commit`。撤销必须立即阻止下一次请求并使未完成确认链接失效。
+- MCP 协议错误必须保留语义：不支持的显式版本返回 400，无效凭据返回 401 并携带 resource metadata，Token 或 DCR 限流返回 429；initialize 缺少版本头仍允许协商。
+- MCP 诊断、客户端和事件接口必须按当前登录用户隔离；客户端断开不得全局撤销动态注册客户端，事件响应必须脱敏 IP 且不得包含 Token 原文或密钥。
+- DCR 每 IP 每小时最多 20 次、最多 100 个未撤销客户端；定时清理只处理达到保留期的 OAuth 临时/凭据数据和协议事件，不删除业务审计、工具调用或领域数据。
 
 ## 4. 执行方式与当前结果
 

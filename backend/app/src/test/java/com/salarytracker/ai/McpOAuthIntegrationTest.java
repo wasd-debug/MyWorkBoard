@@ -2,6 +2,7 @@ package com.salarytracker.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.salarytracker.ai.mcp.McpOAuthService;
+import com.salarytracker.ai.mcp.McpOperationsService;
 import com.salarytracker.ai.mcp.McpPersonalTokenService;
 import com.salarytracker.identity.AuthService;
 import com.salarytracker.identity.CurrentUser;
@@ -38,7 +39,8 @@ class McpOAuthIntegrationTest extends MySqlIntegrationTestSupport {
         when(currentUser.id()).thenReturn(userId);
         when(auth.loadUser(userId)).thenReturn(user);
         McpPersonalTokenService personal = new McpPersonalTokenService(jdbc, mapper, currentUser, auth);
-        McpOAuthService oauth = new McpOAuthService(jdbc, mapper, currentUser, personal, mock(LedgerBookService.class));
+        McpOAuthService oauth = new McpOAuthService(jdbc, mapper, currentUser, personal,
+                mock(LedgerBookService.class), mock(McpOperationsService.class));
 
         McpOAuthService.ClientRegistration client = oauth.registerClient(new McpOAuthService.RegisterClientRequest(
                 "Codex QA", Set.of("http://127.0.0.1:1455/callback"), null, null, "none"));
@@ -86,7 +88,8 @@ class McpOAuthIntegrationTest extends MySqlIntegrationTestSupport {
         CurrentUserResolver currentUser = mock(CurrentUserResolver.class);
         when(currentUser.id()).thenReturn(userId);
         McpPersonalTokenService personal = new McpPersonalTokenService(jdbc, mapper, currentUser, mock(AuthService.class));
-        McpOAuthService oauth = new McpOAuthService(jdbc, mapper, currentUser, personal, mock(LedgerBookService.class));
+        McpOAuthService oauth = new McpOAuthService(jdbc, mapper, currentUser, personal,
+                mock(LedgerBookService.class), mock(McpOperationsService.class));
 
         assertThrows(McpOAuthService.OAuthException.class, () -> oauth.registerClient(
                 new McpOAuthService.RegisterClientRequest("Bad", Set.of("http://example.com/callback"),
@@ -112,7 +115,8 @@ class McpOAuthIntegrationTest extends MySqlIntegrationTestSupport {
         CurrentUserResolver currentUser = mock(CurrentUserResolver.class);
         when(currentUser.id()).thenReturn(userId);
         McpPersonalTokenService personal = new McpPersonalTokenService(jdbc, mapper, currentUser, mock(AuthService.class));
-        McpOAuthService oauth = new McpOAuthService(jdbc, mapper, currentUser, personal, mock(LedgerBookService.class));
+        McpOAuthService oauth = new McpOAuthService(jdbc, mapper, currentUser, personal,
+                mock(LedgerBookService.class), mock(McpOperationsService.class));
         var client = oauth.registerClient(new McpOAuthService.RegisterClientRequest("Reauthorize QA",
                 Set.of("http://127.0.0.1:1455/callback"), null, null, "none"));
         String verifier = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";

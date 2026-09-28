@@ -66,6 +66,10 @@ export async function apiPreviewMcpOAuthAuthorization(params) { return data(awai
 export async function apiDecideMcpOAuthAuthorization(payload) { return data(await api.post('/api/v1/mcp/oauth/authorization/decision', payload)) }
 export async function apiListMcpOAuthGrants() { return data(await api.get('/api/v1/mcp/oauth/grants')) }
 export async function apiRevokeMcpOAuthGrant(id) { return data(await api.delete(`/api/v1/mcp/oauth/grants/${encodeURIComponent(id)}`)) }
+export async function apiGetMcpDiagnostics() { return data(await api.get('/api/v1/mcp/diagnostics')) }
+export async function apiListMcpOAuthClients() { return data(await api.get('/api/v1/mcp/oauth/clients')) }
+export async function apiDisconnectMcpOAuthClient(clientId) { return data(await api.delete(`/api/v1/mcp/oauth/clients/${encodeURIComponent(clientId)}`)) }
+export async function apiListMcpProtocolEvents(limit = 30) { return data(await api.get('/api/v1/mcp/events', { params: { limit } })) }
 
 export async function apiStreamAgentTurn(sessionId, payload, onEvent, signal) {
   const request = () => fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/turns`, {

@@ -159,6 +159,19 @@
         <Button size="sm" variant="ghost" @click="createdMcpToken = ''">我已保存</Button>
       </div>
       <div class="mcp-endpoint"><span>Streamable HTTP 地址</span><code>{{ mcpEndpoint }}</code></div>
+      <div v-if="mcpDiagnostics" class="mcp-diagnostics">
+        <div><span>MCP</span><b :class="mcpDiagnostics.enabled ? 'ok' : 'off'">{{ mcpDiagnostics.enabled ? '已启用' : '已关闭' }}</b></div>
+        <div><span>OAuth</span><b :class="mcpDiagnostics.oauthEnabled ? 'ok' : 'off'">{{ mcpDiagnostics.oauthEnabled ? '已启用' : '已关闭' }}</b></div>
+        <div><span>写入</span><b :class="mcpDiagnostics.writeEnabled ? 'warn' : ''">{{ mcpDiagnostics.writeEnabled ? '已启用' : '只读' }}</b></div>
+        <div><span>24 小时调用</span><b>{{ mcpDiagnostics.callsLast24Hours }}</b></div>
+        <div><span>24 小时失败</span><b :class="mcpDiagnostics.failuresLast24Hours ? 'off' : ''">{{ mcpDiagnostics.failuresLast24Hours }}</b></div>
+        <div><span>协议版本</span><b>{{ mcpDiagnostics.supportedProtocolVersions.join('、') }}</b></div>
+      </div>
+      <p v-for="warning in mcpDiagnostics?.warnings || []" :key="warning" class="mcp-diagnostic-warning">{{ warning }}</p>
+      <div class="io-row">
+        <Button size="sm" variant="ghost" @click="loadMcpOperations">刷新诊断</Button>
+        <Button size="sm" variant="ghost" :disabled="!mcpDiagnostics" @click="copyMcpDiagnostics">复制脱敏诊断</Button>
+      </div>
       <div v-if="mcpTokens.length" class="mcp-token-list">
         <article v-for="token in mcpTokens" :key="token.id">
           <div><b>{{ token.name }}</b><code>{{ token.tokenHint }}</code><small>{{ token.scopes.map(mcpScopeLabel).join(' · ') }}</small></div>
@@ -176,6 +189,23 @@
         </article>
       </div>
       <p v-else class="hint">尚无 OAuth 外部应用授权。</p>
+      <div class="mcp-oauth-heading"><div><h3>已连接客户端</h3><p class="hint">断开客户端会撤销当前用户授予它的全部授权、Token 和未使用授权码。</p></div></div>
+      <div v-if="mcpClients.length" class="mcp-token-list">
+        <article v-for="client in mcpClients" :key="client.grantId">
+          <div><b>{{ client.clientName }}</b><code>{{ client.clientId }}</code><small>{{ client.redirectUris.join(' · ') }}</small></div>
+          <div><span>{{ client.revokedAt ? '已断开' : '已连接' }}</span><small>最后使用：{{ client.lastUsedAt ? formatDateTime(client.lastUsedAt) : '尚未使用' }}{{ client.lastUserAgent ? ` · ${client.lastUserAgent}` : '' }}</small></div>
+          <Button v-if="!client.revokedAt" size="sm" variant="danger" @click="disconnectMcpClient(client)">断开客户端</Button>
+        </article>
+      </div>
+      <p v-else class="hint">尚无已注册并授权的 OAuth 客户端。</p>
+      <div class="mcp-oauth-heading"><div><h3>最近连接事件</h3><p class="hint">仅显示脱敏 IP、客户端摘要和协议状态，不记录 Token、授权码或密钥。</p></div></div>
+      <div v-if="mcpEvents.length" class="mcp-event-list">
+        <article v-for="(event, index) in mcpEvents" :key="`${event.createdAt}-${index}`">
+          <b>{{ mcpEventLabel(event.eventType) }}</b><span :class="event.status === 'SUCCESS' || event.status === 'ACCEPTED' ? 'ok' : 'off'">{{ event.status }}</span>
+          <small>{{ formatDateTime(event.createdAt) }}{{ event.maskedIp ? ` · ${event.maskedIp}` : '' }}{{ event.userAgent ? ` · ${event.userAgent}` : '' }}</small>
+        </article>
+      </div>
+      <p v-else class="hint">尚无当前用户可见的 MCP/OAuth 事件。</p>
     </div>
 
   </section>
@@ -191,7 +221,7 @@ import Dialog from '../components/ui/Dialog.vue'
 import { useAppStore } from '../stores/app'
 import { DEFAULT_WORKTIME_SETTINGS as DEFAULTS, useWorktimeStore } from '../stores/worktime.js'
 import { CALC } from '../utils/calc'
-import { apiCreateAgentModelConnection, apiCreateMcpToken, apiDeleteAgentModelConnection, apiListAgentModelConnections, apiListLedgerBooks, apiListMcpOAuthGrants, apiListMcpTokens, apiRevokeMcpOAuthGrant, apiRevokeMcpToken, apiSetDefaultAgentModelConnection, apiTestAgentModelConnection, apiUpdateAgentModelConnection } from '../../packages/api-client/src/index.js'
+import { apiCreateAgentModelConnection, apiCreateMcpToken, apiDeleteAgentModelConnection, apiDisconnectMcpOAuthClient, apiGetMcpDiagnostics, apiListAgentModelConnections, apiListLedgerBooks, apiListMcpOAuthClients, apiListMcpOAuthGrants, apiListMcpProtocolEvents, apiListMcpTokens, apiRevokeMcpOAuthGrant, apiRevokeMcpToken, apiSetDefaultAgentModelConnection, apiTestAgentModelConnection, apiUpdateAgentModelConnection } from '../../packages/api-client/src/index.js'
 
 const appStore = useAppStore()
 const store = useWorktimeStore()
@@ -206,7 +236,7 @@ const accents = [
 const ioArea = ref('')
 const lunchDialogOpen = ref(false), pendingLunchMin = ref(0), lunchScope = ref('NONE'), lunchFromDate = ref(CALC.dateKey(new Date())), savingLunch = ref(false)
 const modelConnections = ref([]), selectedModelId = ref(''), modelStatus = ref('')
-const mcpTokens = ref([]), mcpGrants = ref([]), ledgerBooks = ref([]), createdMcpToken = ref(''), creatingMcpToken = ref(false)
+const mcpTokens = ref([]), mcpGrants = ref([]), mcpClients = ref([]), mcpEvents = ref([]), mcpDiagnostics = ref(null), ledgerBooks = ref([]), createdMcpToken = ref(''), creatingMcpToken = ref(false)
 const defaultMcpExpiry = () => { const date = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); date.setSeconds(0, 0); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16) }
 const mcpForm = ref({ name: '本地 Agent', scopes: ['mcp:ledger:read', 'mcp:worktime:read'], bookIds: [], expiresAt: defaultMcpExpiry() })
 const mcpEndpoint = computed(() => `${window.location.origin}/mcp`)
@@ -236,6 +266,7 @@ async function makeDefault() { try { await apiSetDefaultAgentModelConnection(sel
 async function removeModel() { if (!window.confirm('删除此模型配置？')) return; try { await apiDeleteAgentModelConnection(selectedModelId.value); await loadModels(); modelStatus.value = '模型配置已删除' } catch { modelStatus.value = '删除模型配置失败' } }
 async function loadMcpTokens() { try { [mcpTokens.value, ledgerBooks.value] = await Promise.all([apiListMcpTokens(), apiListLedgerBooks()]) } catch { message.error('MCP Token 列表加载失败') } }
 async function loadMcpGrants() { try { mcpGrants.value = await apiListMcpOAuthGrants() } catch (error) { if (error?.response?.status !== 404) message.error('OAuth 授权列表加载失败') } }
+async function loadMcpOperations() { try { [mcpDiagnostics.value, mcpClients.value, mcpEvents.value] = await Promise.all([apiGetMcpDiagnostics(), apiListMcpOAuthClients(), apiListMcpProtocolEvents()]) } catch { message.error('MCP 连接诊断加载失败') } }
 async function createMcpToken() {
   creatingMcpToken.value = true
   try {
@@ -250,8 +281,11 @@ async function createMcpToken() {
 async function copyMcpToken() { try { await navigator.clipboard.writeText(createdMcpToken.value); message.success('Token 已复制') } catch { message.warning('复制失败，请手动复制') } }
 async function revokeMcpToken(token) { if (!window.confirm(`撤销“${token.name}”？已连接的外部 Agent 将立即失效。`)) return; try { await apiRevokeMcpToken(token.id); await loadMcpTokens(); message.success('Token 已撤销') } catch { message.error('撤销 Token 失败') } }
 async function revokeMcpGrant(grant) { if (!window.confirm(`撤销“${grant.clientName}”的 OAuth 授权？该客户端需要重新授权才能连接。`)) return; try { await apiRevokeMcpOAuthGrant(grant.id); await loadMcpGrants(); message.success('OAuth 授权已撤销') } catch { message.error('撤销 OAuth 授权失败') } }
+async function disconnectMcpClient(client) { if (!window.confirm(`断开“${client.clientName}”？该客户端的全部授权和 Token 将立即失效。`)) return; try { await apiDisconnectMcpOAuthClient(client.clientId); await Promise.all([loadMcpGrants(), loadMcpOperations()]); message.success('OAuth 客户端已断开') } catch { message.error('断开 OAuth 客户端失败') } }
+async function copyMcpDiagnostics() { const report = { generatedAt: new Date().toISOString(), ...mcpDiagnostics.value, clients: mcpClients.value.map(({ clientId, clientName, lastUsedAt, lastUserAgent, revokedAt }) => ({ clientId, clientName, lastUsedAt, lastUserAgent, revokedAt })), recentEvents: mcpEvents.value }; try { await navigator.clipboard.writeText(JSON.stringify(report, null, 2)); message.success('脱敏诊断已复制') } catch { message.warning('复制失败') } }
 function formatDateTime(value) { return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
 function mcpScopeLabel(value) { return ({ 'mcp:ledger:read': '账本查询', 'mcp:worktime:read': '工时查询', 'mcp:ledger:prepare': '账本准备', 'mcp:worktime:prepare': '工时准备', 'mcp:ledger:commit': '账本低风险提交', 'mcp:worktime:commit': '工时低风险提交' })[value] || value }
+function mcpEventLabel(value) { return ({ 'client.register': '客户端注册', 'authorization.approved': '授权通过', 'authorization.denied': '授权拒绝', 'code.exchanged': '授权码交换', 'token.refreshed': 'Token 刷新', 'token.revoked': 'Token 撤销', 'grant.revoked': '授权撤销', 'client.disconnected': '客户端断开', 'mcp.request': 'MCP 请求' })[value] || value }
 function setNumber(key, value, fallback) {
   const number = Number(value)
   set(key, Number.isFinite(number) ? number : fallback)
@@ -293,5 +327,5 @@ async function doClear() {
   await store.clearResources(DEFAULTS)
   message.success('已清空')
 }
-onMounted(() => Promise.all([loadModels(), loadMcpTokens(), loadMcpGrants()]))
+onMounted(() => Promise.all([loadModels(), loadMcpTokens(), loadMcpGrants(), loadMcpOperations()]))
 </script>

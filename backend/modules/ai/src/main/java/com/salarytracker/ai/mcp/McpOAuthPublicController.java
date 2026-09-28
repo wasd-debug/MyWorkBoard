@@ -67,9 +67,10 @@ public class McpOAuthPublicController {
 
     @PostMapping(value = "/oauth/register", consumes = MediaType.APPLICATION_JSON_VALUE)
     @Operation(operationId = "registerMcpOAuthClient")
-    public McpOAuthService.ClientRegistration register(@RequestBody McpOAuthService.RegisterClientRequest request) {
+    public McpOAuthService.ClientRegistration register(@RequestBody McpOAuthService.RegisterClientRequest request,
+                                                       HttpServletRequest servletRequest) {
         requireEnabled();
-        return oauth.registerClient(request);
+        return oauth.registerClient(request, requestContext(servletRequest));
     }
 
     @GetMapping("/oauth/authorize")
@@ -84,18 +85,25 @@ public class McpOAuthPublicController {
                                           @RequestParam String resource,
                                           HttpServletRequest request) {
         requireEnabled();
-        requireResource(resource, request);
-        oauth.validateAuthorizationRequest(new McpOAuthService.AuthorizationRequest(responseType, clientId,
-                redirectUri, scope, state, codeChallenge, codeChallengeMethod, resource));
-        String query = request.getQueryString();
-        return ResponseEntity.status(HttpStatus.FOUND)
-                .location(URI.create(urls.baseUrl(request) + "/oauth/consent" + (query == null ? "" : "?" + query)))
-                .build();
+        try {
+            requireResource(resource, request);
+            oauth.validateAuthorizationRequest(new McpOAuthService.AuthorizationRequest(responseType, clientId,
+                    redirectUri, scope, state, codeChallenge, codeChallengeMethod, resource));
+            String query = request.getQueryString();
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(URI.create(urls.baseUrl(request) + "/oauth/consent" + (query == null ? "" : "?" + query)))
+                    .build();
+        } catch (McpOAuthService.OAuthException exception) {
+            if (!oauth.isTrustedRedirect(clientId, redirectUri)) throw exception;
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(URI.create(oauth.errorRedirect(redirectUri, exception, state)))
+                    .cacheControl(CacheControl.noStore()).header(HttpHeaders.PRAGMA, "no-cache").build();
+        }
     }
 
     @PostMapping(value = "/oauth/token", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
     @Operation(operationId = "exchangeMcpOAuthToken")
-    public McpOAuthService.TokenResponse token(
+    public ResponseEntity<McpOAuthService.TokenResponse> token(
                                                @RequestParam(name = "grant_type") String grantType,
                                                @RequestParam(name = "client_id") String clientId,
                                                @RequestParam(required = false) String code,
@@ -107,22 +115,25 @@ public class McpOAuthPublicController {
                                                HttpServletRequest request) {
         requireEnabled();
         if (resource != null && !resource.isBlank()) requireResource(resource, request);
-        return oauth.exchange(new McpOAuthService.TokenRequest(grantType, clientId, code, redirectUri, codeVerifier,
-                refreshToken, scope, resource));
+        McpOAuthService.TokenResponse body = oauth.exchange(new McpOAuthService.TokenRequest(grantType, clientId,
+                code, redirectUri, codeVerifier, refreshToken, scope, resource), requestContext(request));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header(HttpHeaders.PRAGMA, "no-cache").body(body);
     }
 
     @PostMapping(value = "/oauth/revoke", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
     @Operation(operationId = "revokeMcpOAuthToken")
     public ResponseEntity<Void> revoke(@RequestParam String token,
-                                       @RequestParam(name = "client_id") String clientId) {
+                                       @RequestParam(name = "client_id") String clientId,
+                                       HttpServletRequest request) {
         requireEnabled();
-        oauth.revoke(token, clientId);
-        return ResponseEntity.ok().build();
+        oauth.revoke(token, clientId, requestContext(request));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .header(HttpHeaders.PRAGMA, "no-cache").build();
     }
 
     @ExceptionHandler(McpOAuthService.OAuthException.class)
     ResponseEntity<Map<String, String>> oauthError(McpOAuthService.OAuthException exception) {
-        return ResponseEntity.badRequest().cacheControl(CacheControl.noStore())
+        return ResponseEntity.status(exception.status()).cacheControl(CacheControl.noStore())
                 .header(HttpHeaders.PRAGMA, "no-cache")
                 .body(Map.of("error", exception.error(), "error_description", exception.getMessage()));
     }
@@ -135,6 +146,11 @@ public class McpOAuthPublicController {
         if (!urls.resource(request).equals(resource)) {
             throw new McpOAuthService.OAuthException("invalid_target", "resource 必须是当前站点的 MCP /mcp 端点");
         }
+    }
+    private McpOperationsService.RequestContext requestContext(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        String ip = forwarded == null || forwarded.isBlank() ? request.getRemoteAddr() : forwarded.split(",")[0].trim();
+        return new McpOperationsService.RequestContext(ip, request.getHeader("User-Agent"));
     }
     private void requireEnabled() { if (!enabled) throw new ResponseStatusException(HttpStatus.NOT_FOUND); }
 }

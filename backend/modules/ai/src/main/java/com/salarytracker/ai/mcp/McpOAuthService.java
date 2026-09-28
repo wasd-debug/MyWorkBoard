@@ -38,19 +38,28 @@ public class McpOAuthService {
     private final CurrentUserResolver currentUser;
     private final McpPersonalTokenService personalTokens;
     private final LedgerBookService books;
+    private final McpOperationsService operations;
     private final SecureRandom random = new SecureRandom();
 
     public McpOAuthService(JdbcTemplate jdbc, ObjectMapper mapper, CurrentUserResolver currentUser,
-                           McpPersonalTokenService personalTokens, LedgerBookService books) {
+                           McpPersonalTokenService personalTokens, LedgerBookService books,
+                           McpOperationsService operations) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.currentUser = currentUser;
         this.personalTokens = personalTokens;
         this.books = books;
+        this.operations = operations;
     }
 
     @Transactional
     public ClientRegistration registerClient(RegisterClientRequest request) {
+        return registerClient(request, null);
+    }
+
+    @Transactional
+    public ClientRegistration registerClient(RegisterClientRequest request, McpOperationsService.RequestContext context) {
+        operations.requireRegistrationCapacity(context);
         String name = clean(request == null ? null : request.clientName(), 160, "client_name");
         Set<String> redirects = validateRedirectUris(request == null ? null : request.redirectUris());
         Set<String> grants = normalized(request == null ? null : request.grantTypes(),
@@ -65,9 +74,13 @@ public class McpOAuthService {
         if (!"none".equals(authMethod)) throw oauth("invalid_client_metadata", "仅支持公共客户端 token_endpoint_auth_method=none");
         String clientId = "mcp_" + randomToken(24);
         jdbc.update("""
-                INSERT INTO mcp_oauth_client(client_id,client_name,redirect_uris,grant_types,response_types,token_endpoint_auth_method)
-                VALUES(?,?,?,?,?,?)
-                """, clientId, name, json(redirects), json(grants), json(responses), authMethod);
+                INSERT INTO mcp_oauth_client(client_id,client_name,redirect_uris,grant_types,response_types,
+                    token_endpoint_auth_method,registration_ip,registration_user_agent)
+                VALUES(?,?,?,?,?,?,?,?)
+                """, clientId, name, json(redirects), json(grants), json(responses), authMethod,
+                context == null ? null : context.ip(), context == null ? null : context.userAgent());
+        operations.event(null, clientId, null, "client.register", "SUCCESS", context,
+                Map.of("clientName", name, "redirectCount", redirects.size()));
         return new ClientRegistration(clientId, name, redirects, grants, responses, authMethod,
                 Instant.now().getEpochSecond());
     }
@@ -92,9 +105,17 @@ public class McpOAuthService {
 
     @Transactional
     public AuthorizationDecision decide(AuthorizationDecisionCommand command) {
+        return decide(command, null);
+    }
+
+    @Transactional
+    public AuthorizationDecision decide(AuthorizationDecisionCommand command,
+                                        McpOperationsService.RequestContext context) {
         AuthorizationRequest request = command == null ? null : command.request();
         ClientRow client = validateAuthorization(request);
         if (!command.approved()) {
+            operations.event(currentUser.id(), client.clientId(), null, "authorization.denied", "SUCCESS", context,
+                    Map.of("scope", request.scope()));
             return new AuthorizationDecision(redirect(request.redirectUri(), Map.of("error", "access_denied",
                     "error_description", "用户拒绝授权"), request.state()));
         }
@@ -124,38 +145,69 @@ public class McpOAuthService {
                 """, UUID.randomUUID().toString(), hash(code), grantId, client.clientId(), currentUser.id(),
                 request.redirectUri(), request.resource(), json(scopes), jsonOrNull(bookIds), request.codeChallenge(),
                 "S256", Timestamp.from(Instant.now().plus(5, ChronoUnit.MINUTES)));
+        operations.event(currentUser.id(), client.clientId(), null, "authorization.approved", "SUCCESS", context,
+                Map.of("scopeCount", scopes.size(), "bookCount", bookIds.size()));
         return new AuthorizationDecision(redirect(request.redirectUri(), Map.of("code", code), request.state()));
     }
 
     @Transactional
     public TokenResponse exchange(TokenRequest request) {
+        return exchange(request, null);
+    }
+
+    @Transactional
+    public TokenResponse exchange(TokenRequest request, McpOperationsService.RequestContext context) {
         if (request == null) throw oauth("invalid_request", "请求不能为空");
-        return switch (required(request.grantType(), "grant_type")) {
+        String grantType = required(request.grantType(), "grant_type");
+        TokenResponse response = switch (grantType) {
             case "authorization_code" -> exchangeCode(request);
             case "refresh_token" -> refresh(request);
             default -> throw oauth("unsupported_grant_type", "不支持的 grant_type");
         };
+        IssuedToken issued = jdbc.query("""
+                SELECT id,user_id,oauth_client_id FROM mcp_personal_token WHERE token_hash=?
+                """, (result, rowNum) -> new IssuedToken(result.getString("id"), result.getLong("user_id"),
+                result.getString("oauth_client_id")), hash(response.accessToken())).stream().findFirst().orElse(null);
+        operations.event(issued == null ? null : issued.userId(), request.clientId(), issued == null ? null : issued.id(),
+                "authorization_code".equals(grantType) ? "code.exchanged" : "token.refreshed",
+                "SUCCESS", context, Map.of("scope", response.scope()));
+        return response;
     }
 
     @Transactional
     public void revoke(String rawToken, String clientId) {
+        revoke(rawToken, clientId, null);
+    }
+
+    @Transactional
+    public void revoke(String rawToken, String clientId, McpOperationsService.RequestContext context) {
         if (rawToken == null || rawToken.isBlank()) return;
-        jdbc.update("""
+        IssuedToken issued = jdbc.query("""
+                SELECT id,user_id,oauth_client_id FROM mcp_personal_token
+                WHERE token_type='OAUTH' AND oauth_client_id=? AND (token_hash=? OR refresh_token_hash=?)
+                """, (result, rowNum) -> new IssuedToken(result.getString("id"), result.getLong("user_id"),
+                result.getString("oauth_client_id")), clientId, hash(rawToken.trim()), hash(rawToken.trim()))
+                .stream().findFirst().orElse(null);
+        int affected = jdbc.update("""
                 UPDATE mcp_personal_token SET revoked_at=CURRENT_TIMESTAMP(6)
                 WHERE token_type='OAUTH' AND oauth_client_id=? AND revoked_at IS NULL
                   AND (token_hash=? OR refresh_token_hash=?)
                 """, clientId, hash(rawToken.trim()), hash(rawToken.trim()));
+        operations.event(issued == null ? null : issued.userId(), issued == null ? null : clientId,
+                issued == null ? null : issued.id(),
+                "token.revoked", "SUCCESS", context,
+                Map.of("matched", affected > 0));
     }
 
     public List<GrantView> grants() {
         return jdbc.query("""
-                SELECT g.id,g.client_id,c.client_name,g.scopes,g.book_ids,g.created_at,g.updated_at
+                SELECT g.id,g.client_id,c.client_name,g.scopes,g.book_ids,g.created_at,g.updated_at,g.last_used_at
                 FROM mcp_grant g JOIN mcp_oauth_client c ON c.client_id=g.client_id
                 WHERE g.user_id=? AND g.revoked_at IS NULL ORDER BY g.updated_at DESC
                 """, (result, rowNum) -> new GrantView(result.getString("id"), result.getString("client_id"),
                 result.getString("client_name"), readSet(result.getString("scopes")),
                 readSet(result.getString("book_ids")), instant(result, "created_at"),
-                instant(result, "updated_at")), currentUser.id());
+                instant(result, "updated_at"), instant(result, "last_used_at")), currentUser.id());
     }
 
     @Transactional
@@ -164,6 +216,20 @@ public class McpOAuthService {
                 grantId, currentUser.id()) != 1) throw new IllegalArgumentException("OAuth 授权不存在或已撤销");
         jdbc.update("UPDATE mcp_personal_token SET revoked_at=CURRENT_TIMESTAMP(6) WHERE oauth_grant_id=? AND revoked_at IS NULL",
                 grantId);
+        operations.event(currentUser.id(), null, null, "grant.revoked", "SUCCESS", null,
+                Map.of("grantId", grantId));
+    }
+
+    public boolean isTrustedRedirect(String clientId, String redirectUri) {
+        if (clientId == null || clientId.isBlank() || redirectUri == null || redirectUri.isBlank()) return false;
+        return jdbc.query("SELECT redirect_uris FROM mcp_oauth_client WHERE client_id=? AND revoked_at IS NULL",
+                (result, rowNum) -> readSet(result.getString(1)), clientId).stream()
+                .findFirst().map(values -> values.contains(redirectUri)).orElse(false);
+    }
+
+    public String errorRedirect(String redirectUri, OAuthException exception, String state) {
+        return redirect(redirectUri, Map.of("error", exception.error(),
+                "error_description", exception.getMessage()), state);
     }
 
     private TokenResponse exchangeCode(TokenRequest request) {
@@ -355,11 +421,18 @@ public class McpOAuthService {
                                 @JsonProperty("refresh_token") String refreshToken,
                                 String scope) { }
     public record GrantView(String id, String clientId, String clientName, Set<String> scopes, Set<String> bookIds,
-                            Instant createdAt, Instant updatedAt) { }
+                            Instant createdAt, Instant updatedAt, Instant lastUsedAt) { }
     public static final class OAuthException extends IllegalArgumentException {
         private final String error;
-        OAuthException(String error, String description) { super(description); this.error = error; }
+        private final int status;
+        OAuthException(String error, String description) { this(error, description, 400); }
+        OAuthException(String error, String description, int status) {
+            super(description);
+            this.error = error;
+            this.status = status;
+        }
         public String error() { return error; }
+        public int status() { return status; }
     }
     private record ClientRow(String clientId, String clientName, Set<String> redirectUris) { }
     private record CodeRow(String id, String grantId, String clientId, long userId, String redirectUri,
@@ -367,4 +440,5 @@ public class McpOAuthService {
                            Instant expiresAt, Instant consumedAt) { }
     private record OAuthTokenRow(String id, String grantId, Set<String> scopes, Set<String> bookIds,
                                  Instant refreshExpiresAt) { }
+    private record IssuedToken(String id, long userId, String clientId) { }
 }

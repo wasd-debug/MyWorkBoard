@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.salarytracker.ai.tool.DomainToolRegistry;
 import com.salarytracker.ai.tool.ToolDefinition;
 import com.salarytracker.ai.tool.ToolResult;
+import com.salarytracker.platform.UnauthorizedException;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServerFeatures;
@@ -43,6 +44,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Configuration
 public class McpServerConfiguration {
+    private static final Set<String> SUPPORTED_PROTOCOL_VERSIONS = Set.of("2025-06-18");
     private static final String TOKEN_CONTEXT_KEY = "salary.mcp.token";
     private static final String BASE_URL_CONTEXT_KEY = "salary.mcp.base-url";
     private static final String CLIENT_CONTEXT_KEY = "salary.mcp.client";
@@ -60,7 +62,7 @@ public class McpServerConfiguration {
     @Bean
     ServletRegistrationBean<HttpServlet> mcpServletRegistration(
             DomainToolRegistry registry, McpPersonalTokenService tokens, ObjectMapper mapper,
-            McpExternalActionService externalActions,
+            McpExternalActionService externalActions, McpOperationsService operations,
             @Value("${app.mcp.enabled:true}") boolean enabled,
             @Value("${app.mcp.write-enabled:false}") boolean writeEnabled,
             @Value("${app.mcp.oauth-enabled:false}") boolean oauthEnabled) {
@@ -78,7 +80,7 @@ public class McpServerConfiguration {
             }
             providers.put(scopeKey(scopes), provider(registry, tokens, mapper, externalActions, Set.copyOf(scopes)));
         }
-        McpRoutingServlet servlet = new McpRoutingServlet(tokens, providers, enabled, writeEnabled, oauthEnabled);
+        McpRoutingServlet servlet = new McpRoutingServlet(tokens, operations, providers, enabled, writeEnabled, oauthEnabled);
         ServletRegistrationBean<HttpServlet> registration = new ServletRegistrationBean<>(servlet, "/mcp", "/mcp/*");
         registration.setName("mcpStreamableHttp");
         registration.setAsyncSupported(true);
@@ -401,16 +403,18 @@ public class McpServerConfiguration {
 
     static final class McpRoutingServlet extends HttpServlet {
         private final McpPersonalTokenService tokens;
+        private final McpOperationsService operations;
         private final Map<String, HttpServletStreamableServerTransportProvider> providers;
         private final boolean enabled;
         private final boolean writeEnabled;
         private final boolean oauthEnabled;
         private final Map<String, RateWindow> rates = new ConcurrentHashMap<>();
 
-        McpRoutingServlet(McpPersonalTokenService tokens,
+        McpRoutingServlet(McpPersonalTokenService tokens, McpOperationsService operations,
                           Map<String, HttpServletStreamableServerTransportProvider> providers,
                           boolean enabled, boolean writeEnabled, boolean oauthEnabled) {
             this.tokens = tokens;
+            this.operations = operations;
             this.providers = providers;
             this.enabled = enabled;
             this.writeEnabled = writeEnabled;
@@ -422,12 +426,24 @@ public class McpServerConfiguration {
             HttpServletRequest httpRequest = (HttpServletRequest) request;
             HttpServletResponse httpResponse = (HttpServletResponse) response;
             if (!enabled) { httpResponse.sendError(404); return; }
+            String protocolVersion = httpRequest.getHeader("MCP-Protocol-Version");
+            if (protocolVersion != null && !protocolVersion.isBlank()
+                    && !SUPPORTED_PROTOCOL_VERSIONS.contains(protocolVersion.trim())) {
+                httpResponse.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                httpResponse.setContentType("application/json;charset=UTF-8");
+                httpResponse.getWriter().write("{\"error\":\"unsupported_protocol_version\",\"error_description\":\"仅支持 MCP 2025-06-18\"}");
+                return;
+            }
             try {
                 String authorization = httpRequest.getHeader("Authorization");
                 String raw = authorization != null && authorization.startsWith("Bearer ")
                         ? authorization.substring(7).trim() : null;
-                McpPersonalTokenService.AuthenticatedToken token = tokens.authenticate(raw, oauthEnabled);
+                String requestIp = requestIp(httpRequest);
+                String userAgent = httpRequest.getHeader("User-Agent");
+                McpPersonalTokenService.AuthenticatedToken token = tokens.authenticate(raw, oauthEnabled, requestIp, userAgent);
                 if (!allow(token.id())) {
+                    operations.event(token.user().id(), token.oauthClientId(), token.id(), "mcp.request", "RATE_LIMITED",
+                            new McpOperationsService.RequestContext(requestIp, userAgent), Map.of());
                     httpResponse.setStatus(429);
                     httpResponse.setHeader("Retry-After", "60");
                     httpResponse.setContentType("application/json;charset=UTF-8");
@@ -447,7 +463,11 @@ public class McpServerConfiguration {
                 httpRequest.setAttribute(CLIENT_CONTEXT_KEY, httpRequest.getHeader("User-Agent") == null
                         ? "MCP Client" : httpRequest.getHeader("User-Agent"));
                 providers.get(key).service(request, response);
-            } catch (Exception exception) {
+                operations.event(token.user().id(), token.oauthClientId(), token.id(), "mcp.request", "ACCEPTED",
+                        new McpOperationsService.RequestContext(requestIp, userAgent),
+                        Map.of("protocolVersion", protocolVersion == null || protocolVersion.isBlank()
+                                ? "negotiation" : protocolVersion));
+            } catch (UnauthorizedException exception) {
                 httpResponse.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 String base = baseUrl(httpRequest);
                 httpResponse.setHeader("WWW-Authenticate", "Bearer resource_metadata=\"" + base
@@ -455,6 +475,12 @@ public class McpServerConfiguration {
                 httpResponse.setContentType("application/json;charset=UTF-8");
                 httpResponse.getWriter().write("{\"error\":\"invalid_token\",\"error_description\":\"MCP Token 无效、已过期或已撤销\"}");
             }
+        }
+
+        private String requestIp(HttpServletRequest request) {
+            String forwarded = request.getHeader("X-Forwarded-For");
+            return forwarded == null || forwarded.isBlank()
+                    ? request.getRemoteAddr() : forwarded.split(",")[0].trim();
         }
 
         private String baseUrl(HttpServletRequest request) {

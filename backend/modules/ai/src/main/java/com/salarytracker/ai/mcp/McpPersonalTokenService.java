@@ -86,6 +86,10 @@ public class McpPersonalTokenService {
     }
 
     public AuthenticatedToken authenticate(String raw, boolean oauthEnabled) {
+        return authenticate(raw, oauthEnabled, null, null);
+    }
+
+    public AuthenticatedToken authenticate(String raw, boolean oauthEnabled, String requestIp, String userAgent) {
         if (raw == null || raw.isBlank()) throw new UnauthorizedException("MCP Token 缺失");
         List<TokenRow> rows = jdbc.query("""
                 SELECT * FROM mcp_personal_token
@@ -99,7 +103,15 @@ public class McpPersonalTokenService {
         CurrentUser user = authService.loadUser(row.userId());
         if (user == null) throw new UnauthorizedException("Token 所属用户不可用");
         jdbc.update("UPDATE mcp_personal_token SET last_used_at=CURRENT_TIMESTAMP WHERE id=?", row.id());
-        return new AuthenticatedToken(row.id(), row.name(), user, row.scopes(), row.bookIds());
+        if ("OAUTH".equals(row.tokenType())) {
+            jdbc.update("""
+                    UPDATE mcp_oauth_client SET last_used_at=CURRENT_TIMESTAMP(6),last_ip=?,last_user_agent=?
+                    WHERE client_id=?
+                    """, truncate(requestIp, 64), truncate(userAgent, 255), row.oauthClientId());
+            jdbc.update("UPDATE mcp_grant SET last_used_at=CURRENT_TIMESTAMP(6) WHERE id=?", row.oauthGrantId());
+        }
+        return new AuthenticatedToken(row.id(), row.name(), user, row.scopes(), row.bookIds(), row.tokenType(),
+                row.oauthClientId(), row.oauthGrantId());
     }
 
     public void requireBook(AuthenticatedToken token, String bookId) {
@@ -116,9 +128,10 @@ public class McpPersonalTokenService {
     public void audit(AuthenticatedToken token, String toolName, String status, long durationMs,
                       String parameterSummary, String resultSummary, String errorCode) {
         jdbc.update("""
-                INSERT INTO mcp_tool_call(token_id,user_id,tool_name,status,duration_ms,parameter_summary,result_summary,error_code)
-                VALUES(?,?,?,?,?,?,?,?)
-                """, token.id(), token.user().id(), toolName, status, durationMs,
+                INSERT INTO mcp_tool_call(token_id,user_id,auth_type,oauth_client_id,tool_name,status,duration_ms,
+                    parameter_summary,result_summary,error_code)
+                VALUES(?,?,?,?,?,?,?,?,?,?)
+                """, token.id(), token.user().id(), token.tokenType(), token.oauthClientId(), toolName, status, durationMs,
                 parameterSummary, truncate(resultSummary, 500), errorCode);
     }
 
@@ -168,7 +181,8 @@ public class McpPersonalTokenService {
     private TokenRow row(ResultSet result) throws SQLException {
         return new TokenRow(result.getString("id"), result.getString("name"), result.getLong("user_id"),
                 result.getString("token_type"), readSet(result.getString("scopes")),
-                readSet(result.getString("book_ids")));
+                readSet(result.getString("book_ids")), result.getString("oauth_client_id"),
+                result.getString("oauth_grant_id"));
     }
 
     private Set<String> readSet(String value) {
@@ -211,7 +225,13 @@ public class McpPersonalTokenService {
     public record CreatedToken(TokenView token, String rawToken) { }
     public record TokenView(String id, String name, String tokenHint, Set<String> scopes, Set<String> bookIds,
                             Instant expiresAt, Instant revokedAt, Instant lastUsedAt, Instant createdAt) { }
-    public record AuthenticatedToken(String id, String name, CurrentUser user, Set<String> scopes, Set<String> bookIds) { }
+    public record AuthenticatedToken(String id, String name, CurrentUser user, Set<String> scopes,
+                                     Set<String> bookIds, String tokenType, String oauthClientId,
+                                     String oauthGrantId) {
+        public AuthenticatedToken(String id, String name, CurrentUser user, Set<String> scopes, Set<String> bookIds) {
+            this(id, name, user, scopes, bookIds, "PAT", null, null);
+        }
+    }
     private record TokenRow(String id, String name, long userId, String tokenType,
-                            Set<String> scopes, Set<String> bookIds) { }
+                            Set<String> scopes, Set<String> bookIds, String oauthClientId, String oauthGrantId) { }
 }

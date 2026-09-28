@@ -13,14 +13,11 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { Diagnostics } from './diagnostics.ts';
 
-export interface GrantView {
-    'id'?: string;
-    'clientId'?: string;
-    'clientName'?: string;
-    'scopes'?: Set<string>;
-    'bookIds'?: Set<string>;
-    'createdAt'?: string;
-    'updatedAt'?: string;
-    'lastUsedAt'?: string;
+export interface ApiResponseDiagnostics {
+    'data'?: Diagnostics;
+    'traceId'?: string;
 }

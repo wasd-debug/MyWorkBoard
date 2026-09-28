@@ -14,13 +14,16 @@
 
 
 
-export interface GrantView {
-    'id'?: string;
+export interface ClientView {
     'clientId'?: string;
     'clientName'?: string;
+    'redirectUris'?: Set<string>;
+    'grantId'?: string;
     'scopes'?: Set<string>;
     'bookIds'?: Set<string>;
-    'createdAt'?: string;
-    'updatedAt'?: string;
+    'registeredAt'?: string;
+    'authorizedAt'?: string;
     'lastUsedAt'?: string;
+    'lastUserAgent'?: string;
+    'revokedAt'?: string;
 }
