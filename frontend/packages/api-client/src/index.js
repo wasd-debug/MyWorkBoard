@@ -25,6 +25,9 @@ export async function apiListAgentSessions(archived = false) { return data(await
 export async function apiListAgentMessages(sessionId) { return data(await api.get(`/api/v1/agent/sessions/${sessionId}/messages`)) }
 export async function apiGetAgentTrace(turnId) { return data(await api.get(`/api/v1/agent/turns/${turnId}/trace`)) }
 export async function apiListAgentModelConnections() { return data(await api.get('/api/v1/agent/model-connections')) }
+export async function apiGetAgentOperationMetrics(params = {}) { return data(await api.get('/api/v1/agent/operations/metrics', { params })) }
+export async function apiGetAgentUsageBudget() { return data(await api.get('/api/v1/agent/operations/budget')) }
+export async function apiSaveAgentUsageBudget(payload) { return data(await api.put('/api/v1/agent/operations/budget', payload)) }
 export async function apiCreateAgentModelConnection(payload) { return data(await api.post('/api/v1/agent/model-connections', payload)) }
 export async function apiUpdateAgentModelConnection(id, payload) { return data(await api.put(`/api/v1/agent/model-connections/${id}`, payload)) }
 export async function apiDeleteAgentModelConnection(id) { return data(await api.delete(`/api/v1/agent/model-connections/${id}`)) }

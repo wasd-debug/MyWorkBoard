@@ -83,6 +83,8 @@
 
 ## 当前验证基线
 
+2026-09-28 Agent 运行质量增量：设置页新增运行质量面板，支持今日、本周、本月、近 7 天、近 30 天与自定义范围，以及自动、小时、天、周粒度；后端按当前用户汇总 turn 成功/失败、首字时延、P95、Token、模型费用、工具调用、MCP 调用和最近失败。V27 增加用户预算与告警结构，当前每日/每月预算仅作观察，费用严格按预算币种汇总，不同币种不直接相加；阈值告警落库、请求前硬限制、失败回放和客户端熔断继续留在 Phase 3D 后续增量。真实 MySQL 定向集成测试覆盖时间预设、自动粒度、用户隔离、多币种、预算进度和 revision 冲突；前端视觉与交互按项目约束留给用户依照手工检查清单验收。
+
 2026-09-28 MCP OAuth 增量：V25 新增 OAuth 客户端、用户授权和一次性授权码表，并为 MCP token 增加 PAT/OAuth 类型、grant 绑定和 refresh hash。服务端实现 Protected Resource Metadata、Authorization Server Metadata、DCR、Authorization Code + PKCE S256、RFC 8707 resource 精确绑定、1 小时 access token、30 天 refresh token 轮换和 grant 撤销；设置页增加已授权应用列表，新增独立授权页面。纯 HTTP 联调通过 DCR、authorize 302、站内授权、token 交换、MCP initialize/tools/list、scope 裁剪、旧 access/refresh 失效和撤销即时失效。后端全量 203 项中 201 项通过、2 项按既有规则跳过；前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过。真实 MCP Inspector、Codex、WorkBuddy 与页面视觉操作按项目规则留给用户手工验收。
 
 2026-09-28 MCP 运维收口增量：V26 新增客户端诊断字段和 `mcp_protocol_event`；服务端增加可信 redirect 标准错误回调、DCR 限流、token/revoke 禁止缓存、协议版本 400/认证 401/限流 429 分类、客户端级断开和每日数据清理。设置页新增状态摘要、公开地址告警、已连接客户端、最近事件和脱敏诊断复制。自动化覆盖用户隔离、级联撤销、过期清理和协议错误；真实客户端版本与 UI 连接结果继续由用户填写前端手工检查清单。

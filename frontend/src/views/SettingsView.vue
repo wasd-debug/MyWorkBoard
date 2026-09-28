@@ -119,6 +119,48 @@
       </div>
     </div>
 
+    <div class="card set-group operations-config">
+      <div class="operations-heading">
+        <div><h2>Agent 运行质量</h2><p class="hint">统计模型调用、工具执行、Token、费用和失败情况；历史费用按当次调用保存的价格快照统计。</p></div>
+        <Button size="sm" variant="ghost" :disabled="operationsLoading" @click="loadOperations">{{ operationsLoading ? '加载中…' : '刷新' }}</Button>
+      </div>
+      <div class="operations-filters">
+        <label>时间范围<select v-model="operationsQuery.preset" @change="loadOperations"><option value="TODAY">今日</option><option value="THIS_WEEK">本周</option><option value="THIS_MONTH">本月</option><option value="LAST_7_DAYS">近 7 天</option><option value="LAST_30_DAYS">近 30 天</option><option value="CUSTOM">自定义</option></select></label>
+        <label>时间粒度<select v-model="operationsQuery.granularity" @change="loadOperations"><option value="AUTO">自动</option><option value="HOUR">小时</option><option value="DAY">天</option><option value="WEEK">周</option></select></label>
+        <label v-if="operationsQuery.preset === 'CUSTOM'">开始日期<input v-model="operationsQuery.from" type="date" @change="loadOperations" /></label>
+        <label v-if="operationsQuery.preset === 'CUSTOM'">结束日期<input v-model="operationsQuery.to" type="date" @change="loadOperations" /></label>
+      </div>
+      <p v-if="operationsError" class="operations-error">{{ operationsError }}</p>
+      <template v-if="operationsMetrics">
+        <div class="operations-kpis">
+          <div><span>对话轮次</span><b>{{ operationsMetrics.summary.turns }}</b><small>成功 {{ operationsMetrics.summary.completed }} · 失败 {{ operationsMetrics.summary.failed }}</small></div>
+          <div><span>首字时延</span><b>{{ formatDuration(operationsMetrics.summary.averageFirstTokenMs) }}</b><small>平均值</small></div>
+          <div><span>总耗时 P95</span><b>{{ formatDuration(operationsMetrics.summary.p95DurationMs) }}</b><small>已完成 turn</small></div>
+          <div><span>Token</span><b>{{ formatNumber(operationsMetrics.summary.totalTokens) }}</b><small>模型调用合计</small></div>
+          <div><span>估算费用</span><b>{{ formatMoney(operationsMetrics.summary.totalCost, operationsMetrics.budget.currency) }}</b><small>仅统计 {{ operationsMetrics.budget.currency }}</small></div>
+          <div><span>工具失败</span><b :class="operationsMetrics.summary.toolFailures ? 'bad' : 'good'">{{ operationsMetrics.summary.toolFailures }}</b><small>共 {{ operationsMetrics.summary.toolCalls }} 次</small></div>
+        </div>
+        <div class="operations-columns">
+          <div class="operations-subpanel"><h3>趋势 · {{ operationsMetrics.granularity === 'HOUR' ? '小时' : operationsMetrics.granularity === 'WEEK' ? '周' : '天' }}</h3><div class="operations-table-wrap"><table><thead><tr><th>时间</th><th>轮次</th><th>Token</th><th>费用</th></tr></thead><tbody><tr v-for="point in operationsMetrics.trend" :key="point.bucket"><td>{{ point.bucket }}</td><td>{{ point.turns }}</td><td>{{ formatNumber(point.tokens) }}</td><td>{{ formatMoney(point.cost, operationsMetrics.budget.currency) }}</td></tr><tr v-if="!operationsMetrics.trend.length"><td colspan="4" class="empty-cell">当前范围暂无调用</td></tr></tbody></table></div></div>
+          <div class="operations-subpanel"><h3>模型费用</h3><div v-for="model in operationsMetrics.models" :key="`${model.provider}-${model.model}-${model.currency}`" class="operations-line"><span>{{ model.model || '未知模型' }}<small>{{ model.provider || '未知供应商' }} · {{ formatNumber(model.tokens) }} Token</small></span><b>{{ formatMoney(model.cost, model.currency || 'UNPRICED') }}</b></div><p v-if="!operationsMetrics.models.length" class="hint">暂无模型调用。</p></div>
+        </div>
+        <div class="operations-columns">
+          <div class="operations-subpanel"><h3>慢工具</h3><div v-for="tool in operationsMetrics.tools.slice(0, 6)" :key="tool.name" class="operations-line"><span>{{ tool.name }}<small>{{ tool.calls }} 次 · 失败 {{ tool.failures }}</small></span><b>{{ formatDuration(tool.averageDurationMs) }}</b></div><p v-if="!operationsMetrics.tools.length" class="hint">暂无工具调用。</p></div>
+          <div class="operations-subpanel">
+            <h3>预算观察</h3>
+            <div class="operations-budget-progress">
+              <div><span>今日</span><b>{{ formatMoney(operationsMetrics.budgetProgress.dailyCost, operationsMetrics.budgetProgress.currency) }}</b><small>{{ formatBudgetProgress(operationsMetrics.budgetProgress.dailyPercent) }}</small></div>
+              <div><span>本月</span><b>{{ formatMoney(operationsMetrics.budgetProgress.monthlyCost, operationsMetrics.budgetProgress.currency) }}</b><small>{{ formatBudgetProgress(operationsMetrics.budgetProgress.monthlyPercent) }}</small></div>
+            </div>
+            <div class="budget-grid"><label>币种<select v-model="budgetForm.currency"><option>CNY</option><option>USD</option></select></label><label>每日预算<input v-model.number="budgetForm.dailyLimit" type="number" min="0" step="0.01" placeholder="不限制" /></label><label>每月预算<input v-model.number="budgetForm.monthlyLimit" type="number" min="0" step="0.01" placeholder="不限制" /></label></div>
+            <p class="hint">预算当前用于观察，不会自动阻断模型请求；不同币种不会直接相加。</p>
+            <div class="operations-budget-actions"><Button size="sm" @click="saveBudget">保存预算</Button><span v-if="budgetStatus" class="hint">{{ budgetStatus }}</span></div>
+          </div>
+        </div>
+        <div v-if="operationsMetrics.failures.length" class="operations-subpanel"><h3>最近失败</h3><div v-for="(failure, index) in operationsMetrics.failures.slice(0, 8)" :key="`${failure.createdAt}-${index}`" class="operations-failure"><b>{{ failure.source }}</b><span>{{ failure.status }}</span><small>{{ formatDateTime(failure.createdAt) }}{{ failure.detail ? ` · ${failure.detail}` : '' }}</small></div></div>
+      </template>
+    </div>
+
     <div class="card set-group mcp-config">
       <h2>外部 Agent / MCP</h2>
       <p class="hint">创建 Personal Access Token，供 Codex、WorkBuddy 或 MCP Inspector 连接。低风险提交权限仅允许网站批准后的 R2 操作单次写入；完整 Token 只显示一次。</p>
@@ -221,7 +263,7 @@ import Dialog from '../components/ui/Dialog.vue'
 import { useAppStore } from '../stores/app'
 import { DEFAULT_WORKTIME_SETTINGS as DEFAULTS, useWorktimeStore } from '../stores/worktime.js'
 import { CALC } from '../utils/calc'
-import { apiCreateAgentModelConnection, apiCreateMcpToken, apiDeleteAgentModelConnection, apiDisconnectMcpOAuthClient, apiGetMcpDiagnostics, apiListAgentModelConnections, apiListLedgerBooks, apiListMcpOAuthClients, apiListMcpOAuthGrants, apiListMcpProtocolEvents, apiListMcpTokens, apiRevokeMcpOAuthGrant, apiRevokeMcpToken, apiSetDefaultAgentModelConnection, apiTestAgentModelConnection, apiUpdateAgentModelConnection } from '../../packages/api-client/src/index.js'
+import { apiCreateAgentModelConnection, apiCreateMcpToken, apiDeleteAgentModelConnection, apiDisconnectMcpOAuthClient, apiGetAgentOperationMetrics, apiGetAgentUsageBudget, apiGetMcpDiagnostics, apiListAgentModelConnections, apiListLedgerBooks, apiListMcpOAuthClients, apiListMcpOAuthGrants, apiListMcpProtocolEvents, apiListMcpTokens, apiRevokeMcpOAuthGrant, apiRevokeMcpToken, apiSaveAgentUsageBudget, apiSetDefaultAgentModelConnection, apiTestAgentModelConnection, apiUpdateAgentModelConnection } from '../../packages/api-client/src/index.js'
 
 const appStore = useAppStore()
 const store = useWorktimeStore()
@@ -237,6 +279,9 @@ const ioArea = ref('')
 const lunchDialogOpen = ref(false), pendingLunchMin = ref(0), lunchScope = ref('NONE'), lunchFromDate = ref(CALC.dateKey(new Date())), savingLunch = ref(false)
 const modelConnections = ref([]), selectedModelId = ref(''), modelStatus = ref('')
 const mcpTokens = ref([]), mcpGrants = ref([]), mcpClients = ref([]), mcpEvents = ref([]), mcpDiagnostics = ref(null), ledgerBooks = ref([]), createdMcpToken = ref(''), creatingMcpToken = ref(false)
+const operationsMetrics = ref(null), operationsLoading = ref(false), operationsError = ref(''), budgetStatus = ref('')
+const operationsQuery = ref({ preset: 'TODAY', granularity: 'AUTO', from: CALC.dateKey(new Date()), to: CALC.dateKey(new Date()) })
+const budgetForm = ref({ currency: 'CNY', dailyLimit: null, monthlyLimit: null, singleRequestLimit: null, tokenLimit: null, enforcementMode: 'WARN', revision: null })
 const defaultMcpExpiry = () => { const date = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); date.setSeconds(0, 0); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16) }
 const mcpForm = ref({ name: '本地 Agent', scopes: ['mcp:ledger:read', 'mcp:worktime:read'], bookIds: [], expiresAt: defaultMcpExpiry() })
 const mcpEndpoint = computed(() => `${window.location.origin}/mcp`)
@@ -267,6 +312,16 @@ async function removeModel() { if (!window.confirm('删除此模型配置？')) 
 async function loadMcpTokens() { try { [mcpTokens.value, ledgerBooks.value] = await Promise.all([apiListMcpTokens(), apiListLedgerBooks()]) } catch { message.error('MCP Token 列表加载失败') } }
 async function loadMcpGrants() { try { mcpGrants.value = await apiListMcpOAuthGrants() } catch (error) { if (error?.response?.status !== 404) message.error('OAuth 授权列表加载失败') } }
 async function loadMcpOperations() { try { [mcpDiagnostics.value, mcpClients.value, mcpEvents.value] = await Promise.all([apiGetMcpDiagnostics(), apiListMcpOAuthClients(), apiListMcpProtocolEvents()]) } catch { message.error('MCP 连接诊断加载失败') } }
+async function loadOperations() {
+  operationsLoading.value = true; operationsError.value = ''
+  try {
+    const [metrics, budget] = await Promise.all([apiGetAgentOperationMetrics(operationsQuery.value), apiGetAgentUsageBudget()])
+    operationsMetrics.value = metrics
+    budgetForm.value = { currency: budget.currency, dailyLimit: budget.dailyLimit, monthlyLimit: budget.monthlyLimit, singleRequestLimit: budget.singleRequestLimit, tokenLimit: budget.tokenLimit, enforcementMode: budget.enforcementMode, revision: budget.revision }
+  } catch (error) { operationsError.value = error?.response?.data?.detail || '运行质量数据加载失败' }
+  finally { operationsLoading.value = false }
+}
+async function saveBudget() { try { const budget = await apiSaveAgentUsageBudget(budgetForm.value); budgetForm.value.revision = budget.revision; budgetStatus.value = '预算已保存'; await loadOperations() } catch (error) { budgetStatus.value = error?.response?.data?.detail || '预算保存失败' } }
 async function createMcpToken() {
   creatingMcpToken.value = true
   try {
@@ -284,6 +339,10 @@ async function revokeMcpGrant(grant) { if (!window.confirm(`撤销“${grant.cli
 async function disconnectMcpClient(client) { if (!window.confirm(`断开“${client.clientName}”？该客户端的全部授权和 Token 将立即失效。`)) return; try { await apiDisconnectMcpOAuthClient(client.clientId); await Promise.all([loadMcpGrants(), loadMcpOperations()]); message.success('OAuth 客户端已断开') } catch { message.error('断开 OAuth 客户端失败') } }
 async function copyMcpDiagnostics() { const report = { generatedAt: new Date().toISOString(), ...mcpDiagnostics.value, clients: mcpClients.value.map(({ clientId, clientName, lastUsedAt, lastUserAgent, revokedAt }) => ({ clientId, clientName, lastUsedAt, lastUserAgent, revokedAt })), recentEvents: mcpEvents.value }; try { await navigator.clipboard.writeText(JSON.stringify(report, null, 2)); message.success('脱敏诊断已复制') } catch { message.warning('复制失败') } }
 function formatDateTime(value) { return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
+function formatNumber(value) { return new Intl.NumberFormat('zh-CN').format(Number(value || 0)) }
+function formatDuration(value) { const ms = Number(value || 0); return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s` }
+function formatMoney(value, currency = 'CNY') { if (value == null) return '—'; return `${currency} ${Number(value).toFixed(4)}` }
+function formatBudgetProgress(value) { return value == null ? '未设置预算' : `已使用 ${Number(value).toFixed(1)}%` }
 function mcpScopeLabel(value) { return ({ 'mcp:ledger:read': '账本查询', 'mcp:worktime:read': '工时查询', 'mcp:ledger:prepare': '账本准备', 'mcp:worktime:prepare': '工时准备', 'mcp:ledger:commit': '账本低风险提交', 'mcp:worktime:commit': '工时低风险提交' })[value] || value }
 function mcpEventLabel(value) { return ({ 'client.register': '客户端注册', 'authorization.approved': '授权通过', 'authorization.denied': '授权拒绝', 'code.exchanged': '授权码交换', 'token.refreshed': 'Token 刷新', 'token.revoked': 'Token 撤销', 'grant.revoked': '授权撤销', 'client.disconnected': '客户端断开', 'mcp.request': 'MCP 请求' })[value] || value }
 function setNumber(key, value, fallback) {
@@ -327,5 +386,5 @@ async function doClear() {
   await store.clearResources(DEFAULTS)
   message.success('已清空')
 }
-onMounted(() => Promise.all([loadModels(), loadMcpTokens(), loadMcpGrants(), loadMcpOperations()]))
+onMounted(() => Promise.all([loadModels(), loadMcpTokens(), loadMcpGrants(), loadMcpOperations(), loadOperations()]))
 </script>
