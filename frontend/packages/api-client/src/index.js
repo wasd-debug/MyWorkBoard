@@ -28,6 +28,10 @@ export async function apiListAgentModelConnections() { return data(await api.get
 export async function apiGetAgentOperationMetrics(params = {}) { return data(await api.get('/api/v1/agent/operations/metrics', { params })) }
 export async function apiGetAgentUsageBudget() { return data(await api.get('/api/v1/agent/operations/budget')) }
 export async function apiSaveAgentUsageBudget(payload) { return data(await api.put('/api/v1/agent/operations/budget', payload)) }
+export async function apiListAgentBudgetAlerts() { return data(await api.get('/api/v1/agent/operations/alerts')) }
+export async function apiMarkAgentBudgetAlertRead(id) { return data(await api.post(`/api/v1/agent/operations/alerts/${id}/read`)) }
+export async function apiListAgentOperationCalls(params = {}) { return data(await api.get('/api/v1/agent/operations/calls', { params })) }
+export async function apiGetAgentOperationCallTrace(turnId) { return data(await api.get(`/api/v1/agent/operations/calls/${turnId}`)) }
 export async function apiCreateAgentModelConnection(payload) { return data(await api.post('/api/v1/agent/model-connections', payload)) }
 export async function apiUpdateAgentModelConnection(id, payload) { return data(await api.put(`/api/v1/agent/model-connections/${id}`, payload)) }
 export async function apiDeleteAgentModelConnection(id) { return data(await api.delete(`/api/v1/agent/model-connections/${id}`)) }

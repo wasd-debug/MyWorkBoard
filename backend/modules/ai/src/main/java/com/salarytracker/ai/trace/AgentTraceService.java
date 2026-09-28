@@ -1,6 +1,7 @@
 package com.salarytracker.ai.trace;
 
 import com.salarytracker.ai.model.AiModelConnectionService;
+import com.salarytracker.ai.operations.AgentBudgetAlertService;
 import com.salarytracker.ai.session.AgentTurnRepository;
 import com.salarytracker.identity.CurrentUserResolver;
 import com.salarytracker.platform.ai.LlmGateway;
@@ -21,10 +22,12 @@ public class AgentTraceService {
     private static final BigDecimal MILLION = new BigDecimal("1000000");
     private final JdbcTemplate jdbc;
     private final CurrentUserResolver currentUser;
+    private final AgentBudgetAlertService budgetAlerts;
 
-    public AgentTraceService(JdbcTemplate jdbc, CurrentUserResolver currentUser) {
+    public AgentTraceService(JdbcTemplate jdbc, CurrentUserResolver currentUser, AgentBudgetAlertService budgetAlerts) {
         this.jdbc = jdbc;
         this.currentUser = currentUser;
+        this.budgetAlerts = budgetAlerts;
     }
 
     @Transactional
@@ -33,6 +36,7 @@ public class AgentTraceService {
                         LlmGateway.ChatResponse response) {
         bindModel(turn, model);
         persistExecutions(turn, model, response);
+        budgetAlerts.evaluateAfterCommit(turn.userId());
     }
 
     public void bindModel(AgentTurnRepository.AgentTurnView turn,

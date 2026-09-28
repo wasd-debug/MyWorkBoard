@@ -153,11 +153,24 @@
               <div><span>本月</span><b>{{ formatMoney(operationsMetrics.budgetProgress.monthlyCost, operationsMetrics.budgetProgress.currency) }}</b><small>{{ formatBudgetProgress(operationsMetrics.budgetProgress.monthlyPercent) }}</small></div>
             </div>
             <div class="budget-grid"><label>币种<select v-model="budgetForm.currency"><option>CNY</option><option>USD</option></select></label><label>每日预算<input v-model.number="budgetForm.dailyLimit" type="number" min="0" step="0.01" placeholder="不限制" /></label><label>每月预算<input v-model.number="budgetForm.monthlyLimit" type="number" min="0" step="0.01" placeholder="不限制" /></label></div>
-            <p class="hint">预算当前用于观察，不会自动阻断模型请求；不同币种不会直接相加。</p>
+            <div class="operations-alert-options"><label><input v-model="budgetForm.alertAt50" type="checkbox" />50% 告警</label><label><input v-model="budgetForm.alertAt80" type="checkbox" />80% 告警</label><label><input v-model="budgetForm.alertAt100" type="checkbox" />100% 告警</label></div>
+            <p class="hint">预算仅用于告警，不阻断请求；不同币种不会直接相加。</p>
             <div class="operations-budget-actions"><Button size="sm" @click="saveBudget">保存预算</Button><span v-if="budgetStatus" class="hint">{{ budgetStatus }}</span></div>
           </div>
         </div>
         <div v-if="operationsMetrics.failures.length" class="operations-subpanel"><h3>最近失败</h3><div v-for="(failure, index) in operationsMetrics.failures.slice(0, 8)" :key="`${failure.createdAt}-${index}`" class="operations-failure"><b>{{ failure.source }}</b><span>{{ failure.status }}</span><small>{{ formatDateTime(failure.createdAt) }}{{ failure.detail ? ` · ${failure.detail}` : '' }}</small></div></div>
+        <section class="operations-section"><h3>预算告警</h3>
+          <div v-for="alert in budgetAlerts" :key="alert.id" class="operations-alert"><div><b>{{ alert.type === 'DAILY' ? '日预算' : '月预算' }} {{ alert.threshold }}% · {{ alert.period }}</b><small>{{ formatMoney(alert.current, alert.currency) }} / {{ formatMoney(alert.limit, alert.currency) }} · {{ formatDateTime(alert.createdAt) }}</small></div><Button v-if="alert.status !== 'READ'" size="sm" variant="ghost" @click="markBudgetAlertRead(alert)">标记已读</Button><span v-else class="hint">已读</span></div>
+          <p v-if="!budgetAlerts.length" class="hint">暂无预算告警。</p>
+        </section>
+        <section class="operations-section"><div class="operations-heading"><h3>调用明细</h3><label class="operations-check"><input v-model="failuresOnly" type="checkbox" @change="resetCalls" />仅看失败 / 取消</label></div>
+          <p v-if="callsError" class="operations-error">{{ callsError }}</p>
+          <div class="operations-table-wrap"><table class="operations-calls"><thead><tr><th>时间 / 模型</th><th>状态</th><th>Token</th><th>首字</th><th>总耗时</th><th>工具</th><th>操作</th></tr></thead><tbody>
+            <template v-for="call in operationCalls" :key="call.turnId"><tr><td>{{ formatDateTime(call.createdAt) }}<small>{{ call.model || call.provider || '未知模型' }}</small></td><td>{{ call.status }}</td><td>{{ formatNumber(call.tokens) }}</td><td>{{ formatDuration(call.firstTokenMs) }}</td><td>{{ formatDuration(call.durationMs) }}</td><td>{{ call.toolCount }}</td><td><Button size="sm" variant="ghost" @click="toggleCallTrace(call.turnId)">{{ expandedTurnId === call.turnId ? '收起' : '明细' }}</Button><RouterLink :to="{ path: '/', query: { session: call.sessionId } }">原会话</RouterLink></td></tr>
+              <tr v-if="expandedTurnId === call.turnId"><td colspan="7" class="operations-trace"><p v-if="traceLoading">加载中…</p><p v-else-if="traceError">{{ traceError }}</p><template v-else-if="callTrace"><p v-if="callTrace.failureSummary">{{ callTrace.failureSummary }}</p><p v-for="usage in callTrace.usage" :key="`usage-${usage.round}`">模型第 {{ usage.round }} 轮 · 输入 {{ formatNumber(usage.inputTokens) }} / 输出 {{ formatNumber(usage.outputTokens) }} / 缓存命中 {{ formatNumber(usage.cacheHitTokens) }} / 推理 {{ formatNumber(usage.reasoningTokens) }} Token · {{ formatMoney(usage.cost, usage.currency || 'UNPRICED') }} · {{ formatDuration(usage.durationMs) }}</p><p v-for="tool in callTrace.tools" :key="`tool-${tool.sequence}`">工具 {{ tool.name }} · {{ tool.status }} · {{ formatDuration(tool.durationMs) }}</p><p v-if="!callTrace.usage.length && !callTrace.tools.length && !callTrace.failureSummary">暂无模型或工具执行记录。</p></template></td></tr>
+            </template><tr v-if="!operationCalls.length"><td colspan="7" class="empty-cell">{{ callsLoading ? '加载中…' : '当前范围暂无调用' }}</td></tr>
+          </tbody></table></div><div class="operations-pages"><Button size="sm" variant="ghost" :disabled="callsPage === 0 || callsLoading" @click="changeCallsPage(-1)">上一页</Button><span>第 {{ callsPage + 1 }} 页</span><Button size="sm" variant="ghost" :disabled="!callsHasNext || callsLoading" @click="changeCallsPage(1)">下一页</Button></div>
+        </section>
       </template>
     </div>
 
@@ -255,6 +268,8 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { RouterLink } from 'vue-router'
+import { apiListAgentBudgetAlerts, apiMarkAgentBudgetAlertRead, apiListAgentOperationCalls, apiGetAgentOperationCallTrace } from '../../packages/api-client/src/index.js'
 import { message } from '../services/message.js'
 import Button from '../components/ui/Button.vue'
 import Input from '../components/ui/Input.vue'
@@ -280,6 +295,9 @@ const lunchDialogOpen = ref(false), pendingLunchMin = ref(0), lunchScope = ref('
 const modelConnections = ref([]), selectedModelId = ref(''), modelStatus = ref('')
 const mcpTokens = ref([]), mcpGrants = ref([]), mcpClients = ref([]), mcpEvents = ref([]), mcpDiagnostics = ref(null), ledgerBooks = ref([]), createdMcpToken = ref(''), creatingMcpToken = ref(false)
 const operationsMetrics = ref(null), operationsLoading = ref(false), operationsError = ref(''), budgetStatus = ref('')
+const budgetAlerts = ref([]), operationCalls = ref([]), callsPage = ref(0), callsHasNext = ref(false), failuresOnly = ref(false), callsLoading = ref(false), callsError = ref('')
+const expandedTurnId = ref(''), callTrace = ref(null), traceLoading = ref(false), traceError = ref('')
+let operationsRequest = 0, callsRequest = 0, traceRequest = 0
 const operationsQuery = ref({ preset: 'TODAY', granularity: 'AUTO', from: CALC.dateKey(new Date()), to: CALC.dateKey(new Date()) })
 const budgetForm = ref({ currency: 'CNY', dailyLimit: null, monthlyLimit: null, singleRequestLimit: null, tokenLimit: null, enforcementMode: 'WARN', revision: null })
 const defaultMcpExpiry = () => { const date = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); date.setSeconds(0, 0); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16) }
@@ -313,13 +331,39 @@ async function loadMcpTokens() { try { [mcpTokens.value, ledgerBooks.value] = aw
 async function loadMcpGrants() { try { mcpGrants.value = await apiListMcpOAuthGrants() } catch (error) { if (error?.response?.status !== 404) message.error('OAuth 授权列表加载失败') } }
 async function loadMcpOperations() { try { [mcpDiagnostics.value, mcpClients.value, mcpEvents.value] = await Promise.all([apiGetMcpDiagnostics(), apiListMcpOAuthClients(), apiListMcpProtocolEvents()]) } catch { message.error('MCP 连接诊断加载失败') } }
 async function loadOperations() {
+  const request = ++operationsRequest
   operationsLoading.value = true; operationsError.value = ''
+  resetCalls()
   try {
-    const [metrics, budget] = await Promise.all([apiGetAgentOperationMetrics(operationsQuery.value), apiGetAgentUsageBudget()])
+    const [metrics, budget, alerts] = await Promise.all([apiGetAgentOperationMetrics(operationsQuery.value), apiGetAgentUsageBudget(), apiListAgentBudgetAlerts()])
+    if (request !== operationsRequest) return
     operationsMetrics.value = metrics
-    budgetForm.value = { currency: budget.currency, dailyLimit: budget.dailyLimit, monthlyLimit: budget.monthlyLimit, singleRequestLimit: budget.singleRequestLimit, tokenLimit: budget.tokenLimit, enforcementMode: budget.enforcementMode, revision: budget.revision }
-  } catch (error) { operationsError.value = error?.response?.data?.detail || '运行质量数据加载失败' }
-  finally { operationsLoading.value = false }
+    budgetAlerts.value = alerts || []
+    budgetForm.value = { ...budget }
+  } catch (error) { if (request === operationsRequest) operationsError.value = error?.response?.data?.detail || '运行质量数据加载失败' }
+  finally { if (request === operationsRequest) operationsLoading.value = false }
+}
+async function markBudgetAlertRead(alert) { try { await apiMarkAgentBudgetAlertRead(alert.id); alert.status = 'READ' } catch { message.error('告警已读状态保存失败') } }
+function resetCalls() { callsPage.value = 0; return loadCalls() }
+async function loadCalls() {
+  const request = ++callsRequest
+  expandedTurnId.value = ''; ++traceRequest; callTrace.value = null
+  callsLoading.value = true; callsError.value = ''; operationCalls.value = []
+  try {
+    const rows = await apiListAgentOperationCalls({ ...operationsQuery.value, failuresOnly: failuresOnly.value, page: callsPage.value })
+    if (request !== callsRequest) return
+    operationCalls.value = (rows || []).slice(0, 20); callsHasNext.value = (rows || []).length > 20
+  } catch (error) { if (request === callsRequest) { callsHasNext.value = false; callsError.value = error?.response?.data?.detail || '调用列表加载失败' } }
+  finally { if (request === callsRequest) callsLoading.value = false }
+}
+function changeCallsPage(delta) { callsPage.value += delta; loadCalls() }
+async function toggleCallTrace(turnId) {
+  const request = ++traceRequest
+  if (expandedTurnId.value === turnId) { expandedTurnId.value = ''; return }
+  expandedTurnId.value = turnId; callTrace.value = null; traceError.value = ''; traceLoading.value = true
+  try { const result = await apiGetAgentOperationCallTrace(turnId); if (request === traceRequest) callTrace.value = result }
+  catch (error) { if (request === traceRequest) traceError.value = error?.response?.data?.detail || '明细加载失败' }
+  finally { if (request === traceRequest) traceLoading.value = false }
 }
 async function saveBudget() { try { const budget = await apiSaveAgentUsageBudget(budgetForm.value); budgetForm.value.revision = budget.revision; budgetStatus.value = '预算已保存'; await loadOperations() } catch (error) { budgetStatus.value = error?.response?.data?.detail || '预算保存失败' } }
 async function createMcpToken() {
@@ -340,7 +384,7 @@ async function disconnectMcpClient(client) { if (!window.confirm(`断开“${cli
 async function copyMcpDiagnostics() { const report = { generatedAt: new Date().toISOString(), ...mcpDiagnostics.value, clients: mcpClients.value.map(({ clientId, clientName, lastUsedAt, lastUserAgent, revokedAt }) => ({ clientId, clientName, lastUsedAt, lastUserAgent, revokedAt })), recentEvents: mcpEvents.value }; try { await navigator.clipboard.writeText(JSON.stringify(report, null, 2)); message.success('脱敏诊断已复制') } catch { message.warning('复制失败') } }
 function formatDateTime(value) { return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
 function formatNumber(value) { return new Intl.NumberFormat('zh-CN').format(Number(value || 0)) }
-function formatDuration(value) { const ms = Number(value || 0); return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s` }
+function formatDuration(value) { if (value == null) return '—'; const ms = Number(value || 0); return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s` }
 function formatMoney(value, currency = 'CNY') { if (value == null) return '—'; return `${currency} ${Number(value).toFixed(4)}` }
 function formatBudgetProgress(value) { return value == null ? '未设置预算' : `已使用 ${Number(value).toFixed(1)}%` }
 function mcpScopeLabel(value) { return ({ 'mcp:ledger:read': '账本查询', 'mcp:worktime:read': '工时查询', 'mcp:ledger:prepare': '账本准备', 'mcp:worktime:prepare': '工时准备', 'mcp:ledger:commit': '账本低风险提交', 'mcp:worktime:commit': '工时低风险提交' })[value] || value }

@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/agent/operations")
@@ -24,4 +25,18 @@ public class AgentOperationsController {
     public ApiResponse<AgentOperationsService.Budget> budget() { return ApiResponse.ok(service.budget()); }
     @PutMapping("/budget") @Operation(operationId = "saveAgentUsageBudget")
     public ApiResponse<AgentOperationsService.Budget> budget(@RequestBody AgentOperationsService.BudgetCommand command) { return ApiResponse.ok(service.saveBudget(command)); }
+    @GetMapping("/alerts") @Operation(operationId = "listAgentBudgetAlerts")
+    public ApiResponse<List<AgentOperationsService.BudgetAlert>> alerts() { return ApiResponse.ok(service.alerts()); }
+    @PostMapping("/alerts/{id}/read") @Operation(operationId = "markAgentBudgetAlertRead")
+    public ApiResponse<Void> read(@PathVariable long id) { service.markAlertRead(id); return ApiResponse.ok(null); }
+    @GetMapping("/calls") @Operation(operationId = "listAgentOperationCalls")
+    public ApiResponse<List<AgentOperationsService.CallDetail>> calls(@RequestParam(defaultValue = "TODAY") String preset,
+            @RequestParam(required = false) String from, @RequestParam(required = false) String to,
+            @RequestParam(defaultValue = "false") boolean failuresOnly, @RequestParam(defaultValue = "0") int page) {
+        return ApiResponse.ok(service.calls(preset, from, to, failuresOnly, page));
+    }
+    @GetMapping("/calls/{turnId}") @Operation(operationId = "getAgentOperationCallTrace")
+    public ApiResponse<AgentOperationsService.CallTrace> call(@PathVariable String turnId) {
+        return ApiResponse.ok(service.callTrace(turnId));
+    }
 }

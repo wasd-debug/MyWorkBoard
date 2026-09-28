@@ -1,9 +1,11 @@
 package com.salarytracker.ai;
 
 import com.salarytracker.ai.operations.AgentOperationsService;
+import com.salarytracker.ai.operations.AgentBudgetAlertService;
 import com.salarytracker.identity.CurrentUserResolver;
 import com.salarytracker.integration.MySqlIntegrationTestSupport;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -24,7 +26,7 @@ class AgentOperationsIntegrationTest extends MySqlIntegrationTestSupport {
         insertTurn(other, "FAILED", Instant.now().minus(2, ChronoUnit.HOURS));
         CurrentUserResolver currentUser = mock(CurrentUserResolver.class);
         when(currentUser.id()).thenReturn(owner);
-        AgentOperationsService service = new AgentOperationsService(jdbc, currentUser);
+        AgentOperationsService service = new AgentOperationsService(jdbc, currentUser, alerts());
 
         AgentOperationsService.Metrics metrics = service.metrics("CUSTOM", "DAY", "2026-01-01", "2026-12-31");
 
@@ -40,7 +42,7 @@ class AgentOperationsIntegrationTest extends MySqlIntegrationTestSupport {
         long user = createUser("ops-budget");
         CurrentUserResolver currentUser = mock(CurrentUserResolver.class);
         when(currentUser.id()).thenReturn(user);
-        AgentOperationsService service = new AgentOperationsService(jdbc, currentUser);
+        AgentOperationsService service = new AgentOperationsService(jdbc, currentUser, alerts());
 
         AgentOperationsService.Budget saved = service.saveBudget(new AgentOperationsService.BudgetCommand(
                 "CNY", new java.math.BigDecimal("10"), new java.math.BigDecimal("100"), null, 5000L,
@@ -97,6 +99,50 @@ class AgentOperationsIntegrationTest extends MySqlIntegrationTestSupport {
         assertEquals("WARN", metrics.budget().enforcementMode());
     }
 
+    @Test
+    void paginatesCallsAndFiltersFailuresWithoutLeakingOtherUsersOrRawErrors() {
+        long user = createUser("ops-calls");
+        AgentOperationsService service = serviceFor(user);
+        for (int i = 0; i < 22; i++) insertTurnFixture(user, "COMPLETED", Instant.now().minusSeconds(i));
+        TurnFixture failed = insertTurnFixture(user, "FAILED", Instant.now().minusSeconds(30));
+        TurnFixture toolFailed = insertTurnFixture(user, "COMPLETED", Instant.now().minusSeconds(31));
+        jdbc.update("UPDATE agent_turn SET error_message='secret-test-value' WHERE id=?", failed.turnId());
+        jdbc.update("""
+                INSERT INTO agent_tool_call(turn_id,session_id,user_id,sequence_no,tool_name,status,duration_ms,result_summary)
+                VALUES(?,?,?,1,'ledger.books.list','FAILED',123,'secret-tool-result')
+                """, toolFailed.turnId(), toolFailed.sessionId(), user);
+        TurnFixture other = insertTurnFixture(createUser("ops-calls-other"), "FAILED", Instant.now());
+        assertEquals(21, service.calls("LAST_7_DAYS", null, null, false, 0).size());
+        assertEquals(4, service.calls("LAST_7_DAYS", null, null, false, 1).size());
+        var failures = service.calls("LAST_7_DAYS", null, null, true, 0);
+        assertEquals(2, failures.size());
+        assertTrue(failures.stream().anyMatch(c -> c.turnId().equals(toolFailed.turnId()) && c.toolCount() == 1));
+        var trace = service.callTrace(toolFailed.turnId());
+        assertEquals(123, trace.tools().get(0).durationMs());
+        assertNotNull(trace.failureSummary());
+        assertFalse(trace.toString().contains("secret"));
+        assertFalse(service.callTrace(failed.turnId()).toString().contains("secret"));
+        assertFalse(service.metrics("LAST_7_DAYS", "AUTO", null, null).failures().toString().contains("secret"));
+        assertThrows(IllegalArgumentException.class, () -> service.callTrace(other.turnId()));
+        assertThrows(IllegalArgumentException.class, () -> service.calls("TODAY", null, null, false, -1));
+        assertThrows(IllegalArgumentException.class, () -> service.calls("TODAY", null, null, false, 1001));
+    }
+
+    @Test
+    void returnsPerRoundUsageAndCostsForOwnedCalls() {
+        long user = createUser("ops-trace");
+        insertUsage(user, "CNY", new BigDecimal("1.25"), Instant.now());
+        AgentOperationsService service = serviceFor(user);
+        var call = service.calls("LAST_7_DAYS", null, null, false, 0).get(0);
+        assertEquals(100, call.tokens());
+        assertEquals(120, call.firstTokenMs());
+        assertEquals(1000, call.durationMs());
+        var trace = service.callTrace(call.turnId());
+        assertEquals(1, trace.usage().size());
+        assertEquals(0, new BigDecimal("1.25").compareTo(trace.usage().get(0).cost()));
+        assertNull(trace.failureSummary());
+    }
+
     private long createUser(String prefix) {
         String username = prefix + "-" + UUID.randomUUID();
         jdbc.update("INSERT INTO app_user(username,password_hash,nickname) VALUES(?, '!', ?)", username, prefix);
@@ -132,7 +178,11 @@ class AgentOperationsIntegrationTest extends MySqlIntegrationTestSupport {
     private AgentOperationsService serviceFor(long userId) {
         CurrentUserResolver currentUser = mock(CurrentUserResolver.class);
         when(currentUser.id()).thenReturn(userId);
-        return new AgentOperationsService(jdbc, currentUser);
+        return new AgentOperationsService(jdbc, currentUser, alerts());
+    }
+
+    private AgentBudgetAlertService alerts() {
+        return new AgentBudgetAlertService(jdbc, new DataSourceTransactionManager(jdbc.getDataSource()));
     }
 
     private record TurnFixture(String sessionId, String turnId) { }

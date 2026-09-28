@@ -26,7 +26,15 @@ import type { ApiProblem } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseBudget } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseCallTrace } from '../models/index.ts';
+// @ts-ignore
+import type { ApiResponseListBudgetAlert } from '../models/index.ts';
+// @ts-ignore
+import type { ApiResponseListCallDetail } from '../models/index.ts';
+// @ts-ignore
 import type { ApiResponseMetrics } from '../models/index.ts';
+// @ts-ignore
+import type { ApiResponseVoid } from '../models/index.ts';
 // @ts-ignore
 import type { BudgetCommand } from '../models/index.ts';
 /**
@@ -34,6 +42,39 @@ import type { BudgetCommand } from '../models/index.ts';
  */
 export const AgentOperationsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
+        /**
+         *
+         * @param {string} turnId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getAgentOperationCallTrace: async (turnId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'turnId' is not null or undefined
+            assertParamExists('getAgentOperationCallTrace', 'turnId', turnId)
+            const localVarPath = `/api/v1/agent/operations/calls/{turnId}`
+                .replace('{turnId}', encodeURIComponent(String(turnId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = '*/*,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
         /**
          *
          * @param {string} [preset]
@@ -114,6 +155,122 @@ export const AgentOperationsApiAxiosParamCreator = function (configuration?: Con
         },
         /**
          *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listAgentBudgetAlerts: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/agent/operations/alerts`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = '*/*,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} [preset]
+         * @param {string} [from]
+         * @param {string} [to]
+         * @param {boolean} [failuresOnly]
+         * @param {number} [page]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listAgentOperationCalls: async (preset?: string, from?: string, to?: string, failuresOnly?: boolean, page?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/agent/operations/calls`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (preset !== undefined) {
+                localVarQueryParameter['preset'] = preset;
+            }
+
+            if (from !== undefined) {
+                localVarQueryParameter['from'] = from;
+            }
+
+            if (to !== undefined) {
+                localVarQueryParameter['to'] = to;
+            }
+
+            if (failuresOnly !== undefined) {
+                localVarQueryParameter['failuresOnly'] = failuresOnly;
+            }
+
+            if (page !== undefined) {
+                localVarQueryParameter['page'] = page;
+            }
+
+            localVarHeaderParameter['Accept'] = '*/*,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {number} id
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        markAgentBudgetAlertRead: async (id: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('markAgentBudgetAlertRead', 'id', id)
+            const localVarPath = `/api/v1/agent/operations/alerts/{id}/read`
+                .replace('{id}', encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = '*/*,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {BudgetCommand} budgetCommand
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -157,6 +314,18 @@ export const AgentOperationsApiFp = function(configuration?: Configuration) {
     return {
         /**
          *
+         * @param {string} turnId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getAgentOperationCallTrace(turnId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseCallTrace>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getAgentOperationCallTrace(turnId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentOperationsApi.getAgentOperationCallTrace']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {string} [preset]
          * @param {string} [granularity]
          * @param {string} [from]
@@ -183,6 +352,45 @@ export const AgentOperationsApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listAgentBudgetAlerts(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseListBudgetAlert>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listAgentBudgetAlerts(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentOperationsApi.listAgentBudgetAlerts']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} [preset]
+         * @param {string} [from]
+         * @param {string} [to]
+         * @param {boolean} [failuresOnly]
+         * @param {number} [page]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listAgentOperationCalls(preset?: string, from?: string, to?: string, failuresOnly?: boolean, page?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseListCallDetail>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listAgentOperationCalls(preset, from, to, failuresOnly, page, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentOperationsApi.listAgentOperationCalls']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {number} id
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async markAgentBudgetAlertRead(id: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseVoid>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.markAgentBudgetAlertRead(id, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AgentOperationsApi.markAgentBudgetAlertRead']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {BudgetCommand} budgetCommand
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -204,6 +412,15 @@ export const AgentOperationsApiFactory = function (configuration?: Configuration
     return {
         /**
          *
+         * @param {AgentOperationsApiGetAgentOperationCallTraceRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getAgentOperationCallTrace(requestParameters: AgentOperationsApiGetAgentOperationCallTraceRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseCallTrace> {
+            return localVarFp.getAgentOperationCallTrace(requestParameters.turnId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {AgentOperationsApiGetAgentOperationMetricsRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -221,6 +438,32 @@ export const AgentOperationsApiFactory = function (configuration?: Configuration
         },
         /**
          *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listAgentBudgetAlerts(options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseListBudgetAlert> {
+            return localVarFp.listAgentBudgetAlerts(options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {AgentOperationsApiListAgentOperationCallsRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listAgentOperationCalls(requestParameters: AgentOperationsApiListAgentOperationCallsRequest = {}, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseListCallDetail> {
+            return localVarFp.listAgentOperationCalls(requestParameters.preset, requestParameters.from, requestParameters.to, requestParameters.failuresOnly, requestParameters.page, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {AgentOperationsApiMarkAgentBudgetAlertReadRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        markAgentBudgetAlertRead(requestParameters: AgentOperationsApiMarkAgentBudgetAlertReadRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseVoid> {
+            return localVarFp.markAgentBudgetAlertRead(requestParameters.id, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {AgentOperationsApiSaveAgentUsageBudgetRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -230,6 +473,13 @@ export const AgentOperationsApiFactory = function (configuration?: Configuration
         },
     };
 };
+
+/**
+ * Request parameters for getAgentOperationCallTrace operation in AgentOperationsApi.
+ */
+export interface AgentOperationsApiGetAgentOperationCallTraceRequest {
+    readonly turnId: string
+}
 
 /**
  * Request parameters for getAgentOperationMetrics operation in AgentOperationsApi.
@@ -245,6 +495,28 @@ export interface AgentOperationsApiGetAgentOperationMetricsRequest {
 }
 
 /**
+ * Request parameters for listAgentOperationCalls operation in AgentOperationsApi.
+ */
+export interface AgentOperationsApiListAgentOperationCallsRequest {
+    readonly preset?: string
+
+    readonly from?: string
+
+    readonly to?: string
+
+    readonly failuresOnly?: boolean
+
+    readonly page?: number
+}
+
+/**
+ * Request parameters for markAgentBudgetAlertRead operation in AgentOperationsApi.
+ */
+export interface AgentOperationsApiMarkAgentBudgetAlertReadRequest {
+    readonly id: number
+}
+
+/**
  * Request parameters for saveAgentUsageBudget operation in AgentOperationsApi.
  */
 export interface AgentOperationsApiSaveAgentUsageBudgetRequest {
@@ -255,6 +527,16 @@ export interface AgentOperationsApiSaveAgentUsageBudgetRequest {
  * AgentOperationsApi - object-oriented interface
  */
 export class AgentOperationsApi extends BaseAPI {
+    /**
+     *
+     * @param {AgentOperationsApiGetAgentOperationCallTraceRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public getAgentOperationCallTrace(requestParameters: AgentOperationsApiGetAgentOperationCallTraceRequest, options?: RawAxiosRequestConfig) {
+        return AgentOperationsApiFp(this.configuration).getAgentOperationCallTrace(requestParameters.turnId, options).then((request) => request(this.axios, this.basePath));
+    }
+
     /**
      *
      * @param {AgentOperationsApiGetAgentOperationMetricsRequest} requestParameters Request parameters.
@@ -272,6 +554,35 @@ export class AgentOperationsApi extends BaseAPI {
      */
     public getAgentUsageBudget(options?: RawAxiosRequestConfig) {
         return AgentOperationsApiFp(this.configuration).getAgentUsageBudget(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listAgentBudgetAlerts(options?: RawAxiosRequestConfig) {
+        return AgentOperationsApiFp(this.configuration).listAgentBudgetAlerts(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {AgentOperationsApiListAgentOperationCallsRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listAgentOperationCalls(requestParameters: AgentOperationsApiListAgentOperationCallsRequest = {}, options?: RawAxiosRequestConfig) {
+        return AgentOperationsApiFp(this.configuration).listAgentOperationCalls(requestParameters.preset, requestParameters.from, requestParameters.to, requestParameters.failuresOnly, requestParameters.page, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {AgentOperationsApiMarkAgentBudgetAlertReadRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public markAgentBudgetAlertRead(requestParameters: AgentOperationsApiMarkAgentBudgetAlertReadRequest, options?: RawAxiosRequestConfig) {
+        return AgentOperationsApiFp(this.configuration).markAgentBudgetAlertRead(requestParameters.id, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

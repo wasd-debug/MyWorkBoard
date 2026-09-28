@@ -18,10 +18,12 @@ public class AgentOperationsService {
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
     private final JdbcTemplate jdbc;
     private final CurrentUserResolver currentUser;
+    private final AgentBudgetAlertService budgetAlerts;
 
-    public AgentOperationsService(JdbcTemplate jdbc, CurrentUserResolver currentUser) {
+    public AgentOperationsService(JdbcTemplate jdbc, CurrentUserResolver currentUser, AgentBudgetAlertService budgetAlerts) {
         this.jdbc = jdbc;
         this.currentUser = currentUser;
+        this.budgetAlerts = budgetAlerts;
     }
 
     public Metrics metrics(String preset, String granularity, String from, String to) {
@@ -76,26 +78,97 @@ public class AgentOperationsService {
         long userId = currentUser.id();
         if (command.revision() == null || command.revision() < 0) throw new IllegalArgumentException("预算修订号无效，请刷新后重试");
         String currency = command.currency() == null || command.currency().isBlank() ? "CNY" : command.currency().trim().toUpperCase(Locale.ROOT);
-        // 本增量只提供预算观察和告警数据铺底；请求前硬拦截会在后续稳定化增量单独接入。
+        if (!Set.of("CNY", "USD").contains(currency)) throw new IllegalArgumentException("预算币种仅支持 CNY 或 USD");
+        // 告警只通知，不阻断模型请求。
         String mode = "WARN";
         if (command.revision() == 0) {
             try {
                 jdbc.update("""
-                        INSERT INTO ai_usage_budget(user_id,currency,daily_limit,monthly_limit,enforcement_mode,revision)
-                        VALUES(?,?,?,?,?,1)
-                        """, userId, currency, positive(command.dailyLimit()), positive(command.monthlyLimit()), mode);
+                        INSERT INTO ai_usage_budget(user_id,currency,daily_limit,monthly_limit,enforcement_mode,alert_at_50,alert_at_80,alert_at_100,revision)
+                        VALUES(?,?,?,?,?,?,?,?,1)
+                        """, userId, currency, positive(command.dailyLimit()), positive(command.monthlyLimit()), mode,
+                        command.alertAt50Enabled(), command.alertAt80Enabled(), command.alertAt100Enabled());
             } catch (DuplicateKeyException e) {
                 throw new IllegalStateException("预算配置已被更新，请刷新后重试", e);
             }
         } else {
             int updated = jdbc.update("""
-                    UPDATE ai_usage_budget SET currency=?,daily_limit=?,monthly_limit=?,enforcement_mode=?,revision=revision+1
+                    UPDATE ai_usage_budget SET currency=?,daily_limit=?,monthly_limit=?,enforcement_mode=?,
+                      alert_at_50=?,alert_at_80=?,alert_at_100=?,revision=revision+1
                     WHERE user_id=? AND revision=?
                     """, currency, positive(command.dailyLimit()), positive(command.monthlyLimit()), mode,
+                    command.alertAt50Enabled(), command.alertAt80Enabled(), command.alertAt100Enabled(),
                     userId, command.revision());
             if (updated != 1) throw new IllegalStateException("预算配置已被更新，请刷新后重试");
         }
+        budgetAlerts.evaluateAfterCommit(userId);
         return budget();
+    }
+
+    public List<BudgetAlert> alerts() {
+        return jdbc.query("""
+                SELECT id,alert_type,period_key,threshold_percent,current_value,limit_value,currency,status,created_at
+                FROM ai_usage_alert WHERE user_id=? ORDER BY created_at DESC,id DESC LIMIT 50
+                """, (r, n) -> new BudgetAlert(r.getLong("id"), r.getString("alert_type"),
+                r.getString("period_key"), r.getInt("threshold_percent"), r.getBigDecimal("current_value"),
+                r.getBigDecimal("limit_value"), r.getString("currency"), r.getString("status"),
+                instant(r, "created_at")), currentUser.id());
+    }
+
+    public void markAlertRead(long id) {
+        int updated = jdbc.update("UPDATE ai_usage_alert SET status='READ' WHERE id=? AND user_id=?",
+                id, currentUser.id());
+        if (updated == 0) throw new IllegalArgumentException("告警不存在");
+    }
+
+    public List<CallDetail> calls(String preset, String from, String to, boolean failuresOnly, int page) {
+        Window window = resolveWindow(preset, "AUTO", from, to);
+        if (page < 0 || page > 1000) throw new IllegalArgumentException("页码超出范围");
+        return jdbc.query("""
+                SELECT t.id,t.session_id,t.status,t.provider_type,t.model_name,t.created_at,
+                       TIMESTAMPDIFF(MICROSECOND,t.started_at,t.completed_at)/1000 AS duration_ms,
+                       COALESCE((SELECT SUM(u.total_tokens) FROM ai_usage u
+                         WHERE u.user_id=t.user_id AND u.turn_id=t.id),0) AS tokens,
+                       COALESCE((SELECT MIN(NULLIF(u.first_token_ms,0)) FROM ai_usage u
+                         WHERE u.user_id=t.user_id AND u.turn_id=t.id),0) AS first_token_ms,
+                       (SELECT COUNT(*) FROM agent_tool_call c
+                         WHERE c.user_id=t.user_id AND c.turn_id=t.id) AS tool_count
+                FROM agent_turn t
+                WHERE t.user_id=? AND t.created_at>=? AND t.created_at<?
+                  AND (?=FALSE OR t.status IN ('FAILED','CANCELLED') OR EXISTS
+                       (SELECT 1 FROM agent_tool_call c WHERE c.turn_id=t.id AND c.user_id=? AND c.status<>'SUCCESS'))
+                ORDER BY t.created_at DESC,t.id DESC LIMIT 21 OFFSET ?
+                """, (r, n) -> new CallDetail(r.getString("id"), r.getString("session_id"),
+                r.getString("status"), r.getString("provider_type"), r.getString("model_name"),
+                instant(r, "created_at"), nullableLong(r, "duration_ms"), r.getLong("tokens"),
+                r.getLong("first_token_ms"), r.getLong("tool_count")),
+                currentUser.id(), window.from(), window.to(),
+                failuresOnly, currentUser.id(), page * 20);
+    }
+
+    public CallTrace callTrace(String turnId) {
+        long userId = currentUser.id();
+        String status = jdbc.query("SELECT status FROM agent_turn WHERE id=? AND user_id=?",
+                (r, n) -> r.getString("status"), turnId, userId).stream().findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("调用不存在"));
+        List<UsageDetail> usage = jdbc.query("""
+                SELECT round_no,input_tokens,output_tokens,cache_hit_tokens,cache_miss_tokens,reasoning_tokens,
+                       total_tokens,first_token_ms,duration_ms,currency,estimated_total_cost
+                FROM ai_usage WHERE turn_id=? AND user_id=? ORDER BY round_no
+                """, (r, n) -> new UsageDetail(r.getInt("round_no"), r.getLong("input_tokens"),
+                r.getLong("output_tokens"), r.getLong("cache_hit_tokens"), r.getLong("cache_miss_tokens"),
+                r.getLong("reasoning_tokens"), r.getLong("total_tokens"), r.getLong("first_token_ms"),
+                r.getLong("duration_ms"), r.getString("currency"), r.getBigDecimal("estimated_total_cost")), turnId, userId);
+        List<ToolDetail> tools = jdbc.query("""
+                SELECT sequence_no,tool_name,status,duration_ms FROM agent_tool_call
+                WHERE turn_id=? AND user_id=? ORDER BY sequence_no
+                """, (r, n) -> new ToolDetail(r.getInt("sequence_no"), r.getString("tool_name"),
+                r.getString("status"), r.getLong("duration_ms")), turnId, userId);
+        // 不返回原始异常、参数、模型正文或工具结果，避免诊断接口泄露密钥和业务内容。
+        String failure = "FAILED".equals(status) ? "本轮执行失败，请返回原会话查看提示。"
+                : "CANCELLED".equals(status) ? "本轮已取消。"
+                : tools.stream().anyMatch(t -> !"SUCCESS".equals(t.status())) ? "存在失败工具调用，请返回原会话核对。" : null;
+        return new CallTrace(turnId, failure, usage, tools);
     }
 
     private Window resolveWindow(String rawPreset, String rawGranularity, String from, String to) {
@@ -170,7 +243,7 @@ public class AgentOperationsService {
                 .toList();
     }
     private List<ToolStat> toolStats(List<ToolRow> tools) { Map<String, ToolAccumulator> map = new LinkedHashMap<>(); for (ToolRow row : tools) map.computeIfAbsent(row.name(), ToolAccumulator::new).add(row); return map.values().stream().map(ToolAccumulator::view).sorted(Comparator.comparing(ToolStat::totalDurationMs).reversed()).limit(20).toList(); }
-    private List<Failure> failures(List<TurnRow> turns, List<ToolRow> tools, List<McpRow> mcp) { List<Failure> result = new ArrayList<>(); turns.stream().filter(t -> "FAILED".equals(t.status()) || "CANCELLED".equals(t.status())).forEach(t -> result.add(new Failure("agent.turn", t.status(), t.error(), t.createdAt()))); tools.stream().filter(t -> !"SUCCESS".equals(t.status())).forEach(t -> result.add(new Failure(t.name(), t.status(), null, t.createdAt()))); mcp.stream().filter(t -> !Set.of("SUCCESS", "ACCEPTED").contains(t.status())).forEach(t -> result.add(new Failure("mcp." + t.type(), t.status(), null, t.createdAt()))); return result.stream().sorted(Comparator.comparing(Failure::createdAt, Comparator.nullsLast(Comparator.reverseOrder()))).limit(30).toList(); }
+    private List<Failure> failures(List<TurnRow> turns, List<ToolRow> tools, List<McpRow> mcp) { List<Failure> result = new ArrayList<>(); turns.stream().filter(t -> "FAILED".equals(t.status()) || "CANCELLED".equals(t.status())).forEach(t -> result.add(new Failure("agent.turn", t.status(), "CANCELLED".equals(t.status()) ? "本轮已取消" : "本轮执行失败，请返回原会话查看提示", t.createdAt()))); tools.stream().filter(t -> !"SUCCESS".equals(t.status())).forEach(t -> result.add(new Failure(t.name(), t.status(), null, t.createdAt()))); mcp.stream().filter(t -> !Set.of("SUCCESS", "ACCEPTED").contains(t.status())).forEach(t -> result.add(new Failure("mcp." + t.type(), t.status(), null, t.createdAt()))); return result.stream().sorted(Comparator.comparing(Failure::createdAt, Comparator.nullsLast(Comparator.reverseOrder()))).limit(30).toList(); }
     private Progress budgetProgress(long userId, Budget budget) {
         LocalDate today = LocalDate.now(ZONE);
         Instant dayStart = today.atStartOfDay(ZONE).toInstant();
@@ -224,6 +297,16 @@ public class AgentOperationsService {
     public record Failure(String source, String status, String detail, Instant createdAt) { }
     public record Progress(BigDecimal dailyCost, BigDecimal monthlyCost, BigDecimal dailyPercent,
                            BigDecimal monthlyPercent, String currency) { }
+    public record BudgetAlert(long id, String type, String period, int threshold, BigDecimal current,
+                              BigDecimal limit, String currency, String status, Instant createdAt) { }
+    public record CallDetail(String turnId, String sessionId, String status, String provider,
+                             String model, Instant createdAt, Long durationMs, long tokens,
+                             long firstTokenMs, long toolCount) { }
+    public record UsageDetail(int round, long inputTokens, long outputTokens, long cacheHitTokens,
+                              long cacheMissTokens, long reasoningTokens, long totalTokens,
+                              long firstTokenMs, long durationMs, String currency, BigDecimal cost) { }
+    public record ToolDetail(int sequence, String name, String status, long durationMs) { }
+    public record CallTrace(String turnId, String failureSummary, List<UsageDetail> usage, List<ToolDetail> tools) { }
     private record Window(String preset, String granularity, Instant from, Instant to) { }
     private record TurnRow(String status, Long duration, Instant createdAt, String error, String provider, String model) { }
     private record UsageRow(String provider, String model, String currency, long tokens, long input, long output, long cacheHit, long cacheMiss, long reasoning, long firstToken, long duration, BigDecimal cost, Instant createdAt) { }
