@@ -1,7 +1,7 @@
 # 个人工作台项目总览
 
-> 状态日期：2026-09-27
-> 当前主线：Phase 3B/3D Web Agent 核心闭环已完成；Phase 3C-1 已交付只读 Streamable HTTP MCP、PAT、scope、撤销、审计与限流，并完成基础协议联调。下一增量进入 MCP prepare 与站内审批衔接，随后再做 commit、OAuth 与外部客户端兼容收口。公共/模块设置拆分、用户资料、Redis/RabbitMQ、站内信与 NAS 音乐已形成独立 Future F1-F5 路线图，不与当前 Agent/MCP 收口混为一次交付
+> 状态日期：2026-09-28
+> 当前主线：Phase 3B/3D Web Agent 核心闭环已完成；Phase 3C-2 已交付 MCP prepare、外部 action 查询/取消和站内确认，批准仍为零业务写入且不存在 MCP commit。下一增量进入低风险 commit、幂等与投影同步，随后再做 OAuth 与外部客户端兼容收口。公共/模块设置拆分、用户资料、Redis/RabbitMQ、站内信与 NAS 音乐已形成独立 Future F1-F5 路线图，不与当前 Agent/MCP 收口混为一次交付
 
 ## 项目定位
 
@@ -75,13 +75,15 @@
 ### Phase 2-6
 
 - **Phase 2 任务管理：未启动。** 导航只有禁用占位，没有 task/file/notification 模块或表结构。
-- **Phase 3A-D Agent/MCP：Phase 3A/3B Web 核心闭环完成，Phase 3C-1 已完成。** 会话、队列、SSE、模型连接、Usage 与 Trace 已落地；首页支持 DeepSeek 深度思考开关及默认收起的思考块。只读 MCP 已通过 `/mcp` 暴露 8 个工时/账本查询工具，设置页可管理 PAT、scope 与账本范围；R4 审批仍只允许网站内执行。
+- **Phase 3A-D Agent/MCP：Phase 3A/3B Web 核心闭环完成，Phase 3C-2 已完成。** 会话、队列、SSE、模型连接、Usage 与 Trace 已落地；首页支持 DeepSeek 深度思考开关及默认收起的思考块。MCP 通过 `/mcp` 暴露 8 个只读工具，并在写开关开启时按独立 scope 暴露首批 6 个 prepare 与 3 个 action 管理工具；站内确认只进入 `APPROVED`，commit 与 OAuth 尚未开放。
 - **Phase 4 文件/RAG：未启动。** 尚无 MinIO/NAS 文件域、Tika、Qdrant 和知识库。
 - **Phase 5 跨域洞察：未启动。** 只有 `domain_event` 预留表，无事件发布/消费、`report_fact`、`report_snapshot` 或洞察页面。
 - **Phase 6 持续打磨：部分能力提前实现。** 已有响应式布局、主题、共享账本和可重复恢复演练；PWA、全局搜索和完整可观测体系尚未实现。
 - **Future F1-F5：已完成规划，未启动编码。** 依次拆分公共/模块设置和用户资料，建设 Redis/RabbitMQ/outbox/任务运行平台，上线站内信与账本邀请，再基于 NAS/file 能力建设独立音乐模块。详见 [后续特性路线图](后续特性路线图.md)。
 
 ## 当前验证基线
+
+2026-09-28 MCP prepare 与站内确认增量：V23 新增外部 action 绑定，PAT 支持账本/工时 prepare scope；MCP 首批开放工时记录和账本流水的 create/update/delete prepare，以及 action get/list/cancel。后端 `mvn test` 共 196 项，194 项通过、2 项按既有规则跳过，Flyway V1-V23、真实 MySQL、混合 collation 回归和架构边界通过；前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过。真实协议联调确认工时 read+prepare PAT 可见 8 个对应工具、commit 为 0；prepare、网站批准、MCP 状态回查和取消均成功，批准前后工时业务表保持零新增。确认页通过桌面与 375px 移动端亮暗主题验收，无横向溢出，确认操作栏不遮挡底部导航。
 
 2026-09-27 R4 审批与导入确认增量：后端 184 项测试中 182 项通过、2 项按既有规则跳过，Flyway V21、真实 MySQL、迁移回放和架构边界通过；前端 49 项 Node 测试、8 项 sync-engine、TypeScript、OpenAPI 一致性和生产构建通过。导入审批主流程在桌面 Chromium、桌面 WebKit和 375px 移动 Chromium 共 3/3 通过。本地 `salary-backend`、`salary-frontend` 已刷新并健康。
 

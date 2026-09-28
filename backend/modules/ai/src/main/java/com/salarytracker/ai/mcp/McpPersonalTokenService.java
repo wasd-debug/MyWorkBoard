@@ -28,7 +28,10 @@ import java.util.UUID;
 public class McpPersonalTokenService {
     public static final String LEDGER_READ = "mcp:ledger:read";
     public static final String WORKTIME_READ = "mcp:worktime:read";
-    private static final Set<String> ALLOWED_SCOPES = Set.of(LEDGER_READ, WORKTIME_READ);
+    public static final String LEDGER_PREPARE = "mcp:ledger:prepare";
+    public static final String WORKTIME_PREPARE = "mcp:worktime:prepare";
+    private static final Set<String> ALLOWED_SCOPES = Set.of(
+            LEDGER_READ, WORKTIME_READ, LEDGER_PREPARE, WORKTIME_PREPARE);
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
@@ -87,11 +90,14 @@ public class McpPersonalTokenService {
         CurrentUser user = authService.loadUser(row.userId());
         if (user == null) throw new UnauthorizedException("Token 所属用户不可用");
         jdbc.update("UPDATE mcp_personal_token SET last_used_at=CURRENT_TIMESTAMP WHERE id=?", row.id());
-        return new AuthenticatedToken(row.id(), user, row.scopes(), row.bookIds());
+        return new AuthenticatedToken(row.id(), row.name(), user, row.scopes(), row.bookIds());
     }
 
     public void requireBook(AuthenticatedToken token, String bookId) {
-        if (token == null || !token.scopes().contains(LEDGER_READ)) throw new SecurityException("缺少账本只读 scope");
+        if (token == null || token.scopes().stream().noneMatch(scope ->
+                LEDGER_READ.equals(scope) || LEDGER_PREPARE.equals(scope))) {
+            throw new SecurityException("缺少账本 read 或 prepare scope");
+        }
         if (bookId == null || bookId.isBlank()) return;
         if (!token.bookIds().isEmpty() && !token.bookIds().contains(bookId)) {
             throw new SecurityException("Token 无权访问该账本");
@@ -109,13 +115,13 @@ public class McpPersonalTokenService {
 
     private Set<String> normalizeScopes(Set<String> requested) {
         Set<String> scopes = requested == null ? Set.of() : new LinkedHashSet<>(requested);
-        if (scopes.isEmpty()) throw new IllegalArgumentException("至少选择一个只读 scope");
+        if (scopes.isEmpty()) throw new IllegalArgumentException("至少选择一个 MCP scope");
         if (!ALLOWED_SCOPES.containsAll(scopes)) throw new IllegalArgumentException("包含不支持的 MCP scope");
         return Set.copyOf(scopes);
     }
 
     private Set<String> normalizeBookIds(Set<String> requested, long userId, Set<String> scopes) {
-        if (!scopes.contains(LEDGER_READ)) return Set.of();
+        if (!scopes.contains(LEDGER_READ) && !scopes.contains(LEDGER_PREPARE)) return Set.of();
         Set<String> ids = requested == null ? Set.of() : new LinkedHashSet<>(requested);
         if (ids.isEmpty()) return Set.of();
         for (String id : ids) {
@@ -144,7 +150,7 @@ public class McpPersonalTokenService {
     }
 
     private TokenRow row(ResultSet result) throws SQLException {
-        return new TokenRow(result.getString("id"), result.getLong("user_id"), readSet(result.getString("scopes")),
+        return new TokenRow(result.getString("id"), result.getString("name"), result.getLong("user_id"), readSet(result.getString("scopes")),
                 readSet(result.getString("book_ids")));
     }
 
@@ -188,6 +194,6 @@ public class McpPersonalTokenService {
     public record CreatedToken(TokenView token, String rawToken) { }
     public record TokenView(String id, String name, String tokenHint, Set<String> scopes, Set<String> bookIds,
                             Instant expiresAt, Instant revokedAt, Instant lastUsedAt, Instant createdAt) { }
-    public record AuthenticatedToken(String id, CurrentUser user, Set<String> scopes, Set<String> bookIds) { }
-    private record TokenRow(String id, long userId, Set<String> scopes, Set<String> bookIds) { }
+    public record AuthenticatedToken(String id, String name, CurrentUser user, Set<String> scopes, Set<String> bookIds) { }
+    private record TokenRow(String id, String name, long userId, Set<String> scopes, Set<String> bookIds) { }
 }

@@ -23,6 +23,7 @@ export * from './api/audit-api.ts';
 export * from './api/authentication-api.ts';
 export * from './api/holidays-api.ts';
 export * from './api/ledger-api.ts';
+export * from './api/mcpexternal-actions-api.ts';
 export * from './api/mcppersonal-tokens-api.ts';
 export * from './api/operations-api.ts';
 export * from './api/worktime-api.ts';

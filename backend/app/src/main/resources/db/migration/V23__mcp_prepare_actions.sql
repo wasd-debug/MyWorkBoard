@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS mcp_external_action (
+    action_id VARCHAR(36) PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    token_id VARCHAR(36) NOT NULL,
+    token_name VARCHAR(120) NOT NULL,
+    client_name VARCHAR(160) NULL,
+    tool_name VARCHAR(160) NOT NULL,
+    risk_level VARCHAR(8) NOT NULL,
+    summary VARCHAR(500) NULL,
+    structured_json JSON NULL,
+    confirmation_token_hash CHAR(64) NULL,
+    confirmation_expires_at DATETIME(6) NULL,
+    approved_at DATETIME(6) NULL,
+    rejected_at DATETIME(6) NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    INDEX idx_mcp_external_action_token_created (token_id, created_at),
+    INDEX idx_mcp_external_action_user_created (user_id, created_at),
+    UNIQUE KEY uk_mcp_external_action_confirmation_hash (confirmation_token_hash)
+);

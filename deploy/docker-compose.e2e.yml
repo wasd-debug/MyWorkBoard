@@ -30,6 +30,8 @@ services:
       COOKIE_SECURE: "false"
       LLM_ENDPOINT: ""
       DEEPSEEK_API_KEY: ""
+      APP_MCP_ENABLED: "true"
+      APP_MCP_WRITE_ENABLED: "true"
     ports:
       - "18080:8080"
     depends_on:

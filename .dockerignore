@@ -11,6 +11,8 @@ workboard.pem
 *.pdf
 **/node_modules
 **/dist
+!frontend/dist/
+!frontend/dist/**
 **/target
 !backend/target/
 !backend/target/salary-tracker-backend.jar

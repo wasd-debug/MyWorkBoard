@@ -34,7 +34,8 @@ class McpPersonalTokenIntegrationTest extends MySqlIntegrationTestSupport {
                 new ObjectMapper().findAndRegisterModules(), currentUser, auth);
 
         McpPersonalTokenService.CreatedToken created = service.create(new McpPersonalTokenService.CreateToken(
-                "本地 Codex", Set.of(McpPersonalTokenService.LEDGER_READ, McpPersonalTokenService.WORKTIME_READ),
+                "本地 Codex", Set.of(McpPersonalTokenService.LEDGER_READ, McpPersonalTokenService.WORKTIME_READ,
+                McpPersonalTokenService.LEDGER_PREPARE, McpPersonalTokenService.WORKTIME_PREPARE),
                 Set.of(), Instant.now().plus(7, ChronoUnit.DAYS)));
 
         assertTrue(created.rawToken().startsWith("wbt_"));
@@ -42,6 +43,8 @@ class McpPersonalTokenIntegrationTest extends MySqlIntegrationTestSupport {
         assertEquals(64, jdbc.queryForObject("SELECT LENGTH(token_hash) FROM mcp_personal_token WHERE id=?",
                 Integer.class, created.token().id()));
         assertEquals(created.token().id(), service.authenticate(created.rawToken()).id());
+        assertEquals("本地 Codex", service.authenticate(created.rawToken()).name());
+        assertTrue(service.authenticate(created.rawToken()).scopes().contains(McpPersonalTokenService.LEDGER_PREPARE));
         assertTrue(service.list().get(0).lastUsedAt() != null);
 
         service.revoke(created.token().id());

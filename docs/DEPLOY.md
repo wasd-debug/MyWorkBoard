@@ -41,6 +41,7 @@ ssh -i ./workboard.pem ubuntu@212.64.29.21
    - `LEGACY_ADMIN_PASSWORD`：旧数据回填的 `admin` 账户初始密码。
    - `COOKIE_SECURE`：仅 HTTPS 生产环境设为 `true`；通过服务器 IP + HTTP 访问时必须为 `false`，否则浏览器不会发送 refresh cookie，刷新页面会反复回到登录页。
    - `APP_MCP_ENABLED`（映射到 `app.mcp.enabled` 时使用）：控制只读 MCP 入口；关闭后 `/mcp` 返回 404，不影响传统页面和 Web Agent。
+   - `APP_MCP_WRITE_ENABLED`（映射到 `app.mcp.write-enabled`）：控制 MCP prepare 与 action 查询/取消工具，默认应为 `false`；关闭后只保留 read scope 工具。当前版本即使开启也不会暴露任何 MCP commit。
 
 ## 从源码构建并启动
 
@@ -58,7 +59,7 @@ sudo bash deploy/deploy.sh
 
 部署完成后，通过服务器的 80 端口访问应用。若服务器有防火墙或云安全组，请放行 TCP 80。
 
-MCP 使用与网站相同的公开地址，例如 `https://work.example.com/mcp`。Nginx 必须保持 `/mcp` 的 `proxy_buffering off`、HTTP/1.1 和长读取超时；PAT 在网站设置页创建，完整值只显示一次。详细连接与验证见 [MCP 连接指南](MCP连接指南.md)。
+MCP 使用与网站相同的公开地址，例如 `https://work.example.com/mcp`。Nginx 必须保持 `/mcp` 的 `proxy_buffering off`、HTTP/1.1 和长读取超时；PAT 在网站设置页创建，完整值只显示一次。生产环境建议先保持 `APP_MCP_WRITE_ENABLED=false`，完成独立 PAT 与站内确认验收后再灰度开启 prepare。详细连接与验证见 [MCP 连接指南](MCP连接指南.md)。
 
 ## 使用已构建镜像
 

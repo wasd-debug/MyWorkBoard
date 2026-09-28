@@ -1,7 +1,7 @@
 # 工作台 Agent 与 MCP 改造计划
 
-> 版本：v2.6（2026-09-27）
-> 状态：实施中（Phase 3C-1 已完成：只读 Streamable HTTP MCP、PAT、scope、撤销、审计和限流已落地；Web Agent 新增可选 DeepSeek 深度思考，默认关闭且思考块默认收起）
+> 版本：v2.7（2026-09-28）
+> 状态：实施中（Phase 3C-2 已完成：MCP prepare、外部 action 查询/取消和站内确认已落地；MCP commit 与 OAuth 尚未开放）
 
 > 运维修正：迁移 `V8.1` 是在 `V8` 已发布后补充的索引迁移，已有数据库升级时需开启 `FLYWAY_OUT_OF_ORDER=true`；不得删除或改写 `flyway_schema_history`。
 
@@ -9,13 +9,17 @@
 > 适用范围：现有工时、账本和 AI 工作台；任务、文件、向量库与 RAG 按后续阶段接入
 > 总原则：先把现有业务能力收敛为可验证的领域工具，再接入 Web Agent 和 MCP；每一阶段独立交付、独立验证、可通过功能开关回滚，未通过退出门禁不得进入下一阶段。
 
-## 0. 实施进度快照（2026-09-27）
+## 0. 实施进度快照（2026-09-28）
 
-当前增量完成 Phase 3C-1 只读 MCP 与深度思考：同一 Spring Boot 进程通过官方 Java MCP SDK `2.0.1` 提供 `POST /mcp` Streamable HTTP，MCP 与站内 Agent 共享 `DomainToolRegistry`，没有反向 HTTP 调用。首批只读暴露 8 个工具：`worktime.settings.get`、`worktime.records.search`、`ledger.books.list`、`ledger.overview`、`ledger.transactions.search`、`ledger.transaction.history`、`ledger.reports.summary`、`ledger.budgets.list`；`tools/list` 按 PAT scope 动态裁剪，账本结果和工具参数继续受 Token 账本范围及领域权限约束。设置页支持创建、一次性复制、列出和撤销 PAT；数据库只保存 SHA-256 hash，Token 默认 90 天、最长 366 天，支持 `mcp:ledger:read` 与 `mcp:worktime:read`，并记录调用状态、耗时和脱敏参数摘要。服务端增加每 Token 每分钟 120 次基础限流、1 MiB 请求体、30 秒协议请求超时和 366 天查询跨度上限。Vite 与 Nginx 均代理 `/mcp`，页面显示的同源地址可直接用于本地或部署环境。
+当前增量完成 Phase 3C-2：当 `mcp.write-enabled=true` 且 PAT 具备对应 prepare scope 时，MCP 可见工时新增/修改/删除和账本流水新增/修改/删除共 6 个 `*.prepare`，以及 `agent.action.get`、`agent.actions.list`、`agent.action.cancel`。prepare 继续调用同一 `DomainToolRegistry`，只生成冻结参数、预览和 pending action，不写入业务数据；结果返回真实 `actionId`、短期 `confirmationUrl` 和过期时间。外部 action 按用户和创建它的具体 PAT 双重隔离，账本范围在解析真实 `bookId` 后再次校验，越界 action 会立即取消。网站新增 `/mcp/actions/confirm` 确认页，登录用户可查看工具、风险、客户端、PAT、冻结参数和预览，并批准或拒绝；批准仅把 action 置为 `APPROVED`，当前版本不会 commit。确认 token 与 PAT 均只保存 hash，PAT 撤销后确认链接立即失效。V23 新增 `mcp_external_action`；为兼容历史库不同字符排序规则，字符串关联使用二进制等值比较，不依赖数据库默认 collation。
+
+真实协议联调已验证：工时 read+prepare PAT 的 `tools/list` 返回 2 个只读工具、3 个 prepare 和 3 个 action 工具，任何 `*.commit` 数量为 0；完整工时 prepare 返回 `needs_confirmation`，网站批准后 MCP 查询为 `APPROVED`，批准前后 `work_record` 均无新增；第二个 action 可由 MCP 取消并进入 `CANCELLED`。确认页已在桌面和 375px 移动端验证，亮暗主题无横向溢出，确认操作栏不遮挡底部导航。下一增量为 Phase 3C-3：仅开放低风险 MCP commit，补齐 commit scope、单次幂等、审批后权限/revision 复检和本地投影同步；OAuth 继续后置。
+
+上一增量完成 Phase 3C-1 只读 MCP 与深度思考：同一 Spring Boot 进程通过官方 Java MCP SDK `2.0.1` 提供 `POST /mcp` Streamable HTTP，MCP 与站内 Agent 共享 `DomainToolRegistry`，没有反向 HTTP 调用。首批只读暴露 8 个工具：`worktime.settings.get`、`worktime.records.search`、`ledger.books.list`、`ledger.overview`、`ledger.transactions.search`、`ledger.transaction.history`、`ledger.reports.summary`、`ledger.budgets.list`；`tools/list` 按 PAT scope 动态裁剪，账本结果和工具参数继续受 Token 账本范围及领域权限约束。设置页支持创建、一次性复制、列出和撤销 PAT；数据库只保存 SHA-256 hash，Token 默认 90 天、最长 366 天，支持 `mcp:ledger:read` 与 `mcp:worktime:read`，并记录调用状态、耗时和脱敏参数摘要。服务端增加每 Token 每分钟 120 次基础限流、1 MiB 请求体、30 秒协议请求超时和 366 天查询跨度上限。Vite 与 Nginx 均代理 `/mcp`，页面显示的同源地址可直接用于本地或部署环境。
 
 Web Agent 同时增加 DeepSeek 深度思考开关：仅 DeepSeek 模型显示，默认关闭并按本地用户作用域记忆选择；请求、服务端队列、重试和持久化 turn 均携带 `deepThinking`。SSE 新增 `assistant.reasoning.delta`，正文与思考内容分离保存；助手消息使用原生折叠块展示思考内容，默认收起，刷新恢复后仍保持收起。真实 DeepSeek 联调已验证开启后返回 `reasoning_content`，关闭或供应商不支持时不展示思考块。
 
-本轮协议联调已通过：双 scope `tools/list` 返回 8 个工具，工时单 scope 仅返回 2 个工时工具，`ledger.books.list` 调用返回 `completed`；无效 Token 与撤销 Token 均为 HTTP 401。前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 生成一致性和生产构建通过；Flyway V1-V22 在空库及旧工时数据升级场景通过。连接步骤见 [MCP 连接指南](MCP连接指南.md)。下一增量进入 Phase 3C-2：MCP 写入 prepare、外部 action 查询与既有站内审批衔接，commit 和 OAuth 仍分别后置。
+Phase 3C-1 协议联调已通过：双 scope `tools/list` 返回 8 个工具，工时单 scope 仅返回 2 个工时工具，`ledger.books.list` 调用返回 `completed`；无效 Token 与撤销 Token 均为 HTTP 401。连接步骤见 [MCP 连接指南](MCP连接指南.md)。
 
 当前增量完成账本删除与回收站永久清除的 R4 站内审批：`ledger.book.delete.prepare/commit` 仅允许 OWNER 创建和执行审批，prepare 展示账户、分类、商家、项目、预算、成员、角色、流水、周期任务和回收站影响数量，并固化账本 revision；批准时重新检查 OWNER、账本存在性、revision 和至少保留一个可用账本。`ledger.recycle.purge.prepare/commit` 支持单项 `ITEM` 与当前回收站快照 `BOOK` 两种范围，冻结每个项目的 `type/id/revision`，批准时先校验全部快照再在独立事务中原子清除；审批期间新增项目不会被本次审批意外清除，已恢复、消失或版本变化会冲突失败。管理页的删除账本、单项永久删除与清空回收站入口均改为创建审批并跳转审批中心，批准后刷新账本列表或回收站与本地投影。模型工具目录继续隐藏全部 R4 prepare/commit。
 
@@ -97,16 +101,18 @@ Web Agent 同时增加 DeepSeek 深度思考开关：仅 DeepSeek 模型显示�
 本次明确未实施：
 
 - 评测结果数据库留存、聚合成本告警和运营仪表盘。
-- MCP Server、PAT/OAuth、scope、站内审批与外部客户端兼容验证。
+- OAuth 2.1 + PKCE、MCP commit、MCP Inspector/Codex/WorkBuddy 正式兼容记录。
 - 文件、向量库和 RAG。
 
 后续正式增量顺序（已排期，不能遗漏）：
 
-1. 只读 MCP Server：Streamable HTTP、PAT、scope、撤销、审计、限流与 MCP Inspector/Codex/WorkBuddy 验证。
-2. MCP 写入与正式认证：prepare/commit、既有站内审批中心、OAuth 2.1 + PKCE 和外部客户端兼容回归。
-3. 现有功能稳定化：真实同步投影、并发冲突、错误回放、成本告警和灰度运行手册。
+1. 低风险 MCP commit：新增 commit scope、单次幂等、审批后权限/revision 复检与投影同步；R4 继续不开放 MCP commit。
+2. MCP 正式认证与兼容收口：OAuth 2.1 + PKCE、MCP Inspector/Codex/WorkBuddy 真实兼容回归。
+3. 现有功能稳定化：并发冲突、错误回放、成本告警和灰度运行手册。
 
 验证记录：
+
+- 2026-09-28 MCP prepare 与站内确认增量：V23 新增外部 action 与具体 PAT 绑定，新增账本/工时 prepare scope，MCP 开放 6 个 create/update/delete prepare 及 action get/list/cancel；网站批准只进入 `APPROVED`，不执行 commit。后端 `mvn test` 共 196 项，194 项通过、2 项按既有规则跳过，Flyway V1-V23、真实 MySQL、历史库混合 collation 和架构边界通过；前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过。真实协议联调覆盖 prepare、状态回查、取消、站内批准、PAT 撤销和零业务写入；确认页通过桌面与 375px 移动端亮暗主题验收。下一增量进入低风险 MCP commit、commit scope、幂等、复检和投影同步。
 
 - 2026-09-27 账本删除与永久清除 R4 审批增量：新增专用账本删除 prepare/commit、回收站单项/整本快照 purge prepare/commit 和 `LedgerDestructiveApprovalExecutor`。账本删除只允许 OWNER，展示完整影响统计并强制保留至少一个账本；回收站 BOOK 范围冻结当前项目及 revision，执行前全量校验并原子清除，不包含审批期间新增项目。管理页不再直接调用传统删除/清除接口，审批页支持账本影响和回收站冻结明细，批准后刷新账本选择或回收站本地投影。后端 `mvn test` 共 191 项，189 项通过、2 项按既有规则跳过，Flyway V1-V21、真实 MySQL、迁移回放和架构边界通过；前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过；完整审批主流程在桌面 Chromium、桌面 WebKit和 375px 移动 Chromium共 3/3 通过。下一正式阶段进入只读 MCP Server、PAT 和 scope。
 - 2026-09-27 成员与角色 R4 审批增量：新增成员/角色 R1 查询及 create/update/delete R4 prepare/commit，管理页所有写入统一创建站内审批；通用审批服务按工具名选择执行器，批准时复用现有权限、revision、审计、同步与幂等逻辑。OWNER、系统角色和被成员引用角色均有领域保护，角色权限值严格校验。后端 `mvn test` 共 187 项，185 项通过、2 项按既有规则跳过，Flyway V1-V21、真实 MySQL、迁移回放和架构边界通过；新增真实 MySQL 覆盖添加成员、重复批准幂等、创建自定义角色和用户隔离。前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过；“创建审批 → 批准 → 返回成员/角色列表”在桌面 Chromium、桌面 WebKit和 375px 移动 Chromium共 3/3 通过，并修复长表单在移动端无法滚动到提交按钮的问题。
@@ -843,22 +849,23 @@ mcp:worktime:commit
 
 实施：
 
-- 开放 prepare 工具和 MCP elicitation 兼容流程。
-- 建设网站内待审批中心和短期 confirmation URL。
+- [x] 开放首批 6 个工时/流水 prepare 工具；MCP elicitation 兼容流程继续作为客户端增强项。
+- [x] 建设外部 action 绑定、查询/列表/取消、短期 confirmation URL 和网站内确认页。
+- [x] prepare scope 与 read scope 分离；网站批准只进入 `APPROVED`，不产生业务写入。
 - 先开放 R2 commit，再按验证结果开放部分 R3。
 - 增加 OAuth 2.1 + PKCE，PAT 保持受限兼容。
 
 验证：
 
 - 无审批、伪造确认、审批过期、参数变化、重复提交均不能产生额外写入。
-- 缺少 prepare/commit scope 时分别拒绝。
+- 缺少 prepare scope 时工具不可见且调用被拒绝；commit scope 尚未提供。
 - 伪造 user ID、book ID 和 action ID 均被认证上下文拦截。
 - OAuth redirect URI、PKCE、refresh rotation 和撤销通过安全测试。
 - MCP commit 后 Web 页面和本地投影正确刷新。
 
 退出门禁：低风险写入在 Codex、WorkBuddy 中通过；高风险操作只能完成站内审批；错误写入为零。
 
-上线与回滚：使用 `mcp.write-enabled` 和 `mcp.oauth-enabled` 分开灰度；关闭写开关后保留只读 MCP。
+上线与回滚：使用 `mcp.write-enabled` 和 `mcp.oauth-enabled` 分开灰度；当前关闭写开关后会隐藏 prepare/action 工具并保留只读 MCP，且不存在任何 MCP commit 路径。
 
 ### 阶段 6：现有功能全量覆盖与稳定化
 

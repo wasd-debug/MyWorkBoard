@@ -1,6 +1,6 @@
 # Agent 功能覆盖与中文评测集
 
-> 版本：v1.6（2026-09-27）
+> 版本：v1.7（2026-09-28）
 > 用途：Phase 3A/3B 自动回归基线。当前首页真实模型已接入 R0/R1 查询和获准的 R2/R3 prepare；commit 仅能由站内确认卡片触发。
 
 ## 1. 功能覆盖矩阵
@@ -42,6 +42,7 @@
 | 成本估算 | `ai_usage` + 价格版本 | 只读元数据 | 已支持固定价与 DeepSeek 峰谷价 | 供应商账单抽样对账 |
 | DeepSeek 深度思考 | `deepThinking` + `assistant.reasoning.delta` | 会话元数据 | 已支持开关、队列/重试保持、刷新恢复和默认收起 | 多工具长链路与其他兼容供应商回归 |
 | 外部只读 MCP | `/mcp` + PAT | R1 | 8 个工时/账本工具已按 scope 暴露 | Inspector/Codex/WorkBuddy 正式兼容记录 |
+| 外部 MCP prepare | 6 个 `*.prepare` + `agent.action.*` | R2-R3 | 已按独立 scope 暴露；支持查询、取消和站内确认，零 commit | 低风险 commit、幂等与投影同步 |
 
 ## 2. 中文指令评测集
 
@@ -98,6 +99,10 @@
 | THINK-002 | 关闭深度思考后发送普通问题 | 普通 DeepSeek 请求 | 请求发送 `thinking.type=disabled`，无 reasoning 时不渲染空折叠块 |
 | MCP-R-001 | PAT 同时授予账本与工时 read scope | `tools/list` | 仅返回 8 个已批准的 R1 工具，不包含 prepare/commit |
 | MCP-R-002 | PAT 只授予工时 read scope | `tools/list` | 仅返回 `worktime.settings.get` 与 `worktime.records.search` |
+| MCP-W-001 | PAT 授予工时 read + prepare scope | `tools/list` | 返回 2 个只读、3 个工时 prepare 和 3 个 action 工具，不包含 commit |
+| MCP-W-002 | 调用完整 `worktime.record.create.prepare` | `needs_confirmation` | 返回 actionId、confirmationUrl、expiresAt，工时表不新增记录 |
+| MCP-W-003 | 网站登录用户批准 MCP action | `APPROVED` | MCP 可回查批准状态，批准本身不写业务数据，外部“已确认”字段无效 |
+| MCP-W-004 | 创建该 action 的 PAT 调用 `agent.action.cancel` | `CANCELLED` | 其他 PAT、其他用户和过期/撤销 PAT 均不可访问或取消 |
 | MCP-SEC-001 | 使用无效、过期或撤销 PAT | initialize/tools call | HTTP 401，不返回工具目录或业务数据 |
 
 ## 3. 评测通过标准
@@ -125,7 +130,7 @@
 - 当前模型工具白名单包含 R0/R1 和明确允许的 R2/R3 `*.prepare`；所有 `*.commit` 均不进入模型上下文，只能由站内按钮在 action 已批准后调用。
 - DeepSeek 峰谷档位按请求开始时刻和北京时间计算，价格由用户配置且按版本留存；页面估算不替代供应商最终账单。
 - 深度思考默认关闭；仅 DeepSeek 模型显示开关。思考内容不得混入最终正文、工具参数或审计摘要，前端必须默认收起且允许用户显式展开/收起。
-- MCP `tools/list` 必须按 PAT scope 裁剪；当前只读阶段不得出现任何 `*.prepare` 或 `*.commit`，撤销必须立即阻止下一次请求。
+- MCP `tools/list` 必须按 PAT scope 与写功能开关裁剪；read Token 不得看到 prepare，prepare Token 只能看到获准 prepare 与 action 管理工具，当前任何 Token 均不得看到 `*.commit`。撤销必须立即阻止下一次请求并使未完成确认链接失效。
 
 ## 4. 执行方式与当前结果
 

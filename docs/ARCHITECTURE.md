@@ -1,18 +1,18 @@
 # 个人效率中枢 · 整体架构设计与长期发展规划
 
-> 版本：v1.12（2026-09-27）
+> 版本：v1.13（2026-09-28）
 > 范围：基于现有 salary-sync（加班时长与时薪计算）系统，规划“身份与设置 + 工时 + 账本 + 任务 + AI + 通知 + 音乐”一体化个人效率平台的整体架构与演进路线。
 
 > 实施状态：Phase 0/Phase 1 自动化收口已完成，真机验收和周期生产运维按发布记录持续执行。本文同时包含目标架构与实施计划；除明确标注“当前实现”的内容外，其余技术组件和阶段能力均为目标状态，不代表已经上线。
 
-## 0. 当前实施快照（2026-09-27）
+## 0. 当前实施快照（2026-09-28）
 
 | 阶段 | 状态 | 结论 |
 |---|---|---|
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
 | Phase 2 任务 | 未启动 | 只有禁用导航占位，无领域模块、数据表和页面 |
-| Phase 3A-D Agent/MCP | Phase 3A/3B/3D 核心闭环，Phase 3C-1 完成 | Web Agent、受控写入和 R4 审批已落地；只读 Streamable HTTP MCP、PAT、scope、撤销、审计与限流已上线本地环境，下一步接入 MCP prepare 与站内审批 |
+| Phase 3A-D Agent/MCP | Phase 3A/3B/3D 核心闭环，Phase 3C-2 完成 | Web Agent、受控写入和 R4 审批已落地；MCP 已支持只读、PAT、独立 prepare scope、外部 action 查询/取消和站内确认，尚未开放 commit 与 OAuth |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
 | Phase 6 打磨 | 部分提前实现 | 已有响应式布局、主题、共享账本、自动视觉/无障碍和恢复演练；PWA、搜索及完整可观测体系未实现 |
@@ -777,6 +777,8 @@ Future 横向增量：F1 设置/资料 → F2 Redis/RabbitMQ/任务平台 → F3
 | P2 | Qdrant、MinIO、Meilisearch、推送和可观测平台 | 影响体验，不阻塞核心账本/工时 | 按对应 Phase 引入 |
 
 ### 12.1.1 当前验证记录
+
+2026-09-28 MCP prepare 与站内确认增量：V23 新增 `mcp_external_action`，PAT 增加账本/工时 prepare scope；MCP 开放 6 个 create/update/delete prepare 和 3 个 action 管理工具，但 `.commit` 数量保持为 0。后端 `mvn test` 共 196 项，194 项通过、2 项按既有规则跳过，Flyway V1-V23、真实 MySQL、历史库混合 collation 和架构边界通过；前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过。真实协议联调覆盖 prepare、站内批准、状态回查、取消、PAT 撤销和零业务写入；确认页通过桌面与 375px 移动端亮暗主题验收。
 
 2026-09-27 回收站与导入导出基础增量：后端 `mvn clean test` 共 179 项，177 项通过、2 项按既有规则跳过，Flyway V1-V20、真实 MySQL 和架构边界通过；新增数据生命周期集成测试 3/3，覆盖恢复 revision 冲突、跨用户隔离、导入预览零写入与 CSV 公式注入防护。前端 Node 49/49、sync-engine 8/8、类型检查、OpenAPI 一致性和生产构建通过；回收站恢复、受认证导出和只读导入预览在桌面 Chromium、桌面 WebKit与 375px 移动 Chromium 共 9/9 通过。
 
