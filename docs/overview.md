@@ -1,7 +1,7 @@
 # 个人工作台项目总览
 
 > 状态日期：2026-09-28
-> 当前主线：Phase 3B/3D Web Agent 核心闭环已完成；Phase 3C-3 已交付独立 MCP commit scope、R2 单次提交、重复调用结果回放和账本同步 oplog。R3/R4 仍禁止 MCP commit；下一增量进入 OAuth 2.1 + PKCE 与外部客户端兼容收口。公共/模块设置拆分、用户资料、Redis/RabbitMQ、站内信与 NAS 音乐已形成独立 Future F1-F5 路线图，不与当前 Agent/MCP 收口混为一次交付
+> 当前主线：Phase 3B/3D Web Agent 核心闭环已完成；Phase 3C-4 已交付 MCP OAuth 2.1 + PKCE、动态客户端注册、refresh 轮换、授权管理，以及此前的 R2 单次提交和账本同步 oplog。R3/R4 仍禁止 MCP commit；下一步是用户手工完成 MCP Inspector、Codex 和 WorkBuddy 真实客户端兼容验收。公共/模块设置拆分、用户资料、Redis/RabbitMQ、站内信与 NAS 音乐已形成独立 Future F1-F5 路线图，不与当前 Agent/MCP 收口混为一次交付
 
 ## 项目定位
 
@@ -75,13 +75,15 @@
 ### Phase 2-6
 
 - **Phase 2 任务管理：未启动。** 导航只有禁用占位，没有 task/file/notification 模块或表结构。
-- **Phase 3A-D Agent/MCP：Phase 3A/3B Web 核心闭环完成，Phase 3C-3 已完成。** 会话、队列、SSE、模型连接、Usage 与 Trace 已落地；首页支持 DeepSeek 深度思考开关及默认收起的思考块。MCP 通过 `/mcp` 暴露 8 个只读工具、首批 6 个 prepare、3 个 action 管理工具，并在独立 commit scope 下增加 `agent.action.commit`；当前只允许 R2 新增工时和新增流水，R3/R4 与 OAuth 尚未开放。
+- **Phase 3A-D Agent/MCP：Phase 3A/3B Web 核心闭环完成，Phase 3C-4 已完成。** 会话、队列、SSE、模型连接、Usage 与 Trace 已落地；首页支持 DeepSeek 深度思考开关及默认收起的思考块。MCP 通过 `/mcp` 暴露按 scope 裁剪的 read/prepare/action 工具，并在独立 commit scope 下允许 R2 新增工时和新增流水；PAT 与 OAuth 2.1 + PKCE 均可认证，R3/R4 commit 继续关闭。
 - **Phase 4 文件/RAG：未启动。** 尚无 MinIO/NAS 文件域、Tika、Qdrant 和知识库。
 - **Phase 5 跨域洞察：未启动。** 只有 `domain_event` 预留表，无事件发布/消费、`report_fact`、`report_snapshot` 或洞察页面。
 - **Phase 6 持续打磨：部分能力提前实现。** 已有响应式布局、主题、共享账本和可重复恢复演练；PWA、全局搜索和完整可观测体系尚未实现。
 - **Future F1-F5：已完成规划，未启动编码。** 依次拆分公共/模块设置和用户资料，建设 Redis/RabbitMQ/outbox/任务运行平台，上线站内信与账本邀请，再基于 NAS/file 能力建设独立音乐模块。详见 [后续特性路线图](后续特性路线图.md)。
 
 ## 当前验证基线
+
+2026-09-28 MCP OAuth 增量：V25 新增 OAuth 客户端、用户授权和一次性授权码表，并为 MCP token 增加 PAT/OAuth 类型、grant 绑定和 refresh hash。服务端实现 Protected Resource Metadata、Authorization Server Metadata、DCR、Authorization Code + PKCE S256、RFC 8707 resource 精确绑定、1 小时 access token、30 天 refresh token 轮换和 grant 撤销；设置页增加已授权应用列表，新增独立授权页面。纯 HTTP 联调通过 DCR、authorize 302、站内授权、token 交换、MCP initialize/tools/list、scope 裁剪、旧 access/refresh 失效和撤销即时失效。后端全量 203 项中 201 项通过、2 项按既有规则跳过；前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过。真实 MCP Inspector、Codex、WorkBuddy 与页面视觉操作按项目规则留给用户手工验收。
 
 2026-09-28 MCP 低风险 commit 增量：V24 为外部 action 增加 commit 状态、结果和时间；PAT 新增账本/工时 commit scope，且必须与同领域 prepare scope 同时授予。`agent.action.commit` 只接受原 PAT 创建、已在网站批准且风险为 R2 的新增工时或新增流水 action；提交前重新校验用户、PAT、scope、账本范围、权限和 action 状态，重复调用返回首次结果。后端 `mvn test` 共 199 项，197 项通过、2 项按既有规则跳过；真实 MySQL 定向测试 11/11 通过，覆盖账本/工时实际写入、未批准、缺 scope、R3 拒绝、单次幂等和 Flyway V24，账本写入同时验证 `ledger_sync_oplog`。纯 HTTP/MCP 联调确认工时 read/prepare/commit PAT 可见 9 个工具、没有领域 commit，批准后只写入一条记录，重复提交返回 `replayed=true`，R3 获批后仍拒绝提交。前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过；浏览器操作与视觉检查转入 [`前端手工检查清单.md`](前端手工检查清单.md)，等待用户手工验收。
 
@@ -142,7 +144,7 @@
 1. 完成 Android Chrome 与 iOS Safari 真机验收记录。
 2. 确认 MoneyWiz 与外部账单源范围。
 3. 将恢复脚本纳入季度生产运维并持续留存发布/回滚记录。
-4. 继续 [工作台的 Agent 改造计划](工作台的Agent改造计划.md)：下一增量建设 OAuth 2.1 + PKCE，并用 MCP Inspector、Codex 和 WorkBuddy 完成正式兼容收口；R3/R4 commit 继续关闭。连接方法见 [MCP 连接指南](MCP连接指南.md)。
+4. 继续 [工作台的 Agent 改造计划](工作台的Agent改造计划.md)：按 [前端手工检查清单](前端手工检查清单.md) 使用 MCP Inspector、Codex 和 WorkBuddy 完成真实 OAuth 连接与兼容记录；R3/R4 commit 继续关闭。连接方法见 [MCP 连接指南](MCP连接指南.md)。
 5. Phase 2 任务域与现有工时/账本 Agent 可分别推进；任务能力完成后再注册为新的 Domain Tool，不阻塞 Phase 3A-D。
 6. 按 [后续特性路线图](后续特性路线图.md) 的 F0 先冻结设置归属、事件信封、邀请/任务状态机与 NAS 接入决策，再分别启动 F1 设置/资料和 F2 异步基础设施；站内信与音乐不得绕过这些前置门禁。
 

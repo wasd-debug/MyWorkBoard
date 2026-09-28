@@ -45,6 +45,8 @@ services:
       AI_ALLOW_PRIVATE_NETWORK: ${AI_ALLOW_PRIVATE_NETWORK:-false}
       APP_MCP_ENABLED: ${APP_MCP_ENABLED:-true}
       APP_MCP_WRITE_ENABLED: ${APP_MCP_WRITE_ENABLED:-false}
+      APP_MCP_OAUTH_ENABLED: ${APP_MCP_OAUTH_ENABLED:-false}
+      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-}
       LLM_ENDPOINT: ${LLM_ENDPOINT:-https://api.deepseek.com/chat/completions}
       LLM_MODEL: ${LLM_MODEL:-deepseek-flash}
       TZ: Asia/Shanghai

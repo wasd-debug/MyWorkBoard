@@ -1,9 +1,9 @@
 # 部署说明
 
-> 状态日期：2026-09-18
+> 状态日期：2026-09-28
 > SSH 规则：所有连接必须使用仓库根目录的 `workboard.pem`，禁止密码认证。
 
-本项目通过 Docker Compose 运行三个服务：MySQL、Spring Boot 后端和 Nginx 前端。前端对外提供 80 端口，并将 `/api` 与 MCP Streamable HTTP `/mcp` 请求转发到后端。
+本项目通过 Docker Compose 运行三个服务：MySQL、Spring Boot 后端和 Nginx 前端。前端对外提供 80 端口，并将 `/api`、MCP Streamable HTTP `/mcp`、`/.well-known/*` 和 OAuth 协议端点转发到后端。
 
 ## 已配置服务器
 
@@ -41,7 +41,9 @@ ssh -i ./workboard.pem ubuntu@212.64.29.21
    - `LEGACY_ADMIN_PASSWORD`：旧数据回填的 `admin` 账户初始密码。
    - `COOKIE_SECURE`：仅 HTTPS 生产环境设为 `true`；通过服务器 IP + HTTP 访问时必须为 `false`，否则浏览器不会发送 refresh cookie，刷新页面会反复回到登录页。
    - `APP_MCP_ENABLED`（映射到 `app.mcp.enabled` 时使用）：控制只读 MCP 入口；关闭后 `/mcp` 返回 404，不影响传统页面和 Web Agent。
-   - `APP_MCP_WRITE_ENABLED`（映射到 `app.mcp.write-enabled`）：控制 MCP prepare 与 action 查询/取消工具，默认应为 `false`；关闭后只保留 read scope 工具。当前版本即使开启也不会暴露任何 MCP commit。
+   - `APP_MCP_WRITE_ENABLED`（映射到 `app.mcp.write-enabled`）：控制 MCP prepare、action 查询/取消和 R2 `agent.action.commit`，默认应为 `false`；关闭后只保留 read scope 工具。R3/R4 commit 不受此开关放宽，始终拒绝。
+   - `APP_MCP_OAUTH_ENABLED`（映射到 `app.mcp.oauth-enabled`）：控制 OAuth discovery、DCR、authorize/token/revoke、站内授权管理和 OAuth access token 认证；默认 `false`，关闭后既有 OAuth token 也不能访问 `/mcp`，PAT 不受影响。
+   - `APP_PUBLIC_BASE_URL`（映射到 `app.public-base-url`）：网站对外公开根地址，例如 `https://work.example.com`，不得带结尾 `/`。生产启用 OAuth 时必须配置，用于 issuer、resource metadata、授权地址和 MCP `WWW-Authenticate`；禁止配置成容器内地址或 HTTP 生产地址。
 
 ## 从源码构建并启动
 
@@ -59,7 +61,7 @@ sudo bash deploy/deploy.sh
 
 部署完成后，通过服务器的 80 端口访问应用。若服务器有防火墙或云安全组，请放行 TCP 80。
 
-MCP 使用与网站相同的公开地址，例如 `https://work.example.com/mcp`。Nginx 必须保持 `/mcp` 的 `proxy_buffering off`、HTTP/1.1 和长读取超时；PAT 在网站设置页创建，完整值只显示一次。生产环境建议先保持 `APP_MCP_WRITE_ENABLED=false`，完成独立 PAT、站内确认、R2 commit 幂等和投影同步验收后再灰度开启；该开关会同时控制 prepare、commit 和 action 工具。详细连接与验证见 [MCP 连接指南](MCP连接指南.md)。
+MCP 使用与网站相同的公开地址，例如 `https://work.example.com/mcp`。Nginx 必须保持 `/mcp` 的 `proxy_buffering off`、HTTP/1.1 和长读取超时，并转发 `/.well-known/*`、`/oauth/authorize`、`/oauth/token`、`/oauth/register`、`/oauth/revoke`。PAT 在网站设置页创建，完整值只显示一次；OAuth 正式接入必须同时设置 `APP_MCP_OAUTH_ENABLED=true` 和正确的 HTTPS `APP_PUBLIC_BASE_URL`。生产环境建议先保持 `APP_MCP_WRITE_ENABLED=false`，先验证只读 OAuth，再灰度开放 prepare/R2 commit。详细连接与验证见 [MCP 连接指南](MCP连接指南.md)。
 
 ## 使用已构建镜像
 

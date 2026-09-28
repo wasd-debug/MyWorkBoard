@@ -44,6 +44,7 @@
 | 外部只读 MCP | `/mcp` + PAT | R1 | 8 个工时/账本工具已按 scope 暴露 | Inspector/Codex/WorkBuddy 正式兼容记录 |
 | 外部 MCP prepare | 6 个 `*.prepare` + `agent.action.get/list/cancel` | R2-R3 | 已按独立 scope 暴露；支持查询、取消和站内确认 | Inspector/Codex/WorkBuddy 真实兼容记录 |
 | 外部 MCP 低风险提交 | `agent.action.commit` | R2 | 已按独立 commit scope 开放新增工时/新增流水；绑定原 PAT、站内批准、单次幂等，账本写入产生同步 oplog | Inspector/Codex/WorkBuddy 真实兼容与故障恢复 |
+| 外部 MCP OAuth | OAuth 2.1 Authorization Code + PKCE | 认证 | 已支持 metadata、DCR、S256、resource、refresh 轮换、账本范围和 grant 撤销 | Inspector/Codex/WorkBuddy 真实授权回调与版本兼容记录 |
 
 ## 2. 中文指令评测集
 
@@ -105,6 +106,10 @@
 | MCP-W-003 | 网站登录用户批准 MCP action | `APPROVED` | MCP 可回查批准状态，批准本身不写业务数据，外部“已确认”字段无效 |
 | MCP-W-004 | 创建该 action 的 PAT 调用 `agent.action.cancel` | `CANCELLED` | 其他 PAT、其他用户和过期/撤销 PAT 均不可访问或取消 |
 | MCP-SEC-001 | 使用无效、过期或撤销 PAT | initialize/tools call | HTTP 401，不返回工具目录或业务数据 |
+| MCP-OAUTH-001 | 公共客户端使用 Authorization Code + PKCE S256 | authorize/token | 回调地址精确匹配，授权码只使用一次，access token 可调用 scope 内工具 |
+| MCP-OAUTH-002 | 使用 refresh token 刷新 | token | 返回新 access/refresh，旧 access 和旧 refresh 立即失效，scope 不得扩大 |
+| MCP-OAUTH-003 | 用户在设置页撤销外部应用 | grants/revoke | grant 下全部 access/refresh 立即失效，PAT 不受影响 |
+| MCP-OAUTH-004 | 伪造 redirect_uri、resource、plain PKCE 或扩大 scope | authorize/token | 请求被拒绝，不签发 token，不产生 MCP 业务访问 |
 
 ## 3. 评测通过标准
 

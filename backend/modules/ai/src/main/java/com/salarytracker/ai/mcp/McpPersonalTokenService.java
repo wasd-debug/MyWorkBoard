@@ -50,7 +50,7 @@ public class McpPersonalTokenService {
     }
 
     public List<TokenView> list() {
-        return jdbc.query("SELECT * FROM mcp_personal_token WHERE user_id=? ORDER BY created_at DESC",
+        return jdbc.query("SELECT * FROM mcp_personal_token WHERE user_id=? AND token_type='PAT' ORDER BY created_at DESC",
                 (result, rowNum) -> map(result), currentUser.id());
     }
 
@@ -74,7 +74,7 @@ public class McpPersonalTokenService {
     }
 
     public void revoke(String id) {
-        if (jdbc.update("UPDATE mcp_personal_token SET revoked_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=? AND revoked_at IS NULL",
+        if (jdbc.update("UPDATE mcp_personal_token SET revoked_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=? AND token_type='PAT' AND revoked_at IS NULL",
                 id, currentUser.id()) != 1) {
             throw new IllegalArgumentException("Token 不存在或已经撤销");
         }
@@ -82,6 +82,10 @@ public class McpPersonalTokenService {
 
     @Transactional
     public AuthenticatedToken authenticate(String raw) {
+        return authenticate(raw, true);
+    }
+
+    public AuthenticatedToken authenticate(String raw, boolean oauthEnabled) {
         if (raw == null || raw.isBlank()) throw new UnauthorizedException("MCP Token 缺失");
         List<TokenRow> rows = jdbc.query("""
                 SELECT * FROM mcp_personal_token
@@ -89,6 +93,9 @@ public class McpPersonalTokenService {
                 """, (result, rowNum) -> row(result), hash(raw.trim()));
         if (rows.isEmpty()) throw new UnauthorizedException("MCP Token 无效、已过期或已撤销");
         TokenRow row = rows.get(0);
+        if ("OAUTH".equals(row.tokenType()) && !oauthEnabled) {
+            throw new UnauthorizedException("MCP OAuth 当前未启用");
+        }
         CurrentUser user = authService.loadUser(row.userId());
         if (user == null) throw new UnauthorizedException("Token 所属用户不可用");
         jdbc.update("UPDATE mcp_personal_token SET last_used_at=CURRENT_TIMESTAMP WHERE id=?", row.id());
@@ -115,7 +122,7 @@ public class McpPersonalTokenService {
                 parameterSummary, truncate(resultSummary, 500), errorCode);
     }
 
-    private Set<String> normalizeScopes(Set<String> requested) {
+    Set<String> normalizeScopes(Set<String> requested) {
         Set<String> scopes = requested == null ? Set.of() : new LinkedHashSet<>(requested);
         if (scopes.isEmpty()) throw new IllegalArgumentException("至少选择一个 MCP scope");
         if (!ALLOWED_SCOPES.containsAll(scopes)) throw new IllegalArgumentException("包含不支持的 MCP scope");
@@ -128,7 +135,7 @@ public class McpPersonalTokenService {
         return Set.copyOf(scopes);
     }
 
-    private Set<String> normalizeBookIds(Set<String> requested, long userId, Set<String> scopes) {
+    Set<String> normalizeBookIds(Set<String> requested, long userId, Set<String> scopes) {
         if (!scopes.contains(LEDGER_READ) && !scopes.contains(LEDGER_PREPARE)
                 && !scopes.contains(LEDGER_COMMIT)) return Set.of();
         Set<String> ids = requested == null ? Set.of() : new LinkedHashSet<>(requested);
@@ -159,7 +166,8 @@ public class McpPersonalTokenService {
     }
 
     private TokenRow row(ResultSet result) throws SQLException {
-        return new TokenRow(result.getString("id"), result.getString("name"), result.getLong("user_id"), readSet(result.getString("scopes")),
+        return new TokenRow(result.getString("id"), result.getString("name"), result.getLong("user_id"),
+                result.getString("token_type"), readSet(result.getString("scopes")),
                 readSet(result.getString("book_ids")));
     }
 
@@ -204,5 +212,6 @@ public class McpPersonalTokenService {
     public record TokenView(String id, String name, String tokenHint, Set<String> scopes, Set<String> bookIds,
                             Instant expiresAt, Instant revokedAt, Instant lastUsedAt, Instant createdAt) { }
     public record AuthenticatedToken(String id, String name, CurrentUser user, Set<String> scopes, Set<String> bookIds) { }
-    private record TokenRow(String id, String name, long userId, Set<String> scopes, Set<String> bookIds) { }
+    private record TokenRow(String id, String name, long userId, String tokenType,
+                            Set<String> scopes, Set<String> bookIds) { }
 }

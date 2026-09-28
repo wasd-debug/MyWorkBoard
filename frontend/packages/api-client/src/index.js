@@ -62,6 +62,10 @@ export async function apiRevokeMcpToken(id) { return data(await api.delete(`/api
 export async function apiGetMcpActionConfirmation(token) { return data(await api.get('/api/v1/mcp/actions/confirmation', { params: { token } })) }
 export async function apiApproveMcpActionConfirmation(token) { return data(await api.post('/api/v1/mcp/actions/confirmation/approve', null, { params: { token } })) }
 export async function apiRejectMcpActionConfirmation(token) { return data(await api.post('/api/v1/mcp/actions/confirmation/reject', null, { params: { token } })) }
+export async function apiPreviewMcpOAuthAuthorization(params) { return data(await api.get('/api/v1/mcp/oauth/authorization', { params })) }
+export async function apiDecideMcpOAuthAuthorization(payload) { return data(await api.post('/api/v1/mcp/oauth/authorization/decision', payload)) }
+export async function apiListMcpOAuthGrants() { return data(await api.get('/api/v1/mcp/oauth/grants')) }
+export async function apiRevokeMcpOAuthGrant(id) { return data(await api.delete(`/api/v1/mcp/oauth/grants/${encodeURIComponent(id)}`)) }
 
 export async function apiStreamAgentTurn(sessionId, payload, onEvent, signal) {
   const request = () => fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/turns`, {

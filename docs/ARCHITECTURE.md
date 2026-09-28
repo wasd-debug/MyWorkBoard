@@ -12,7 +12,7 @@
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
 | Phase 2 任务 | 未启动 | 只有禁用导航占位，无领域模块、数据表和页面 |
-| Phase 3A-D Agent/MCP | Phase 3A/3B/3D 核心闭环，Phase 3C-3 完成 | Web Agent、受控写入和 R4 审批已落地；MCP 已支持只读、PAT、独立 prepare/commit scope、R2 单次提交和结果回放，R3/R4 commit 与 OAuth 尚未开放 |
+| Phase 3A-D Agent/MCP | Phase 3A/3B/3D 核心闭环，Phase 3C-4 完成 | Web Agent、受控写入和 R4 审批已落地；MCP 已支持只读、PAT、OAuth 2.1 + PKCE、独立 prepare/commit scope、R2 单次提交和结果回放，R3/R4 commit 继续关闭 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
 | Phase 6 打磨 | 部分提前实现 | 已有响应式布局、主题、共享账本、自动视觉/无障碍和恢复演练；PWA、搜索及完整可观测体系未实现 |
@@ -504,7 +504,7 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 
 ### 8.2 MCP 对外接入
 
-- 同一 Spring Boot 应用提供 Streamable HTTP MCP Server，PAT 用于首轮兼容验证，OAuth 2.1 + PKCE 用于正式远程接入。
+- 同一 Spring Boot 应用提供 Streamable HTTP MCP Server；PAT 保留本地与兼容验证，正式远程接入支持 OAuth 2.1 Authorization Code + PKCE S256、动态客户端注册、resource indicator、refresh 轮换和授权撤销。
 - MCP 默认只读，账本与工时分别设置 read、prepare 和 commit scope。
 - 高风险写操作返回站内审批链接，用户登录网站确认后才允许 commit。
 - 至少使用 MCP Inspector、Codex 和 WorkBuddy 完成真实连接验证，保存客户端版本、传输方式、认证方式和已知限制。
@@ -650,7 +650,7 @@ Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后
 
 - [~] 已新增 `ai` Maven 模块、Domain Tool 注册表、风险分级、统一结果、action JDBC repository 和 V12 Flyway 表
 - [~] 已实现工时、账本、账户、分类、流水、报表、预算、周期任务、回收站、成员和角色 R1 查询；已实现工时记录/设置、七类流水、父级批量账务、账本基础资料、预算、周期任务、回收站恢复和导出 prepare/commit、零写入导入预览，以及导入确认、成员/角色、账本删除和永久清除 R4 审批执行器；删除/恢复复用软删除、版本历史、同步和审计
-- [~] 已覆盖当前用户、authority、工具目录过滤、未知字段、重名注册、过期、用户隔离、重复 commit、服务端预览和模块边界；真实 MySQL Testcontainers 与 Flyway V1-V24 已通过，MCP 只读、prepare 和 R2 commit 已在本地启用
+- [~] 已覆盖当前用户、authority、工具目录过滤、未知字段、重名注册、过期、用户隔离、重复 commit、服务端预览和模块边界；真实 MySQL Testcontainers 与 Flyway V1-V25 已通过，MCP 只读、prepare、R2 commit 和 OAuth 已在本地启用
 - **验收**：每个工具具备成功、缺参、无权限、冲突和重复提交测试；prepare 不产生业务写入。
 
 ### Phase 3B —— Web 工作台 Agent
@@ -669,11 +669,11 @@ Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后
 
 - [x] Streamable HTTP MCP Server，Domain Tool 到 MCP Tool 的单一适配层
 - [x] PAT、read/prepare/commit scope、撤销、账本限制、审计和限流已完成；commit 当前严格限制为原 PAT 的 R2 新增操作
-- [ ] OAuth 2.1 + PKCE 和外部客户端高风险 confirmation URL；Web 站内审批基础已先行落地
+- [x] OAuth 2.1 Authorization Code + PKCE S256、DCR、resource metadata、refresh 轮换、grant 撤销和站内授权管理；高风险 confirmation URL 继续复用站内审批
 - [ ] MCP Inspector、Codex 和 WorkBuddy 真实兼容验证
 - **验收**：默认只读；未审批、过期、重放、伪造用户和越权账本均不能写入；真实客户端完成查询和低风险写入。
 
-当前实现使用官方 Java MCP SDK `2.0.1`、协议版本 `2025-06-18` 和 Servlet Streamable HTTP。`POST /mcp` 在后端逐请求校验 PAT，并按 scope 选择只读工具目录；Vite 与 Nginx 同源代理 `/mcp`。完整连接与验收步骤见 [`MCP连接指南.md`](MCP连接指南.md)。
+当前实现使用官方 Java MCP SDK `2.0.1`、协议版本 `2025-06-18` 和 Servlet Streamable HTTP。`POST /mcp` 在后端逐请求校验 PAT 或 OAuth access token，并按 scope 选择工具目录；Vite 与 Nginx 同源代理 `/mcp`、`/.well-known/*` 和 OAuth 协议端点。OAuth token 与 PAT 共用领域权限、账本范围、限流和审计，但分别管理生命周期。完整连接与验收步骤见 [`MCP连接指南.md`](MCP连接指南.md)。
 
 ### Phase 3D —— 现有功能全量覆盖与稳定化
 
@@ -780,6 +780,8 @@ Future 横向增量：F1 设置/资料 → F2 Redis/RabbitMQ/任务平台 → F3
 ### 12.1.1 当前验证记录
 
 2026-09-28 MCP 低风险 commit 增量：V24 记录外部 commit 状态、结果和时间；账本/工时 commit scope 必须与对应 prepare scope 同时授予。`agent.action.commit` 仅提交 R2 新增流水和新增工时，R3/R4 即使获批也拒绝；调用前复检用户、具体 PAT、scope、账本范围、action 状态和领域权限。后端全量 199 项中 197 项通过、2 项按既有规则跳过；真实 MySQL 定向测试 11/11 通过，覆盖账本与工时实际写入、重复提交结果回放、未批准、缺少 scope、R3 拒绝、Flyway V24 和账本 `ledger_sync_oplog`。纯 HTTP/MCP 联调覆盖 initialize、tools/list、批准前拒绝、站内批准、首次/重复 commit、数据库单条写入和 R3 禁止提交。前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 与生产构建通过；浏览器验收按仓库规则转为用户手工检查，不作为自动化已通过项。
+
+2026-09-28 MCP OAuth 增量：V25 增加 OAuth client、grant、一次性 authorization code 和 token 生命周期字段；实现 OAuth 2.1 Authorization Code + PKCE S256、DCR、resource metadata、RFC 8707 resource 精确绑定、refresh 轮换与 grant 撤销。PAT/OAuth token 共用 MCP scope、账本范围、限流和审计，但列表及撤销生命周期隔离。纯 HTTP 联调覆盖 authorize 302、站内授权、token 交换、initialize/tools/list、scope 裁剪、旧 token 失效和撤销即时生效。后端全量 203 项中 201 项通过、2 项跳过；前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 和生产构建通过；真实客户端 UI 与视觉验收保留为用户手工检查。
 
 2026-09-28 MCP prepare 与站内确认增量：V23 新增 `mcp_external_action`，PAT 增加账本/工时 prepare scope；MCP 开放 6 个 create/update/delete prepare 和 3 个 action 管理工具，但 `.commit` 数量保持为 0。后端 `mvn test` 共 196 项，194 项通过、2 项按既有规则跳过，Flyway V1-V23、真实 MySQL、历史库混合 collation 和架构边界通过；前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过。真实协议联调覆盖 prepare、站内批准、状态回查、取消、PAT 撤销和零业务写入；确认页通过桌面与 375px 移动端亮暗主题验收。
 

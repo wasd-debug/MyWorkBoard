@@ -31,7 +31,7 @@
         <div v-if="showBasis" class="page-toolbar"><div class="basis-seg" aria-label="工资口径"><button :class="{ on: basis === 'pre' }" type="button" @click="setBasis('pre')">税前</button><button :class="{ on: basis === 'post' }" type="button" @click="setBasis('post')">税后</button></div></div>
         <div class="page-content"><router-view v-slot="{ Component }"><transition name="page" mode="out-in"><component :is="Component" :key="route.fullPath" /></transition></router-view></div>
       </main>
-      <BottomNav v-if="!isHome" />
+      <BottomNav v-if="!isHome && !isExternalFlow" />
     </template>
   </div>
 </template>
@@ -67,8 +67,9 @@ const palettes = [
 const currentPalette = computed(() => palettes.find(item => item.key === store.accent) || palettes[0])
 const userInitial = computed(() => String(store.authUser?.nickname || store.authUser?.username || '我').slice(0, 1))
 const isLedger = computed(() => route.path.startsWith('/ledger'))
-const moduleLabel = computed(() => isLedger.value ? '账本' : route.path.startsWith('/approvals') ? '审批中心' : route.path === '/settings' ? '设置' : '工时')
-const moduleNav = computed(() => isLedger.value ? ledgerNavigation : route.path === '/settings' || route.path.startsWith('/approvals') ? [] : worktimeNavigation)
+const isExternalFlow = computed(() => route.path === '/oauth/consent' || route.path === '/mcp/actions/confirm')
+const moduleLabel = computed(() => isLedger.value ? '账本' : route.path.startsWith('/approvals') ? '审批中心' : route.path === '/settings' ? '设置' : isExternalFlow.value ? '外部授权' : '工时')
+const moduleNav = computed(() => isLedger.value ? ledgerNavigation : route.path === '/settings' || route.path.startsWith('/approvals') || isExternalFlow.value ? [] : worktimeNavigation)
 function isNavActive(item) { return navigationItemIsActive(route, item) }
 function selectPalette(key) { store.setAccent(key); themeMenuOpen.value = false }
 function clearNavigationTimers() { window.clearTimeout(navigationFinishTimer); window.clearTimeout(navigationSafetyTimer) }

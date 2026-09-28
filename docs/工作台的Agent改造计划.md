@@ -1,7 +1,7 @@
 # 工作台 Agent 与 MCP 改造计划
 
-> 版本：v2.8（2026-09-28）
-> 状态：实施中（Phase 3C-3 已完成：MCP R2 低风险 commit、独立 scope、单次幂等与账本投影同步已落地；R3/R4 commit 与 OAuth 尚未开放）
+> 版本：v2.9（2026-09-28）
+> 状态：实施中（Phase 3C-4 已完成：MCP OAuth 2.1 Authorization Code + PKCE、动态客户端注册、refresh 轮换与授权撤销已落地；R3/R4 commit 继续关闭，Inspector/Codex/WorkBuddy 真实客户端验收待用户执行）
 
 > 运维修正：迁移 `V8.1` 是在 `V8` 已发布后补充的索引迁移，已有数据库升级时需开启 `FLYWAY_OUT_OF_ORDER=true`；不得删除或改写 `flyway_schema_history`。
 
@@ -11,9 +11,13 @@
 
 ## 0. 实施进度快照（2026-09-28）
 
-当前增量完成 Phase 3C-3：PAT 新增 `mcp:ledger:commit`、`mcp:worktime:commit`，且必须与同领域 prepare scope 同时授予；MCP 使用通用 `agent.action.commit`，不直接暴露任何领域 `*.commit`。当前只允许 `ledger.transaction.create.prepare` 和 `worktime.record.create.prepare` 两个 R2 action 在网站批准后提交，修改、删除等 R3 及全部 R4 继续拒绝。提交前重新校验用户、创建 action 的具体 PAT、commit scope、账本范围、action 状态和领域权限；领域服务继续负责资源存在性、revision 和事务规则。首次结果持久化到 V24 扩展的 `mcp_external_action`，重复调用返回首次结果并标记 replay，不产生第二次写入；若进程在领域事务完成后、结果落表前中断，可根据 pending action 终态恢复结果。账本新增继续写入现有 `ledger_sync_oplog`，传统页面和 IndexedDB 可沿用既有增量同步链刷新。
+当前增量完成 Phase 3C-4：新增 OAuth 2.1 Authorization Code + PKCE S256，提供 Protected Resource Metadata、Authorization Server Metadata、Dynamic Client Registration、authorize/token/revoke 端点和站内授权页。OAuth access token 有效期 1 小时，refresh token 有效期 30 天并在每次刷新时轮换；授权码只保存 SHA-256 hash、5 分钟有效且只能消费一次，access/refresh token 同样只保存 hash。回调地址按注册值精确匹配，只接受 HTTPS、环回 HTTP 或安全自定义 scheme；RFC 8707 `resource` 必须精确等于当前站点 `/mcp`。授权按用户、客户端、scope 和账本范围持久化，设置页可查看及撤销，撤销后该 grant 下的 access/refresh token 立即失效。公共 `/oauth/authorize` 只校验客户端、scope、resource 和 PKCE 后跳转前端授权页，不依赖浏览器导航携带站内 JWT；用户与账本权限在登录后的站内 API 再读取。
 
-真实 MySQL 定向验证已覆盖账本与工时 R2 实际写入、重复 commit、未批准、缺少 scope、R3 拒绝和 Flyway V24；账本写入同时验证同步 oplog。全量后端 `mvn test` 共 199 项，197 项通过、2 项按既有规则跳过。纯 HTTP/MCP 联调进一步验证 `initialize`、`tools/list`、新增工时 prepare、批准前拒绝、站内批准、首次 commit、重复 commit 回放、数据库单条写入和 R3 禁止提交。前端浏览器检查不再由自动化 Agent 执行，已建立 [`前端手工检查清单.md`](前端手工检查清单.md)，本增量的设置页 scope、确认页批准说明、提交完成/冲突/失败状态等待用户手工验收。下一增量进入 OAuth 2.1 + PKCE 与 MCP Inspector/Codex/WorkBuddy 正式兼容收口。
+V25 新增 `mcp_oauth_client`、`mcp_grant`、`mcp_oauth_code`，并扩展 `mcp_personal_token` 复用既有 MCP scope、账本范围、限流和审计。PAT 与 OAuth token 用 `token_type` 隔离，OAuth token 不出现在 PAT 列表，关闭 `APP_MCP_OAUTH_ENABLED` 后已有 OAuth token 也无法访问 `/mcp`。本地纯 HTTP 联调已验证 DCR、无 JWT 的 authorize 302、登录后授权预览/批准、授权码交换、OAuth access token initialize/tools/list、worktime-only scope 裁剪、refresh 轮换、旧 access/refresh 失效和 grant 撤销后的即时失效；没有输出或记录完整 token。后端全量 `mvn test` 共 203 项，201 项通过、2 项按既有规则跳过；前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过。真实 MCP Inspector、Codex 和 WorkBuddy UI 连接留在手工检查清单，不宣称已自动完成浏览器验收。
+
+上一增量完成 Phase 3C-3：PAT 新增 `mcp:ledger:commit`、`mcp:worktime:commit`，且必须与同领域 prepare scope 同时授予；MCP 使用通用 `agent.action.commit`，不直接暴露任何领域 `*.commit`。当前只允许 `ledger.transaction.create.prepare` 和 `worktime.record.create.prepare` 两个 R2 action 在网站批准后提交，修改、删除等 R3 及全部 R4 继续拒绝。提交前重新校验用户、创建 action 的具体 PAT、commit scope、账本范围、action 状态和领域权限；领域服务继续负责资源存在性、revision 和事务规则。首次结果持久化到 V24 扩展的 `mcp_external_action`，重复调用返回首次结果并标记 replay，不产生第二次写入；若进程在领域事务完成后、结果落表前中断，可根据 pending action 终态恢复结果。账本新增继续写入现有 `ledger_sync_oplog`，传统页面和 IndexedDB 可沿用既有增量同步链刷新。
+
+真实 MySQL 定向验证已覆盖账本与工时 R2 实际写入、重复 commit、未批准、缺少 scope、R3 拒绝和 Flyway V24；账本写入同时验证同步 oplog。全量后端 `mvn test` 共 199 项，197 项通过、2 项按既有规则跳过。纯 HTTP/MCP 联调进一步验证 `initialize`、`tools/list`、新增工时 prepare、批准前拒绝、站内批准、首次 commit、重复 commit 回放、数据库单条写入和 R3 禁止提交。前端浏览器检查不再由自动化 Agent 执行，已建立 [`前端手工检查清单.md`](前端手工检查清单.md)。
 
 上一增量完成 Phase 3C-1 只读 MCP 与深度思考：同一 Spring Boot 进程通过官方 Java MCP SDK `2.0.1` 提供 `POST /mcp` Streamable HTTP，MCP 与站内 Agent 共享 `DomainToolRegistry`，没有反向 HTTP 调用。首批只读暴露 8 个工具：`worktime.settings.get`、`worktime.records.search`、`ledger.books.list`、`ledger.overview`、`ledger.transactions.search`、`ledger.transaction.history`、`ledger.reports.summary`、`ledger.budgets.list`；`tools/list` 按 PAT scope 动态裁剪，账本结果和工具参数继续受 Token 账本范围及领域权限约束。设置页支持创建、一次性复制、列出和撤销 PAT；数据库只保存 SHA-256 hash，Token 默认 90 天、最长 366 天，支持 `mcp:ledger:read` 与 `mcp:worktime:read`，并记录调用状态、耗时和脱敏参数摘要。服务端增加每 Token 每分钟 120 次基础限流、1 MiB 请求体、30 秒协议请求超时和 366 天查询跨度上限。Vite 与 Nginx 均代理 `/mcp`，页面显示的同源地址可直接用于本地或部署环境。
 

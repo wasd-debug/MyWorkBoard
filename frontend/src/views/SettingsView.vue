@@ -167,6 +167,15 @@
         </article>
       </div>
       <p v-else class="hint">尚未创建 MCP Token。</p>
+      <div class="mcp-oauth-heading"><div><h3>OAuth 已授权应用</h3><p class="hint">远程 MCP 客户端通过 OAuth 2.1 + PKCE 获得访问权限；撤销后 access token 与 refresh token 立即失效。</p></div><Button size="sm" variant="ghost" @click="loadMcpGrants">刷新授权</Button></div>
+      <div v-if="mcpGrants.length" class="mcp-token-list">
+        <article v-for="grant in mcpGrants" :key="grant.id">
+          <div><b>{{ grant.clientName }}</b><code>{{ grant.clientId }}</code><small>{{ grant.scopes.map(mcpScopeLabel).join(' · ') }}</small></div>
+          <div><span>{{ grant.bookIds?.length ? `限制 ${grant.bookIds.length} 个账本` : '不含账本权限' }}</span><small>最近授权：{{ formatDateTime(grant.updatedAt) }}</small></div>
+          <Button size="sm" variant="danger" @click="revokeMcpGrant(grant)">撤销授权</Button>
+        </article>
+      </div>
+      <p v-else class="hint">尚无 OAuth 外部应用授权。</p>
     </div>
 
   </section>
@@ -182,7 +191,7 @@ import Dialog from '../components/ui/Dialog.vue'
 import { useAppStore } from '../stores/app'
 import { DEFAULT_WORKTIME_SETTINGS as DEFAULTS, useWorktimeStore } from '../stores/worktime.js'
 import { CALC } from '../utils/calc'
-import { apiCreateAgentModelConnection, apiCreateMcpToken, apiDeleteAgentModelConnection, apiListAgentModelConnections, apiListLedgerBooks, apiListMcpTokens, apiRevokeMcpToken, apiSetDefaultAgentModelConnection, apiTestAgentModelConnection, apiUpdateAgentModelConnection } from '../../packages/api-client/src/index.js'
+import { apiCreateAgentModelConnection, apiCreateMcpToken, apiDeleteAgentModelConnection, apiListAgentModelConnections, apiListLedgerBooks, apiListMcpOAuthGrants, apiListMcpTokens, apiRevokeMcpOAuthGrant, apiRevokeMcpToken, apiSetDefaultAgentModelConnection, apiTestAgentModelConnection, apiUpdateAgentModelConnection } from '../../packages/api-client/src/index.js'
 
 const appStore = useAppStore()
 const store = useWorktimeStore()
@@ -197,7 +206,7 @@ const accents = [
 const ioArea = ref('')
 const lunchDialogOpen = ref(false), pendingLunchMin = ref(0), lunchScope = ref('NONE'), lunchFromDate = ref(CALC.dateKey(new Date())), savingLunch = ref(false)
 const modelConnections = ref([]), selectedModelId = ref(''), modelStatus = ref('')
-const mcpTokens = ref([]), ledgerBooks = ref([]), createdMcpToken = ref(''), creatingMcpToken = ref(false)
+const mcpTokens = ref([]), mcpGrants = ref([]), ledgerBooks = ref([]), createdMcpToken = ref(''), creatingMcpToken = ref(false)
 const defaultMcpExpiry = () => { const date = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); date.setSeconds(0, 0); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16) }
 const mcpForm = ref({ name: '本地 Agent', scopes: ['mcp:ledger:read', 'mcp:worktime:read'], bookIds: [], expiresAt: defaultMcpExpiry() })
 const mcpEndpoint = computed(() => `${window.location.origin}/mcp`)
@@ -226,6 +235,7 @@ async function testModel() { try { const result = await apiTestAgentModelConnect
 async function makeDefault() { try { await apiSetDefaultAgentModelConnection(selectedModelId.value); await loadModels(); modelStatus.value = '已设为默认模型' } catch { modelStatus.value = '设置默认模型失败' } }
 async function removeModel() { if (!window.confirm('删除此模型配置？')) return; try { await apiDeleteAgentModelConnection(selectedModelId.value); await loadModels(); modelStatus.value = '模型配置已删除' } catch { modelStatus.value = '删除模型配置失败' } }
 async function loadMcpTokens() { try { [mcpTokens.value, ledgerBooks.value] = await Promise.all([apiListMcpTokens(), apiListLedgerBooks()]) } catch { message.error('MCP Token 列表加载失败') } }
+async function loadMcpGrants() { try { mcpGrants.value = await apiListMcpOAuthGrants() } catch (error) { if (error?.response?.status !== 404) message.error('OAuth 授权列表加载失败') } }
 async function createMcpToken() {
   creatingMcpToken.value = true
   try {
@@ -239,6 +249,7 @@ async function createMcpToken() {
 }
 async function copyMcpToken() { try { await navigator.clipboard.writeText(createdMcpToken.value); message.success('Token 已复制') } catch { message.warning('复制失败，请手动复制') } }
 async function revokeMcpToken(token) { if (!window.confirm(`撤销“${token.name}”？已连接的外部 Agent 将立即失效。`)) return; try { await apiRevokeMcpToken(token.id); await loadMcpTokens(); message.success('Token 已撤销') } catch { message.error('撤销 Token 失败') } }
+async function revokeMcpGrant(grant) { if (!window.confirm(`撤销“${grant.clientName}”的 OAuth 授权？该客户端需要重新授权才能连接。`)) return; try { await apiRevokeMcpOAuthGrant(grant.id); await loadMcpGrants(); message.success('OAuth 授权已撤销') } catch { message.error('撤销 OAuth 授权失败') } }
 function formatDateTime(value) { return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
 function mcpScopeLabel(value) { return ({ 'mcp:ledger:read': '账本查询', 'mcp:worktime:read': '工时查询', 'mcp:ledger:prepare': '账本准备', 'mcp:worktime:prepare': '工时准备', 'mcp:ledger:commit': '账本低风险提交', 'mcp:worktime:commit': '工时低风险提交' })[value] || value }
 function setNumber(key, value, fallback) {
@@ -282,5 +293,5 @@ async function doClear() {
   await store.clearResources(DEFAULTS)
   message.success('已清空')
 }
-onMounted(() => Promise.all([loadModels(), loadMcpTokens()]))
+onMounted(() => Promise.all([loadModels(), loadMcpTokens(), loadMcpGrants()]))
 </script>

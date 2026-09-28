@@ -34,7 +34,7 @@ class FlywayMigrationIntegrationTest {
         flyway.migrate();
         flyway.validate();
 
-        assertEquals("24", flyway.info().current().getVersion().getVersion());
+        assertEquals("25", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement()) {
@@ -50,7 +50,11 @@ class FlywayMigrationIntegrationTest {
             assertTrue(tableExists(connection, "mcp_personal_token"));
             assertTrue(tableExists(connection, "mcp_tool_call"));
             assertTrue(tableExists(connection, "mcp_external_action"));
+            assertTrue(tableExists(connection, "mcp_oauth_client"));
+            assertTrue(tableExists(connection, "mcp_grant"));
+            assertTrue(tableExists(connection, "mcp_oauth_code"));
             assertTrue(columnExists(connection, "mcp_external_action", "commit_status"));
+            assertTrue(columnExists(connection, "mcp_personal_token", "refresh_token_hash"));
             assertTrue(indexExists(connection, "ledger_transaction", "idx_ledger_transaction_book_date"));
             assertEquals(0L, scalar(statement, "SELECT COUNT(*) FROM work_record WHERE lunch_min IS NULL"));
         }
@@ -81,7 +85,7 @@ class FlywayMigrationIntegrationTest {
         flyway.migrate();
         flyway.validate();
 
-        assertEquals("24", flyway.info().current().getVersion().getVersion());
+        assertEquals("25", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement()) {

@@ -31,6 +31,11 @@ mybatis-plus:
     banner: false
 
 app:
+  public-base-url: ${APP_PUBLIC_BASE_URL:}
+  mcp:
+    enabled: ${APP_MCP_ENABLED:true}
+    write-enabled: ${APP_MCP_WRITE_ENABLED:false}
+    oauth-enabled: ${APP_MCP_OAUTH_ENABLED:false}
   jwt:
     secret: ${JWT_SECRET:salary-tracker-phase0-change-this-secret-at-least-32-bytes}
     access-ttl: ${JWT_ACCESS_TTL:7200}

@@ -62,7 +62,8 @@ public class McpServerConfiguration {
             DomainToolRegistry registry, McpPersonalTokenService tokens, ObjectMapper mapper,
             McpExternalActionService externalActions,
             @Value("${app.mcp.enabled:true}") boolean enabled,
-            @Value("${app.mcp.write-enabled:false}") boolean writeEnabled) {
+            @Value("${app.mcp.write-enabled:false}") boolean writeEnabled,
+            @Value("${app.mcp.oauth-enabled:false}") boolean oauthEnabled) {
         Map<String, HttpServletStreamableServerTransportProvider> providers = new LinkedHashMap<>();
         List<String> enabledScopes = new ArrayList<>(List.of(
                 McpPersonalTokenService.LEDGER_READ, McpPersonalTokenService.WORKTIME_READ));
@@ -77,7 +78,7 @@ public class McpServerConfiguration {
             }
             providers.put(scopeKey(scopes), provider(registry, tokens, mapper, externalActions, Set.copyOf(scopes)));
         }
-        McpRoutingServlet servlet = new McpRoutingServlet(tokens, providers, enabled, writeEnabled);
+        McpRoutingServlet servlet = new McpRoutingServlet(tokens, providers, enabled, writeEnabled, oauthEnabled);
         ServletRegistrationBean<HttpServlet> registration = new ServletRegistrationBean<>(servlet, "/mcp", "/mcp/*");
         registration.setName("mcpStreamableHttp");
         registration.setAsyncSupported(true);
@@ -403,15 +404,17 @@ public class McpServerConfiguration {
         private final Map<String, HttpServletStreamableServerTransportProvider> providers;
         private final boolean enabled;
         private final boolean writeEnabled;
+        private final boolean oauthEnabled;
         private final Map<String, RateWindow> rates = new ConcurrentHashMap<>();
 
         McpRoutingServlet(McpPersonalTokenService tokens,
                           Map<String, HttpServletStreamableServerTransportProvider> providers,
-                          boolean enabled, boolean writeEnabled) {
+                          boolean enabled, boolean writeEnabled, boolean oauthEnabled) {
             this.tokens = tokens;
             this.providers = providers;
             this.enabled = enabled;
             this.writeEnabled = writeEnabled;
+            this.oauthEnabled = oauthEnabled;
         }
 
         @Override
@@ -423,7 +426,7 @@ public class McpServerConfiguration {
                 String authorization = httpRequest.getHeader("Authorization");
                 String raw = authorization != null && authorization.startsWith("Bearer ")
                         ? authorization.substring(7).trim() : null;
-                McpPersonalTokenService.AuthenticatedToken token = tokens.authenticate(raw);
+                McpPersonalTokenService.AuthenticatedToken token = tokens.authenticate(raw, oauthEnabled);
                 if (!allow(token.id())) {
                     httpResponse.setStatus(429);
                     httpResponse.setHeader("Retry-After", "60");
@@ -446,6 +449,9 @@ public class McpServerConfiguration {
                 providers.get(key).service(request, response);
             } catch (Exception exception) {
                 httpResponse.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                String base = baseUrl(httpRequest);
+                httpResponse.setHeader("WWW-Authenticate", "Bearer resource_metadata=\"" + base
+                        + "/.well-known/oauth-protected-resource/mcp\", error=\"invalid_token\"");
                 httpResponse.setContentType("application/json;charset=UTF-8");
                 httpResponse.getWriter().write("{\"error\":\"invalid_token\",\"error_description\":\"MCP Token 无效、已过期或已撤销\"}");
             }

@@ -1,7 +1,7 @@
 # MCP 连接指南
 
-> 状态：Phase 3C-3（2026-09-28）
-> 范围：Streamable HTTP、Personal Access Token、账本/工时 read/prepare/commit scope、外部 action、站内确认与 R2 单次提交
+> 状态：Phase 3C-4（2026-09-28）
+> 范围：Streamable HTTP、PAT、OAuth 2.1 Authorization Code + PKCE、账本/工时 read/prepare/commit scope、外部 action、站内确认与 R2 单次提交
 
 ## 1. 当前能力
 
@@ -65,7 +65,83 @@ agent.action.commit
 
 服务端不直接暴露任何领域 `*.commit`。`agent.action.commit` 当前只允许 `ledger.transaction.create.prepare` 和 `worktime.record.create.prepare` 两个 R2 action；修改、删除等 R3 及全部 R4 操作仍拒绝外部提交。同步 push/pull、数据库级接口和内部维护接口不作为 MCP Tool。
 
-## 2. 创建 PAT
+认证方式：
+
+- PAT：适合本地开发、脚本和不支持 OAuth 的兼容客户端。
+- OAuth 2.1：适合 MCP Inspector、Codex、WorkBuddy 等正式远程客户端；支持 Authorization Code、PKCE S256、动态客户端注册、refresh token 轮换和用户撤销授权。
+
+OAuth discovery：
+
+```text
+GET /.well-known/oauth-protected-resource
+GET /.well-known/oauth-protected-resource/mcp
+GET /.well-known/oauth-authorization-server
+GET /.well-known/openid-configuration
+```
+
+协议端点：
+
+```text
+POST /oauth/register
+GET  /oauth/authorize
+POST /oauth/token
+POST /oauth/revoke
+```
+
+## 2. OAuth 2.1 + PKCE
+
+### 2.1 服务端配置
+
+生产环境至少配置：
+
+```text
+APP_MCP_ENABLED=true
+APP_MCP_OAUTH_ENABLED=true
+APP_PUBLIC_BASE_URL=https://work.example.com
+```
+
+`APP_PUBLIC_BASE_URL` 必须是客户端实际访问的 HTTPS 根地址，不带结尾 `/`。issuer、resource metadata、authorize/token/register/revoke 和 `WWW-Authenticate` 都以此地址为准。关闭 `APP_MCP_OAUTH_ENABLED` 后 discovery 和 OAuth API 返回 404，已经签发的 OAuth access token 也无法访问 `/mcp`；PAT 继续按自身开关工作。
+
+### 2.2 动态客户端注册
+
+客户端可向 `/oauth/register` 提交：
+
+```json
+{
+  "client_name": "Codex",
+  "redirect_uris": ["http://127.0.0.1:1455/callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none"
+}
+```
+
+首版只支持无客户端密钥的公共客户端。redirect URI 必须是 HTTPS、环回 HTTP 或安全自定义 scheme；授权时必须与登记值精确相等，不能使用前缀或通配匹配。
+
+### 2.3 授权与 Token 生命周期
+
+authorize 请求必须包含 `response_type=code`、`client_id`、精确 `redirect_uri`、空格分隔的 `scope`、`code_challenge`、`code_challenge_method=S256` 和指向当前站点 `/mcp` 的 `resource`。推荐始终传递并校验 `state`。
+
+服务端先在公共端点校验客户端、redirect URI、scope、PKCE 和 resource，再跳转站内 `/oauth/consent`。浏览器未登录时先显示本站登录界面；登录后授权页从受认证 API 加载用户可访问账本，账本 scope 至少选择一个账本。批准后返回 5 分钟有效、只能使用一次的授权码。
+
+Token 策略：
+
+- access token：`wbo_` 前缀，1 小时有效。
+- refresh token：`wbr_` 前缀，30 天有效，每次刷新同时轮换 access 和 refresh。
+- authorization code：`wbc_` 前缀，只保存 SHA-256 hash，5 分钟有效且只能消费一次。
+- refresh 时 scope 只能保持或缩小，不能扩大。
+- 用户在“设置 → 外部 Agent / MCP → OAuth 已授权应用”撤销 grant 后，该 grant 的全部 access/refresh token 立即失效。
+- PAT 和 OAuth token 分开列出与撤销；OAuth token 不出现在 PAT 列表。
+
+OAuth token 最终仍通过标准头访问 MCP：
+
+```text
+Authorization: Bearer wbo_...
+```
+
+工具目录、账本范围、领域权限、限流和审计与 PAT 相同；认证方式不会绕过 R2/R3/R4 风险策略。
+
+## 3. 创建 PAT
 
 1. 登录网站。
 2. 打开“设置 → 外部 Agent / MCP”。
@@ -83,7 +159,7 @@ agent.action.commit
 
 完整 Token 只返回一次，格式类似 `wbt_...`。数据库只保存 SHA-256 hash；忘记后不能找回，只能撤销并重新创建。默认有效期 90 天，最长 366 天。
 
-## 3. 客户端配置
+## 4. PAT 客户端配置
 
 外部 MCP Host 的界面和配置字段名称可能不同，但核心参数一致：
 
@@ -105,7 +181,7 @@ agent.action.commit
 - 默认只授予必要的只读 scope；只有需要生成写入预览时才增加 prepare scope，确需外部提交 R2 操作时再增加 commit scope。账本 Token 尽量限制到需要的账本。
 - 生产环境必须使用 HTTPS。
 
-## 4. 协议联调
+## 5. 协议联调
 
 以下示例用环境变量保存 Token，避免出现在命令历史正文中：
 
@@ -147,7 +223,7 @@ curl -i \
 - 单次日期跨度超过 366 天：返回参数错误。
 - 单 Token 每分钟超过 120 次请求：HTTP 429，并带 `Retry-After: 60`。
 
-## 5. prepare 与站内确认
+## 6. prepare 与站内确认
 
 外部 Agent 调用 `*.prepare` 后，统一结果包含：
 
@@ -184,22 +260,23 @@ curl -i \
 - R3/R4 action 即使已经站内批准，也会被 MCP commit 拒绝。
 - 账本新增流水复用现有领域服务并写入 `ledger_sync_oplog`，Web/IndexedDB 可继续通过既有增量同步链刷新。
 
-## 6. Codex、WorkBuddy 与 Inspector 验收
+## 7. Codex、WorkBuddy 与 Inspector 验收
 
 每个客户端都要记录：客户端名称和版本、传输类型、URL、认证头配置方式、initialize 协议版本、可见工具列表、成功调用工具、撤销后的行为和已知限制。
 
 最低验收流程：
 
-1. 使用独立 PAT 连接。
-2. 确认只显示 scope 对应工具；无 commit scope 时不显示 `agent.action.commit`，任何情况下都不显示领域 `*.commit`。
-3. 调用 `ledger.books.list` 或 `worktime.settings.get`。
-4. 调用一个需要参数的查询工具并核对当前用户数据隔离。
-5. 在网站撤销 PAT。
-6. 再次调用，确认立即失败且没有返回缓存业务数据。
+1. 优先使用 OAuth 连接；若客户端暂不支持，再使用独立 PAT 记录兼容限制。
+2. OAuth 场景确认客户端能发现 resource metadata、完成 DCR/PKCE 回调，并在刷新 access token 后继续连接。
+3. 确认只显示 scope 对应工具；无 commit scope 时不显示 `agent.action.commit`，任何情况下都不显示领域 `*.commit`。
+4. 调用 `ledger.books.list` 或 `worktime.settings.get`。
+5. 调用一个需要参数的查询工具并核对当前用户和账本隔离。
+6. 在网站撤销 OAuth grant 或 PAT。
+7. 再次调用，确认立即失败且没有返回缓存业务数据。
 
-Phase 3C-3 已完成服务级真实 MySQL 验证：账本与工时 R2 新增 action 在网站批准后可提交，重复调用不重复写入，账本提交产生同步 oplog；未批准、缺少 scope、跨 PAT 和 R3 action 均被拒绝。纯 HTTP/MCP 协议联调已覆盖 `initialize`、`tools/list`、新增工时 prepare、批准前拒绝、站内批准、首次 commit、重复 commit 回放、数据库单条写入与 R3 禁止提交。MCP Inspector、Codex、WorkBuddy 的正式版本兼容记录仍待下一增量完成。
+Phase 3C-4 已完成服务级与纯 HTTP OAuth 验证：DCR、PKCE S256、无 JWT 的 authorize 302、站内授权、授权码单次消费、OAuth access token `initialize/tools/list`、scope 裁剪、refresh 轮换、旧 access/refresh 失效和 grant 撤销即时失效均通过。Phase 3C-3 的 R2 commit、幂等回放、账本同步 oplog 和 R3 拒绝保持不变。根据项目规则，MCP Inspector、Codex、WorkBuddy 的真实 UI 连接、浏览器授权页和视觉检查由用户按 [`前端手工检查清单.md`](前端手工检查清单.md) 执行，当前不宣称已自动完成。
 
-## 7. 故障排查
+## 8. 故障排查
 
 ### 401 invalid_token
 
@@ -207,12 +284,22 @@ Phase 3C-3 已完成服务级真实 MySQL 验证：账本与工时 R2 新增 act
 - 确认完整 Token 没有多余空格或换行。
 - 在设置页检查是否已撤销或到期。
 - 重新创建独立 PAT，不要尝试从数据库恢复原文。
+- OAuth 客户端检查 access token 是否过期、refresh 是否已轮换，或用户是否已经在设置页撤销授权。
+- 401 的 `WWW-Authenticate` 包含 `resource_metadata`，支持 OAuth 的客户端应重新发现并发起授权。
 
 ### 404
 
 - 检查应用开关 `app.mcp.enabled`。
 - 本地 Vite 与部署 Nginx 都必须代理 `/mcp`。
 - 客户端 URL 必须以 `/mcp` 结尾，不能写成 `/api/mcp`。
+- OAuth discovery 或协议端点 404 时检查 `APP_MCP_OAUTH_ENABLED=true`，并确认 Nginx/Vite 已代理 `/.well-known/*` 与 `/oauth/authorize|token|register|revoke`。
+
+### invalid_target / redirect_uri 未登记 / PKCE 校验失败
+
+- `resource` 必须与 discovery 返回的 MCP 地址完全一致，包括 scheme、host、port 和 `/mcp`。
+- `redirect_uri` 必须与动态注册值精确相等，不能更换 localhost/127.0.0.1、端口或路径。
+- 只支持 `code_challenge_method=S256`；verifier 必须为 43-128 个 RFC 7636 合法字符。
+- 生产环境确认 `APP_PUBLIC_BASE_URL` 是外部 HTTPS 地址，不是 `http://backend:8080` 等容器内地址。
 
 ### tools/list 缺少工具
 

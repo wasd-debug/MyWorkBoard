@@ -22,6 +22,14 @@ export default defineConfig({
       '/mcp': {
         target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8080',
         changeOrigin: true
+      },
+      '^/oauth/(authorize|token|register|revoke)$': {
+        target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8080',
+        changeOrigin: true
+      },
+      '/.well-known': {
+        target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8080',
+        changeOrigin: true
       }
     }
   },
