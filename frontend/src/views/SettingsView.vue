@@ -176,7 +176,7 @@
 
     <div class="card set-group mcp-config">
       <h2>外部 Agent / MCP</h2>
-      <p class="hint">创建 Personal Access Token，供 Codex、WorkBuddy 或 MCP Inspector 连接。低风险提交权限仅允许网站批准后的 R2 操作单次写入；完整 Token 只显示一次。</p>
+      <p class="hint">管理外部客户端的访问权限。Token 仅显示一次；写入仍需在网站批准。</p>
       <div class="mcp-create-grid">
         <label>Token 名称<input v-model="mcpForm.name" maxlength="120" placeholder="例如 本地 Codex" /></label>
         <label>有效期<input v-model="mcpForm.expiresAt" type="datetime-local" /></label>
