@@ -121,7 +121,7 @@
 
     <div class="card set-group mcp-config">
       <h2>外部 Agent / MCP</h2>
-      <p class="hint">创建 Personal Access Token，供 Codex、WorkBuddy 或 MCP Inspector 连接。写入准备权限只生成待确认操作，不会直接修改数据；完整 Token 只显示一次。</p>
+      <p class="hint">创建 Personal Access Token，供 Codex、WorkBuddy 或 MCP Inspector 连接。低风险提交权限仅允许网站批准后的 R2 操作单次写入；完整 Token 只显示一次。</p>
       <div class="mcp-create-grid">
         <label>Token 名称<input v-model="mcpForm.name" maxlength="120" placeholder="例如 本地 Codex" /></label>
         <label>有效期<input v-model="mcpForm.expiresAt" type="datetime-local" /></label>
@@ -134,9 +134,15 @@
           <legend>写入准备权限</legend>
           <label><input v-model="mcpForm.scopes" type="checkbox" value="mcp:ledger:prepare" />准备账本流水操作</label>
           <label><input v-model="mcpForm.scopes" type="checkbox" value="mcp:worktime:prepare" />准备工时操作</label>
-          <small>prepare 只生成预览和站内确认链接，不开放外部 commit。</small>
+          <small>prepare 只生成预览和站内确认链接。</small>
         </fieldset>
-        <fieldset v-if="mcpForm.scopes.includes('mcp:ledger:read') || mcpForm.scopes.includes('mcp:ledger:prepare')">
+        <fieldset>
+          <legend>低风险提交权限</legend>
+          <label><input v-model="mcpForm.scopes" type="checkbox" value="mcp:ledger:commit" :disabled="!mcpForm.scopes.includes('mcp:ledger:prepare')" />提交已批准的 R2 账本操作</label>
+          <label><input v-model="mcpForm.scopes" type="checkbox" value="mcp:worktime:commit" :disabled="!mcpForm.scopes.includes('mcp:worktime:prepare')" />提交已批准的 R2 工时操作</label>
+          <small>必须与对应 prepare scope 同时授予；修改、删除和其他 R3/R4 操作仍禁止 MCP commit。</small>
+        </fieldset>
+        <fieldset v-if="mcpForm.scopes.includes('mcp:ledger:read') || mcpForm.scopes.includes('mcp:ledger:prepare') || mcpForm.scopes.includes('mcp:ledger:commit')">
           <legend>账本范围</legend>
           <label v-for="book in ledgerBooks" :key="book.id || book.publicId"><input v-model="mcpForm.bookIds" type="checkbox" :value="book.id || book.publicId" />{{ book.name }}</label>
           <small>不选择表示允许访问当前用户本来有权使用的全部账本。</small>
@@ -167,7 +173,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { message } from '../services/message.js'
 import Button from '../components/ui/Button.vue'
 import Input from '../components/ui/Input.vue'
@@ -195,6 +201,11 @@ const mcpTokens = ref([]), ledgerBooks = ref([]), createdMcpToken = ref(''), cre
 const defaultMcpExpiry = () => { const date = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); date.setSeconds(0, 0); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16) }
 const mcpForm = ref({ name: '本地 Agent', scopes: ['mcp:ledger:read', 'mcp:worktime:read'], bookIds: [], expiresAt: defaultMcpExpiry() })
 const mcpEndpoint = computed(() => `${window.location.origin}/mcp`)
+watch(() => [...mcpForm.value.scopes], (scopes) => {
+  const next = scopes.filter(scope => scope !== 'mcp:ledger:commit' || scopes.includes('mcp:ledger:prepare'))
+    .filter(scope => scope !== 'mcp:worktime:commit' || scopes.includes('mcp:worktime:prepare'))
+  if (next.length !== scopes.length) mcpForm.value.scopes = next
+})
 const blankModel = () => ({ displayName: '', providerType: 'DEEPSEEK', baseUrl: 'https://api.deepseek.com/chat/completions', modelName: 'deepseek-chat', apiKey: '', timeoutMs: 60000, pricing: { currency: 'CNY', pricingMode: 'FLAT', inputPerMillion: 0, outputPerMillion: 0, cacheHitPerMillion: 0, cacheMissPerMillion: 0, reasoningPerMillion: 0, offPeakInputPerMillion: 0, offPeakOutputPerMillion: 0, offPeakCacheHitPerMillion: 0, offPeakCacheMissPerMillion: 0, offPeakReasoningPerMillion: 0 } })
 const modelForm = ref(blankModel())
 const curMonthKey = CALC.dateKey(new Date()).slice(0, 7)
@@ -229,7 +240,7 @@ async function createMcpToken() {
 async function copyMcpToken() { try { await navigator.clipboard.writeText(createdMcpToken.value); message.success('Token 已复制') } catch { message.warning('复制失败，请手动复制') } }
 async function revokeMcpToken(token) { if (!window.confirm(`撤销“${token.name}”？已连接的外部 Agent 将立即失效。`)) return; try { await apiRevokeMcpToken(token.id); await loadMcpTokens(); message.success('Token 已撤销') } catch { message.error('撤销 Token 失败') } }
 function formatDateTime(value) { return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
-function mcpScopeLabel(value) { return ({ 'mcp:ledger:read': '账本查询', 'mcp:worktime:read': '工时查询', 'mcp:ledger:prepare': '账本准备', 'mcp:worktime:prepare': '工时准备' })[value] || value }
+function mcpScopeLabel(value) { return ({ 'mcp:ledger:read': '账本查询', 'mcp:worktime:read': '工时查询', 'mcp:ledger:prepare': '账本准备', 'mcp:worktime:prepare': '工时准备', 'mcp:ledger:commit': '账本低风险提交', 'mcp:worktime:commit': '工时低风险提交' })[value] || value }
 function setNumber(key, value, fallback) {
   const number = Number(value)
   set(key, Number.isFinite(number) ? number : fallback)

@@ -31,11 +31,18 @@ Use four-space indentation in Java and two spaces in Vue/JavaScript. Java types 
 
 Use JUnit 5 names ending in `Test.java`; write behavior-focused method names such as `recognizesAllSupportedTransactionKinds`. Architecture changes must keep `ArchitectureBoundaryTest` passing. Add Node tests beside shared package code as `*.test.js`. There is no fixed coverage threshold; cover new rules, migrations, and regressions.
 
+### Frontend Manual Verification
+
+- Do not use browser automation, screenshots, visual inspection tools, or interactive browser sessions to verify frontend behavior for this repository unless the user explicitly overrides this rule for a specific task.
+- Continue running non-browser frontend gates such as Node tests, type checks, OpenAPI generation checks, and production builds when relevant.
+- Maintain `docs/前端手工检查清单.md` as the persistent manual frontend verification record. At the end of every increment, append or update the increment section with affected pages, setup requirements, concrete manual steps, expected results, responsive/theme checks, and regression areas.
+- Frontend manual checks remain pending until the user performs them. Do not report browser/UI behavior as verified solely from code review or build success.
+
 ## Commit & Pull Request Guidelines
 
 All Git commit messages must use a concise conventional prefix such as `feat:`, `fix:`, `docs:`, `chore:`, or `test:`, followed by a specific Chinese summary, for example `feat: 完善账本流水管理` or `fix: 修复账本成员缓存串用`. Do not use an English summary. Keep the subject concise and use a Chinese body when additional context is necessary. PRs should describe scope, data/schema impact, test commands and results, linked issues, and screenshots for UI changes. Keep unrelated changes in separate commits.
 
-For incremental development requested in this repository, finish each increment by updating the relevant files under `docs/`, running proportional verification, refreshing any affected local development services so the checked-out code is available for manual testing, and creating a local Git commit containing only that increment. Do not push, deploy, or include unrelated untracked files unless the user explicitly requests it. If verification or service refresh is blocked, document and report the blocker before committing.
+For incremental development requested in this repository, finish each increment by updating the relevant files under `docs/` (including `docs/前端手工检查清单.md` whenever frontend behavior or a user-visible workflow is affected), running proportional non-browser verification, refreshing any affected local development services so the checked-out code is available for manual testing, and creating a local Git commit containing only that increment. Do not push, deploy, or include unrelated untracked files unless the user explicitly requests it. If verification or service refresh is blocked, document and report the blocker before committing.
 
 ## Security & Configuration Tips
 

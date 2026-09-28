@@ -1,7 +1,7 @@
 # MCP 连接指南
 
-> 状态：Phase 3C-2（2026-09-28）
-> 范围：Streamable HTTP、Personal Access Token、账本/工时 read/prepare scope、外部 action 与站内确认
+> 状态：Phase 3C-3（2026-09-28）
+> 范围：Streamable HTTP、Personal Access Token、账本/工时 read/prepare/commit scope、外部 action、站内确认与 R2 单次提交
 
 ## 1. 当前能力
 
@@ -57,7 +57,13 @@ agent.actions.list
 agent.action.cancel
 ```
 
-prepare 只生成冻结参数、预览和待确认 action，不写业务数据。当前不向 MCP 暴露任何 `*.commit`、R4 工具、同步 push/pull 或数据库级接口；网站批准也只把 action 变成 `APPROVED`。
+prepare 只生成冻结参数、预览和待确认 action，不写业务数据。PAT 同时具备对应 commit scope 时还会暴露：
+
+```text
+agent.action.commit
+```
+
+服务端不直接暴露任何领域 `*.commit`。`agent.action.commit` 当前只允许 `ledger.transaction.create.prepare` 和 `worktime.record.create.prepare` 两个 R2 action；修改、删除等 R3 及全部 R4 操作仍拒绝外部提交。同步 push/pull、数据库级接口和内部维护接口不作为 MCP Tool。
 
 ## 2. 创建 PAT
 
@@ -69,6 +75,9 @@ prepare 只生成冻结参数、预览和待确认 action，不写业务数据�
    - `mcp:worktime:read`
    - `mcp:ledger:prepare`
    - `mcp:worktime:prepare`
+   - `mcp:ledger:commit`
+   - `mcp:worktime:commit`
+   commit scope 必须与同领域 prepare scope 同时授予。
 5. 可选指定账本范围；不选择表示允许访问当前用户本来就有权读取的全部账本。
 6. 点击“创建 Token”，立即复制完整 Token。
 
@@ -93,7 +102,7 @@ prepare 只生成冻结参数、预览和待确认 action，不写业务数据�
 - 不把 PAT 写入仓库、聊天记录、截图或前端源码。
 - 优先放入客户端密钥存储或环境变量，再在客户端配置中引用。
 - 为不同客户端分别创建 Token，便于独立撤销和审计。
-- 默认只授予必要的只读 scope；只有需要生成写入预览时才增加 prepare scope。账本 Token 尽量限制到需要的账本。
+- 默认只授予必要的只读 scope；只有需要生成写入预览时才增加 prepare scope，确需外部提交 R2 操作时再增加 commit scope。账本 Token 尽量限制到需要的账本。
 - 生产环境必须使用 HTTPS。
 
 ## 4. 协议联调
@@ -131,7 +140,8 @@ curl -i \
 - 双 read scope：`tools/list` 返回 8 个只读工具。
 - 仅 `mcp:worktime:read`：只返回 2 个工时工具。
 - `mcp:worktime:read` + `mcp:worktime:prepare`：返回 2 个只读、3 个工时 prepare 和 3 个 action 管理工具。
-- 所有 scope 组合：当前 `tools/list` 均不得包含任何 `*.commit`。
+- 再增加 `mcp:worktime:commit`：额外出现 `agent.action.commit`；仍不得出现领域 `*.commit`。
+- 全部 6 个 scope：返回 8 个只读、6 个 prepare 和 4 个 action 工具，共 18 个。
 - 无效、过期或撤销 Token：HTTP 401。
 - 请求未授权账本：工具结果为 denied/failed，不返回业务数据。
 - 单次日期跨度超过 366 天：返回参数错误。
@@ -157,9 +167,11 @@ curl -i \
 1. 外部 Agent 调用 prepare；参数不足时根据 `needs_input` 追问后重新 prepare。
 2. 返回 `needs_confirmation` 时向用户展示摘要和 `confirmationUrl`。
 3. 用户在网站登录；确认页会重新校验当前用户、PAT 状态、action 状态和有效期。
-4. 用户批准或拒绝。批准只进入 `APPROVED`，拒绝进入 `DENIED`。
+4. 用户批准或拒绝。批准只进入 `APPROVED`，本步骤本身不写业务数据；拒绝进入 `DENIED`。
 5. 外部 Agent 使用 `agent.action.get` 或 `agent.actions.list` 查询结果；不应轮询 confirmation token。
-6. 不再需要的待确认 action 可由创建它的同一 PAT 调用 `agent.action.cancel`。
+6. 对于 R2 action，原 PAT 同时具备对应 commit scope 时，可显式调用 `agent.action.commit`。服务端再次校验用户、具体 PAT、scope、账本范围、action 有效期、权限和领域资源。
+7. 首次提交结果会保存到外部 action；重复调用返回首次结果并标记 `replayed=true`，不会产生第二次业务写入。
+8. 不再需要的待确认 action 可由创建它的同一 PAT 调用 `agent.action.cancel`。
 
 安全边界：
 
@@ -167,7 +179,10 @@ curl -i \
 - confirmation token 只保存 SHA-256 hash，过期或 PAT 撤销后链接立即失效。
 - 账本范围在 prepare 解析出真实账本后再次校验；越界 action 会被取消。
 - 外部 Agent 传入“用户已确认”字段没有授权效力。
-- 当前没有 commit scope，也没有 MCP commit 工具；`APPROVED` 不等于业务写入成功。
+- `APPROVED` 不等于业务写入成功；只有独立 `agent.action.commit` 返回 `completed` 后才算完成。
+- commit scope 不会扩大 prepare 能力，且必须和同领域 prepare scope 绑定在同一 PAT 上。
+- R3/R4 action 即使已经站内批准，也会被 MCP commit 拒绝。
+- 账本新增流水复用现有领域服务并写入 `ledger_sync_oplog`，Web/IndexedDB 可继续通过既有增量同步链刷新。
 
 ## 6. Codex、WorkBuddy 与 Inspector 验收
 
@@ -176,13 +191,13 @@ curl -i \
 最低验收流程：
 
 1. 使用独立 PAT 连接。
-2. 确认只显示 scope 对应工具，且没有任何 commit。
+2. 确认只显示 scope 对应工具；无 commit scope 时不显示 `agent.action.commit`，任何情况下都不显示领域 `*.commit`。
 3. 调用 `ledger.books.list` 或 `worktime.settings.get`。
 4. 调用一个需要参数的查询工具并核对当前用户数据隔离。
 5. 在网站撤销 PAT。
 6. 再次调用，确认立即失败且没有返回缓存业务数据。
 
-Phase 3C-2 已完成 curl 级 initialize、tools/list、tools/call、prepare、action get/list/cancel、站内批准和零业务写入联调。MCP Inspector、Codex 与 WorkBuddy 的正式版本兼容记录仍是本阶段剩余验收项。
+Phase 3C-3 已完成服务级真实 MySQL 验证：账本与工时 R2 新增 action 在网站批准后可提交，重复调用不重复写入，账本提交产生同步 oplog；未批准、缺少 scope、跨 PAT 和 R3 action 均被拒绝。纯 HTTP/MCP 协议联调已覆盖 `initialize`、`tools/list`、新增工时 prepare、批准前拒绝、站内批准、首次 commit、重复 commit 回放、数据库单条写入与 R3 禁止提交。MCP Inspector、Codex、WorkBuddy 的正式版本兼容记录仍待下一增量完成。
 
 ## 7. 故障排查
 
@@ -204,7 +219,7 @@ Phase 3C-2 已完成 curl 级 initialize、tools/list、tools/call、prepare、a
 - 检查 PAT scope；工具目录按 scope 在服务端生成。
 - 账本 read 与工时 read 相互独立。
 - 检查 `app.mcp.write-enabled` / `APP_MCP_WRITE_ENABLED`；关闭时 prepare 和 action 工具会被隐藏。
-- 当前阶段故意不暴露任何 commit。
+- commit scope 必须与对应 prepare scope 同时创建；关闭 `APP_MCP_WRITE_ENABLED` 会同时隐藏 prepare、commit 和 action 工具。
 
 ### confirmationUrl 无法打开
 

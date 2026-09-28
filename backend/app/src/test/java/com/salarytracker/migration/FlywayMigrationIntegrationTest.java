@@ -34,7 +34,7 @@ class FlywayMigrationIntegrationTest {
         flyway.migrate();
         flyway.validate();
 
-        assertEquals("23", flyway.info().current().getVersion().getVersion());
+        assertEquals("24", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement()) {
@@ -50,6 +50,7 @@ class FlywayMigrationIntegrationTest {
             assertTrue(tableExists(connection, "mcp_personal_token"));
             assertTrue(tableExists(connection, "mcp_tool_call"));
             assertTrue(tableExists(connection, "mcp_external_action"));
+            assertTrue(columnExists(connection, "mcp_external_action", "commit_status"));
             assertTrue(indexExists(connection, "ledger_transaction", "idx_ledger_transaction_book_date"));
             assertEquals(0L, scalar(statement, "SELECT COUNT(*) FROM work_record WHERE lunch_min IS NULL"));
         }
@@ -80,7 +81,7 @@ class FlywayMigrationIntegrationTest {
         flyway.migrate();
         flyway.validate();
 
-        assertEquals("23", flyway.info().current().getVersion().getVersion());
+        assertEquals("24", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement()) {
@@ -117,6 +118,13 @@ class FlywayMigrationIntegrationTest {
     private boolean tableExists(Connection connection, String table) throws Exception {
         try (ResultSet result = connection.getMetaData().getTables(
                 connection.getCatalog(), null, table, new String[]{"TABLE"})) {
+            return result.next();
+        }
+    }
+
+    private boolean columnExists(Connection connection, String table, String column) throws Exception {
+        try (ResultSet result = connection.getMetaData().getColumns(
+                connection.getCatalog(), null, table, column)) {
             return result.next();
         }
     }

@@ -35,7 +35,8 @@ class McpPersonalTokenIntegrationTest extends MySqlIntegrationTestSupport {
 
         McpPersonalTokenService.CreatedToken created = service.create(new McpPersonalTokenService.CreateToken(
                 "本地 Codex", Set.of(McpPersonalTokenService.LEDGER_READ, McpPersonalTokenService.WORKTIME_READ,
-                McpPersonalTokenService.LEDGER_PREPARE, McpPersonalTokenService.WORKTIME_PREPARE),
+                McpPersonalTokenService.LEDGER_PREPARE, McpPersonalTokenService.WORKTIME_PREPARE,
+                McpPersonalTokenService.LEDGER_COMMIT, McpPersonalTokenService.WORKTIME_COMMIT),
                 Set.of(), Instant.now().plus(7, ChronoUnit.DAYS)));
 
         assertTrue(created.rawToken().startsWith("wbt_"));
@@ -45,6 +46,7 @@ class McpPersonalTokenIntegrationTest extends MySqlIntegrationTestSupport {
         assertEquals(created.token().id(), service.authenticate(created.rawToken()).id());
         assertEquals("本地 Codex", service.authenticate(created.rawToken()).name());
         assertTrue(service.authenticate(created.rawToken()).scopes().contains(McpPersonalTokenService.LEDGER_PREPARE));
+        assertTrue(service.authenticate(created.rawToken()).scopes().contains(McpPersonalTokenService.LEDGER_COMMIT));
         assertTrue(service.list().get(0).lastUsedAt() != null);
 
         service.revoke(created.token().id());
@@ -60,8 +62,11 @@ class McpPersonalTokenIntegrationTest extends MySqlIntegrationTestSupport {
                 new ObjectMapper().findAndRegisterModules(), currentUser, mock(AuthService.class));
 
         assertThrows(IllegalArgumentException.class, () -> service.create(
-                new McpPersonalTokenService.CreateToken("越权", Set.of("mcp:ledger:commit"), Set.of(),
+                new McpPersonalTokenService.CreateToken("越权", Set.of("mcp:ledger:admin"), Set.of(),
                         Instant.now().plus(1, ChronoUnit.DAYS))));
+        assertThrows(IllegalArgumentException.class, () -> service.create(
+                new McpPersonalTokenService.CreateToken("孤立提交", Set.of(McpPersonalTokenService.LEDGER_COMMIT),
+                        Set.of(), Instant.now().plus(1, ChronoUnit.DAYS))));
         assertThrows(IllegalArgumentException.class, () -> service.create(
                 new McpPersonalTokenService.CreateToken("过期", Set.of(McpPersonalTokenService.WORKTIME_READ),
                         Set.of(), Instant.now().minus(1, ChronoUnit.MINUTES))));

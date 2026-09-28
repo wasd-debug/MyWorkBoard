@@ -12,7 +12,7 @@
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
 | Phase 2 任务 | 未启动 | 只有禁用导航占位，无领域模块、数据表和页面 |
-| Phase 3A-D Agent/MCP | Phase 3A/3B/3D 核心闭环，Phase 3C-2 完成 | Web Agent、受控写入和 R4 审批已落地；MCP 已支持只读、PAT、独立 prepare scope、外部 action 查询/取消和站内确认，尚未开放 commit 与 OAuth |
+| Phase 3A-D Agent/MCP | Phase 3A/3B/3D 核心闭环，Phase 3C-3 完成 | Web Agent、受控写入和 R4 审批已落地；MCP 已支持只读、PAT、独立 prepare/commit scope、R2 单次提交和结果回放，R3/R4 commit 与 OAuth 尚未开放 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
 | Phase 6 打磨 | 部分提前实现 | 已有响应式布局、主题、共享账本、自动视觉/无障碍和恢复演练；PWA、搜索及完整可观测体系未实现 |
@@ -650,7 +650,7 @@ Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后
 
 - [~] 已新增 `ai` Maven 模块、Domain Tool 注册表、风险分级、统一结果、action JDBC repository 和 V12 Flyway 表
 - [~] 已实现工时、账本、账户、分类、流水、报表、预算、周期任务、回收站、成员和角色 R1 查询；已实现工时记录/设置、七类流水、父级批量账务、账本基础资料、预算、周期任务、回收站恢复和导出 prepare/commit、零写入导入预览，以及导入确认、成员/角色、账本删除和永久清除 R4 审批执行器；删除/恢复复用软删除、版本历史、同步和审计
-- [~] 已覆盖当前用户、authority、工具目录过滤、未知字段、重名注册、过期、用户隔离、重复 commit、服务端预览和模块边界；真实 MySQL Testcontainers 与 Flyway V1-V22 已通过，只读 MCP 已在本地启用
+- [~] 已覆盖当前用户、authority、工具目录过滤、未知字段、重名注册、过期、用户隔离、重复 commit、服务端预览和模块边界；真实 MySQL Testcontainers 与 Flyway V1-V24 已通过，MCP 只读、prepare 和 R2 commit 已在本地启用
 - **验收**：每个工具具备成功、缺参、无权限、冲突和重复提交测试；prepare 不产生业务写入。
 
 ### Phase 3B —— Web 工作台 Agent
@@ -661,13 +661,14 @@ Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后
 - [~] Agent 账本写入成功后刷新现有账本本地投影，不改变传统页面 local-first 主链；仍需补真实同步游标专项回归
 - [~] agent trace、ai usage、模型/工具版本已持久化；基础提示词/工具选择评测已完成，功能开关门禁、评测结果留存和聚合告警待完成
 - [x] `AgentPromptPolicy` 统一控制提示词版本和模型工具白名单；机器可读中文评测集默认离线检查时间参数、工具风险和 commit 边界，显式真实模型模式只观察首轮工具调用且零业务写入
+- [x] MCP R2 commit 使用独立 scope 和通用 `agent.action.commit`，不直接暴露领域 commit；绑定原 PAT、站内批准、风险等级和账本范围，重复调用返回首次结果
 - [x] 记账实体统一提供精确、唯一建议、歧义和缺失状态；多候选禁止默认取第一项，前端可搜索选择并保留已解析字段；产生 pending action 后普通/SSE 编排均关闭模型工具目录
 - **验收**：完整输入、缺参、歧义、拒绝、重复确认和 revision 冲突 E2E 全部通过；错误写入为零。
 
 ### Phase 3C —— MCP 对外接入
 
 - [x] Streamable HTTP MCP Server，Domain Tool 到 MCP Tool 的单一适配层
-- [~] PAT、read scope、撤销、账本限制、审计和限流已完成；prepare/commit scope 待下一增量
+- [x] PAT、read/prepare/commit scope、撤销、账本限制、审计和限流已完成；commit 当前严格限制为原 PAT 的 R2 新增操作
 - [ ] OAuth 2.1 + PKCE 和外部客户端高风险 confirmation URL；Web 站内审批基础已先行落地
 - [ ] MCP Inspector、Codex 和 WorkBuddy 真实兼容验证
 - **验收**：默认只读；未审批、过期、重放、伪造用户和越权账本均不能写入；真实客户端完成查询和低风险写入。
@@ -777,6 +778,8 @@ Future 横向增量：F1 设置/资料 → F2 Redis/RabbitMQ/任务平台 → F3
 | P2 | Qdrant、MinIO、Meilisearch、推送和可观测平台 | 影响体验，不阻塞核心账本/工时 | 按对应 Phase 引入 |
 
 ### 12.1.1 当前验证记录
+
+2026-09-28 MCP 低风险 commit 增量：V24 记录外部 commit 状态、结果和时间；账本/工时 commit scope 必须与对应 prepare scope 同时授予。`agent.action.commit` 仅提交 R2 新增流水和新增工时，R3/R4 即使获批也拒绝；调用前复检用户、具体 PAT、scope、账本范围、action 状态和领域权限。后端全量 199 项中 197 项通过、2 项按既有规则跳过；真实 MySQL 定向测试 11/11 通过，覆盖账本与工时实际写入、重复提交结果回放、未批准、缺少 scope、R3 拒绝、Flyway V24 和账本 `ledger_sync_oplog`。纯 HTTP/MCP 联调覆盖 initialize、tools/list、批准前拒绝、站内批准、首次/重复 commit、数据库单条写入和 R3 禁止提交。前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 与生产构建通过；浏览器验收按仓库规则转为用户手工检查，不作为自动化已通过项。
 
 2026-09-28 MCP prepare 与站内确认增量：V23 新增 `mcp_external_action`，PAT 增加账本/工时 prepare scope；MCP 开放 6 个 create/update/delete prepare 和 3 个 action 管理工具，但 `.commit` 数量保持为 0。后端 `mvn test` 共 196 项，194 项通过、2 项按既有规则跳过，Flyway V1-V23、真实 MySQL、历史库混合 collation 和架构边界通过；前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过。真实协议联调覆盖 prepare、站内批准、状态回查、取消、PAT 撤销和零业务写入；确认页通过桌面与 375px 移动端亮暗主题验收。
 

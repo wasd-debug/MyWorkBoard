@@ -28,4 +28,9 @@ export interface ExternalActionView {
     'createdAt'?: string;
     'approvedAt'?: string;
     'rejectedAt'?: string;
+    'commitStatus'?: string;
+    'commitSummary'?: string;
+    'commitResult'?: object;
+    'commitStartedAt'?: string;
+    'committedAt'?: string;
 }

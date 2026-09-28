@@ -1,6 +1,6 @@
 # Agent 功能覆盖与中文评测集
 
-> 版本：v1.7（2026-09-28）
+> 版本：v1.8（2026-09-28）
 > 用途：Phase 3A/3B 自动回归基线。当前首页真实模型已接入 R0/R1 查询和获准的 R2/R3 prepare；commit 仅能由站内确认卡片触发。
 
 ## 1. 功能覆盖矩阵
@@ -42,7 +42,8 @@
 | 成本估算 | `ai_usage` + 价格版本 | 只读元数据 | 已支持固定价与 DeepSeek 峰谷价 | 供应商账单抽样对账 |
 | DeepSeek 深度思考 | `deepThinking` + `assistant.reasoning.delta` | 会话元数据 | 已支持开关、队列/重试保持、刷新恢复和默认收起 | 多工具长链路与其他兼容供应商回归 |
 | 外部只读 MCP | `/mcp` + PAT | R1 | 8 个工时/账本工具已按 scope 暴露 | Inspector/Codex/WorkBuddy 正式兼容记录 |
-| 外部 MCP prepare | 6 个 `*.prepare` + `agent.action.*` | R2-R3 | 已按独立 scope 暴露；支持查询、取消和站内确认，零 commit | 低风险 commit、幂等与投影同步 |
+| 外部 MCP prepare | 6 个 `*.prepare` + `agent.action.get/list/cancel` | R2-R3 | 已按独立 scope 暴露；支持查询、取消和站内确认 | Inspector/Codex/WorkBuddy 真实兼容记录 |
+| 外部 MCP 低风险提交 | `agent.action.commit` | R2 | 已按独立 commit scope 开放新增工时/新增流水；绑定原 PAT、站内批准、单次幂等，账本写入产生同步 oplog | Inspector/Codex/WorkBuddy 真实兼容与故障恢复 |
 
 ## 2. 中文指令评测集
 

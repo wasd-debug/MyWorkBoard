@@ -1,7 +1,7 @@
 <template>
   <section class="mcp-action-page">
     <header>
-      <div><span>EXTERNAL AGENT / MCP</span><h1>外部操作确认</h1><p>核对外部 Agent 准备的操作。批准只冻结本次参数，当前阶段不会写入业务数据。</p></div>
+      <div><span>EXTERNAL AGENT / MCP</span><h1>外部操作确认</h1><p>核对外部 Agent 准备的操作。批准只冻结本次参数，不会在当前页面直接写入业务数据。</p></div>
       <router-link to="/settings">管理 MCP Token</router-link>
     </header>
 
@@ -36,9 +36,12 @@
         <dl><div v-for="item in inputFields" :key="item.key"><dt>{{ item.label }}</dt><dd>{{ item.value }}</dd></div></dl>
       </details>
 
-      <div class="safety-note"><LockKeyhole /><p><b>本阶段不会直接写入</b><span>批准后 action 进入 APPROVED，等待未来开放的受控 commit；参数变化必须重新 prepare。</span></p></div>
+      <div class="safety-note"><LockKeyhole /><p><b>批准与提交严格分离</b><span>{{ commitAllowed ? '批准后，原 MCP 客户端还必须具备对应 commit scope 并显式调用 agent.action.commit；一个 action 最多成功写入一次。' : '该操作不是 R2 低风险操作，批准后仍禁止通过 MCP commit；参数变化必须重新 prepare。' }}</span></p></div>
 
-      <div v-if="action.status === 'APPROVED'" class="result approved"><CheckCircle2 /><div><b>已批准并冻结参数</b><small>可以返回外部 Agent 查询 action 状态。当前版本没有 MCP commit，因此不会产生业务写入。</small></div></div>
+      <div v-if="action.status === 'APPROVED'" class="result approved"><CheckCircle2 /><div><b>已批准并冻结参数</b><small>{{ commitAllowed ? '请返回原外部 Agent 发起显式提交；批准本身没有写入业务数据。' : '该风险等级不允许 MCP commit，不会产生业务写入。' }}</small></div></div>
+      <div v-else-if="action.status === 'COMPLETED'" class="result approved"><CheckCircle2 /><div><b>{{ action.commitSummary || '操作已完成' }}</b><small>提交结果已经固化；重复调用只会返回首次结果，不会再次写入。</small></div></div>
+      <div v-else-if="action.status === 'CONFLICT'" class="result rejected"><CircleAlert /><div><b>{{ action.commitSummary || '提交发生数据冲突' }}</b><small>业务数据没有被陈旧参数覆盖，请重新 prepare 并确认最新内容。</small></div></div>
+      <div v-else-if="action.status === 'FAILED'" class="result rejected"><CircleX /><div><b>{{ action.commitSummary || '提交失败' }}</b><small>该 action 不会自动重试，请返回外部 Agent 查询详情并重新准备操作。</small></div></div>
       <div v-else-if="['DENIED','CANCELLED'].includes(action.status)" class="result rejected"><CircleX /><div><b>该操作已拒绝</b><small>外部 Agent 无法再使用此 action。</small></div></div>
       <div v-else-if="action.status === 'EXPIRED'" class="result rejected"><Clock3 /><div><b>该操作已过期</b><small>请让外部 Agent 重新生成操作预览。</small></div></div>
 
@@ -64,6 +67,7 @@ const loading = ref(true)
 const busy = ref(false)
 const error = ref('')
 const token = computed(() => String(route.query.token || ''))
+const commitAllowed = computed(() => action.value?.riskLevel === 'R2')
 const previewFields = computed(() => fields(action.value?.structuredContent?.preview || action.value?.structuredContent || {}, true))
 const inputFields = computed(() => fields(action.value?.input || {}, false))
 
@@ -107,7 +111,7 @@ async function load() {
 async function approve() {
   if (busy.value) return
   busy.value = true
-  try { action.value = await apiApproveMcpActionConfirmation(token.value); message.success('参数已批准并冻结，本次没有写入业务数据') }
+  try { action.value = await apiApproveMcpActionConfirmation(token.value); message.success('参数已批准并冻结，批准本身没有写入业务数据') }
   catch (exception) { message.error(exception?.response?.data?.detail || '批准失败') }
   finally { busy.value = false }
 }

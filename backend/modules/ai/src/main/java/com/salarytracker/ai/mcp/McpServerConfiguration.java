@@ -67,7 +67,8 @@ public class McpServerConfiguration {
         List<String> enabledScopes = new ArrayList<>(List.of(
                 McpPersonalTokenService.LEDGER_READ, McpPersonalTokenService.WORKTIME_READ));
         if (writeEnabled) enabledScopes.addAll(List.of(
-                McpPersonalTokenService.LEDGER_PREPARE, McpPersonalTokenService.WORKTIME_PREPARE));
+                McpPersonalTokenService.LEDGER_PREPARE, McpPersonalTokenService.WORKTIME_PREPARE,
+                McpPersonalTokenService.LEDGER_COMMIT, McpPersonalTokenService.WORKTIME_COMMIT));
         int combinations = 1 << enabledScopes.size();
         for (int mask = 0; mask < combinations; mask++) {
             Set<String> scopes = new java.util.LinkedHashSet<>();
@@ -101,11 +102,15 @@ public class McpServerConfiguration {
                 .filter(definition -> READ_TOOLS.contains(definition.name()) || PREPARE_TOOLS.contains(definition.name()))
                 .map(definition -> specification(definition, registry, tokens, mapper, externalActions))
                 .toList());
-        if (hasPrepareScope(scopes)) specifications.addAll(actionSpecifications(tokens, mapper, externalActions));
+        if (hasActionScope(scopes)) {
+            specifications.addAll(actionSpecifications(registry, tokens, mapper, externalActions, scopes));
+        }
         McpSyncServer server = McpServer.sync(transport)
                 .serverInfo("salary-sync", "1.0.0")
-                .instructions(hasPrepareScope(scopes)
-                        ? "个人工作台 MCP。prepare 只生成待确认 action，不会写入业务数据；所有工具按 Token 用户、scope 和账本范围执行。"
+                .instructions(hasCommitScope(scopes)
+                        ? "个人工作台 MCP。R2 prepare 经网站批准后可使用 agent.action.commit 单次提交；R3/R4 不允许 MCP commit。所有工具按 Token 用户、scope 和账本范围执行。"
+                        : hasPrepareScope(scopes)
+                        ? "个人工作台 MCP。prepare 只生成待确认 action；批准后仍需具备 commit scope 才能提交。所有工具按 Token 用户、scope 和账本范围执行。"
                         : "个人工作台只读 MCP。所有工具均按 Token 用户、scope 和账本范围执行。")
                 .capabilities(McpSchema.ServerCapabilities.builder().tools(false).build())
                 .strictToolNameValidation(false)
@@ -239,31 +244,40 @@ public class McpServerConfiguration {
     }
 
     private List<McpServerFeatures.SyncToolSpecification> actionSpecifications(
-            McpPersonalTokenService tokens, ObjectMapper mapper, McpExternalActionService externalActions) {
+            DomainToolRegistry registry, McpPersonalTokenService tokens, ObjectMapper mapper,
+            McpExternalActionService externalActions, Set<String> scopes) {
         List<McpServerFeatures.SyncToolSpecification> result = new ArrayList<>();
         result.add(actionSpecification("agent.action.get", "查询当前 PAT 创建的外部 action 状态。",
                 objectSchema(mapper, Map.of("actionId", stringSchema(mapper, "action ID")), List.of("actionId")),
-                tokens, mapper, externalActions));
+                registry, tokens, mapper, externalActions));
         result.add(actionSpecification("agent.actions.list", "列出当前 PAT 最近创建的外部 actions。",
                 objectSchema(mapper, Map.of("limit", integerSchema(mapper, "返回数量，1-50")), List.of()),
-                tokens, mapper, externalActions));
+                registry, tokens, mapper, externalActions));
         result.add(actionSpecification("agent.action.cancel", "取消当前 PAT 创建且尚未执行的外部 action。",
                 objectSchema(mapper, Map.of("actionId", stringSchema(mapper, "action ID")), List.of("actionId")),
-                tokens, mapper, externalActions));
+                registry, tokens, mapper, externalActions));
+        if (hasCommitScope(scopes)) {
+            result.add(actionSpecification("agent.action.commit",
+                    "提交当前 PAT 创建、已在网站批准且风险等级为 R2 的 action；重复调用返回首次结果。",
+                    objectSchema(mapper, Map.of("actionId", stringSchema(mapper, "已批准的 action ID")),
+                            List.of("actionId")), registry, tokens, mapper, externalActions));
+        }
         return result;
     }
 
     private McpServerFeatures.SyncToolSpecification actionSpecification(
             String name, String description, Map<String, Object> schema,
-            McpPersonalTokenService tokens, ObjectMapper mapper, McpExternalActionService externalActions) {
+            DomainToolRegistry registry, McpPersonalTokenService tokens, ObjectMapper mapper,
+            McpExternalActionService externalActions) {
         McpSchema.Tool tool = McpSchema.Tool.builder(name, schema).description(description).build();
         return McpServerFeatures.SyncToolSpecification.builder().tool(tool)
                 .callHandler((exchange, request) -> invokeAction(exchange.transportContext(), name,
-                        request.arguments(), tokens, mapper, externalActions)).build();
+                        request.arguments(), registry, tokens, mapper, externalActions)).build();
     }
 
     private McpSchema.CallToolResult invokeAction(McpTransportContext context, String name,
                                                    Map<String, Object> arguments,
+                                                   DomainToolRegistry registry,
                                                    McpPersonalTokenService tokens, ObjectMapper mapper,
                                                    McpExternalActionService externalActions) {
         long startedAt = System.nanoTime();
@@ -273,10 +287,21 @@ public class McpServerConfiguration {
         String summary = null;
         String errorCode = null;
         try {
-            if (token == null || !hasPrepareScope(token.scopes())) throw new SecurityException("Token 缺少 prepare scope");
+            if (token == null || !hasActionScope(token.scopes())) {
+                throw new SecurityException("Token 缺少 prepare 或 commit scope");
+            }
             Map<String, Object> safeArguments = arguments == null ? Map.of() : arguments;
             Object content;
-            if ("agent.action.get".equals(name)) {
+            if ("agent.action.commit".equals(name)) {
+                var authorities = token.user().authorities().stream().map(SimpleGrantedAuthority::new).toList();
+                SecurityContextHolder.getContext().setAuthentication(
+                        new UsernamePasswordAuthenticationToken(token.user(), null, authorities));
+                McpExternalActionService.CommitResult result = externalActions.commitForToken(
+                        token, requiredActionId(safeArguments), registry, tokens);
+                content = result;
+                status = result.status().name();
+                summary = result.summary();
+            } else if ("agent.action.get".equals(name)) {
                 content = externalActions.getForToken(token, requiredActionId(safeArguments));
                 summary = "已查询外部 action";
             } else if ("agent.action.cancel".equals(name)) {
@@ -287,12 +312,12 @@ public class McpServerConfiguration {
                 content = externalActions.listForToken(token, limit);
                 summary = "已返回外部 action 列表";
             }
-            status = "COMPLETED";
+            if (!"agent.action.commit".equals(name)) status = "COMPLETED";
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("status", "completed");
+            payload.put("status", status.toLowerCase());
             payload.put("summary", summary);
             payload.put("structuredContent", mapper.convertValue(content, Object.class));
-            payload.put("actionId", null);
+            payload.put("actionId", "agent.action.commit".equals(name) ? requiredActionId(safeArguments) : null);
             payload.put("confirmationUrl", null);
             payload.put("expiresAt", null);
             return McpSchema.CallToolResult.builder().addTextContent(summary)
@@ -304,6 +329,7 @@ public class McpServerConfiguration {
             summary = exception.getMessage(); errorCode = "INVALID_ACTION";
             return error(summary, errorCode);
         } finally {
+            SecurityContextHolder.clearContext();
             if (token != null) {
                 try { tokens.audit(token, name, status, elapsed(startedAt), safeArguments(arguments, mapper), summary, errorCode); }
                 catch (Exception ignored) { }
@@ -339,6 +365,15 @@ public class McpServerConfiguration {
     private static boolean hasPrepareScope(Set<String> scopes) {
         return scopes.contains(McpPersonalTokenService.LEDGER_PREPARE)
                 || scopes.contains(McpPersonalTokenService.WORKTIME_PREPARE);
+    }
+
+    private static boolean hasCommitScope(Set<String> scopes) {
+        return scopes.contains(McpPersonalTokenService.LEDGER_COMMIT)
+                || scopes.contains(McpPersonalTokenService.WORKTIME_COMMIT);
+    }
+
+    private static boolean hasActionScope(Set<String> scopes) {
+        return hasPrepareScope(scopes) || hasCommitScope(scopes);
     }
 
     private static String scopeKey(Set<String> scopes) {
@@ -401,6 +436,8 @@ public class McpServerConfiguration {
                 if (!writeEnabled) {
                     effectiveScopes.remove(McpPersonalTokenService.LEDGER_PREPARE);
                     effectiveScopes.remove(McpPersonalTokenService.WORKTIME_PREPARE);
+                    effectiveScopes.remove(McpPersonalTokenService.LEDGER_COMMIT);
+                    effectiveScopes.remove(McpPersonalTokenService.WORKTIME_COMMIT);
                 }
                 String key = scopeKey(effectiveScopes);
                 httpRequest.setAttribute(BASE_URL_CONTEXT_KEY, baseUrl(httpRequest));

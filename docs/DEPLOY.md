@@ -59,7 +59,7 @@ sudo bash deploy/deploy.sh
 
 部署完成后，通过服务器的 80 端口访问应用。若服务器有防火墙或云安全组，请放行 TCP 80。
 
-MCP 使用与网站相同的公开地址，例如 `https://work.example.com/mcp`。Nginx 必须保持 `/mcp` 的 `proxy_buffering off`、HTTP/1.1 和长读取超时；PAT 在网站设置页创建，完整值只显示一次。生产环境建议先保持 `APP_MCP_WRITE_ENABLED=false`，完成独立 PAT 与站内确认验收后再灰度开启 prepare。详细连接与验证见 [MCP 连接指南](MCP连接指南.md)。
+MCP 使用与网站相同的公开地址，例如 `https://work.example.com/mcp`。Nginx 必须保持 `/mcp` 的 `proxy_buffering off`、HTTP/1.1 和长读取超时；PAT 在网站设置页创建，完整值只显示一次。生产环境建议先保持 `APP_MCP_WRITE_ENABLED=false`，完成独立 PAT、站内确认、R2 commit 幂等和投影同步验收后再灰度开启；该开关会同时控制 prepare、commit 和 action 工具。详细连接与验证见 [MCP 连接指南](MCP连接指南.md)。
 
 ## 使用已构建镜像
 

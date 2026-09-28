@@ -1,7 +1,7 @@
 # 工作台 Agent 与 MCP 改造计划
 
-> 版本：v2.7（2026-09-28）
-> 状态：实施中（Phase 3C-2 已完成：MCP prepare、外部 action 查询/取消和站内确认已落地；MCP commit 与 OAuth 尚未开放）
+> 版本：v2.8（2026-09-28）
+> 状态：实施中（Phase 3C-3 已完成：MCP R2 低风险 commit、独立 scope、单次幂等与账本投影同步已落地；R3/R4 commit 与 OAuth 尚未开放）
 
 > 运维修正：迁移 `V8.1` 是在 `V8` 已发布后补充的索引迁移，已有数据库升级时需开启 `FLYWAY_OUT_OF_ORDER=true`；不得删除或改写 `flyway_schema_history`。
 
@@ -11,9 +11,9 @@
 
 ## 0. 实施进度快照（2026-09-28）
 
-当前增量完成 Phase 3C-2：当 `mcp.write-enabled=true` 且 PAT 具备对应 prepare scope 时，MCP 可见工时新增/修改/删除和账本流水新增/修改/删除共 6 个 `*.prepare`，以及 `agent.action.get`、`agent.actions.list`、`agent.action.cancel`。prepare 继续调用同一 `DomainToolRegistry`，只生成冻结参数、预览和 pending action，不写入业务数据；结果返回真实 `actionId`、短期 `confirmationUrl` 和过期时间。外部 action 按用户和创建它的具体 PAT 双重隔离，账本范围在解析真实 `bookId` 后再次校验，越界 action 会立即取消。网站新增 `/mcp/actions/confirm` 确认页，登录用户可查看工具、风险、客户端、PAT、冻结参数和预览，并批准或拒绝；批准仅把 action 置为 `APPROVED`，当前版本不会 commit。确认 token 与 PAT 均只保存 hash，PAT 撤销后确认链接立即失效。V23 新增 `mcp_external_action`；为兼容历史库不同字符排序规则，字符串关联使用二进制等值比较，不依赖数据库默认 collation。
+当前增量完成 Phase 3C-3：PAT 新增 `mcp:ledger:commit`、`mcp:worktime:commit`，且必须与同领域 prepare scope 同时授予；MCP 使用通用 `agent.action.commit`，不直接暴露任何领域 `*.commit`。当前只允许 `ledger.transaction.create.prepare` 和 `worktime.record.create.prepare` 两个 R2 action 在网站批准后提交，修改、删除等 R3 及全部 R4 继续拒绝。提交前重新校验用户、创建 action 的具体 PAT、commit scope、账本范围、action 状态和领域权限；领域服务继续负责资源存在性、revision 和事务规则。首次结果持久化到 V24 扩展的 `mcp_external_action`，重复调用返回首次结果并标记 replay，不产生第二次写入；若进程在领域事务完成后、结果落表前中断，可根据 pending action 终态恢复结果。账本新增继续写入现有 `ledger_sync_oplog`，传统页面和 IndexedDB 可沿用既有增量同步链刷新。
 
-真实协议联调已验证：工时 read+prepare PAT 的 `tools/list` 返回 2 个只读工具、3 个 prepare 和 3 个 action 工具，任何 `*.commit` 数量为 0；完整工时 prepare 返回 `needs_confirmation`，网站批准后 MCP 查询为 `APPROVED`，批准前后 `work_record` 均无新增；第二个 action 可由 MCP 取消并进入 `CANCELLED`。确认页已在桌面和 375px 移动端验证，亮暗主题无横向溢出，确认操作栏不遮挡底部导航。下一增量为 Phase 3C-3：仅开放低风险 MCP commit，补齐 commit scope、单次幂等、审批后权限/revision 复检和本地投影同步；OAuth 继续后置。
+真实 MySQL 定向验证已覆盖账本与工时 R2 实际写入、重复 commit、未批准、缺少 scope、R3 拒绝和 Flyway V24；账本写入同时验证同步 oplog。全量后端 `mvn test` 共 199 项，197 项通过、2 项按既有规则跳过。纯 HTTP/MCP 联调进一步验证 `initialize`、`tools/list`、新增工时 prepare、批准前拒绝、站内批准、首次 commit、重复 commit 回放、数据库单条写入和 R3 禁止提交。前端浏览器检查不再由自动化 Agent 执行，已建立 [`前端手工检查清单.md`](前端手工检查清单.md)，本增量的设置页 scope、确认页批准说明、提交完成/冲突/失败状态等待用户手工验收。下一增量进入 OAuth 2.1 + PKCE 与 MCP Inspector/Codex/WorkBuddy 正式兼容收口。
 
 上一增量完成 Phase 3C-1 只读 MCP 与深度思考：同一 Spring Boot 进程通过官方 Java MCP SDK `2.0.1` 提供 `POST /mcp` Streamable HTTP，MCP 与站内 Agent 共享 `DomainToolRegistry`，没有反向 HTTP 调用。首批只读暴露 8 个工具：`worktime.settings.get`、`worktime.records.search`、`ledger.books.list`、`ledger.overview`、`ledger.transactions.search`、`ledger.transaction.history`、`ledger.reports.summary`、`ledger.budgets.list`；`tools/list` 按 PAT scope 动态裁剪，账本结果和工具参数继续受 Token 账本范围及领域权限约束。设置页支持创建、一次性复制、列出和撤销 PAT；数据库只保存 SHA-256 hash，Token 默认 90 天、最长 366 天，支持 `mcp:ledger:read` 与 `mcp:worktime:read`，并记录调用状态、耗时和脱敏参数摘要。服务端增加每 Token 每分钟 120 次基础限流、1 MiB 请求体、30 秒协议请求超时和 366 天查询跨度上限。Vite 与 Nginx 均代理 `/mcp`，页面显示的同源地址可直接用于本地或部署环境。
 
@@ -101,16 +101,18 @@ Phase 3C-1 协议联调已通过：双 scope `tools/list` 返回 8 个工具，�
 本次明确未实施：
 
 - 评测结果数据库留存、聚合成本告警和运营仪表盘。
-- OAuth 2.1 + PKCE、MCP commit、MCP Inspector/Codex/WorkBuddy 正式兼容记录。
+- OAuth 2.1 + PKCE、MCP Inspector/Codex/WorkBuddy 正式兼容记录。
 - 文件、向量库和 RAG。
 
 后续正式增量顺序（已排期，不能遗漏）：
 
-1. 低风险 MCP commit：新增 commit scope、单次幂等、审批后权限/revision 复检与投影同步；R4 继续不开放 MCP commit。
-2. MCP 正式认证与兼容收口：OAuth 2.1 + PKCE、MCP Inspector/Codex/WorkBuddy 真实兼容回归。
-3. 现有功能稳定化：并发冲突、错误回放、成本告警和灰度运行手册。
+1. [x] 低风险 MCP commit：新增 commit scope、单次幂等、审批后权限/revision 复检与投影同步；R3/R4 继续不开放 MCP commit。
+2. [ ] MCP 正式认证与兼容收口：OAuth 2.1 + PKCE、MCP Inspector/Codex/WorkBuddy 真实兼容回归。
+3. [ ] 现有功能稳定化：并发冲突、错误回放、成本告警和灰度运行手册。
 
 验证记录：
+
+- 2026-09-28 MCP 低风险 commit 增量：V24 扩展 `mcp_external_action` 的 commit 状态、结果和时间；PAT 增加账本/工时 commit scope，且必须与对应 prepare scope 同时授予。MCP 只暴露通用 `agent.action.commit`，不暴露领域 `*.commit`；当前仅允许新增工时和新增流水两个 R2 action，R3/R4 即使网站批准也拒绝提交。后端 `mvn test` 共 199 项，197 项通过、2 项按既有规则跳过，Flyway V1-V24、真实 MySQL 和架构边界通过；定向 11/11 覆盖账本/工时写入、单次幂等、未批准、缺 scope、R3 拒绝与账本同步 oplog。纯 HTTP/MCP 联调确认含工时 read/prepare/commit 的 PAT 可见 9 个工具、没有领域 commit，批准前提交被拒绝，批准后写入一次，重复提交返回 `replayed=true`，数据库保持一条记录，R3 删除 action 获批后仍拒绝提交。前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过；浏览器与视觉验收已转入前端手工检查清单。
 
 - 2026-09-28 MCP prepare 与站内确认增量：V23 新增外部 action 与具体 PAT 绑定，新增账本/工时 prepare scope，MCP 开放 6 个 create/update/delete prepare 及 action get/list/cancel；网站批准只进入 `APPROVED`，不执行 commit。后端 `mvn test` 共 196 项，194 项通过、2 项按既有规则跳过，Flyway V1-V23、真实 MySQL、历史库混合 collation 和架构边界通过；前端 Node 49/49、sync-engine 8/8、TypeScript、OpenAPI 一致性和生产构建通过。真实协议联调覆盖 prepare、状态回查、取消、站内批准、PAT 撤销和零业务写入；确认页通过桌面与 375px 移动端亮暗主题验收。下一增量进入低风险 MCP commit、commit scope、幂等、复检和投影同步。
 
@@ -836,8 +838,8 @@ mcp:worktime:commit
 
 验证：
 
-- curl 协议联调已完成 initialize、tools/list、tools/call、单 scope 过滤、无效 Token 和撤销 Token；MCP Inspector 仍需补正式验收记录。
-- Codex 和 WorkBuddy 分别完成真实连接后，Phase 3C-1 才视为客户端兼容性完全关闭。
+- 纯 HTTP/MCP 协议联调已完成 initialize、tools/list、tools/call、单 scope 过滤、无效/撤销 Token，以及 R2 prepare、站内批准、首次/重复 commit 和 R3 拒绝；MCP Inspector 仍需补正式验收记录。
+- Codex 和 WorkBuddy 分别完成真实连接后，Phase 3C 才视为客户端兼容性完全关闭。
 - 验证跨用户隔离、scope 隐藏与调用时二次校验。
 - 验证 PAT 过期、撤销、账本限制、分页和限流。
 
@@ -852,20 +854,21 @@ mcp:worktime:commit
 - [x] 开放首批 6 个工时/流水 prepare 工具；MCP elicitation 兼容流程继续作为客户端增强项。
 - [x] 建设外部 action 绑定、查询/列表/取消、短期 confirmation URL 和网站内确认页。
 - [x] prepare scope 与 read scope 分离；网站批准只进入 `APPROVED`，不产生业务写入。
-- 先开放 R2 commit，再按验证结果开放部分 R3。
+- [x] 开放 R2 commit：当前仅新增工时和新增流水，独立 commit scope、原 PAT 绑定、结果回放和账本同步 oplog 已实现。
+- R3 commit 继续关闭，只有后续独立风险评审通过后才可逐项开放。
 - 增加 OAuth 2.1 + PKCE，PAT 保持受限兼容。
 
 验证：
 
 - 无审批、伪造确认、审批过期、参数变化、重复提交均不能产生额外写入。
-- 缺少 prepare scope 时工具不可见且调用被拒绝；commit scope 尚未提供。
+- 缺少 prepare scope 时 prepare 工具不可见；缺少 commit scope、未站内批准或非原 PAT 时提交被拒绝。
 - 伪造 user ID、book ID 和 action ID 均被认证上下文拦截。
 - OAuth redirect URI、PKCE、refresh rotation 和撤销通过安全测试。
 - MCP commit 后 Web 页面和本地投影正确刷新。
 
 退出门禁：低风险写入在 Codex、WorkBuddy 中通过；高风险操作只能完成站内审批；错误写入为零。
 
-上线与回滚：使用 `mcp.write-enabled` 和 `mcp.oauth-enabled` 分开灰度；当前关闭写开关后会隐藏 prepare/action 工具并保留只读 MCP，且不存在任何 MCP commit 路径。
+上线与回滚：使用 `mcp.write-enabled` 和 `mcp.oauth-enabled` 分开灰度；关闭写开关后会同时隐藏 prepare、commit 和 action 工具并保留只读 MCP。R3/R4 不存在 MCP commit 路径。
 
 ### 阶段 6：现有功能全量覆盖与稳定化
 

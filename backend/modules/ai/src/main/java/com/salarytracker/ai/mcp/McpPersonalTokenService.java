@@ -30,8 +30,10 @@ public class McpPersonalTokenService {
     public static final String WORKTIME_READ = "mcp:worktime:read";
     public static final String LEDGER_PREPARE = "mcp:ledger:prepare";
     public static final String WORKTIME_PREPARE = "mcp:worktime:prepare";
+    public static final String LEDGER_COMMIT = "mcp:ledger:commit";
+    public static final String WORKTIME_COMMIT = "mcp:worktime:commit";
     private static final Set<String> ALLOWED_SCOPES = Set.of(
-            LEDGER_READ, WORKTIME_READ, LEDGER_PREPARE, WORKTIME_PREPARE);
+            LEDGER_READ, WORKTIME_READ, LEDGER_PREPARE, WORKTIME_PREPARE, LEDGER_COMMIT, WORKTIME_COMMIT);
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
@@ -95,8 +97,8 @@ public class McpPersonalTokenService {
 
     public void requireBook(AuthenticatedToken token, String bookId) {
         if (token == null || token.scopes().stream().noneMatch(scope ->
-                LEDGER_READ.equals(scope) || LEDGER_PREPARE.equals(scope))) {
-            throw new SecurityException("缺少账本 read 或 prepare scope");
+                LEDGER_READ.equals(scope) || LEDGER_PREPARE.equals(scope) || LEDGER_COMMIT.equals(scope))) {
+            throw new SecurityException("缺少账本 read、prepare 或 commit scope");
         }
         if (bookId == null || bookId.isBlank()) return;
         if (!token.bookIds().isEmpty() && !token.bookIds().contains(bookId)) {
@@ -117,11 +119,18 @@ public class McpPersonalTokenService {
         Set<String> scopes = requested == null ? Set.of() : new LinkedHashSet<>(requested);
         if (scopes.isEmpty()) throw new IllegalArgumentException("至少选择一个 MCP scope");
         if (!ALLOWED_SCOPES.containsAll(scopes)) throw new IllegalArgumentException("包含不支持的 MCP scope");
+        if (scopes.contains(LEDGER_COMMIT) && !scopes.contains(LEDGER_PREPARE)) {
+            throw new IllegalArgumentException("账本 commit scope 必须与账本 prepare scope 同时授予");
+        }
+        if (scopes.contains(WORKTIME_COMMIT) && !scopes.contains(WORKTIME_PREPARE)) {
+            throw new IllegalArgumentException("工时 commit scope 必须与工时 prepare scope 同时授予");
+        }
         return Set.copyOf(scopes);
     }
 
     private Set<String> normalizeBookIds(Set<String> requested, long userId, Set<String> scopes) {
-        if (!scopes.contains(LEDGER_READ) && !scopes.contains(LEDGER_PREPARE)) return Set.of();
+        if (!scopes.contains(LEDGER_READ) && !scopes.contains(LEDGER_PREPARE)
+                && !scopes.contains(LEDGER_COMMIT)) return Set.of();
         Set<String> ids = requested == null ? Set.of() : new LinkedHashSet<>(requested);
         if (ids.isEmpty()) return Set.of();
         for (String id : ids) {
