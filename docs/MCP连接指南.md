@@ -1,6 +1,6 @@
 # MCP 连接指南
 
-> 状态：Phase 3C-6（2026-09-29）
+> 状态：Phase 3C-7（2026-09-29）
 > 范围：Streamable HTTP、PAT、OAuth 2.1 Authorization Code + PKCE、账本/工时 read/prepare/commit scope、外部 action、Resources、Prompts、站内确认、R2 单次提交、客户端诊断与运维审计
 
 ## 1. 当前能力
@@ -214,6 +214,27 @@ GET    /api/v1/mcp/events?limit=30
 - 生产环境必须使用 HTTPS。
 
 ## 5. 协议联调
+
+### 5.1 只读 smoke test
+
+仓库提供不依赖第三方库的只读协议脚本。脚本不会创建 Token、批准 action 或修改业务数据；临时 Token 应在设置页创建并在测试后撤销：
+
+```bash
+export WORKBOARD_MCP_TOKEN='wbt_替换为完整PAT'
+export WORKBOARD_MCP_URL='http://127.0.0.1:8080/mcp'
+# 可选：仅在该 Token 确实允许访问时启用账本资源检查
+export MCP_BOOK_ID='账本 public id'
+python3 backend/scripts/mcp-smoke-test.py
+```
+
+验证前端 Vite 代理链路时只替换地址，其他参数保持不变：
+
+```bash
+export WORKBOARD_MCP_URL='http://127.0.0.1:5173/mcp'
+python3 backend/scripts/mcp-smoke-test.py
+```
+
+脚本会检查 `initialize` 的 resources/prompts 能力、`resources/list`、`resources/templates/list`、帮助资源、工时补录 Prompt；设置 `MCP_BOOK_ID` 后额外检查账本资源和摘要 Prompt。脚本不会宣称完成 MCP Inspector、Codex 或 WorkBuddy 的客户端 UI 验收。
 
 以下示例用环境变量保存 Token，避免出现在命令历史正文中：
 

@@ -1,7 +1,7 @@
 # 工作台 Agent 与 MCP 改造计划
 
-> 版本：v3.1（2026-09-29）
-> 状态：实施中（Phase 3C-6 已完成首批 MCP Resources 与 Prompts：静态帮助、按 scope 裁剪的动态资源、账本/工时资源模板和只读提示模板已落地；R3/R4 commit 继续关闭，Inspector/Codex/WorkBuddy 真实客户端验收待用户执行）
+> 版本：v3.2（2026-09-29）
+> 状态：实施中（Phase 3C-7 已完成可重复的只读 MCP smoke test 与双入口协议检查；R3/R4 commit 继续关闭，Inspector/Codex/WorkBuddy 真实客户端验收待用户执行）
 
 > 运维修正：迁移 `V8.1` 是在 `V8` 已发布后补充的索引迁移，已有数据库升级时需开启 `FLYWAY_OUT_OF_ORDER=true`；不得删除或改写 `flyway_schema_history`。
 
@@ -11,7 +11,11 @@
 
 ## 0. 实施进度快照（2026-09-29）
 
-当前增量完成 Phase 3C-6 MCP Resources 与 Prompts：每个按 scope 生成的 MCP provider 均启用 `resources/list`、`resources/templates/list`、`resources/read`、`prompts/list` 和 `prompts/get`。首批提供 MCP 帮助、工具和 scope 文档，可访问账本清单、工时设置，以及账本最近 30 天概览、指定月份报表、工时日期范围记录模板；提示模板提供月度复盘、账本摘要和工时补录检查。动态资源复用 `DomainToolRegistry`，重新校验 Token 用户、read scope、账本范围、领域权限和 366 天日期边界，读取结果只保存脱敏 `resources/read` 审计摘要；Prompt 只返回消息，不触发写入。非法 URI、越权账本、超范围日期和缺失参数均返回稳定参数/权限错误。
+当前增量完成 Phase 3C-7 MCP 外部客户端兼容收口：新增 `backend/scripts/mcp-smoke-test.py`，使用 Python 标准库对直连后端或 Vite `/mcp` 代理执行只读协议检查；覆盖 initialize 能力、session、resources/prompts 目录、帮助资源、工时 Prompt，并可通过显式 `MCP_BOOK_ID` 检查账本动态资源。脚本不创建凭据、不批准 action、不写业务数据，真实 MCP Inspector、Codex、WorkBuddy UI 仍由用户手工验收。
+
+本增量验证结果：同一个临时双 read scope PAT 已分别通过 `http://127.0.0.1:8080/mcp` 和 `http://127.0.0.1:5173/mcp` smoke test，均返回 5 个 resources、3 个 resource templates、3 个 prompts；未设置 `MCP_BOOK_ID` 时只执行通用只读链路，避免使用不确定的测试账本。`python3 -m py_compile`、前端 Node 49/49、TypeScript、OpenAPI 一致性和生产构建通过；临时 Token 已清理。后端与前端服务保持运行。
+
+上一增量完成 Phase 3C-6 MCP Resources 与 Prompts：每个按 scope 生成的 MCP provider 均启用 `resources/list`、`resources/templates/list`、`resources/read`、`prompts/list` 和 `prompts/get`。首批提供 MCP 帮助、工具和 scope 文档，可访问账本清单、工时设置，以及账本最近 30 天概览、指定月份报表、工时日期范围记录模板；提示模板提供月度复盘、账本摘要和工时补录检查。动态资源复用 `DomainToolRegistry`，重新校验 Token 用户、read scope、账本范围、领域权限和 366 天日期边界，读取结果只保存脱敏 `resources/read` 审计摘要；Prompt 只返回消息，不触发写入。非法 URI、越权账本、超范围日期和缺失参数均返回稳定参数/权限错误。
 
 本增量验证结果：本地临时双 read scope PAT 完成 `initialize`、`resources/list`（5 项）、`resources/templates/list`（3 项）、静态/动态 `resources/read`、`prompts/list`（3 项）及 `worktime-makeup`/`ledger-summary` 的 `prompts/get`；资源读取审计计数符合预期，临时 Token 已清理。后端全量 `mvn test` 共 222 项，220 项通过、2 项按既有规则跳过；本地容器后端已刷新，`/api/health` 返回 `ok`。MCP Inspector、Codex、WorkBuddy 真实客户端和浏览器视觉检查仍待用户按手工清单执行。
 
@@ -863,6 +867,7 @@ mcp:worktime:commit
 - [x] 实现 PAT 管理页面、token scope、账本范围、过期与撤销。
 - [x] 只暴露 8 个工时、账本 R1 工具。
 - [x] 增加 Token、工具和用户维度审计与基础限流。
+- [x] 增加只读 MCP smoke test，覆盖后端直连和 Vite `/mcp` 代理的 initialize、Resources、Prompts 基础链路。
 - [ ] 使用 MCP Inspector、Codex 和 WorkBuddy 分别记录正式客户端版本与连接结果。
 
 验证：
