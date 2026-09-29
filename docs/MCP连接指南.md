@@ -1,7 +1,7 @@
 # MCP 连接指南
 
-> 状态：Phase 3C-5（2026-09-28）
-> 范围：Streamable HTTP、PAT、OAuth 2.1 Authorization Code + PKCE、账本/工时 read/prepare/commit scope、外部 action、站内确认、R2 单次提交、客户端诊断与运维审计
+> 状态：Phase 3C-6（2026-09-29）
+> 范围：Streamable HTTP、PAT、OAuth 2.1 Authorization Code + PKCE、账本/工时 read/prepare/commit scope、外部 action、Resources、Prompts、站内确认、R2 单次提交、客户端诊断与运维审计
 
 ## 1. 当前能力
 
@@ -64,6 +64,20 @@ agent.action.commit
 ```
 
 服务端不直接暴露任何领域 `*.commit`。`agent.action.commit` 当前只允许 `ledger.transaction.create.prepare` 和 `worktime.record.create.prepare` 两个 R2 action；修改、删除等 R3 及全部 R4 操作仍拒绝外部提交。同步 push/pull、数据库级接口和内部维护接口不作为 MCP Tool。
+
+只读资源与提示模板：
+
+```text
+resources/list
+resources/templates/list
+resources/read
+prompts/list
+prompts/get
+```
+
+首批静态资源为 `workbench://help/mcp`、`workbench://help/tools` 和 `workbench://help/scopes`；账本 read scope 额外提供 `workbench://ledger/books`，工时 read scope 额外提供 `workbench://worktime/settings`。动态模板包括 `workbench://ledger/{bookId}/overview`、`workbench://ledger/{bookId}/reports/{period}` 和 `workbench://worktime/records/{from}/{to}`。提示模板包括 `monthly-review`、`ledger-summary` 和 `worktime-makeup`。
+
+资源读取沿用 PAT/OAuth 用户、scope、账本范围、领域权限和 366 天日期跨度校验；不会返回未授权账本、数据库实体全集、凭据或完整审计参数。Prompts 只生成给 MCP Host 的 PromptMessage，不自动执行查询写入；需要写入时仍必须调用 prepare、站内确认和 commit。动态业务资源读取会写入脱敏的 `resources/read` MCP 审计记录。
 
 认证方式：
 
@@ -294,7 +308,9 @@ curl -i \
 6. 在网站撤销 OAuth grant 或 PAT。
 7. 再次调用，确认立即失败且没有返回缓存业务数据。
 
-Phase 3C-5 已完成服务端兼容与运维自动化验证：显式不支持协议版本返回 400、无效凭据返回 401、限流返回 429；DCR 限流、用户隔离诊断、协议事件、客户端级断开和定时清理均有集成测试。Phase 3C-4 的 DCR、PKCE S256、授权码单次消费、refresh 轮换和授权撤销，以及 Phase 3C-3 的 R2 commit、幂等回放、账本同步 oplog 和 R3 拒绝保持不变。根据项目规则，MCP Inspector、Codex、WorkBuddy 的真实 UI 连接、浏览器授权页和视觉检查由用户按 [`前端手工检查清单.md`](前端手工检查清单.md) 执行，当前不宣称已自动完成。
+Phase 3C-6 已完成本地协议联调：临时双 read scope PAT 的 `initialize` 能力包含 resources/prompts；`resources/list` 返回 5 项，`resources/templates/list` 返回 3 项，静态与动态 `resources/read` 均成功；`prompts/list` 返回 3 项，`worktime-makeup` 与有权账本的 `ledger-summary` 均成功，资源读取写入脱敏审计且临时 Token 已清理。后端全量 `mvn test` 为 222 项，220 项通过、2 项按既有规则跳过。根据项目规则，MCP Inspector、Codex、WorkBuddy 的真实 UI 连接、浏览器授权页和视觉检查仍由用户按 [`前端手工检查清单.md`](前端手工检查清单.md) 执行，当前不宣称已自动完成。
+
+Phase 3C-5 已完成服务端兼容与运维自动化验证：显式不支持协议版本返回 400、无效凭据返回 401、限流返回 429；DCR 限流、用户隔离诊断、协议事件、客户端级断开和定时清理均有集成测试。Phase 3C-4 的 DCR、PKCE S256、授权码单次消费、refresh 轮换和授权撤销，以及 Phase 3C-3 的 R2 commit、幂等回放、账本同步 oplog 和 R3 拒绝保持不变。
 
 ## 8. 故障排查
 

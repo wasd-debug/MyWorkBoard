@@ -1,7 +1,7 @@
 # 工作台 Agent 与 MCP 改造计划
 
-> 版本：v3.0（2026-09-28）
-> 状态：实施中（Phase 3C-5 已完成服务端兼容与运维收口：协议错误分类、连接诊断、客户端级断开、协议事件、DCR 限流与凭据清理已落地；R3/R4 commit 继续关闭，Inspector/Codex/WorkBuddy 真实客户端验收待用户执行）
+> 版本：v3.1（2026-09-29）
+> 状态：实施中（Phase 3C-6 已完成首批 MCP Resources 与 Prompts：静态帮助、按 scope 裁剪的动态资源、账本/工时资源模板和只读提示模板已落地；R3/R4 commit 继续关闭，Inspector/Codex/WorkBuddy 真实客户端验收待用户执行）
 
 > 运维修正：迁移 `V8.1` 是在 `V8` 已发布后补充的索引迁移，已有数据库升级时需开启 `FLYWAY_OUT_OF_ORDER=true`；不得删除或改写 `flyway_schema_history`。
 
@@ -9,9 +9,13 @@
 > 适用范围：现有工时、账本和 AI 工作台；任务、文件、向量库与 RAG 按后续阶段接入
 > 总原则：先把现有业务能力收敛为可验证的领域工具，再接入 Web Agent 和 MCP；每一阶段独立交付、独立验证、可通过功能开关回滚，未通过退出门禁不得进入下一阶段。
 
-## 0. 实施进度快照（2026-09-28）
+## 0. 实施进度快照（2026-09-29）
 
-当前增量完成 Phase 3C-5 服务端兼容与运维收口：`MCP-Protocol-Version` 未携带时保留 initialize 协商兼容，显式携带不支持版本时返回 400；无效 Token 返回带 `resource_metadata` 的 401，调用限流返回 429，不再把协议错误和服务端错误统一伪装成认证失败。已登记的可信 `redirect_uri` 在 authorize 参数错误时收到标准 `error/error_description/state` 回调，未知客户端或未登记 redirect 禁止跳转；token 与 revoke 的成功、失败响应均禁止缓存。DCR 按来源 IP 增加每小时 20 次和 100 个有效客户端上限。
+当前增量完成 Phase 3C-6 MCP Resources 与 Prompts：每个按 scope 生成的 MCP provider 均启用 `resources/list`、`resources/templates/list`、`resources/read`、`prompts/list` 和 `prompts/get`。首批提供 MCP 帮助、工具和 scope 文档，可访问账本清单、工时设置，以及账本最近 30 天概览、指定月份报表、工时日期范围记录模板；提示模板提供月度复盘、账本摘要和工时补录检查。动态资源复用 `DomainToolRegistry`，重新校验 Token 用户、read scope、账本范围、领域权限和 366 天日期边界，读取结果只保存脱敏 `resources/read` 审计摘要；Prompt 只返回消息，不触发写入。非法 URI、越权账本、超范围日期和缺失参数均返回稳定参数/权限错误。
+
+本增量验证结果：本地临时双 read scope PAT 完成 `initialize`、`resources/list`（5 项）、`resources/templates/list`（3 项）、静态/动态 `resources/read`、`prompts/list`（3 项）及 `worktime-makeup`/`ledger-summary` 的 `prompts/get`；资源读取审计计数符合预期，临时 Token 已清理。后端全量 `mvn test` 共 222 项，220 项通过、2 项按既有规则跳过；本地容器后端已刷新，`/api/health` 返回 `ok`。MCP Inspector、Codex、WorkBuddy 真实客户端和浏览器视觉检查仍待用户按手工清单执行。
+
+上一增量完成 Phase 3C-5 服务端兼容与运维收口：`MCP-Protocol-Version` 未携带时保留 initialize 协商兼容，显式携带不支持版本时返回 400；无效 Token 返回带 `resource_metadata` 的 401，调用限流返回 429，不再把协议错误和服务端错误统一伪装成认证失败。已登记的可信 `redirect_uri` 在 authorize 参数错误时收到标准 `error/error_description/state` 回调，未知客户端或未登记 redirect 禁止跳转；token 与 revoke 的成功、失败响应均禁止缓存。DCR 按来源 IP 增加每小时 20 次和 100 个有效客户端上限。
 
 V26 为 OAuth 客户端和 grant 增加最近使用、来源和客户端摘要，`mcp_tool_call` 增加 PAT/OAuth 与 OAuth client 维度，并新增 `mcp_protocol_event`。设置页增加 MCP 开关状态、协议版本、24 小时调用/失败、公开地址告警、已连接客户端、最近事件和脱敏诊断复制；客户端级断开会撤销当前用户对该客户端的全部 grant、access/refresh token 和未使用授权码，不影响其他用户。每天清理过期或已消费授权码、90 天前协议事件，并在保留审计外键的前提下清除长期失效 OAuth token 的可用 hash。诊断和事件严格按当前用户隔离，不返回环境变量、完整 IP、Token、授权码、JWT 或 API key。
 
@@ -630,8 +634,8 @@ POST https://<domain>/mcp
 - `initialize`：协议和能力协商。
 - `tools/list`：按认证用户和 scope 返回可见工具。
 - `tools/call`：调用统一 Domain Tool。
-- `resources/list`：后续用于帮助文档和只读报表，不暴露数据库实体全集。
-- `prompts/list`：后续可提供“月度复盘”“工时补录”等模板，不作为上线前置条件。
+- `resources/list`、`resources/templates/list`、`resources/read`：提供帮助文档、账本/工时只读摘要和受限日期资源，不暴露数据库实体全集。
+- `prompts/list`、`prompts/get`：提供 `monthly-review`、`ledger-summary`、`worktime-makeup` 只读模板，不自动执行写入。
 
 MCP 错误应同时满足协议错误结构和应用稳定错误 code；内部堆栈不得返回给客户端。
 

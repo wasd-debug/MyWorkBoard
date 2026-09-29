@@ -45,7 +45,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Configuration
 public class McpServerConfiguration {
     private static final Set<String> SUPPORTED_PROTOCOL_VERSIONS = Set.of("2025-06-18");
-    private static final String TOKEN_CONTEXT_KEY = "salary.mcp.token";
+    static final String TOKEN_CONTEXT_KEY = "salary.mcp.token";
     private static final String BASE_URL_CONTEXT_KEY = "salary.mcp.base-url";
     private static final String CLIENT_CONTEXT_KEY = "salary.mcp.client";
     private static final String LEDGER_PREFIX = "ledger.";
@@ -62,6 +62,7 @@ public class McpServerConfiguration {
     @Bean
     ServletRegistrationBean<HttpServlet> mcpServletRegistration(
             DomainToolRegistry registry, McpPersonalTokenService tokens, ObjectMapper mapper,
+            McpContentService contentService,
             McpExternalActionService externalActions, McpOperationsService operations,
             @Value("${app.mcp.enabled:true}") boolean enabled,
             @Value("${app.mcp.write-enabled:false}") boolean writeEnabled,
@@ -78,7 +79,8 @@ public class McpServerConfiguration {
             for (int index = 0; index < enabledScopes.size(); index++) {
                 if ((mask & (1 << index)) != 0) scopes.add(enabledScopes.get(index));
             }
-            providers.put(scopeKey(scopes), provider(registry, tokens, mapper, externalActions, Set.copyOf(scopes)));
+            providers.put(scopeKey(scopes), provider(registry, tokens, mapper, contentService,
+                    externalActions, Set.copyOf(scopes)));
         }
         McpRoutingServlet servlet = new McpRoutingServlet(tokens, operations, providers, enabled, writeEnabled, oauthEnabled);
         ServletRegistrationBean<HttpServlet> registration = new ServletRegistrationBean<>(servlet, "/mcp", "/mcp/*");
@@ -90,6 +92,7 @@ public class McpServerConfiguration {
 
     private HttpServletStreamableServerTransportProvider provider(
             DomainToolRegistry registry, McpPersonalTokenService tokens, ObjectMapper mapper,
+            McpContentService contentService,
             McpExternalActionService externalActions, Set<String> scopes) {
         HttpServletStreamableServerTransportProvider transport = HttpServletStreamableServerTransportProvider.builder()
                 .mcpEndpoint("/mcp")
@@ -108,6 +111,9 @@ public class McpServerConfiguration {
         if (hasActionScope(scopes)) {
             specifications.addAll(actionSpecifications(registry, tokens, mapper, externalActions, scopes));
         }
+        var resourceSpecifications = contentService.resources(scopes);
+        var resourceTemplateSpecifications = contentService.resourceTemplates(scopes);
+        var promptSpecifications = contentService.prompts(scopes);
         McpSyncServer server = McpServer.sync(transport)
                 .serverInfo("salary-sync", "1.0.0")
                 .instructions(hasCommitScope(scopes)
@@ -115,10 +121,14 @@ public class McpServerConfiguration {
                         : hasPrepareScope(scopes)
                         ? "个人工作台 MCP。prepare 只生成待确认 action；批准后仍需具备 commit scope 才能提交。所有工具按 Token 用户、scope 和账本范围执行。"
                         : "个人工作台只读 MCP。所有工具均按 Token 用户、scope 和账本范围执行。")
-                .capabilities(McpSchema.ServerCapabilities.builder().tools(false).build())
+                .capabilities(McpSchema.ServerCapabilities.builder()
+                        .tools(false).resources(false, false).prompts(false).build())
                 .strictToolNameValidation(false)
                 .requestTimeout(Duration.ofSeconds(30))
                 .tools(specifications)
+                .resources(resourceSpecifications)
+                .resourceTemplates(resourceTemplateSpecifications)
+                .prompts(promptSpecifications)
                 .build();
         servers.add(server);
         return transport;
