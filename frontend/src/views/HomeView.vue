@@ -303,7 +303,7 @@
         </div>
         <form class="chat-composer" @submit.prevent="submitPrompt">
           <label class="sr-only" for="workspace-prompt">给 AI 发送消息</label>
-          <textarea id="workspace-prompt" v-model="prompt" rows="1" placeholder="给个人工作台发送消息" @keydown.enter.exact.prevent="submitPrompt"></textarea>
+          <textarea id="workspace-prompt" v-model="prompt" v-auto-grow="150" rows="1" placeholder="给个人工作台发送消息" @keydown.enter.exact.prevent="submitPrompt"></textarea>
           <div class="composer-toolbar">
             <button class="chat-icon-button" type="button" title="上传文件" aria-label="上传文件" @click="fileInput?.click()"><Paperclip /></button>
             <button class="chat-icon-button" type="button" title="上传图片" aria-label="上传图片" @click="imageInput?.click()"><ImageIcon /></button>
@@ -337,12 +337,14 @@ import { marked } from 'marked'
 import { Archive, ArrowDown, ArrowRight, ArrowUp, ArrowUpRight, Check, CheckCircle2, ChevronDown, ChevronRight, CircleX, ClipboardCheck, Clock3, Coins, Copy, Database, Ellipsis, Folder, FolderInput, FolderPlus, GripVertical, Image as ImageIcon, Inbox, ListOrdered, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, Paperclip, Pencil, Pin, PinOff, RefreshCw, ShieldCheck, Sparkles, Square, SquarePen, TimerReset, Trash2, Wrench, X } from 'lucide-vue-next'
 import { Calendar, List, Timer, Wallet } from '../icons.js'
 import { message } from '../services/message.js'
+import { autoGrowTextarea } from '../directives/autoGrowTextarea.js'
 import { useAppStore } from '../stores/app'
 import { useLedgerStore } from '../stores/ledger'
 import { useWorktimeStore } from '../stores/worktime'
 import { apiAnswerAgentAction, apiApproveAgentAction, apiArchiveAgentSession, apiCancelAgentTurn, apiChangeAgentSessionModel, apiChatWithAssistant, apiCommitAgentAction, apiCreateAgentSession, apiCreateAgentSessionGroup, apiDeleteAgentSession, apiDeleteAgentSessionGroup, apiDownloadLedgerExport, apiEnqueueAgentTurn, apiGetAgentAction, apiGetAgentTrace, apiGetAgentTurn, apiImportLedgerPreview, apiInvokeAgentTool, apiListAgentMessages, apiListAgentModelConnections, apiListAgentQueue, apiListAgentSessionGroups, apiListAgentSessions, apiMoveAgentSession, apiRejectAgentAction, apiRemoveQueuedAgentTurn, apiRenameAgentSessionGroup, apiReorderAgentQueue, apiRetryAgentTurn, apiStreamAgentTurn, apiUpdateAgentSession } from '../../packages/api-client/src/index.js'
 
 const router = useRouter(), route = useRoute(), store = useAppStore(), ledgerStore = useLedgerStore(), worktimeStore = useWorktimeStore()
+const vAutoGrow = autoGrowTextarea
 const sidebarOpen = ref(true), conversations = ref([]), activeId = ref(''), prompt = ref(''), attachments = ref([])
 const fileInput = ref(null), imageInput = ref(null), messageViewport = ref(null), composerWrap = ref(null), composerHeight = ref(0), recording = ref(false), autoFollow = ref(true), copiedId = ref('')
 const conversationMenu = ref({ item: null, x: 0, y: 0 }), conversationMenuEl = ref(null)

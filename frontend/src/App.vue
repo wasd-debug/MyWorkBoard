@@ -26,6 +26,7 @@
         <div class="page-content"><router-view v-slot="{ Component }"><transition name="page" mode="out-in"><component :is="Component" :key="route.fullPath" /></transition></router-view></div>
       </main>
       <BottomNav v-if="!isHome && !isExternalFlow" />
+      <FloatingAgentAssistant v-if="!isHome && store.authUser && !store.offlineSession" />
     </template>
   </div>
 </template>
@@ -39,6 +40,7 @@ import { ledgerNavigation, navigationItemIsActive, worktimeNavigation } from './
 import { useAppStore } from './stores/app'
 import { useWorktimeStore } from './stores/worktime.js'
 import BottomNav from './components/BottomNav.vue'
+import FloatingAgentAssistant from './components/FloatingAgentAssistant.vue'
 import LoadingOverlay from './components/ledger/LoadingOverlay.vue'
 import ToastViewport from './components/ui/ToastViewport.vue'
 import LoginView from './views/LoginView.vue'
