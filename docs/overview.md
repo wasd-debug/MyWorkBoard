@@ -17,6 +17,8 @@
 
 目标架构保持为 Java 17 + Spring Boot 模块化单体、MySQL/Flyway、Vue 3/Vite/Pinia、Tailwind CSS + 源码组件、IndexedDB/oplog local-first。完整目标与阶段门禁见 [ARCHITECTURE.md](ARCHITECTURE.md)，Agent、MCP、受控确认和逐阶段验证见 [工作台的 Agent 改造计划](工作台的Agent改造计划.md)。
 
+2026-09-30 暗色对比度修正：主题层新增与强调色配套的前景色契约，主按钮及其悬停态、Agent 操作卡片、审批按钮、报表日期确认和随身 AI 操作统一使用成对的背景/前景色；夜间主题不再在浅色强调背景上保留白字。首页 Agent 模块卡片与账本摘要的柔和色块改用独立文字色，避免继承暗色页面的浅色文字。浏览器视觉结果按前端手工检查清单验收，自动门禁只覆盖非浏览器测试与生产构建。
+
 ## 当前实现
 
 ### Phase 0：工程与自动化发布门禁已完成

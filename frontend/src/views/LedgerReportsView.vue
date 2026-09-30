@@ -4000,4 +4000,6 @@ onBeforeUnmount(() => {
   .ledger-reports .ranking-expand-leave-active,
   .ledger-reports .ranking-expand-move { transition: none; }
 }
+.custom-date-actions button.primary { color:var(--accent-contrast,#fff); }
+.custom-date-actions button.primary:hover:not(:disabled) { border-color:color-mix(in srgb,var(--accent) 86%,#000); background:color-mix(in srgb,var(--accent) 86%,#000); color:var(--accent-contrast,#fff); }
 </style>

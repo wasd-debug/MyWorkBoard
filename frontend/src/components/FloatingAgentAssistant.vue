@@ -210,4 +210,10 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleOutsid
 .spinning { animation:floating-agent-spin .8s linear infinite }.floating-agent-panel-enter-active,.floating-agent-panel-leave-active { transform-origin:right bottom; transition:opacity .18s ease,transform .2s cubic-bezier(.22,1,.36,1) }.floating-agent-panel-enter-from,.floating-agent-panel-leave-to { opacity:0; transform:translateY(12px) scale(.96) } @keyframes floating-agent-spin { to { transform:rotate(360deg) } }
 @media (max-width:767px) { .floating-agent { right:14px; bottom:76px }.floating-agent-panel { width:calc(100vw - 28px); height:min(560px,calc(100dvh - 170px)); border-radius:19px }.floating-agent-trigger { min-width:52px; height:52px; padding:0 14px }.floating-agent.open .floating-agent-trigger { width:44px; min-width:44px; height:44px } }
 @media (prefers-reduced-motion:reduce) { .floating-agent-panel-enter-active,.floating-agent-panel-leave-active,.floating-agent-trigger { transition:none }.spinning { animation:none } }
+.floating-agent-trigger,
+.floating-agent-handoff button,
+.floating-agent-send { color:var(--accent-contrast,#fff) }
+.floating-agent-trigger:hover,
+.floating-agent-handoff button:hover,
+.floating-agent-send:hover:not(:disabled) { background:color-mix(in srgb,var(--accent) 86%,#000); color:var(--accent-contrast,#fff) }
 </style>

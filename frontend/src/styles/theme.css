@@ -1565,3 +1565,57 @@ html.dark .agent-confirmation-summary footer .danger { color:#fff; }
   .mcp-token-once { grid-template-columns:1fr 1fr; }
   .mcp-token-once code { grid-column:1/-1; }
 }
+
+/* Theme-aware contrast for pastel surfaces and accent actions. */
+:root { --accent-contrast:#fff; --pastel-ink:#252932; --pastel-muted:#5d6675; }
+html[data-theme="ocean"] { --pastel-ink:#19323a; --pastel-muted:#526871; }
+html[data-theme="forest"] { --pastel-ink:#25342c; --pastel-muted:#59695f; }
+html[data-theme="berry"] { --pastel-ink:#38262f; --pastel-muted:#6e5662; }
+html[data-theme="night"] { --accent-contrast:#171b22; --pastel-ink:#f3f5f8; --pastel-muted:#b9c0cb; }
+
+.ui-button.variant-primary { color:var(--accent-contrast); }
+.ui-button.variant-primary:hover:not(:disabled) {
+  background:color-mix(in srgb,var(--accent) 86%,#000);
+  border-color:color-mix(in srgb,var(--accent) 86%,#000);
+  color:var(--accent-contrast);
+  filter:none;
+}
+html.dark .ui-button.variant-ink,
+html.dark .ui-button.variant-ink:hover:not(:disabled),
+html.dark .top-ticker .basis-seg button.on,
+html.dark .view-tabs button.on { color:var(--accent-contrast); }
+
+.chat-module-grid > button,
+.chat-module-grid > button:hover { color:var(--pastel-ink); }
+.chat-module-grid > button:hover { box-shadow:0 15px 30px rgba(35,43,57,.18); }
+.chat-module-grid > button > span { background:#363b45; color:#fff; }
+.chat-module-grid > button > div small { color:var(--pastel-muted); }
+.chat-module-grid > button > svg { color:var(--pastel-ink); }
+
+.ledger-summary-grid > .card .summary-label,
+.ledger-summary-grid > .card .summary-meta { color:var(--pastel-muted); }
+.ledger-summary-grid > .card:nth-child(1) .summary-value { color:#a52f3d; }
+.ledger-summary-grid > .card:nth-child(2) .summary-value { color:#735000; }
+.ledger-summary-grid > .card:nth-child(3) .summary-value.income { color:#176149; }
+.ledger-summary-grid > .card:nth-child(3) .summary-value.expense { color:#9b3042; }
+html[data-theme="night"] .ledger-summary-grid > .card:nth-child(1) .summary-value { color:#ff858c; }
+html[data-theme="night"] .ledger-summary-grid > .card:nth-child(2) .summary-value { color:#f3cf6a; }
+html[data-theme="night"] .ledger-summary-grid > .card:nth-child(3) .summary-value.income { color:#65d2a6; }
+html[data-theme="night"] .ledger-summary-grid > .card:nth-child(3) .summary-value.expense { color:#ff8b9c; }
+
+.agent-action-form footer .primary,
+.agent-confirmation-summary footer .primary,
+.agent-action-batch button.primary,
+.custom-date-actions button.primary,
+.action-card footer .approve,
+.approval-detail footer .approve { color:var(--accent-contrast); }
+.agent-action-form footer .primary:hover:not(:disabled),
+.agent-confirmation-summary footer .primary:hover:not(:disabled),
+.agent-action-batch button.primary:hover:not(:disabled),
+.custom-date-actions button.primary:hover:not(:disabled),
+.action-card footer .approve:hover:not(:disabled),
+.approval-detail footer .approve:hover:not(:disabled) {
+  background:color-mix(in srgb,var(--accent) 86%,#000);
+  border-color:color-mix(in srgb,var(--accent) 86%,#000);
+  color:var(--accent-contrast);
+}
