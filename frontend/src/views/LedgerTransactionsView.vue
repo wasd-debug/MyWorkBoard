@@ -71,7 +71,7 @@
                   <td v-for="column in visibleColumns" :key="column.key" :class="columnClass(column)" :style="columnStickyStyle(column)">
                     <template v-if="column.key==='date'"><span class="flow-date">{{ formatDate(item.occurredOn) }}</span></template>
                     <template v-else-if="column.key==='kind'"><span class="flow-kind" :class="`tone-${kindMeta(item.kind).tone}`">{{ kindMeta(item.kind).label }}</span></template>
-                    <template v-else-if="column.key==='category'"><span class="flow-resource"><LedgerResourceIcon :icon="item.categoryIcon || item.parentCategoryIcon" type="category" :color="item.categoryColor || item.parentCategoryColor" compact /><span><b class="flow-category">{{ item.categoryName|| (item.kind==='TRANSFER'?'账户互转':'未分类') }}</b><small v-if="item.parentCategoryName">{{ item.parentCategoryName }}</small></span></span></template>
+                    <template v-else-if="column.key==='category'"><span class="flow-resource"><LedgerResourceIcon :icon="item.categoryIcon || item.parentCategoryIcon" type="category" :color="item.categoryColor || item.parentCategoryColor" compact /><span><b class="flow-category">{{ item.parentCategoryName || item.categoryName || (item.kind==='TRANSFER'?'账户互转':'未分类') }}</b><small v-if="item.parentCategoryName && item.categoryName">{{ item.categoryName }}</small></span></span></template>
                     <template v-else-if="column.key==='account'"><span>{{ item.accountName }}</span></template>
                     <template v-else-if="column.key==='targetAccount'"><span>{{ item.targetAccountName||'—' }}</span></template>
                     <template v-else-if="column.key==='payee'"><span>{{ item.payee||'—' }}</span></template>
@@ -86,7 +86,7 @@
                   <td v-for="column in visibleColumns" :key="column.key" :class="columnClass(column)" :style="columnStickyStyle(column)">
                     <template v-if="column.key==='date'"><span class="flow-date">{{ formatDate(item.occurredOn) }}</span></template>
                     <template v-else-if="column.key==='kind'"><span class="flow-kind" :class="`tone-${kindMeta(item.kind).tone}`">{{ kindMeta(item.kind).label }}</span></template>
-                    <template v-else-if="column.key==='category'"><span class="flow-resource"><LedgerResourceIcon :icon="item.categoryIcon || item.parentCategoryIcon" type="category" :color="item.categoryColor || item.parentCategoryColor" compact /><span><b class="flow-category">{{ item.categoryName|| (item.kind==='TRANSFER'?'账户互转':'未分类') }}</b><small v-if="item.parentCategoryName">{{ item.parentCategoryName }}</small></span></span></template>
+                    <template v-else-if="column.key==='category'"><span class="flow-resource"><LedgerResourceIcon :icon="item.categoryIcon || item.parentCategoryIcon" type="category" :color="item.categoryColor || item.parentCategoryColor" compact /><span><b class="flow-category">{{ item.parentCategoryName || item.categoryName || (item.kind==='TRANSFER'?'账户互转':'未分类') }}</b><small v-if="item.parentCategoryName && item.categoryName">{{ item.categoryName }}</small></span></span></template>
                     <template v-else-if="column.key==='account'"><span>{{ item.accountName }}</span></template><template v-else-if="column.key==='targetAccount'"><span>{{ item.targetAccountName||'—' }}</span></template><template v-else-if="column.key==='payee'"><span>{{ item.payee||'—' }}</span></template><template v-else-if="column.key==='member'"><span>{{ item.member||'—' }}</span></template><template v-else-if="column.key==='project'"><span v-if="item.project" class="flow-resource"><LedgerResourceIcon :icon="item.projectIcon" type="project" :color="item.projectColor" compact /><span>{{ item.project }}</span></span><span v-else>—</span></template><template v-else-if="column.key==='note'"><span class="flow-note" :title="item.note||''">{{ item.note||'—' }}</span></template><template v-else-if="column.key==='amount'"><b :class="amountClass(item)">{{ amountPrefix(item) }}¥{{ money(item.amount) }}</b></template>
                   </td><td class="flow-row-actions fixed-actions"><LedgerActionIcon v-if="canWriteOwn" action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon v-if="canWrite(item)" action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon v-if="canWrite(item)" action="delete" label="删除流水" @click="deleteTarget=item" /></td>
                 </tr></template></tbody>
@@ -170,16 +170,16 @@ const kindOptions = [
   { value: 'REPAY_DEBT', label: '还债', tone: 'out' }
 ]
 const columnDefaults = [
-  { key: 'date', label: '日期', sortKey: 'occurredOn', visible: true, width: 112, description: '流水发生日期' },
+  { key: 'date', label: '日期', sortKey: 'occurredOn', visible: true, width: 104, description: '流水发生日期' },
   { key: 'kind', label: '类型', sortKey: 'kind', visible: true, width: 86, description: '收支及债务类型' },
-  { key: 'category', label: '分类', sortKey: 'categoryName', visible: true, sticky: 'category', pinned: true, width: 132, description: '默认固定显示' },
-  { key: 'account', label: '账户', sortKey: 'accountName', visible: true, width: 126, description: '资金所在账户' },
-  { key: 'targetAccount', label: '转入账户', sortKey: 'targetAccountName', visible: true, width: 126, description: '转账目标账户' },
-  { key: 'payee', label: '商家', sortKey: 'payee', visible: true, width: 150, description: '商家或交易对方' },
+  { key: 'category', label: '分类', sortKey: 'categoryName', visible: true, sticky: 'category', pinned: true, width: 120, description: '一级分类在上，二级分类在下' },
+  { key: 'account', label: '账户', sortKey: 'accountName', visible: true, width: 116, description: '资金所在账户' },
+  { key: 'targetAccount', label: '转入账户', sortKey: 'targetAccountName', visible: true, width: 116, description: '转账目标账户' },
+  { key: 'payee', label: '商家', sortKey: 'payee', visible: true, width: 118, description: '商家或交易对方' },
   { key: 'member', label: '成员', sortKey: 'member', visible: false, width: 112, description: '流水所属成员' },
-  { key: 'project', label: '项目', sortKey: 'project', visible: true, width: 132, description: '关联项目' },
+  { key: 'project', label: '项目', sortKey: 'project', visible: true, width: 116, description: '关联项目' },
   { key: 'note', label: '备注', sortKey: 'note', visible: false, width: 120, description: '流水备注（最多展示 8 个汉字）' },
-  { key: 'amount', label: '金额', sortKey: 'amount', visible: true, sticky: 'amount', pinned: true, width: 126, description: '默认固定显示' }
+  { key: 'amount', label: '金额', sortKey: 'amount', visible: true, sticky: 'amount', pinned: true, width: 108, description: '默认固定显示' }
 ]
 const accounts = ref([]), categories = ref([]), transactions = ref([]), loading = ref(true), editorOpen = ref(false), filterOpen = ref(false), mobileFilterOpen = ref(false), columnsOpen = ref(false), editing = ref(null), saving = ref(false), searchText = ref(''), deleteTarget = ref(null), deleting = ref(false)
 const serverTotal = ref(0)
@@ -204,7 +204,7 @@ const filters = reactive({
   note: queryValue(route.query.note)
 })
 const sort = reactive({ key: 'occurredOn', direction: 'desc' })
-const columnStorageKey = 'ledger-transaction-columns-v1'
+const columnStorageKey = 'ledger-transaction-columns-v2'
 function loadColumnConfig() {
   try {
     const saved = JSON.parse(localStorage.getItem(columnStorageKey) || 'null')

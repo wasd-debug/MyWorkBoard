@@ -411,11 +411,11 @@
             <template #header>
               <div class="statistics-card-head">
                 <h2>收入统计及分布</h2>
-                <span>总收入 <strong class="income">¥{{ money(summary.income) }}</strong></span>
+                <div class="statistics-card-tools"><div class="level-switch" aria-label="收入分类层级"><button type="button" :class="{ active: incomeCategoryLevel === 'primary' }" @click="incomeCategoryLevel = 'primary'">一级</button><button type="button" :class="{ active: incomeCategoryLevel === 'secondary' }" @click="incomeCategoryLevel = 'secondary'">二级</button></div><span>总收入 <strong class="income">¥{{ money(summary.income) }}</strong></span></div>
               </div>
             </template>
-            <LedgerReportChart :option="incomeManagementCategoryOption" aria-label="收入分类分布图" height="330px" @chart-click="openCategoryTransactions('INCOME', 'primary', $event.data)" />
-            <CategoryRanking :rows="incomeManagementCategoryRows" kind="INCOME" level="primary" clickable :limit="8" @select="openCategoryTransactions('INCOME', 'primary', $event)" />
+            <LedgerReportChart :option="incomeManagementCategoryOption" aria-label="收入分类分布图" height="330px" @chart-click="openCategoryTransactions('INCOME', incomeCategoryLevel, $event.data)" />
+            <CategoryRanking :rows="incomeManagementCategoryRows" kind="INCOME" :level="incomeCategoryLevel" clickable :limit="8" @select="openCategoryTransactions('INCOME', incomeCategoryLevel, $event)" />
           </Card>
 
           <Card class="statistics-count-card">
@@ -465,11 +465,11 @@
             <template #header>
               <div class="statistics-card-head">
                 <h2>成本统计及分布</h2>
-                <span>总支出 <strong class="expense">¥{{ money(summary.expense) }}</strong></span>
+                <div class="statistics-card-tools"><div class="level-switch" aria-label="支出分类层级"><button type="button" :class="{ active: expenseCategoryLevel === 'primary' }" @click="expenseCategoryLevel = 'primary'">一级</button><button type="button" :class="{ active: expenseCategoryLevel === 'secondary' }" @click="expenseCategoryLevel = 'secondary'">二级</button></div><span>总支出 <strong class="expense">¥{{ money(summary.expense) }}</strong></span></div>
               </div>
             </template>
-            <LedgerReportChart :option="costManagementCategoryOption" aria-label="成本分类分布图" height="330px" @chart-click="openCategoryTransactions('EXPENSE', 'primary', $event.data)" />
-            <CategoryRanking :rows="costManagementCategoryRows" kind="EXPENSE" level="primary" clickable :limit="8" @select="openCategoryTransactions('EXPENSE', 'primary', $event)" />
+            <LedgerReportChart :option="costManagementCategoryOption" aria-label="成本分类分布图" height="330px" @chart-click="openCategoryTransactions('EXPENSE', expenseCategoryLevel, $event.data)" />
+            <CategoryRanking :rows="costManagementCategoryRows" kind="EXPENSE" :level="expenseCategoryLevel" clickable :limit="8" @select="openCategoryTransactions('EXPENSE', expenseCategoryLevel, $event)" />
           </Card>
 
           <Card class="statistics-count-card">
@@ -1211,8 +1211,8 @@ const accountFlowRows = computed(() => activeAccounts.value.map(account => {
   return { ...account, ...flow }
 }).filter(item => item.income || item.expense))
 const refundRows = computed(() => reportRows.value.filter(item => ['REFUND', 'REFUND_IN', 'REFUND_OUT'].includes(String(item.kind || '').toUpperCase())))
-const incomeManagementCategoryRows = computed(() => categoryRankingRows('INCOME', 'primary'))
-const costManagementCategoryRows = computed(() => categoryRankingRows('EXPENSE', 'primary'))
+const incomeManagementCategoryRows = computed(() => categoryRankingRows('INCOME', incomeCategoryLevel.value))
+const costManagementCategoryRows = computed(() => categoryRankingRows('EXPENSE', expenseCategoryLevel.value))
 const accountBookFlow = computed(() => ({
   income: accountFlowRows.value.reduce((total, item) => total + item.income, 0),
   expense: accountFlowRows.value.reduce((total, item) => total + item.expense, 0),

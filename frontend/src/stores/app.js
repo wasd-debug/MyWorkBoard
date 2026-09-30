@@ -67,7 +67,7 @@ export const useAppStore = defineStore('app', {
       const storedTheme = localStorage.getItem(LS_THEME)
       const isMobile = window.matchMedia?.('(max-width: 640px)').matches || window.matchMedia?.('(pointer: coarse)').matches
       const systemDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
-      const theme = localStorage.getItem(LS_ACCENT) === 'night' ? 'dark' : storedTheme === 'dark' || storedTheme === 'light'
+      const theme = storedTheme === 'dark' || storedTheme === 'light'
         ? storedTheme
         : (isMobile && systemDark ? 'dark' : 'light')
       const storedAccent = localStorage.getItem(LS_ACCENT)
@@ -99,7 +99,6 @@ export const useAppStore = defineStore('app', {
       if (!ACCENTS[name]) return
       this.accent = name
       localStorage.setItem(LS_ACCENT, name)
-      localStorage.setItem(LS_THEME, name === 'night' ? 'dark' : 'light')
       this.applyTheme()
     },
 

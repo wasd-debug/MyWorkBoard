@@ -8,6 +8,7 @@ const routes = [
   { path: '/punch', name: 'punch', component: () => import('../views/PunchView.vue'), meta: { title: '打卡' } },
   { path: '/records', name: 'records', component: () => import('../views/RecordsView.vue'), meta: { title: '记录' } },
   { path: '/stats', name: 'stats', component: () => import('../views/StatsView.vue'), meta: { title: '统计' } },
+  { path: '/worktime/settings', name: 'worktime-settings', component: () => import('../views/WorktimeSettingsView.vue'), meta: { title: '工时设置' } },
   { path: '/ledger', name: 'ledger', component: () => import('../views/LedgerView.vue'), meta: { title: '账本' } },
   { path: '/ledger/transactions', name: 'ledger-transactions', component: () => import('../views/LedgerTransactionsView.vue'), meta: { title: '流水' } },
   { path: '/ledger/reports', name: 'ledger-reports', component: () => import('../views/LedgerReportsView.vue'), meta: { title: '账本报表' } },

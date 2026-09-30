@@ -41,20 +41,24 @@
         <div class="punch-times">
           <div class="time-entry">
             <div class="label">实际上班 · IN</div>
-            <Input v-model="recStart" aria-label="实际上班时间" type="time" @change="saveRec" />
+            <Input v-model="recStart" aria-label="实际上班时间" type="time" />
             <button class="now-btn" type="button" @click="nowStart">记录现在 →</button>
           </div>
           <div class="time-entry">
             <div class="label">实际下班 · OUT</div>
-            <Input v-model="recEnd" aria-label="实际下班时间" type="time" @change="saveRec" />
+            <Input v-model="recEnd" aria-label="实际下班时间" type="time" />
             <button class="now-btn" type="button" @click="nowEnd">记录现在 →</button>
           </div>
         </div>
 
         <div class="rest-input-row">
           <span class="lbl">自定义休息 BREAK</span>
-          <Input v-model="recRest" aria-label="自定义休息分钟" type="number" min="0" max="600" step="5" @change="saveRec" />
+          <Input v-model="recRest" aria-label="自定义休息分钟" type="number" min="0" max="600" step="5" />
           <span class="hint">分钟 · 摸鱼 / 晚饭 / 健身</span>
+        </div>
+        <div class="punch-actions">
+          <Button :disabled="saving || (!recStart && !recEnd)" @click="saveRec">{{ saving ? '保存中…' : '保存打卡' }}</Button>
+          <Button variant="danger" :disabled="saving || !hasStoredRecord" @click="deleteCurrent">删除记录</Button>
         </div>
       </div>
 
@@ -99,6 +103,7 @@ import Input from '../components/ui/Input.vue'
 import { useAppStore } from '../stores/app'
 import { useWorktimeStore } from '../stores/worktime.js'
 import { CALC } from '../utils/calc'
+import { message } from '../services/message.js'
 
 const appStore = useAppStore()
 const store = useWorktimeStore()
@@ -106,13 +111,16 @@ const punchDate = ref(store.punchDate)
 const recStart = ref('')
 const recEnd = ref('')
 const recRest = ref(0)
+const saving = ref(false)
+const hasStoredRecord = computed(() => Boolean(store.records[punchDate.value]?.id || store.records[punchDate.value]?.start || store.records[punchDate.value]?.end))
 
 const basisName = computed(() => store.settings.basis === 'pre' ? '税前' : '税后')
 const ctx = computed(() => CALC.monthCtx(store.settings.salaries, store.settings, punchDate.value.slice(0, 7)))
 const rec = computed(() => {
   const record = store.records[punchDate.value]
-  if (record && (record.start || record.end)) return record
-  if (recStart.value && recEnd.value) return { start: recStart.value, end: recEnd.value, rest: recRest.value }
+  const draft = { start: recStart.value, end: recEnd.value, rest: Number(recRest.value) || 0 }
+  if (record && record.start === draft.start && record.end === draft.end && Number(record.rest || 0) === draft.rest) return record
+  if (draft.start || draft.end) return draft
   return {}
 })
 const m = computed(() => CALC.actualMin(rec.value, ctx.value))
@@ -160,18 +168,39 @@ function syncInputs() {
     if (punchDate.value !== key || store.records[key]) return
     if (CALC.dayType(key, appStore.holidays) !== 'work') { recStart.value = ''; recEnd.value = ''; recRest.value = 0; return }
     recStart.value = store.settings.workStart || '08:30'; recEnd.value = store.settings.workEnd || '17:30'; recRest.value = 0
-    if (key === CALC.dateKey(new Date())) saveRec()
   })
 }
 function onDateChange() { if (!punchDate.value) punchDate.value = CALC.dateKey(new Date()); store.punchDate = punchDate.value; appStore.ensureHolidays(Number(punchDate.value.slice(0, 4))); syncInputs() }
 function shiftPunch(amount) { const date = new Date(punchDate.value + 'T00:00:00'); punchDate.value = CALC.dateKey(CALC.addDays(date, amount)); onDateChange() }
 function goToday() { punchDate.value = CALC.dateKey(new Date()); onDateChange() }
 async function saveRec() {
-  const key = punchDate.value; const restValue = Number(recRest.value) || 0
-  if (!recStart.value && !recEnd.value) await store.deleteRecord(key)
-  else await store.saveRecord({ date: key, start: recStart.value, end: recEnd.value, rest: restValue })
+  if (!recStart.value && !recEnd.value) return
+  saving.value = true
+  try {
+    await store.saveRecord({ date: punchDate.value, start: recStart.value, end: recEnd.value, rest: Number(recRest.value) || 0 })
+    message.success('打卡记录已保存')
+  } catch (error) {
+    message.error(error?.response?.data?.detail || error?.message || '打卡记录保存失败')
+  } finally {
+    saving.value = false
+  }
 }
-function nowStart() { recStart.value = nowStr(); saveRec() }
-function nowEnd() { recEnd.value = nowStr(); saveRec() }
+async function deleteCurrent() {
+  if (!hasStoredRecord.value || !window.confirm('确定删除当天的打卡记录？')) return
+  saving.value = true
+  try {
+    await store.deleteRecord(punchDate.value)
+    recStart.value = ''
+    recEnd.value = ''
+    recRest.value = 0
+    message.success('打卡记录已删除')
+  } catch (error) {
+    message.error(error?.response?.data?.detail || error?.message || '打卡记录删除失败')
+  } finally {
+    saving.value = false
+  }
+}
+function nowStart() { recStart.value = nowStr() }
+function nowEnd() { recEnd.value = nowStr() }
 watch(() => appStore.ready, value => { if (value) { punchDate.value = store.punchDate; syncInputs() } }, { immediate: true })
 </script>

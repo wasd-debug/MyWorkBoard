@@ -15,16 +15,10 @@
           </nav>
         </template>
         <div class="workspace-top-actions">
-          <div class="theme-picker">
-            <button class="top-text-button theme-trigger" type="button" aria-label="切换配色风格" title="切换配色风格" :aria-expanded="themeMenuOpen" @click="themeMenuOpen = !themeMenuOpen"><span class="theme-dot" :style="{ background: currentPalette.color }"></span><span>配色</span></button>
-            <div v-if="themeMenuOpen" class="theme-popover">
-              <button v-for="item in palettes" :key="item.key" type="button" :class="{ active: store.accent === item.key }" @click="selectPalette(item.key)"><span :style="{ background: item.color }"></span>{{ item.label }}</button>
-            </div>
-          </div>
-          <button class="top-text-button" type="button" aria-label="帮助中心" title="同步状态" @click="onSyncClick"><Connection aria-hidden="true" /><span>帮助中心</span></button>
+          <button class="top-text-button" type="button" :aria-label="store.theme === 'dark' ? '切换为亮色模式' : '切换为暗色模式'" :title="store.theme === 'dark' ? '切换为亮色模式' : '切换为暗色模式'" @click="store.toggleTheme()"><Sun v-if="store.theme === 'dark'" aria-hidden="true" /><Moon v-else aria-hidden="true" /></button>
           <router-link class="top-text-button" to="/approvals" aria-label="审批中心" title="审批中心"><ShieldCheck aria-hidden="true" /><span>审批</span></router-link>
           <router-link class="top-text-button" to="/settings" aria-label="设置" title="设置"><Setting aria-hidden="true" /><span>设置</span></router-link>
-          <button class="workspace-avatar" type="button" title="退出登录" aria-label="退出登录" @click="store.logout()">{{ userInitial }}</button>
+          <span class="workspace-avatar" aria-label="当前用户">{{ userInitial }}</span>
         </div>
       </header>
       <main class="app-main">
@@ -39,10 +33,9 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, Connection, House, Setting } from './icons.js'
-import { ShieldCheck } from 'lucide-vue-next'
+import { ArrowLeft, House, Setting } from './icons.js'
+import { Moon, ShieldCheck, Sun } from 'lucide-vue-next'
 import { ledgerNavigation, navigationItemIsActive, worktimeNavigation } from './config/moduleNavigation.js'
-import { message } from './services/message.js'
 import { useAppStore } from './stores/app'
 import { useWorktimeStore } from './stores/worktime.js'
 import BottomNav from './components/BottomNav.vue'
@@ -55,23 +48,15 @@ const store = useAppStore()
 const worktimeStore = useWorktimeStore()
 const route = useRoute()
 const isHome = computed(() => route.path === '/')
-const themeMenuOpen = ref(false)
 const navigationLoading = ref(false)
 let navigationFinishTimer
 let navigationSafetyTimer
-const palettes = [
-  { key: 'sun', label: '日光', color: '#ffd22e' }, { key: 'ocean', label: '海洋', color: '#68d5cf' },
-  { key: 'forest', label: '森林', color: '#91bd58' }, { key: 'berry', label: '莓果', color: '#c85f8c' },
-  { key: 'night', label: '暗夜', color: '#242933' }
-]
-const currentPalette = computed(() => palettes.find(item => item.key === store.accent) || palettes[0])
 const userInitial = computed(() => String(store.authUser?.nickname || store.authUser?.username || '我').slice(0, 1))
 const isLedger = computed(() => route.path.startsWith('/ledger'))
 const isExternalFlow = computed(() => route.path === '/oauth/consent' || route.path === '/mcp/actions/confirm')
 const moduleLabel = computed(() => isLedger.value ? '账本' : route.path.startsWith('/approvals') ? '审批中心' : route.path === '/settings' ? '设置' : isExternalFlow.value ? '外部授权' : '工时')
 const moduleNav = computed(() => isLedger.value ? ledgerNavigation : route.path === '/settings' || route.path.startsWith('/approvals') || isExternalFlow.value ? [] : worktimeNavigation)
 function isNavActive(item) { return navigationItemIsActive(route, item) }
-function selectPalette(key) { store.setAccent(key); themeMenuOpen.value = false }
 function clearNavigationTimers() { window.clearTimeout(navigationFinishTimer); window.clearTimeout(navigationSafetyTimer) }
 function finishNavigationLoading(delay = 0) { clearNavigationTimers(); if (delay) navigationFinishTimer = window.setTimeout(() => { navigationLoading.value = false }, delay); else navigationLoading.value = false }
 function startNavigationLoading() { clearNavigationTimers(); navigationLoading.value = true; navigationSafetyTimer = window.setTimeout(() => { navigationLoading.value = false }, 5000) }
@@ -81,7 +66,6 @@ const removeErrorGuard = router.onError(() => finishNavigationLoading())
 const basis = computed(() => worktimeStore.settings.basis)
 const showBasis = computed(() => ['/punch', '/records', '/stats'].includes(route.path))
 async function setBasis(value) { if (worktimeStore.settings.basis !== value) await worktimeStore.saveSettings({ basis: value }) }
-function onSyncClick() { if (store.dbMode) message.success('数据已安全同步到数据库'); else store.connectDb().then(() => store.dbMode ? message.success('已连接数据库') : message.warning(store.authRequired ? '请先登录' : '数据库仍不可用')) }
 onMounted(() => store.init())
 onBeforeUnmount(() => { finishNavigationLoading(); removeBeforeGuard(); removeAfterGuard(); removeErrorGuard() })
 </script>

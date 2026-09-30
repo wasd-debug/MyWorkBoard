@@ -14,7 +14,7 @@
         <Button variant="icon" size="sm" @click="shift(1)">›</Button>
       </div>
       <div class="view-tabs" role="tablist" aria-label="记录视图">
-        <button v-for="tab in TABS" :key="tab.v" :class="['vtab', { on: viewMode === tab.v }]" role="tab" :aria-selected="viewMode === tab.v" type="button" @click="viewMode = tab.v">{{ tab.l }}</button>
+        <button v-for="tab in TABS" :key="tab.v" :class="['vtab', { on: viewMode === tab.v }]" role="tab" :aria-selected="viewMode === tab.v" type="button" @click="setViewMode(tab.v)">{{ tab.l }}</button>
       </div>
     </div>
 
@@ -183,6 +183,10 @@ function shift(amount) {
   } else {
     cursor.value = CALC.addDays(cursor.value, amount * (viewMode.value === 'week' ? 7 : 14))
   }
+}
+function setViewMode(mode) {
+  viewMode.value = mode
+  if (mode === 'week' || mode === '2week') cursor.value = new Date()
 }
 const hours = CALC.fmtHours
 const signed = CALC.fmtSigned

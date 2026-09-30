@@ -1,7 +1,8 @@
 export const worktimeNavigation = [
   { key: 'punch', to: '/punch', label: '打卡' },
   { key: 'records', to: '/records', label: '记录' },
-  { key: 'stats', to: '/stats', label: '统计' }
+  { key: 'stats', to: '/stats', label: '统计' },
+  { key: 'settings', to: '/worktime/settings', label: '设置' }
 ]
 
 export const ledgerNavigation = [

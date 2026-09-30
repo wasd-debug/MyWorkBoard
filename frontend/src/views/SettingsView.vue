@@ -18,62 +18,12 @@
       </div>
     </div>
 
-    <div v-show="activeModule === 'general'" class="card set-group">
-      <h2>标准工作时间</h2>
+    <div v-show="activeModule === 'account'" class="card set-group account-settings">
+      <h2>账号</h2>
       <div class="row">
-        <div class="lbl">标准上班时间<small>每日开始计时的时刻</small></div>
-        <div class="ctl"><Input type="time" aria-label="标准上班时间" :model-value="settings.workStart" @change="value => set('workStart', value || DEFAULTS.workStart)" /></div>
+        <div class="lbl">退出当前账号<small>退出后需要重新登录才能访问服务端数据</small></div>
+        <div class="ctl"><Button size="sm" variant="danger" @click="logout">退出登录</Button></div>
       </div>
-      <div class="row">
-        <div class="lbl">标准下班时间<small>每日结束计时的时刻</small></div>
-        <div class="ctl"><Input type="time" aria-label="标准下班时间" :model-value="settings.workEnd" @change="value => set('workEnd', value || DEFAULTS.workEnd)" /></div>
-      </div>
-      <div class="row">
-        <div class="lbl">午休等扣除时长<small>不计入工时的分钟数</small></div>
-        <div class="ctl"><Input type="number" aria-label="午休扣除分钟数" min="0" max="240" step="5" :model-value="settings.lunchMin" @change="openLunchDialog" /></div>
-      </div>
-    </div>
-
-    <Dialog v-model:open="lunchDialogOpen" title="修改午休时长">
-      <div class="lunch-recalc-dialog">
-        <p>午休将从 <b>{{ settings.lunchMin }} 分钟</b> 修改为 <b>{{ pendingLunchMin }} 分钟</b>。请选择历史数据的处理方式：</p>
-        <label><input v-model="lunchScope" type="radio" value="NONE" /> 仅修改设置，不重算已有记录</label>
-        <label><input v-model="lunchScope" type="radio" value="ALL" /> 重算全部已有记录</label>
-        <label><input v-model="lunchScope" type="radio" value="FROM_DATE" /> 从指定日期开始重算</label>
-        <Input v-if="lunchScope === 'FROM_DATE'" v-model="lunchFromDate" aria-label="历史重算起始日期" type="date" />
-        <small>重算会更新对应记录的午休快照、工时、加班时长和实际时薪；未选中的历史记录保持原计算口径。</small>
-      </div>
-      <template #footer>
-        <Button variant="ghost" :disabled="savingLunch" @click="cancelLunchUpdate">取消</Button>
-        <Button :disabled="savingLunch || (lunchScope === 'FROM_DATE' && !lunchFromDate)" @click="confirmLunchUpdate">{{ savingLunch ? '处理中…' : '确认修改' }}</Button>
-      </template>
-    </Dialog>
-
-    <div v-show="activeModule === 'general'" class="card set-group">
-      <h2>排班设置</h2>
-      <div class="row">
-        <div class="lbl">自动获取法定工作日<small>按节假日调休自动计算当月排班天数</small></div>
-        <div class="ctl"><Toggle :model-value="settings.autoDays" aria-label="自动获取法定工作日" @update:model-value="value => set('autoDays', value)" /></div>
-      </div>
-      <div class="row">
-        <div class="lbl">每月排班天数<small>{{ settings.autoDays ? '自动模式：当前 ' + curMonthLabel + ' 共 ' + monthDays + ' 个工作日' + (offWorked > 0 ? '（含假期加班 ' + offWorked + ' 天）' : '') : '用于折算日薪与时薪' }}</small></div>
-        <div class="ctl">
-          <Input v-if="!settings.autoDays" type="number" aria-label="每月排班天数" min="1" max="31" step="0.25" :model-value="settings.daysPerMonth" @change="value => setNumber('daysPerMonth', value, DEFAULTS.daysPerMonth)" />
-          <div v-else class="auto-days num">{{ monthDays }}</div>
-        </div>
-      </div>
-      <p class="hint" v-html="setHint"></p>
-    </div>
-
-    <div v-show="activeModule === 'general'" class="card set-group">
-      <h2>数据</h2>
-      <div class="io-row">
-        <Button size="sm" variant="ghost" @click="doExport">导出到下方文本框</Button>
-        <Button size="sm" variant="ghost" @click="doCopy">复制全部数据</Button>
-        <Button size="sm" variant="ghost" @click="doImport">从文本框导入</Button>
-        <Button size="sm" variant="danger" @click="doClear">清空全部数据</Button>
-      </div>
-      <Textarea v-model="ioArea" :rows="5" aria-label="工时数据导入导出文本" placeholder="点击「导出」查看全部数据 JSON；粘贴后点「导入」可恢复（会覆盖现有数据）" class="io-area" />
     </div>
 
     <div v-show="activeModule === 'model'" class="card set-group model-config">
@@ -291,24 +241,20 @@ import { RouterLink } from 'vue-router'
 import { apiListAgentBudgetAlerts, apiMarkAgentBudgetAlertRead, apiListAgentOperationCalls, apiGetAgentOperationCallTrace } from '../../packages/api-client/src/index.js'
 import { message } from '../services/message.js'
 import Button from '../components/ui/Button.vue'
-import Input from '../components/ui/Input.vue'
-import Textarea from '../components/ui/Textarea.vue'
 import Dialog from '../components/ui/Dialog.vue'
 import { useAppStore } from '../stores/app'
-import { DEFAULT_WORKTIME_SETTINGS as DEFAULTS, useWorktimeStore } from '../stores/worktime.js'
 import { CALC } from '../utils/calc'
 import { apiCreateAgentModelConnection, apiCreateMcpToken, apiDeleteAgentModelConnection, apiDisconnectMcpOAuthClient, apiGetAgentOperationMetrics, apiGetAgentUsageBudget, apiGetMcpDiagnostics, apiListAgentModelConnections, apiListLedgerBooks, apiListMcpOAuthClients, apiListMcpOAuthGrants, apiListMcpProtocolEvents, apiListMcpTokens, apiRevokeMcpOAuthGrant, apiRevokeMcpToken, apiSaveAgentUsageBudget, apiSetDefaultAgentModelConnection, apiTestAgentModelConnection, apiUpdateAgentModelConnection } from '../../packages/api-client/src/index.js'
 
 const appStore = useAppStore()
-const store = useWorktimeStore()
 const settingModules = [
   { key: 'general', label: '基础设置' },
   { key: 'model', label: '模型与成本' },
   { key: 'operations', label: '运行质量' },
   { key: 'mcp', label: 'MCP / 外部 Agent' },
+  { key: 'account', label: '账号' },
 ]
 const activeModule = ref('general')
-const settings = computed(() => store.settings)
 const accents = [
   { key: 'sun', label: '日光', color: '#ffd22e' },
   { key: 'ocean', label: '海洋', color: '#68d5cf' },
@@ -316,8 +262,6 @@ const accents = [
   { key: 'berry', label: '莓果', color: '#c85f8c' },
   { key: 'night', label: '暗夜', color: '#242933' }
 ]
-const ioArea = ref('')
-const lunchDialogOpen = ref(false), pendingLunchMin = ref(0), lunchScope = ref('NONE'), lunchFromDate = ref(CALC.dateKey(new Date())), savingLunch = ref(false)
 const modelConnections = ref([]), selectedModelId = ref(''), modelStatus = ref(''), modelDialogOpen = ref(false)
 const mcpTokens = ref([]), mcpGrants = ref([]), mcpClients = ref([]), mcpEvents = ref([]), mcpDiagnostics = ref(null), ledgerBooks = ref([]), createdMcpToken = ref(''), creatingMcpToken = ref(false)
 const mcpTokenPage = ref(0), mcpTokenPageSize = ref(20), mcpTokenPages = ref(1), mcpTokenTotal = ref(0), mcpTokenLoading = ref(false)
@@ -346,17 +290,6 @@ watch(() => mcpForm.value.permissionTemplate, template => {
 })
 const blankModel = () => ({ displayName: '', providerType: 'DEEPSEEK', baseUrl: 'https://api.deepseek.com/chat/completions', modelName: 'deepseek-chat', apiKey: '', timeoutMs: 60000, pricing: { currency: 'CNY', pricingMode: 'FLAT', inputPerMillion: 0, outputPerMillion: 0, cacheHitPerMillion: 0, cacheMissPerMillion: 0, reasoningPerMillion: 0, offPeakInputPerMillion: 0, offPeakOutputPerMillion: 0, offPeakCacheHitPerMillion: 0, offPeakCacheMissPerMillion: 0, offPeakReasoningPerMillion: 0 } })
 const modelForm = ref(blankModel())
-const curMonthKey = CALC.dateKey(new Date()).slice(0, 7)
-const curMonthLabel = `${Number(curMonthKey.slice(5, 7))} 月`
-const monthDays = computed(() => CALC.monthWorkdays(curMonthKey, appStore.holidays, store.records, store.settings))
-const offWorked = computed(() => CALC.offDaysWorked(curMonthKey, appStore.holidays, store.records, store.settings))
-const setHint = computed(() => {
-  const std = CALC.stdWorkMin(store.settings)
-  if (std <= 0) return '标准上下班时间设置无效（扣除午休后工时 ≤ 0）'
-  return `当前标准工时 ${CALC.fmtHours(std)} 小时/天。工资请在「记录」页按月设置（每月可在当月调整税前 / 税后月薪）。`
-})
-
-async function set(key, value) { await store.saveSettings({ [key]: value }) }
 async function loadModels() { try { modelConnections.value = await apiListAgentModelConnections() } catch { modelStatus.value = '模型配置加载失败，请确认已登录' } }
 function selectModel() { const found = modelConnections.value.find(item => item.id === selectedModelId.value); if (!found) { modelForm.value = blankModel(); return }; modelForm.value = { ...blankModel(), ...found, apiKey: '', pricing: { ...blankModel().pricing, ...(found.pricing || {}) } }; modelStatus.value = found.apiKeyConfigured ? `已配置密钥（${found.apiKeyMask}）` : '尚未配置 API Key' }
 function openModelDialog(id) { selectedModelId.value = id; selectModel(); modelStatus.value = ''; modelDialogOpen.value = true }
@@ -434,46 +367,9 @@ function formatBudgetProgress(value) { return value == null ? '未设置预算' 
 function mcpScopeLabel(value) { return ({ 'mcp:ledger:read': '账本查询', 'mcp:worktime:read': '工时查询', 'mcp:ledger:prepare': '账本准备', 'mcp:worktime:prepare': '工时准备', 'mcp:ledger:commit': '账本低风险提交', 'mcp:worktime:commit': '工时低风险提交' })[value] || value }
 function mcpTemplateLabel(value) { return ({ READ_ONLY: '只读', PREPARE: '可准备', COMMIT: '可提交', FULL_WORKSPACE: '完整工作台' })[value] || value }
 function mcpEventLabel(value) { return ({ 'client.register': '客户端注册', 'authorization.approved': '授权通过', 'authorization.denied': '授权拒绝', 'code.exchanged': '授权码交换', 'token.refreshed': 'Token 刷新', 'token.revoked': 'Token 撤销', 'grant.revoked': '授权撤销', 'client.disconnected': '客户端断开', 'mcp.request': 'MCP 请求' })[value] || value }
-function setNumber(key, value, fallback) {
-  const number = Number(value)
-  set(key, Number.isFinite(number) ? number : fallback)
-}
-function openLunchDialog(value) {
-  const number = Math.min(240, Math.max(0, Number(value) || 0))
-  if (number === Number(settings.value.lunchMin || 0)) return
-  pendingLunchMin.value = number
-  lunchScope.value = 'NONE'
-  lunchFromDate.value = CALC.dateKey(new Date())
-  lunchDialogOpen.value = true
-}
-function cancelLunchUpdate() { lunchDialogOpen.value = false }
-async function confirmLunchUpdate() {
-  savingLunch.value = true
-  try {
-    const result = await store.saveLunchSettings({ lunchMin: pendingLunchMin.value, scope: lunchScope.value, fromDate: lunchScope.value === 'FROM_DATE' ? lunchFromDate.value : null })
-    lunchDialogOpen.value = false
-    message.success(result?.recalculatedRecords ? `午休已修改，已重算 ${result.recalculatedRecords} 条历史记录` : '午休已修改，历史记录保持原口径')
-  } catch (error) { message.error(error.response?.data?.detail || '午休设置修改失败') }
-  finally { savingLunch.value = false }
-}
-function doExport() { ioArea.value = JSON.stringify({ settings: store.settings, records: store.records }); message.success('已导出到文本框') }
-async function doCopy() {
-  const data = JSON.stringify({ settings: store.settings, records: store.records })
-  ioArea.value = data
-  try { await navigator.clipboard.writeText(data); message.success('已复制到剪贴板') } catch (error) { message.warning('复制失败，请手动长按复制') }
-}
-async function doImport() {
-  let data
-  try { data = JSON.parse(ioArea.value); if (typeof data !== 'object' || data === null) throw new Error('invalid') } catch (error) { message.error('导入失败：文本框内容不是有效数据'); return }
-  if (!window.confirm('导入会覆盖现有全部数据，确定？')) return
-  await store.importResources({ settings: { ...DEFAULTS, ...(data.settings || {}) }, records: data.records || {} })
-  message.success('导入成功')
-}
-async function doClear() {
-  if (!window.confirm('确定清空全部打卡记录和设置？此操作不可恢复')) return
-  if (!window.confirm('再次确认：真的要全部清空吗？')) return
-  await store.clearResources(DEFAULTS)
-  message.success('已清空')
+async function logout() {
+  if (!window.confirm('确定退出当前账号？')) return
+  await appStore.logout()
 }
 onMounted(() => Promise.all([loadModels(), loadMcpTokens(), loadMcpGrants(), loadMcpOperations(), loadOperations()]))
 </script>
