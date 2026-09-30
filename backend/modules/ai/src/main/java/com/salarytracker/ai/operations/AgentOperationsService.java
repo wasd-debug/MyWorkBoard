@@ -129,6 +129,26 @@ public class AgentOperationsService {
         Window window = resolveWindow(preset, "AUTO", from, to);
         if (page < 0 || page > 1000) throw new IllegalArgumentException("页码超出范围");
         int safePageSize = Math.min(Math.max(pageSize, 1), 100);
+        return queryCalls(window, failuresOnly, page, safePageSize + 1, safePageSize);
+    }
+
+    public CallPage callsPage(String preset, String from, String to, boolean failuresOnly, int page, int pageSize) {
+        Window window = resolveWindow(preset, "AUTO", from, to);
+        if (page < 0 || page > 1000) throw new IllegalArgumentException("页码超出范围");
+        int safePageSize = Math.min(Math.max(pageSize, 1), 100);
+        long userId = currentUser.id();
+        String failureFilter = " AND (?=FALSE OR t.status IN ('FAILED','CANCELLED') OR EXISTS "
+                + "(SELECT 1 FROM agent_tool_call c WHERE c.turn_id=t.id AND c.user_id=? AND c.status<>'SUCCESS'))";
+        Integer total = jdbc.queryForObject("SELECT COUNT(*) FROM agent_turn t WHERE t.user_id=? AND t.created_at>=? AND t.created_at<?" + failureFilter,
+                Integer.class, userId, window.from(), window.to(), failuresOnly, userId);
+        List<CallDetail> items = queryCalls(window, failuresOnly, page, safePageSize, safePageSize);
+        long safeTotal = total == null ? 0 : total;
+        return new CallPage(items, page, safePageSize, safeTotal,
+                Math.max(1, (long) Math.ceil(safeTotal / (double) safePageSize)));
+    }
+
+    private List<CallDetail> queryCalls(Window window, boolean failuresOnly, int page, int limit, int pageSize) {
+        long userId = currentUser.id();
         return jdbc.query("""
                 SELECT t.id,t.session_id,t.status,t.provider_type,t.model_name,t.created_at,
                        TIMESTAMPDIFF(MICROSECOND,t.started_at,t.completed_at)/1000 AS duration_ms,
@@ -147,8 +167,7 @@ public class AgentOperationsService {
                 r.getString("status"), r.getString("provider_type"), r.getString("model_name"),
                 instant(r, "created_at"), nullableLong(r, "duration_ms"), r.getLong("tokens"),
                 r.getLong("first_token_ms"), r.getLong("tool_count")),
-                currentUser.id(), window.from(), window.to(),
-                failuresOnly, currentUser.id(), safePageSize + 1, page * safePageSize);
+                userId, window.from(), window.to(), failuresOnly, userId, limit, page * pageSize);
     }
 
     public CallTrace callTrace(String turnId) {
@@ -307,6 +326,7 @@ public class AgentOperationsService {
     public record CallDetail(String turnId, String sessionId, String status, String provider,
                              String model, Instant createdAt, Long durationMs, long tokens,
                              long firstTokenMs, long toolCount) { }
+    public record CallPage(List<CallDetail> items, int page, int pageSize, long total, long totalPages) { }
     public record UsageDetail(int round, long inputTokens, long outputTokens, long cacheHitTokens,
                               long cacheMissTokens, long reasoningTokens, long totalTokens,
                               long firstTokenMs, long durationMs, String currency, BigDecimal cost) { }

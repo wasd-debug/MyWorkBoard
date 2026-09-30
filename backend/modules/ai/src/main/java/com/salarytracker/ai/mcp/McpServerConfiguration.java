@@ -105,7 +105,7 @@ public class McpServerConfiguration {
                 .build();
         List<McpServerFeatures.SyncToolSpecification> specifications = new ArrayList<>(registry.definitions().stream()
                 .filter(definition -> visible(definition.name(), scopes))
-                .filter(definition -> READ_TOOLS.contains(definition.name()) || PREPARE_TOOLS.contains(definition.name()))
+                .filter(definition -> !definition.name().endsWith(".commit"))
                 .map(definition -> specification(definition, registry, tokens, mapper, externalActions))
                 .toList());
         if (hasActionScope(scopes)) {
@@ -160,6 +160,11 @@ public class McpServerConfiguration {
         String errorCode = null;
         try {
             requireScope(token, definition.name());
+            if ("DISABLED".equals(token.highRiskPolicy())
+                    && (definition.riskLevel() == com.salarytracker.ai.tool.ToolRisk.R3
+                    || definition.riskLevel() == com.salarytracker.ai.tool.ToolRisk.R4)) {
+                throw new SecurityException("该 Token 已禁用高风险操作");
+            }
             JsonNode input = mapper.valueToTree(arguments == null ? Map.of() : arguments);
             validateQueryBounds(input);
             if (definition.name().startsWith(LEDGER_PREFIX)) {
@@ -451,7 +456,7 @@ public class McpServerConfiguration {
                 String requestIp = requestIp(httpRequest);
                 String userAgent = httpRequest.getHeader("User-Agent");
                 McpPersonalTokenService.AuthenticatedToken token = tokens.authenticate(raw, oauthEnabled, requestIp, userAgent);
-                if (!allow(token.id())) {
+                if (!allow(token.id(), token.rateLimitPerMinute())) {
                     operations.event(token.user().id(), token.oauthClientId(), token.id(), "mcp.request", "RATE_LIMITED",
                             new McpOperationsService.RequestContext(requestIp, userAgent), Map.of());
                     httpResponse.setStatus(429);
@@ -501,11 +506,11 @@ public class McpServerConfiguration {
             return scheme + "://" + host;
         }
 
-        private boolean allow(String tokenId) {
+        private boolean allow(String tokenId, int limit) {
             long minute = Instant.now().getEpochSecond() / 60;
             RateWindow window = rates.compute(tokenId, (ignored, current) ->
                     current == null || current.minute != minute ? new RateWindow(minute) : current);
-            return window.count.incrementAndGet() <= 120;
+            return window.count.incrementAndGet() <= Math.max(1, Math.min(limit, 600));
         }
 
         private static final class RateWindow {

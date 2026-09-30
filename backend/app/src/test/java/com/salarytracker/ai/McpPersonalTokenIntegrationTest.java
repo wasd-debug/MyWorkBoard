@@ -72,6 +72,23 @@ class McpPersonalTokenIntegrationTest extends MySqlIntegrationTestSupport {
                         Set.of(), Instant.now().minus(1, ChronoUnit.MINUTES))));
     }
 
+    @Test
+    void permissionTemplatesExpandScopesAndPersistTokenPolicy() {
+        long userId = createUser();
+        CurrentUserResolver currentUser = mock(CurrentUserResolver.class);
+        when(currentUser.id()).thenReturn(userId);
+        McpPersonalTokenService service = new McpPersonalTokenService(jdbc,
+                new ObjectMapper().findAndRegisterModules(), currentUser, mock(AuthService.class));
+        McpPersonalTokenService.CreatedToken created = service.create(new McpPersonalTokenService.CreateToken(
+                "完整工作台", Set.of(), Set.of(), Instant.now().plus(1, ChronoUnit.DAYS),
+                "FULL_WORKSPACE", "DISABLED", 300));
+        assertEquals("FULL_WORKSPACE", created.token().permissionTemplate());
+        assertEquals("DISABLED", created.token().highRiskPolicy());
+        assertEquals(300, created.token().rateLimitPerMinute());
+        assertTrue(created.token().scopes().contains(McpPersonalTokenService.LEDGER_COMMIT));
+        assertTrue(created.token().scopes().contains(McpPersonalTokenService.WORKTIME_PREPARE));
+    }
+
     private long createUser() {
         String username = "mcp-token-" + UUID.randomUUID();
         jdbc.update("INSERT INTO app_user(username,password_hash,nickname) VALUES(?, '!', 'MCP')", username);

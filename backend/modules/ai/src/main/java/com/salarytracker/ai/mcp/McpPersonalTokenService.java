@@ -34,6 +34,8 @@ public class McpPersonalTokenService {
     public static final String WORKTIME_COMMIT = "mcp:worktime:commit";
     private static final Set<String> ALLOWED_SCOPES = Set.of(
             LEDGER_READ, WORKTIME_READ, LEDGER_PREPARE, WORKTIME_PREPARE, LEDGER_COMMIT, WORKTIME_COMMIT);
+    private static final Set<String> TEMPLATES = Set.of("READ_ONLY", "PREPARE", "COMMIT", "FULL_WORKSPACE");
+    private static final Set<String> HIGH_RISK_POLICIES = Set.of("APPROVAL_ONLY", "DISABLED");
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
@@ -72,16 +74,25 @@ public class McpPersonalTokenService {
     public CreatedToken create(CreateToken command) {
         long userId = currentUser.id();
         String name = cleanName(command == null ? null : command.name());
-        Set<String> scopes = normalizeScopes(command == null ? null : command.scopes());
+        String requestedTemplate = command == null ? null : command.permissionTemplate();
+        Set<String> scopes = requestedTemplate == null || requestedTemplate.isBlank()
+                ? normalizeScopes(command == null ? null : command.scopes())
+                : normalizeScopes(normalizeTemplate(requestedTemplate), command.scopes());
+        String template = requestedTemplate == null || requestedTemplate.isBlank()
+                ? inferTemplate(scopes) : normalizeTemplate(requestedTemplate);
         Set<String> bookIds = normalizeBookIds(command == null ? null : command.bookIds(), userId, scopes);
         Instant expiresAt = normalizeExpiry(command == null ? null : command.expiresAt());
+        String highRiskPolicy = normalizeHighRiskPolicy(command == null ? null : command.highRiskPolicy());
+        int rateLimit = normalizeRateLimit(command == null ? null : command.rateLimitPerMinute());
         String raw = "wbt_" + randomToken();
         String id = UUID.randomUUID().toString();
         jdbc.update("""
-                INSERT INTO mcp_personal_token(id,user_id,name,token_hash,token_hint,scopes,book_ids,expires_at)
-                VALUES(?,?,?,?,?,?,?,?)
+                INSERT INTO mcp_personal_token(id,user_id,name,token_hash,token_hint,scopes,permission_template,
+                    high_risk_policy,rate_limit_per_minute,book_ids,expires_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?)
                 """, id, userId, name, hash(raw), hint(raw), json(scopes),
-                bookIds.isEmpty() ? null : json(bookIds), expiresAt == null ? null : Timestamp.from(expiresAt));
+                template, highRiskPolicy, rateLimit, bookIds.isEmpty() ? null : json(bookIds),
+                expiresAt == null ? null : Timestamp.from(expiresAt));
         TokenView view = jdbc.query("SELECT * FROM mcp_personal_token WHERE id=? AND user_id=?",
                 (result, rowNum) -> map(result), id, userId).get(0);
         return new CreatedToken(view, raw);
@@ -125,6 +136,7 @@ public class McpPersonalTokenService {
             jdbc.update("UPDATE mcp_grant SET last_used_at=CURRENT_TIMESTAMP(6) WHERE id=?", row.oauthGrantId());
         }
         return new AuthenticatedToken(row.id(), row.name(), user, row.scopes(), row.bookIds(), row.tokenType(),
+                row.permissionTemplate(), row.highRiskPolicy(), row.rateLimitPerMinute(),
                 row.oauthClientId(), row.oauthGrantId());
     }
 
@@ -149,6 +161,14 @@ public class McpPersonalTokenService {
                 parameterSummary, truncate(resultSummary, 500), errorCode);
     }
 
+    Set<String> normalizeScopes(String template, Set<String> requested) {
+        if ("READ_ONLY".equals(template)) return Set.of(LEDGER_READ, WORKTIME_READ);
+        if ("PREPARE".equals(template)) return Set.of(LEDGER_READ, WORKTIME_READ, LEDGER_PREPARE, WORKTIME_PREPARE);
+        if ("COMMIT".equals(template) || "FULL_WORKSPACE".equals(template)) return Set.of(
+                LEDGER_READ, WORKTIME_READ, LEDGER_PREPARE, WORKTIME_PREPARE, LEDGER_COMMIT, WORKTIME_COMMIT);
+        return normalizeScopes(requested);
+    }
+
     Set<String> normalizeScopes(Set<String> requested) {
         Set<String> scopes = requested == null ? Set.of() : new LinkedHashSet<>(requested);
         if (scopes.isEmpty()) throw new IllegalArgumentException("至少选择一个 MCP scope");
@@ -160,6 +180,30 @@ public class McpPersonalTokenService {
             throw new IllegalArgumentException("工时 commit scope 必须与工时 prepare scope 同时授予");
         }
         return Set.copyOf(scopes);
+    }
+
+    private String normalizeTemplate(String value) {
+        String normalized = value == null || value.isBlank() ? "READ_ONLY" : value.trim().toUpperCase();
+        if (!TEMPLATES.contains(normalized)) throw new IllegalArgumentException("不支持的 MCP 权限模板");
+        return normalized;
+    }
+
+    private String inferTemplate(Set<String> scopes) {
+        if (scopes.contains(LEDGER_COMMIT) || scopes.contains(WORKTIME_COMMIT)) return "COMMIT";
+        if (scopes.contains(LEDGER_PREPARE) || scopes.contains(WORKTIME_PREPARE)) return "PREPARE";
+        return "READ_ONLY";
+    }
+
+    private String normalizeHighRiskPolicy(String value) {
+        String normalized = value == null || value.isBlank() ? "APPROVAL_ONLY" : value.trim().toUpperCase();
+        if (!HIGH_RISK_POLICIES.contains(normalized)) throw new IllegalArgumentException("不支持的高风险策略");
+        return normalized;
+    }
+
+    private int normalizeRateLimit(Integer value) {
+        int normalized = value == null ? 120 : value;
+        if (normalized < 1 || normalized > 600) throw new IllegalArgumentException("Token 限流必须在 1-600 次/分钟");
+        return normalized;
     }
 
     Set<String> normalizeBookIds(Set<String> requested, long userId, Set<String> scopes) {
@@ -188,6 +232,7 @@ public class McpPersonalTokenService {
     private TokenView map(ResultSet result) throws SQLException {
         TokenRow row = row(result);
         return new TokenView(row.id(), result.getString("name"), result.getString("token_hint"), row.scopes(),
+                result.getString("permission_template"), result.getString("high_risk_policy"), result.getInt("rate_limit_per_minute"),
                 row.bookIds(), instant(result, "expires_at"), instant(result, "revoked_at"),
                 instant(result, "last_used_at"), instant(result, "created_at"));
     }
@@ -195,6 +240,7 @@ public class McpPersonalTokenService {
     private TokenRow row(ResultSet result) throws SQLException {
         return new TokenRow(result.getString("id"), result.getString("name"), result.getLong("user_id"),
                 result.getString("token_type"), readSet(result.getString("scopes")),
+                result.getString("permission_template"), result.getString("high_risk_policy"), result.getInt("rate_limit_per_minute"),
                 readSet(result.getString("book_ids")), result.getString("oauth_client_id"),
                 result.getString("oauth_grant_id"));
     }
@@ -235,18 +281,26 @@ public class McpPersonalTokenService {
         return value == null ? null : value.toInstant();
     }
 
-    public record CreateToken(String name, Set<String> scopes, Set<String> bookIds, Instant expiresAt) { }
+    public record CreateToken(String name, Set<String> scopes, Set<String> bookIds, Instant expiresAt,
+                              String permissionTemplate, String highRiskPolicy, Integer rateLimitPerMinute) {
+        public CreateToken(String name, Set<String> scopes, Set<String> bookIds, Instant expiresAt) {
+            this(name, scopes, bookIds, expiresAt, null, null, null);
+        }
+    }
     public record CreatedToken(TokenView token, String rawToken) { }
-    public record TokenView(String id, String name, String tokenHint, Set<String> scopes, Set<String> bookIds,
+    public record TokenView(String id, String name, String tokenHint, Set<String> scopes, String permissionTemplate,
+                            String highRiskPolicy, int rateLimitPerMinute, Set<String> bookIds,
                             Instant expiresAt, Instant revokedAt, Instant lastUsedAt, Instant createdAt) { }
     public record TokenPage(List<TokenView> items, int page, int pageSize, long total, long totalPages) { }
     public record AuthenticatedToken(String id, String name, CurrentUser user, Set<String> scopes,
-                                     Set<String> bookIds, String tokenType, String oauthClientId,
+                                     Set<String> bookIds, String tokenType, String permissionTemplate,
+                                     String highRiskPolicy, int rateLimitPerMinute, String oauthClientId,
                                      String oauthGrantId) {
         public AuthenticatedToken(String id, String name, CurrentUser user, Set<String> scopes, Set<String> bookIds) {
-            this(id, name, user, scopes, bookIds, "PAT", null, null);
+            this(id, name, user, scopes, bookIds, "PAT", "READ_ONLY", "APPROVAL_ONLY", 120, null, null);
         }
     }
-    private record TokenRow(String id, String name, long userId, String tokenType,
-                            Set<String> scopes, Set<String> bookIds, String oauthClientId, String oauthGrantId) { }
+    private record TokenRow(String id, String name, long userId, String tokenType, Set<String> scopes,
+                            String permissionTemplate, String highRiskPolicy, int rateLimitPerMinute,
+                            Set<String> bookIds, String oauthClientId, String oauthGrantId) { }
 }
