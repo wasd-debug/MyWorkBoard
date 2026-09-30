@@ -123,16 +123,29 @@ public class McpOperationsService {
                 Map.of("revokedGrants", grantIds.size()));
     }
 
-    public List<EventView> events(int limit) {
-        int safeLimit = Math.max(1, Math.min(limit, 100));
-        return jdbc.query("""
-                SELECT event_type,status,client_id,request_ip,user_agent,detail_json,created_at
-                FROM mcp_protocol_event WHERE user_id=? ORDER BY created_at DESC LIMIT ?
-                """, (result, rowNum) -> new EventView(result.getString("event_type"), result.getString("status"),
+    public EventPage events(int page, int pageSize) {
+        return events(page, pageSize, null);
+    }
+
+    public EventPage events(int page, int pageSize, String status) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, pageSize), 100);
+        String filter = "SUCCESS".equalsIgnoreCase(status) || "ACCEPTED".equalsIgnoreCase(status)
+                ? " AND status IN ('SUCCESS','ACCEPTED')" : "FAILED".equalsIgnoreCase(status) ? " AND status NOT IN ('SUCCESS','ACCEPTED')" : "";
+        Integer total = jdbc.queryForObject("SELECT COUNT(*) FROM mcp_protocol_event WHERE user_id=?" + filter, Integer.class, currentUser.id());
+        return jdbc.query("SELECT event_type,status,client_id,request_ip,user_agent,detail_json,created_at "
+                        + "FROM mcp_protocol_event WHERE user_id=?" + filter + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (result, rowNum) -> new EventView(result.getString("event_type"), result.getString("status"),
                 result.getString("client_id"), maskIp(result.getString("request_ip")),
                 result.getString("user_agent"), readMap(result.getString("detail_json")),
-                instant(result, "created_at")), currentUser.id(), safeLimit);
+                instant(result, "created_at")), currentUser.id(), safeSize, safePage * safeSize).stream()
+                .collect(java.util.stream.Collectors.collectingAndThen(java.util.stream.Collectors.toList(), items ->
+                        new EventPage(items, safePage, safeSize, total == null ? 0 : total,
+                                Math.max(1, (long) Math.ceil((total == null ? 0 : total) / (double) safeSize)))));
     }
+
+    /** Backward-compatible bounded list for internal callers and older tests. */
+    public List<EventView> events(int limit) { return events(0, Math.min(Math.max(limit, 1), 100)).items(); }
 
     @Scheduled(cron = "0 35 3 * * *", zone = "Asia/Shanghai")
     @Transactional
@@ -206,4 +219,5 @@ public class McpOperationsService {
                              Instant lastUsedAt, String lastUserAgent, Instant revokedAt) { }
     public record EventView(String eventType, String status, String clientId, String maskedIp,
                             String userAgent, Map<String, Object> detail, Instant createdAt) { }
+    public record EventPage(List<EventView> items, int page, int pageSize, long total, long totalPages) { }
 }

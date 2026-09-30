@@ -138,6 +138,10 @@ sudo docker compose -f docker-compose.prod.yml ps frontend
 
 ## 本地联调
 
+### 设置页模块化与 MCP 分页（2026-09-30）
+
+设置页已拆为四个模块标签：基础设置、模型与成本、运行质量、MCP / 外部 Agent。MCP Token 接口 `GET /api/v1/mcp/tokens?page=0&pageSize=20` 与协议事件接口 `GET /api/v1/mcp/events?page=0&pageSize=20` 返回 `items/page/pageSize/total/totalPages`，旧的服务内部列表调用保持兼容。部署后需确认数据库迁移无需新增版本，并按 [`前端手工检查清单`](前端手工检查清单.md) 手工检查页码、筛选和移动端显示。
+
 ### 一键启动后端与开发数据库
 
 首次需要把服务器数据同步到本地时执行：

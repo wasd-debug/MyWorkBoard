@@ -32,8 +32,9 @@ public class AgentOperationsController {
     @GetMapping("/calls") @Operation(operationId = "listAgentOperationCalls")
     public ApiResponse<List<AgentOperationsService.CallDetail>> calls(@RequestParam(defaultValue = "TODAY") String preset,
             @RequestParam(required = false) String from, @RequestParam(required = false) String to,
-            @RequestParam(defaultValue = "false") boolean failuresOnly, @RequestParam(defaultValue = "0") int page) {
-        return ApiResponse.ok(service.calls(preset, from, to, failuresOnly, page));
+            @RequestParam(defaultValue = "false") boolean failuresOnly, @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return ApiResponse.ok(service.calls(preset, from, to, failuresOnly, page, pageSize));
     }
     @GetMapping("/calls/{turnId}") @Operation(operationId = "getAgentOperationCallTrace")
     public ApiResponse<AgentOperationsService.CallTrace> call(@PathVariable String turnId) {

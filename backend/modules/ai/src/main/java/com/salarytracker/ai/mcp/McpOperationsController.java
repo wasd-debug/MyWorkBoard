@@ -50,7 +50,10 @@ public class McpOperationsController {
 
     @GetMapping("/events")
     @Operation(operationId = "listMcpProtocolEvents")
-    public ApiResponse<List<McpOperationsService.EventView>> events(@RequestParam(defaultValue = "30") int limit) {
-        return ApiResponse.ok(operations.events(limit));
+    public ApiResponse<McpOperationsService.EventPage> events(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String status) {
+        return ApiResponse.ok(operations.events(page, pageSize, status));
     }
 }

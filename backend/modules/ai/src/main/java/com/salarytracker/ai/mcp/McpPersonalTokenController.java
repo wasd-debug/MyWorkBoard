@@ -27,7 +27,12 @@ public class McpPersonalTokenController {
 
     @GetMapping
     @Operation(operationId = "listMcpPersonalTokens")
-    public ApiResponse<List<McpPersonalTokenService.TokenView>> list() { return ApiResponse.ok(tokens.list()); }
+    public ApiResponse<McpPersonalTokenService.TokenPage> list(
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20") int pageSize,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "ALL") String status) {
+        return ApiResponse.ok(tokens.list(page, pageSize, status));
+    }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     @Operation(operationId = "createMcpPersonalToken")

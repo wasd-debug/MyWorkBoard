@@ -122,8 +122,13 @@ public class AgentOperationsService {
     }
 
     public List<CallDetail> calls(String preset, String from, String to, boolean failuresOnly, int page) {
+        return calls(preset, from, to, failuresOnly, page, 20);
+    }
+
+    public List<CallDetail> calls(String preset, String from, String to, boolean failuresOnly, int page, int pageSize) {
         Window window = resolveWindow(preset, "AUTO", from, to);
         if (page < 0 || page > 1000) throw new IllegalArgumentException("页码超出范围");
+        int safePageSize = Math.min(Math.max(pageSize, 1), 100);
         return jdbc.query("""
                 SELECT t.id,t.session_id,t.status,t.provider_type,t.model_name,t.created_at,
                        TIMESTAMPDIFF(MICROSECOND,t.started_at,t.completed_at)/1000 AS duration_ms,
@@ -137,13 +142,13 @@ public class AgentOperationsService {
                 WHERE t.user_id=? AND t.created_at>=? AND t.created_at<?
                   AND (?=FALSE OR t.status IN ('FAILED','CANCELLED') OR EXISTS
                        (SELECT 1 FROM agent_tool_call c WHERE c.turn_id=t.id AND c.user_id=? AND c.status<>'SUCCESS'))
-                ORDER BY t.created_at DESC,t.id DESC LIMIT 21 OFFSET ?
+                ORDER BY t.created_at DESC,t.id DESC LIMIT ? OFFSET ?
                 """, (r, n) -> new CallDetail(r.getString("id"), r.getString("session_id"),
                 r.getString("status"), r.getString("provider_type"), r.getString("model_name"),
                 instant(r, "created_at"), nullableLong(r, "duration_ms"), r.getLong("tokens"),
                 r.getLong("first_token_ms"), r.getLong("tool_count")),
                 currentUser.id(), window.from(), window.to(),
-                failuresOnly, currentUser.id(), page * 20);
+                failuresOnly, currentUser.id(), safePageSize + 1, page * safePageSize);
     }
 
     public CallTrace callTrace(String turnId) {

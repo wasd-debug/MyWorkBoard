@@ -49,10 +49,24 @@ public class McpPersonalTokenService {
         this.authService = authService;
     }
 
-    public List<TokenView> list() {
-        return jdbc.query("SELECT * FROM mcp_personal_token WHERE user_id=? AND token_type='PAT' ORDER BY created_at DESC",
-                (result, rowNum) -> map(result), currentUser.id());
+    public TokenPage list(int page, int pageSize) {
+        return list(page, pageSize, "ALL");
     }
+
+    public TokenPage list(int page, int pageSize, String status) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, pageSize), 100);
+        String filter = "REVOKED".equalsIgnoreCase(status) ? " AND revoked_at IS NOT NULL" : "ACTIVE".equalsIgnoreCase(status) ? " AND revoked_at IS NULL" : "";
+        long userId = currentUser.id();
+        Integer total = jdbc.queryForObject("SELECT COUNT(*) FROM mcp_personal_token WHERE user_id=? AND token_type='PAT'" + filter, Integer.class, userId);
+        List<TokenView> items = jdbc.query("SELECT * FROM mcp_personal_token WHERE user_id=? AND token_type='PAT'" + filter + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (result, rowNum) -> map(result), userId, safeSize, safePage * safeSize);
+        return new TokenPage(items, safePage, safeSize, total == null ? 0 : total,
+                Math.max(1, (long) Math.ceil((total == null ? 0 : total) / (double) safeSize)));
+    }
+
+    /** Backward-compatible full-page access for internal callers and older tests. */
+    public List<TokenView> list() { return list(0, 100).items(); }
 
     @Transactional
     public CreatedToken create(CreateToken command) {
@@ -225,6 +239,7 @@ public class McpPersonalTokenService {
     public record CreatedToken(TokenView token, String rawToken) { }
     public record TokenView(String id, String name, String tokenHint, Set<String> scopes, Set<String> bookIds,
                             Instant expiresAt, Instant revokedAt, Instant lastUsedAt, Instant createdAt) { }
+    public record TokenPage(List<TokenView> items, int page, int pageSize, long total, long totalPages) { }
     public record AuthenticatedToken(String id, String name, CurrentUser user, Set<String> scopes,
                                      Set<String> bookIds, String tokenType, String oauthClientId,
                                      String oauthGrantId) {

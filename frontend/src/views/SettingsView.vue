@@ -4,8 +4,11 @@
       <div class="label">MODULE / SYSTEM.CONFIG</div>
       <h1>设置 <span style="font-size:13px;color:var(--dim);font-weight:500">// SETTINGS</span></h1>
     </div>
+    <nav class="settings-module-nav" aria-label="设置模块">
+      <button v-for="item in settingModules" :key="item.key" type="button" :class="{ active: activeModule === item.key }" @click="activeModule = item.key">{{ item.label }}</button>
+    </nav>
 
-    <div class="card set-group appearance-group">
+    <div v-show="activeModule === 'general'" class="card set-group appearance-group">
       <h2>外观</h2>
       <div class="row">
         <div class="lbl">配色风格<small>同步调整页面背景、功能卡片、按钮与图表</small></div>
@@ -15,7 +18,7 @@
       </div>
     </div>
 
-    <div class="card set-group">
+    <div v-show="activeModule === 'general'" class="card set-group">
       <h2>标准工作时间</h2>
       <div class="row">
         <div class="lbl">标准上班时间<small>每日开始计时的时刻</small></div>
@@ -46,7 +49,7 @@
       </template>
     </Dialog>
 
-    <div class="card set-group">
+    <div v-show="activeModule === 'general'" class="card set-group">
       <h2>排班设置</h2>
       <div class="row">
         <div class="lbl">自动获取法定工作日<small>按节假日调休自动计算当月排班天数</small></div>
@@ -62,7 +65,7 @@
       <p class="hint" v-html="setHint"></p>
     </div>
 
-    <div class="card set-group">
+    <div v-show="activeModule === 'general'" class="card set-group">
       <h2>数据</h2>
       <div class="io-row">
         <Button size="sm" variant="ghost" @click="doExport">导出到下方文本框</Button>
@@ -73,7 +76,7 @@
       <Textarea v-model="ioArea" :rows="5" aria-label="工时数据导入导出文本" placeholder="点击「导出」查看全部数据 JSON；粘贴后点「导入」可恢复（会覆盖现有数据）" class="io-area" />
     </div>
 
-    <div class="card set-group model-config">
+    <div v-show="activeModule === 'model'" class="card set-group model-config">
       <h2>Agent 模型与成本</h2>
       <p class="hint">API Key 只在本次表单中使用，服务端会加密保存；页面不会写入 localStorage 或返回完整密钥。</p>
       <div class="model-toolbar">
@@ -119,7 +122,7 @@
       </div>
     </div>
 
-    <div class="card set-group operations-config">
+    <div v-show="activeModule === 'operations'" class="card set-group operations-config">
       <div class="operations-heading">
         <div><h2>Agent 运行质量</h2><p class="hint">统计模型调用、工具执行、Token、费用和失败情况；历史费用按当次调用保存的价格快照统计。</p></div>
         <Button size="sm" variant="ghost" :disabled="operationsLoading" @click="loadOperations">{{ operationsLoading ? '加载中…' : '刷新' }}</Button>
@@ -163,20 +166,21 @@
           <div v-for="alert in budgetAlerts" :key="alert.id" class="operations-alert"><div><b>{{ alert.type === 'DAILY' ? '日预算' : '月预算' }} {{ alert.threshold }}% · {{ alert.period }}</b><small>{{ formatMoney(alert.current, alert.currency) }} / {{ formatMoney(alert.limit, alert.currency) }} · {{ formatDateTime(alert.createdAt) }}</small></div><Button v-if="alert.status !== 'READ'" size="sm" variant="ghost" @click="markBudgetAlertRead(alert)">标记已读</Button><span v-else class="hint">已读</span></div>
           <p v-if="!budgetAlerts.length" class="hint">暂无预算告警。</p>
         </section>
-        <section class="operations-section"><div class="operations-heading"><h3>调用明细</h3><label class="operations-check"><input v-model="failuresOnly" type="checkbox" @change="resetCalls" />仅看失败 / 取消</label></div>
+        <section class="operations-section"><div class="operations-heading"><h3>调用明细</h3><div class="operations-check"><label><input v-model="failuresOnly" type="checkbox" @change="resetCalls" />仅看失败 / 取消</label><label>每页<select v-model.number="callsPageSize" @change="resetCalls"><option :value="10">10</option><option :value="20">20</option><option :value="50">50</option></select></label></div></div>
           <p v-if="callsError" class="operations-error">{{ callsError }}</p>
           <div class="operations-table-wrap"><table class="operations-calls"><thead><tr><th>时间 / 模型</th><th>状态</th><th>Token</th><th>首字</th><th>总耗时</th><th>工具</th><th>操作</th></tr></thead><tbody>
             <template v-for="call in operationCalls" :key="call.turnId"><tr><td>{{ formatDateTime(call.createdAt) }}<small>{{ call.model || call.provider || '未知模型' }}</small></td><td>{{ call.status }}</td><td>{{ formatNumber(call.tokens) }}</td><td>{{ formatDuration(call.firstTokenMs) }}</td><td>{{ formatDuration(call.durationMs) }}</td><td>{{ call.toolCount }}</td><td><Button size="sm" variant="ghost" @click="toggleCallTrace(call.turnId)">{{ expandedTurnId === call.turnId ? '收起' : '明细' }}</Button><RouterLink :to="{ path: '/', query: { session: call.sessionId } }">原会话</RouterLink></td></tr>
               <tr v-if="expandedTurnId === call.turnId"><td colspan="7" class="operations-trace"><p v-if="traceLoading">加载中…</p><p v-else-if="traceError">{{ traceError }}</p><template v-else-if="callTrace"><p v-if="callTrace.failureSummary">{{ callTrace.failureSummary }}</p><p v-for="usage in callTrace.usage" :key="`usage-${usage.round}`">模型第 {{ usage.round }} 轮 · 输入 {{ formatNumber(usage.inputTokens) }} / 输出 {{ formatNumber(usage.outputTokens) }} / 缓存命中 {{ formatNumber(usage.cacheHitTokens) }} / 推理 {{ formatNumber(usage.reasoningTokens) }} Token · {{ formatMoney(usage.cost, usage.currency || 'UNPRICED') }} · {{ formatDuration(usage.durationMs) }}</p><p v-for="tool in callTrace.tools" :key="`tool-${tool.sequence}`">工具 {{ tool.name }} · {{ tool.status }} · {{ formatDuration(tool.durationMs) }}</p><p v-if="!callTrace.usage.length && !callTrace.tools.length && !callTrace.failureSummary">暂无模型或工具执行记录。</p></template></td></tr>
             </template><tr v-if="!operationCalls.length"><td colspan="7" class="empty-cell">{{ callsLoading ? '加载中…' : '当前范围暂无调用' }}</td></tr>
-          </tbody></table></div><div class="operations-pages"><Button size="sm" variant="ghost" :disabled="callsPage === 0 || callsLoading" @click="changeCallsPage(-1)">上一页</Button><span>第 {{ callsPage + 1 }} 页</span><Button size="sm" variant="ghost" :disabled="!callsHasNext || callsLoading" @click="changeCallsPage(1)">下一页</Button></div>
+          </tbody></table></div><div class="settings-pagination operations-pages"><Button size="sm" variant="ghost" :disabled="callsPage === 0 || callsLoading" @click="changeCallsPage(-1)">上一页</Button><span>第 {{ callsPage + 1 }} 页</span><Button size="sm" variant="ghost" :disabled="!callsHasNext || callsLoading" @click="changeCallsPage(1)">下一页</Button></div>
         </section>
       </template>
     </div>
 
-    <div class="card set-group mcp-config">
+    <div v-show="activeModule === 'mcp'" class="card set-group mcp-config">
       <h2>外部 Agent / MCP</h2>
       <p class="hint">管理外部客户端的访问权限。Token 仅显示一次；写入仍需在网站批准。</p>
+      <div class="mcp-list-filter"><label>Token 状态<select v-model="mcpTokenStatus" @change="resetMcpTokenPage"><option value="ALL">全部</option><option value="ACTIVE">有效</option><option value="REVOKED">已撤销</option></select></label></div>
       <div class="mcp-create-grid">
         <label>Token 名称<input v-model="mcpForm.name" maxlength="120" placeholder="例如 本地 Codex" /></label>
         <label>有效期<input v-model="mcpForm.expiresAt" type="datetime-local" /></label>
@@ -235,6 +239,7 @@
         </article>
       </div>
       <p v-else class="hint">尚未创建 MCP Token。</p>
+      <div class="settings-pagination"><Button size="sm" variant="ghost" :disabled="mcpTokenPage === 0 || mcpTokenLoading" @click="changeMcpTokenPage(-1)">上一页</Button><span>第 {{ mcpTokenPage + 1 }} / {{ mcpTokenPages }} 页 · 共 {{ mcpTokenTotal }} 条</span><Button size="sm" variant="ghost" :disabled="mcpTokenPage + 1 >= mcpTokenPages || mcpTokenLoading" @click="changeMcpTokenPage(1)">下一页</Button><label>每页<select v-model.number="mcpTokenPageSize" @change="resetMcpTokenPage"><option :value="10">10</option><option :value="20">20</option><option :value="50">50</option></select></label></div>
       <div class="mcp-oauth-heading"><div><h3>OAuth 已授权应用</h3><p class="hint">远程 MCP 客户端通过 OAuth 2.1 + PKCE 获得访问权限；撤销后 access token 与 refresh token 立即失效。</p></div><Button size="sm" variant="ghost" @click="loadMcpGrants">刷新授权</Button></div>
       <div v-if="mcpGrants.length" class="mcp-token-list">
         <article v-for="grant in mcpGrants" :key="grant.id">
@@ -254,6 +259,7 @@
       </div>
       <p v-else class="hint">尚无已注册并授权的 OAuth 客户端。</p>
       <div class="mcp-oauth-heading"><div><h3>最近连接事件</h3><p class="hint">仅显示脱敏 IP、客户端摘要和协议状态，不记录 Token、授权码或密钥。</p></div></div>
+      <div class="mcp-list-filter"><label>事件状态<select v-model="mcpEventStatus" @change="resetMcpEventPage"><option value="ALL">全部</option><option value="SUCCESS">成功</option><option value="FAILED">失败</option></select></label></div>
       <div v-if="mcpEvents.length" class="mcp-event-list">
         <article v-for="(event, index) in mcpEvents" :key="`${event.createdAt}-${index}`">
           <b>{{ mcpEventLabel(event.eventType) }}</b><span :class="event.status === 'SUCCESS' || event.status === 'ACCEPTED' ? 'ok' : 'off'">{{ event.status }}</span>
@@ -261,6 +267,7 @@
         </article>
       </div>
       <p v-else class="hint">尚无当前用户可见的 MCP/OAuth 事件。</p>
+      <div class="settings-pagination"><Button size="sm" variant="ghost" :disabled="mcpEventPage === 0 || mcpEventLoading" @click="changeMcpEventPage(-1)">上一页</Button><span>第 {{ mcpEventPage + 1 }} / {{ mcpEventPages }} 页 · 共 {{ mcpEventTotal }} 条</span><Button size="sm" variant="ghost" :disabled="mcpEventPage + 1 >= mcpEventPages || mcpEventLoading" @click="changeMcpEventPage(1)">下一页</Button><label>每页<select v-model.number="mcpEventPageSize" @change="resetMcpEventPage"><option :value="10">10</option><option :value="20">20</option><option :value="50">50</option></select></label></div>
     </div>
 
   </section>
@@ -282,6 +289,13 @@ import { apiCreateAgentModelConnection, apiCreateMcpToken, apiDeleteAgentModelCo
 
 const appStore = useAppStore()
 const store = useWorktimeStore()
+const settingModules = [
+  { key: 'general', label: '基础设置' },
+  { key: 'model', label: '模型与成本' },
+  { key: 'operations', label: '运行质量' },
+  { key: 'mcp', label: 'MCP / 外部 Agent' },
+]
+const activeModule = ref('general')
 const settings = computed(() => store.settings)
 const accents = [
   { key: 'sun', label: '日光', color: '#ffd22e' },
@@ -294,10 +308,14 @@ const ioArea = ref('')
 const lunchDialogOpen = ref(false), pendingLunchMin = ref(0), lunchScope = ref('NONE'), lunchFromDate = ref(CALC.dateKey(new Date())), savingLunch = ref(false)
 const modelConnections = ref([]), selectedModelId = ref(''), modelStatus = ref('')
 const mcpTokens = ref([]), mcpGrants = ref([]), mcpClients = ref([]), mcpEvents = ref([]), mcpDiagnostics = ref(null), ledgerBooks = ref([]), createdMcpToken = ref(''), creatingMcpToken = ref(false)
+const mcpTokenPage = ref(0), mcpTokenPageSize = ref(20), mcpTokenPages = ref(1), mcpTokenTotal = ref(0), mcpTokenLoading = ref(false)
+const mcpEventPage = ref(0), mcpEventPageSize = ref(20), mcpEventPages = ref(1), mcpEventTotal = ref(0), mcpEventLoading = ref(false)
+const mcpTokenStatus = ref('ALL'), mcpEventStatus = ref('ALL')
 const operationsMetrics = ref(null), operationsLoading = ref(false), operationsError = ref(''), budgetStatus = ref('')
 const budgetAlerts = ref([]), operationCalls = ref([]), callsPage = ref(0), callsHasNext = ref(false), failuresOnly = ref(false), callsLoading = ref(false), callsError = ref('')
+const callsPageSize = ref(20)
 const expandedTurnId = ref(''), callTrace = ref(null), traceLoading = ref(false), traceError = ref('')
-let operationsRequest = 0, callsRequest = 0, traceRequest = 0
+let operationsRequest = 0, callsRequest = 0, traceRequest = 0, mcpTokenRequest = 0, mcpEventRequest = 0
 const operationsQuery = ref({ preset: 'TODAY', granularity: 'AUTO', from: CALC.dateKey(new Date()), to: CALC.dateKey(new Date()) })
 const budgetForm = ref({ currency: 'CNY', dailyLimit: null, monthlyLimit: null, singleRequestLimit: null, tokenLimit: null, enforcementMode: 'WARN', revision: null })
 const defaultMcpExpiry = () => { const date = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); date.setSeconds(0, 0); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16) }
@@ -327,9 +345,13 @@ async function saveModel() { try { const payload = { ...modelForm.value, pricing
 async function testModel() { try { const result = await apiTestAgentModelConnection(selectedModelId.value); modelStatus.value = result.success ? `连接成功，耗时 ${result.durationMs}ms` : `连接失败：${result.status}` } catch { modelStatus.value = '连接测试失败' } }
 async function makeDefault() { try { await apiSetDefaultAgentModelConnection(selectedModelId.value); await loadModels(); modelStatus.value = '已设为默认模型' } catch { modelStatus.value = '设置默认模型失败' } }
 async function removeModel() { if (!window.confirm('删除此模型配置？')) return; try { await apiDeleteAgentModelConnection(selectedModelId.value); await loadModels(); modelStatus.value = '模型配置已删除' } catch { modelStatus.value = '删除模型配置失败' } }
-async function loadMcpTokens() { try { [mcpTokens.value, ledgerBooks.value] = await Promise.all([apiListMcpTokens(), apiListLedgerBooks()]) } catch { message.error('MCP Token 列表加载失败') } }
+async function loadMcpTokens() { const request = ++mcpTokenRequest; mcpTokenLoading.value = true; try { const [page, books] = await Promise.all([apiListMcpTokens({ page: mcpTokenPage.value, pageSize: mcpTokenPageSize.value, status: mcpTokenStatus.value }), apiListLedgerBooks()]); if (request !== mcpTokenRequest) return; const result = page?.items ? page : { items: page || [], total: (page || []).length, totalPages: 1 }; mcpTokens.value = result.items || []; mcpTokenTotal.value = Number(result.total || 0); mcpTokenPages.value = Math.max(1, Number(result.totalPages || 1)); ledgerBooks.value = books || [] } catch { if (request === mcpTokenRequest) message.error('MCP Token 列表加载失败') } finally { if (request === mcpTokenRequest) mcpTokenLoading.value = false } }
 async function loadMcpGrants() { try { mcpGrants.value = await apiListMcpOAuthGrants() } catch (error) { if (error?.response?.status !== 404) message.error('OAuth 授权列表加载失败') } }
-async function loadMcpOperations() { try { [mcpDiagnostics.value, mcpClients.value, mcpEvents.value] = await Promise.all([apiGetMcpDiagnostics(), apiListMcpOAuthClients(), apiListMcpProtocolEvents()]) } catch { message.error('MCP 连接诊断加载失败') } }
+async function loadMcpOperations() { const request = ++mcpEventRequest; mcpEventLoading.value = true; try { const [diagnostics, clients, events] = await Promise.all([apiGetMcpDiagnostics(), apiListMcpOAuthClients(), apiListMcpProtocolEvents({ page: mcpEventPage.value, pageSize: mcpEventPageSize.value, status: mcpEventStatus.value === 'ALL' ? undefined : mcpEventStatus.value })]); if (request !== mcpEventRequest) return; const result = events?.items ? events : { items: events || [], total: (events || []).length, totalPages: 1 }; mcpDiagnostics.value = diagnostics; mcpClients.value = clients || []; mcpEvents.value = result.items || []; mcpEventTotal.value = Number(result.total || 0); mcpEventPages.value = Math.max(1, Number(result.totalPages || 1)) } catch { if (request === mcpEventRequest) message.error('MCP 连接诊断加载失败') } finally { if (request === mcpEventRequest) mcpEventLoading.value = false } }
+function resetMcpTokenPage() { mcpTokenPage.value = 0; loadMcpTokens() }
+function changeMcpTokenPage(delta) { mcpTokenPage.value = Math.max(0, mcpTokenPage.value + delta); loadMcpTokens() }
+function resetMcpEventPage() { mcpEventPage.value = 0; loadMcpOperations() }
+function changeMcpEventPage(delta) { mcpEventPage.value = Math.max(0, mcpEventPage.value + delta); loadMcpOperations() }
 async function loadOperations() {
   const request = ++operationsRequest
   operationsLoading.value = true; operationsError.value = ''
@@ -350,9 +372,9 @@ async function loadCalls() {
   expandedTurnId.value = ''; ++traceRequest; callTrace.value = null
   callsLoading.value = true; callsError.value = ''; operationCalls.value = []
   try {
-    const rows = await apiListAgentOperationCalls({ ...operationsQuery.value, failuresOnly: failuresOnly.value, page: callsPage.value })
+    const rows = await apiListAgentOperationCalls({ ...operationsQuery.value, failuresOnly: failuresOnly.value, page: callsPage.value, pageSize: callsPageSize.value })
     if (request !== callsRequest) return
-    operationCalls.value = (rows || []).slice(0, 20); callsHasNext.value = (rows || []).length > 20
+    operationCalls.value = (rows || []).slice(0, callsPageSize.value); callsHasNext.value = (rows || []).length > callsPageSize.value
   } catch (error) { if (request === callsRequest) { callsHasNext.value = false; callsError.value = error?.response?.data?.detail || '调用列表加载失败' } }
   finally { if (request === callsRequest) callsLoading.value = false }
 }
