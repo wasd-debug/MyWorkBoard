@@ -50,13 +50,6 @@ public class McpServerConfiguration {
     private static final String CLIENT_CONTEXT_KEY = "salary.mcp.client";
     private static final String LEDGER_PREFIX = "ledger.";
     private static final String WORKTIME_PREFIX = "worktime.";
-    private static final Set<String> READ_TOOLS = Set.of(
-            "worktime.settings.get", "worktime.records.search",
-            "ledger.books.list", "ledger.overview", "ledger.transactions.search",
-            "ledger.transaction.history", "ledger.reports.summary", "ledger.budgets.list");
-    private static final Set<String> PREPARE_TOOLS = Set.of(
-            "worktime.record.create.prepare", "worktime.record.update.prepare", "worktime.record.delete.prepare",
-            "ledger.transaction.create.prepare", "ledger.transaction.update.prepare", "ledger.transaction.delete.prepare");
     private final List<McpSyncServer> servers = new ArrayList<>();
 
     @Bean
@@ -253,7 +246,15 @@ public class McpServerConfiguration {
         }
     }
 
-    private boolean visible(String name, Set<String> scopes) {
+    /**
+     * MCP visibility is derived from the domain tool namespace and scope, rather than
+     * from a hand-maintained allow-list. This keeps newly registered ledger/worktime
+     * tools available to MCP automatically while preserving the read/prepare boundary.
+     */
+    static boolean visible(String name, Set<String> scopes) {
+        // Domain commit tools are intentionally never advertised through MCP.
+        // External clients use agent.action.commit after the website approval flow.
+        if (name.endsWith(".commit")) return false;
         boolean prepare = name.endsWith(".prepare");
         return name.startsWith(LEDGER_PREFIX) && scopes.contains(prepare
                 ? McpPersonalTokenService.LEDGER_PREPARE : McpPersonalTokenService.LEDGER_READ)

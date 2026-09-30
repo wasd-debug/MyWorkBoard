@@ -1040,3 +1040,10 @@ Agent 与 MCP 改造只有在以下条件全部满足时才算完成：
 - 账本流水、分类报表、首页摘要和首页卡片排序完成紧凑化与拖拽交互修正。
 
 本轮不改变 Agent/MCP 工具契约、权限和业务接口。前端生产构建与共享包测试通过后刷新本地服务；浏览器视觉与操作项继续记录在 `docs/前端手工检查清单.md`，由人工验收。
+
+## 2026-09-30 MCP 工具可见性收口
+
+- 移除 MCP Server 内账本/工时 read 与 prepare 工具的手工名称白名单，改为根据 Domain Tool 的 `ledger.*`、`worktime.*` 命名空间和 PAT/OAuth scope 自动推导。
+- read scope 可见对应领域的全部非 prepare、非 commit 工具；prepare scope 可见对应领域的全部 `*.prepare` 工具。
+- 领域 `*.commit` 无论 Token 模板或 scope 如何都不进入 `tools/list`，外部提交继续只使用 `agent.action.commit`，并保留站内审批、风险等级和单次幂等限制。
+- 新增可见性单测，覆盖账户、商家、项目、周期任务、回收站、导入导出、工时设置及 commit 隔离，避免新增 Domain Tool 后再次出现白名单漂移。

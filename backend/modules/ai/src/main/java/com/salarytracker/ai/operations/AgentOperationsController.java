@@ -30,7 +30,7 @@ public class AgentOperationsController {
     @PostMapping("/alerts/{id}/read") @Operation(operationId = "markAgentBudgetAlertRead")
     public ApiResponse<Void> read(@PathVariable long id) { service.markAlertRead(id); return ApiResponse.ok(null); }
     @GetMapping("/calls") @Operation(operationId = "listAgentOperationCalls")
-    public ApiResponse<List<AgentOperationsService.CallDetail>> calls(@RequestParam(defaultValue = "TODAY") String preset,
+    public ApiResponse<AgentOperationsService.CallPage> calls(@RequestParam(defaultValue = "TODAY") String preset,
             @RequestParam(required = false) String from, @RequestParam(required = false) String to,
             @RequestParam(defaultValue = "false") boolean failuresOnly, @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int pageSize) {
