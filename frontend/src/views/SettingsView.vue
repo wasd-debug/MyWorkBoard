@@ -79,12 +79,12 @@
     <div v-show="activeModule === 'model'" class="card set-group model-config">
       <h2>Agent 模型与成本</h2>
       <p class="hint">主页面仅展示模型状态与成本摘要；API Key、峰谷定价和连接参数在弹框中配置。</p>
-      <div class="model-toolbar"><Button @click="openModelDialog('')">新增模型</Button><Button size="sm" variant="ghost" @click="loadModels">刷新</Button></div>
+      <div class="model-toolbar"><Button size="sm" @click="openModelDialog('')">新增模型</Button><Button size="sm" variant="ghost" @click="loadModels">刷新</Button></div>
       <div v-if="modelConnections.length" class="model-list">
         <article v-for="item in modelConnections" :key="item.id" class="model-list-item">
           <div><strong>{{ item.displayName }}</strong><span v-if="item.isDefault" class="model-badge">默认</span><small>{{ item.providerType }} · {{ item.modelName }} · {{ item.apiKeyConfigured ? `密钥 ${item.apiKeyMask}` : '未配置密钥' }}</small></div>
           <div><span :class="item.enabled ? 'model-enabled' : 'model-disabled'">{{ item.enabled ? '启用' : '已禁用' }}</span><small>{{ item.pricing?.currency || '未定价' }} · {{ item.connectionStatus || '未测试' }}</small></div>
-          <div class="model-list-actions"><Button size="sm" variant="ghost" @click="openModelDialog(item.id)">编辑</Button><Button v-if="!item.systemManaged" size="sm" variant="ghost" @click="testModel(item.id)">测试</Button><Button v-if="!item.systemManaged" size="sm" variant="ghost" @click="toggleModel(item)">{{ item.enabled ? '禁用' : '启用' }}</Button><Button v-if="!item.systemManaged" size="sm" variant="danger" @click="removeModel(item.id, item.displayName)">删除</Button></div>
+          <div class="model-list-actions"><Button size="sm" variant="ghost" @click="openModelDialog(item.id)">编辑</Button><Button size="sm" variant="ghost" @click="testModel(item.id)">测试连接</Button><Button v-if="!item.systemManaged" size="sm" variant="ghost" @click="toggleModel(item)">{{ item.enabled ? '停用' : '启用' }}</Button><Button v-else size="sm" variant="ghost" disabled title="系统环境配置由服务器环境变量管理">停用</Button><Button v-if="!item.systemManaged" size="sm" variant="danger" @click="removeModel(item.id, item.displayName)">删除</Button><Button v-else size="sm" variant="danger" disabled title="系统环境配置不能删除">删除</Button></div>
         </article>
       </div><p v-else class="hint">暂无模型配置，请先新增。</p>
       <Dialog v-model:open="modelDialogOpen" :title="selectedModelId ? '编辑模型配置' : '新增模型配置'">
