@@ -13,13 +13,14 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { TokenView } from './token-view.ts';
 
-export interface CreateToken {
-    'name'?: string;
-    'scopes'?: Set<string>;
-    'bookIds'?: Set<string>;
-    'expiresAt'?: string;
-    'permissionTemplate'?: string;
-    'highRiskPolicy'?: string;
-    'rateLimitPerMinute'?: number;
+export interface TokenPage {
+    'items'?: Array<TokenView>;
+    'page'?: number;
+    'pageSize'?: number;
+    'total'?: number;
+    'totalPages'?: number;
 }

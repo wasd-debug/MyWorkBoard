@@ -26,9 +26,9 @@ import type { ApiProblem } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseCreatedToken } from '../models/index.ts';
 // @ts-ignore
-import type { ApiResponseListTokenView } from '../models/index.ts';
-// @ts-ignore
 import type { ApiResponseMapStringBoolean } from '../models/index.ts';
+// @ts-ignore
+import type { ApiResponseTokenPage } from '../models/index.ts';
 // @ts-ignore
 import type { CreateToken } from '../models/index.ts';
 /**
@@ -72,10 +72,13 @@ export const MCPPersonalTokensApiAxiosParamCreator = function (configuration?: C
         },
         /**
          *
+         * @param {number} [page]
+         * @param {number} [pageSize]
+         * @param {string} [status]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listMcpPersonalTokens: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listMcpPersonalTokens: async (page?: number, pageSize?: number, status?: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/mcp/tokens`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -85,6 +88,51 @@ export const MCPPersonalTokensApiAxiosParamCreator = function (configuration?: C
             }
 
             const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (page !== undefined) {
+                localVarQueryParameter['page'] = page;
+            }
+
+            if (pageSize !== undefined) {
+                localVarQueryParameter['pageSize'] = pageSize;
+            }
+
+            if (status !== undefined) {
+                localVarQueryParameter['status'] = status;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} id
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        purgeMcpPersonalToken: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('purgeMcpPersonalToken', 'id', id)
+            const localVarPath = `/api/v1/mcp/tokens/{id}/purge`
+                .replace('{id}', encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'DELETE', ...baseOptions, ...options};
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
 
@@ -155,13 +203,28 @@ export const MCPPersonalTokensApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {number} [page]
+         * @param {number} [pageSize]
+         * @param {string} [status]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listMcpPersonalTokens(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseListTokenView>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listMcpPersonalTokens(options);
+        async listMcpPersonalTokens(page?: number, pageSize?: number, status?: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTokenPage>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listMcpPersonalTokens(page, pageSize, status, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['MCPPersonalTokensApi.listMcpPersonalTokens']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} id
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async purgeMcpPersonalToken(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseMapStringBoolean>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.purgeMcpPersonalToken(id, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['MCPPersonalTokensApi.purgeMcpPersonalToken']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -196,11 +259,21 @@ export const MCPPersonalTokensApiFactory = function (configuration?: Configurati
         },
         /**
          *
+         * @param {MCPPersonalTokensApiListMcpPersonalTokensRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listMcpPersonalTokens(options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseListTokenView> {
-            return localVarFp.listMcpPersonalTokens(options).then((request) => request(axios, basePath));
+        listMcpPersonalTokens(requestParameters: MCPPersonalTokensApiListMcpPersonalTokensRequest = {}, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTokenPage> {
+            return localVarFp.listMcpPersonalTokens(requestParameters.page, requestParameters.pageSize, requestParameters.status, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {MCPPersonalTokensApiPurgeMcpPersonalTokenRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        purgeMcpPersonalToken(requestParameters: MCPPersonalTokensApiPurgeMcpPersonalTokenRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseMapStringBoolean> {
+            return localVarFp.purgeMcpPersonalToken(requestParameters.id, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -219,6 +292,24 @@ export const MCPPersonalTokensApiFactory = function (configuration?: Configurati
  */
 export interface MCPPersonalTokensApiCreateMcpPersonalTokenRequest {
     readonly createToken: CreateToken
+}
+
+/**
+ * Request parameters for listMcpPersonalTokens operation in MCPPersonalTokensApi.
+ */
+export interface MCPPersonalTokensApiListMcpPersonalTokensRequest {
+    readonly page?: number
+
+    readonly pageSize?: number
+
+    readonly status?: string
+}
+
+/**
+ * Request parameters for purgeMcpPersonalToken operation in MCPPersonalTokensApi.
+ */
+export interface MCPPersonalTokensApiPurgeMcpPersonalTokenRequest {
+    readonly id: string
 }
 
 /**
@@ -244,11 +335,22 @@ export class MCPPersonalTokensApi extends BaseAPI {
 
     /**
      *
+     * @param {MCPPersonalTokensApiListMcpPersonalTokensRequest} requestParameters Request parameters.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public listMcpPersonalTokens(options?: RawAxiosRequestConfig) {
-        return MCPPersonalTokensApiFp(this.configuration).listMcpPersonalTokens(options).then((request) => request(this.axios, this.basePath));
+    public listMcpPersonalTokens(requestParameters: MCPPersonalTokensApiListMcpPersonalTokensRequest = {}, options?: RawAxiosRequestConfig) {
+        return MCPPersonalTokensApiFp(this.configuration).listMcpPersonalTokens(requestParameters.page, requestParameters.pageSize, requestParameters.status, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {MCPPersonalTokensApiPurgeMcpPersonalTokenRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public purgeMcpPersonalToken(requestParameters: MCPPersonalTokensApiPurgeMcpPersonalTokenRequest, options?: RawAxiosRequestConfig) {
+        return MCPPersonalTokensApiFp(this.configuration).purgeMcpPersonalToken(requestParameters.id, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

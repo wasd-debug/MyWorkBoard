@@ -26,11 +26,11 @@ import type { ApiProblem } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseBudget } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseCallPage } from '../models/index.ts';
+// @ts-ignore
 import type { ApiResponseCallTrace } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseListBudgetAlert } from '../models/index.ts';
-// @ts-ignore
-import type { ApiResponseListCallDetail } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseMetrics } from '../models/index.ts';
 // @ts-ignore
@@ -189,10 +189,11 @@ export const AgentOperationsApiAxiosParamCreator = function (configuration?: Con
          * @param {string} [to]
          * @param {boolean} [failuresOnly]
          * @param {number} [page]
+         * @param {number} [pageSize]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listAgentOperationCalls: async (preset?: string, from?: string, to?: string, failuresOnly?: boolean, page?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listAgentOperationCalls: async (preset?: string, from?: string, to?: string, failuresOnly?: boolean, page?: number, pageSize?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/agent/operations/calls`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -223,6 +224,10 @@ export const AgentOperationsApiAxiosParamCreator = function (configuration?: Con
 
             if (page !== undefined) {
                 localVarQueryParameter['page'] = page;
+            }
+
+            if (pageSize !== undefined) {
+                localVarQueryParameter['pageSize'] = pageSize;
             }
 
             localVarHeaderParameter['Accept'] = '*/*,application/problem+json';
@@ -368,11 +373,12 @@ export const AgentOperationsApiFp = function(configuration?: Configuration) {
          * @param {string} [to]
          * @param {boolean} [failuresOnly]
          * @param {number} [page]
+         * @param {number} [pageSize]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listAgentOperationCalls(preset?: string, from?: string, to?: string, failuresOnly?: boolean, page?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseListCallDetail>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listAgentOperationCalls(preset, from, to, failuresOnly, page, options);
+        async listAgentOperationCalls(preset?: string, from?: string, to?: string, failuresOnly?: boolean, page?: number, pageSize?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseCallPage>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listAgentOperationCalls(preset, from, to, failuresOnly, page, pageSize, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['AgentOperationsApi.listAgentOperationCalls']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -450,8 +456,8 @@ export const AgentOperationsApiFactory = function (configuration?: Configuration
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listAgentOperationCalls(requestParameters: AgentOperationsApiListAgentOperationCallsRequest = {}, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseListCallDetail> {
-            return localVarFp.listAgentOperationCalls(requestParameters.preset, requestParameters.from, requestParameters.to, requestParameters.failuresOnly, requestParameters.page, options).then((request) => request(axios, basePath));
+        listAgentOperationCalls(requestParameters: AgentOperationsApiListAgentOperationCallsRequest = {}, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseCallPage> {
+            return localVarFp.listAgentOperationCalls(requestParameters.preset, requestParameters.from, requestParameters.to, requestParameters.failuresOnly, requestParameters.page, requestParameters.pageSize, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -507,6 +513,8 @@ export interface AgentOperationsApiListAgentOperationCallsRequest {
     readonly failuresOnly?: boolean
 
     readonly page?: number
+
+    readonly pageSize?: number
 }
 
 /**
@@ -572,7 +580,7 @@ export class AgentOperationsApi extends BaseAPI {
      * @throws {RequiredError}
      */
     public listAgentOperationCalls(requestParameters: AgentOperationsApiListAgentOperationCallsRequest = {}, options?: RawAxiosRequestConfig) {
-        return AgentOperationsApiFp(this.configuration).listAgentOperationCalls(requestParameters.preset, requestParameters.from, requestParameters.to, requestParameters.failuresOnly, requestParameters.page, options).then((request) => request(this.axios, this.basePath));
+        return AgentOperationsApiFp(this.configuration).listAgentOperationCalls(requestParameters.preset, requestParameters.from, requestParameters.to, requestParameters.failuresOnly, requestParameters.page, requestParameters.pageSize, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

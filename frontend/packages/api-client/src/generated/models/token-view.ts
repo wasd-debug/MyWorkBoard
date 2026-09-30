@@ -19,6 +19,9 @@ export interface TokenView {
     'name'?: string;
     'tokenHint'?: string;
     'scopes'?: Set<string>;
+    'permissionTemplate'?: string;
+    'highRiskPolicy'?: string;
+    'rateLimitPerMinute'?: number;
     'bookIds'?: Set<string>;
     'expiresAt'?: string;
     'revokedAt'?: string;

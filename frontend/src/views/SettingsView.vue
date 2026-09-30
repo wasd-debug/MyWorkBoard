@@ -195,6 +195,7 @@
           <div><b>{{ token.name }}</b><code>{{ token.tokenHint }}</code><small>{{ mcpTemplateLabel(token.permissionTemplate) }} · {{ token.scopes.map(mcpScopeLabel).join(' · ') }}</small></div>
           <div><span>{{ token.revokedAt ? '已撤销' : token.expiresAt ? `到期 ${formatDateTime(token.expiresAt)}` : '长期有效' }}</span><small>{{ token.highRiskPolicy === 'DISABLED' ? '高风险禁用' : '高风险站内审批' }} · {{ token.rateLimitPerMinute }} 次/分钟 · 最后使用：{{ token.lastUsedAt ? formatDateTime(token.lastUsedAt) : '尚未使用' }}</small></div>
           <Button v-if="!token.revokedAt" size="sm" variant="danger" @click="revokeMcpToken(token)">撤销</Button>
+          <Button v-else size="sm" variant="danger" @click="purgeMcpToken(token)">删除</Button>
         </article>
       </div>
       <p v-else class="hint">尚未创建 MCP Token。</p>
@@ -244,7 +245,7 @@ import Button from '../components/ui/Button.vue'
 import Dialog from '../components/ui/Dialog.vue'
 import { useAppStore } from '../stores/app'
 import { CALC } from '../utils/calc'
-import { apiCreateAgentModelConnection, apiCreateMcpToken, apiDeleteAgentModelConnection, apiDisconnectMcpOAuthClient, apiGetAgentOperationMetrics, apiGetAgentUsageBudget, apiGetMcpDiagnostics, apiListAgentModelConnections, apiListLedgerBooks, apiListMcpOAuthClients, apiListMcpOAuthGrants, apiListMcpProtocolEvents, apiListMcpTokens, apiRevokeMcpOAuthGrant, apiRevokeMcpToken, apiSaveAgentUsageBudget, apiSetDefaultAgentModelConnection, apiTestAgentModelConnection, apiUpdateAgentModelConnection } from '../../packages/api-client/src/index.js'
+import { apiCreateAgentModelConnection, apiCreateMcpToken, apiDeleteAgentModelConnection, apiDisconnectMcpOAuthClient, apiGetAgentOperationMetrics, apiGetAgentUsageBudget, apiGetMcpDiagnostics, apiListAgentModelConnections, apiListLedgerBooks, apiListMcpOAuthClients, apiListMcpOAuthGrants, apiListMcpProtocolEvents, apiListMcpTokens, apiPurgeMcpToken, apiRevokeMcpOAuthGrant, apiRevokeMcpToken, apiSaveAgentUsageBudget, apiSetDefaultAgentModelConnection, apiTestAgentModelConnection, apiUpdateAgentModelConnection } from '../../packages/api-client/src/index.js'
 
 const appStore = useAppStore()
 const settingModules = [
@@ -356,6 +357,15 @@ async function createMcpToken() {
 }
 async function copyMcpToken() { try { await navigator.clipboard.writeText(createdMcpToken.value); message.success('Token 已复制') } catch { message.warning('复制失败，请手动复制') } }
 async function revokeMcpToken(token) { if (!window.confirm(`撤销“${token.name}”？已连接的外部 Agent 将立即失效。`)) return; try { await apiRevokeMcpToken(token.id); await loadMcpTokens(); message.success('Token 已撤销') } catch { message.error('撤销 Token 失败') } }
+async function purgeMcpToken(token) {
+  if (!window.confirm(`永久删除已撤销的“${token.name}”？凭据无法恢复，但历史调用审计会保留。`)) return
+  try {
+    await apiPurgeMcpToken(token.id)
+    if (mcpTokens.value.length === 1 && mcpTokenPage.value > 0) mcpTokenPage.value -= 1
+    await loadMcpTokens()
+    message.success('已撤销凭据已删除')
+  } catch (error) { message.error(error?.response?.data?.detail || '删除凭据失败') }
+}
 async function revokeMcpGrant(grant) { if (!window.confirm(`撤销“${grant.clientName}”的 OAuth 授权？该客户端需要重新授权才能连接。`)) return; try { await apiRevokeMcpOAuthGrant(grant.id); await loadMcpGrants(); message.success('OAuth 授权已撤销') } catch { message.error('撤销 OAuth 授权失败') } }
 async function disconnectMcpClient(client) { if (!window.confirm(`断开“${client.clientName}”？该客户端的全部授权和 Token 将立即失效。`)) return; try { await apiDisconnectMcpOAuthClient(client.clientId); await Promise.all([loadMcpGrants(), loadMcpOperations()]); message.success('OAuth 客户端已断开') } catch { message.error('断开 OAuth 客户端失败') } }
 async function copyMcpDiagnostics() { const report = { generatedAt: new Date().toISOString(), ...mcpDiagnostics.value, clients: mcpClients.value.map(({ clientId, clientName, lastUsedAt, lastUserAgent, revokedAt }) => ({ clientId, clientName, lastUsedAt, lastUserAgent, revokedAt })), recentEvents: mcpEvents.value }; try { await navigator.clipboard.writeText(JSON.stringify(report, null, 2)); message.success('脱敏诊断已复制') } catch { message.warning('复制失败') } }

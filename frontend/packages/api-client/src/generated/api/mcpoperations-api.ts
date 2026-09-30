@@ -26,9 +26,9 @@ import type { ApiProblem } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseDiagnostics } from '../models/index.ts';
 // @ts-ignore
-import type { ApiResponseListClientView } from '../models/index.ts';
+import type { ApiResponseEventPage } from '../models/index.ts';
 // @ts-ignore
-import type { ApiResponseListEventView } from '../models/index.ts';
+import type { ApiResponseListClientView } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseMapStringBoolean } from '../models/index.ts';
 /**
@@ -129,11 +129,13 @@ export const MCPOperationsApiAxiosParamCreator = function (configuration?: Confi
         },
         /**
          *
-         * @param {number} [limit]
+         * @param {number} [page]
+         * @param {number} [pageSize]
+         * @param {string} [status]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listMcpProtocolEvents: async (limit?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listMcpProtocolEvents: async (page?: number, pageSize?: number, status?: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/mcp/events`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -146,8 +148,16 @@ export const MCPOperationsApiAxiosParamCreator = function (configuration?: Confi
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
 
-            if (limit !== undefined) {
-                localVarQueryParameter['limit'] = limit;
+            if (page !== undefined) {
+                localVarQueryParameter['page'] = page;
+            }
+
+            if (pageSize !== undefined) {
+                localVarQueryParameter['pageSize'] = pageSize;
+            }
+
+            if (status !== undefined) {
+                localVarQueryParameter['status'] = status;
             }
 
             localVarHeaderParameter['Accept'] = '*/*,application/problem+json';
@@ -206,12 +216,14 @@ export const MCPOperationsApiFp = function(configuration?: Configuration) {
         },
         /**
          *
-         * @param {number} [limit]
+         * @param {number} [page]
+         * @param {number} [pageSize]
+         * @param {string} [status]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listMcpProtocolEvents(limit?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseListEventView>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listMcpProtocolEvents(limit, options);
+        async listMcpProtocolEvents(page?: number, pageSize?: number, status?: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseEventPage>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listMcpProtocolEvents(page, pageSize, status, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['MCPOperationsApi.listMcpProtocolEvents']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -256,8 +268,8 @@ export const MCPOperationsApiFactory = function (configuration?: Configuration, 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listMcpProtocolEvents(requestParameters: MCPOperationsApiListMcpProtocolEventsRequest = {}, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseListEventView> {
-            return localVarFp.listMcpProtocolEvents(requestParameters.limit, options).then((request) => request(axios, basePath));
+        listMcpProtocolEvents(requestParameters: MCPOperationsApiListMcpProtocolEventsRequest = {}, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseEventPage> {
+            return localVarFp.listMcpProtocolEvents(requestParameters.page, requestParameters.pageSize, requestParameters.status, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -273,7 +285,11 @@ export interface MCPOperationsApiDisconnectMcpOAuthClientRequest {
  * Request parameters for listMcpProtocolEvents operation in MCPOperationsApi.
  */
 export interface MCPOperationsApiListMcpProtocolEventsRequest {
-    readonly limit?: number
+    readonly page?: number
+
+    readonly pageSize?: number
+
+    readonly status?: string
 }
 
 /**
@@ -315,6 +331,6 @@ export class MCPOperationsApi extends BaseAPI {
      * @throws {RequiredError}
      */
     public listMcpProtocolEvents(requestParameters: MCPOperationsApiListMcpProtocolEventsRequest = {}, options?: RawAxiosRequestConfig) {
-        return MCPOperationsApiFp(this.configuration).listMcpProtocolEvents(requestParameters.limit, options).then((request) => request(this.axios, this.basePath));
+        return MCPOperationsApiFp(this.configuration).listMcpProtocolEvents(requestParameters.page, requestParameters.pageSize, requestParameters.status, options).then((request) => request(this.axios, this.basePath));
     }
 }

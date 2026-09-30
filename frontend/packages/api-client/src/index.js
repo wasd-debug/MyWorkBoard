@@ -66,6 +66,7 @@ export async function apiRetryAgentTurn(turnId, clientRequestId) { return data(a
 export async function apiListMcpTokens(params = {}) { return data(await api.get('/api/v1/mcp/tokens', { params })) }
 export async function apiCreateMcpToken(payload) { return data(await api.post('/api/v1/mcp/tokens', payload)) }
 export async function apiRevokeMcpToken(id) { return data(await api.delete(`/api/v1/mcp/tokens/${id}`)) }
+export async function apiPurgeMcpToken(id) { return data(await api.delete(`/api/v1/mcp/tokens/${id}/purge`)) }
 export async function apiGetMcpActionConfirmation(token) { return data(await api.get('/api/v1/mcp/actions/confirmation', { params: { token } })) }
 export async function apiApproveMcpActionConfirmation(token) { return data(await api.post('/api/v1/mcp/actions/confirmation/approve', null, { params: { token } })) }
 export async function apiRejectMcpActionConfirmation(token) { return data(await api.post('/api/v1/mcp/actions/confirmation/reject', null, { params: { token } })) }

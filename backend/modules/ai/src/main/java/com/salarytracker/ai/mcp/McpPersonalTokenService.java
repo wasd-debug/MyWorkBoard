@@ -106,6 +106,23 @@ public class McpPersonalTokenService {
     }
 
     @Transactional
+    public void purge(String id) {
+        Integer owned = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM mcp_personal_token
+                WHERE id=? AND user_id=? AND token_type='PAT'
+                """, Integer.class, id, currentUser.id());
+        if (owned == null || owned == 0) {
+            throw new IllegalArgumentException("Token 不存在或无权删除");
+        }
+        if (jdbc.update("""
+                DELETE FROM mcp_personal_token
+                WHERE id=? AND user_id=? AND token_type='PAT' AND revoked_at IS NOT NULL
+                """, id, currentUser.id()) != 1) {
+            throw new IllegalArgumentException("请先撤销 Token，再永久删除");
+        }
+    }
+
+    @Transactional
     public AuthenticatedToken authenticate(String raw) {
         return authenticate(raw, true);
     }

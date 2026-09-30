@@ -15,9 +15,9 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { CallDetail } from './call-detail.ts';
+import type { EventPage } from './event-page.ts';
 
-export interface ApiResponseListCallDetail {
-    'data'?: Array<CallDetail>;
+export interface ApiResponseEventPage {
+    'data'?: EventPage;
     'traceId'?: string;
 }

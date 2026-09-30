@@ -13,13 +13,11 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { CallPage } from './call-page.ts';
 
-export interface CreateToken {
-    'name'?: string;
-    'scopes'?: Set<string>;
-    'bookIds'?: Set<string>;
-    'expiresAt'?: string;
-    'permissionTemplate'?: string;
-    'highRiskPolicy'?: string;
-    'rateLimitPerMinute'?: number;
+export interface ApiResponseCallPage {
+    'data'?: CallPage;
+    'traceId'?: string;
 }

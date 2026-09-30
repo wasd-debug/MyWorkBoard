@@ -17,7 +17,10 @@
 // @ts-ignore
 import type { EventView } from './event-view.ts';
 
-export interface ApiResponseListEventView {
-    'data'?: Array<EventView>;
-    'traceId'?: string;
+export interface EventPage {
+    'items'?: Array<EventView>;
+    'page'?: number;
+    'pageSize'?: number;
+    'total'?: number;
+    'totalPages'?: number;
 }

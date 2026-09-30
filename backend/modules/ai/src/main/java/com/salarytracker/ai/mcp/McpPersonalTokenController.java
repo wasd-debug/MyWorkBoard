@@ -47,4 +47,11 @@ public class McpPersonalTokenController {
         tokens.revoke(id);
         return ApiResponse.ok(Map.of("revoked", true));
     }
+
+    @DeleteMapping("/{id}/purge")
+    @Operation(operationId = "purgeMcpPersonalToken")
+    public ApiResponse<Map<String, Boolean>> purge(@PathVariable String id) {
+        tokens.purge(id);
+        return ApiResponse.ok(Map.of("deleted", true));
+    }
 }

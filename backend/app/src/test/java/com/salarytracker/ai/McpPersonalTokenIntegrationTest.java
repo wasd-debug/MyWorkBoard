@@ -89,6 +89,52 @@ class McpPersonalTokenIntegrationTest extends MySqlIntegrationTestSupport {
         assertTrue(created.token().scopes().contains(McpPersonalTokenService.WORKTIME_PREPARE));
     }
 
+    @Test
+    void purgesOnlyOwnedRevokedPatAndKeepsAuditRows() {
+        long userId = createUser();
+        long otherUserId = createUser();
+        CurrentUserResolver currentUser = mock(CurrentUserResolver.class);
+        when(currentUser.id()).thenReturn(userId);
+        McpPersonalTokenService service = new McpPersonalTokenService(jdbc,
+                new ObjectMapper().findAndRegisterModules(), currentUser, mock(AuthService.class));
+        McpPersonalTokenService.CreatedToken created = service.create(new McpPersonalTokenService.CreateToken(
+                "待删除", Set.of(McpPersonalTokenService.WORKTIME_READ), Set.of(),
+                Instant.now().plus(1, ChronoUnit.DAYS)));
+
+        assertThrows(IllegalArgumentException.class, () -> service.purge(created.token().id()));
+        service.revoke(created.token().id());
+        jdbc.update("""
+                INSERT INTO mcp_tool_call(token_id,user_id,tool_name,status,duration_ms)
+                VALUES(?,?,'worktime.records.search','SUCCESS',10)
+                """, created.token().id(), userId);
+        jdbc.update("""
+                INSERT INTO mcp_protocol_event(user_id,token_id,event_type,status)
+                VALUES(?,?,'mcp.request','SUCCESS')
+                """, userId, created.token().id());
+        service.purge(created.token().id());
+
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM mcp_personal_token WHERE id=?",
+                Integer.class, created.token().id()));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM mcp_tool_call WHERE user_id=? AND token_id IS NULL",
+                Integer.class, userId));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM mcp_protocol_event WHERE user_id=? AND token_id IS NULL",
+                Integer.class, userId));
+
+        String otherTokenId = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO mcp_personal_token(id,user_id,name,token_hash,token_hint,scopes,revoked_at)
+                VALUES(?,?,?,SHA2(?,256),'wbt_other','[\"mcp:worktime:read\"]',CURRENT_TIMESTAMP)
+                """, otherTokenId, otherUserId, "其他用户", otherTokenId);
+        assertThrows(IllegalArgumentException.class, () -> service.purge(otherTokenId));
+
+        String oauthTokenId = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO mcp_personal_token(id,user_id,name,token_hash,token_hint,scopes,token_type,revoked_at)
+                VALUES(?,?,?,SHA2(?,256),'oauth_other','[\"mcp:worktime:read\"]','OAUTH',CURRENT_TIMESTAMP)
+                """, oauthTokenId, userId, "OAuth", oauthTokenId);
+        assertThrows(IllegalArgumentException.class, () -> service.purge(oauthTokenId));
+    }
+
     private long createUser() {
         String username = "mcp-token-" + UUID.randomUUID();
         jdbc.update("INSERT INTO app_user(username,password_hash,nickname) VALUES(?, '!', 'MCP')", username);
