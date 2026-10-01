@@ -294,6 +294,13 @@ unset VERIFY_DB_PASSWORD
 - 切换期间出现短暂 502，健康探测第 8 次恢复；后端日志确认 `Started SalaryTrackerApplication`，未发现 ERROR 或迁移失败。服务器 IP 与 `jsn1024.cn` 的首页和 `/api/health` 均返回 HTTP 200。
 - 本次发布修正暗色主题按钮默认/hover 对比度、Agent/MCP/审批/随身 AI 操作按钮前景色，以及首页 Agent 模块卡片和账本摘要卡文字对比度。浏览器视觉交互仍按前端手工检查清单由用户验收。
 
+### 2026-10-01 WorkBuddy MCP 2025-11-25 协议兼容热修复
+
+- 应用提交：`1a827a8`，发布目录：`/home/ubuntu/salary-tracker/releases/1a827a8`；仅重建并切换 `salary-backend:1a827a8`，前端继续运行 `salary-frontend:12299cf`，MySQL 容器和数据卷未重建。
+- 发布前完成逻辑备份 `backups/salary-before-1a827a8-20261001-233212.sql.gz` 并通过 `gzip -t`；旧后端镜像保留为 `salary-backend:pre-1a827a8`，Compose 文件保留为 `docker-compose.prod.yml.bak.1a827a8`。
+- 根因是应用路由层只接受 `2025-06-18`，而 WorkBuddy 5.6.2 发送 `MCP-Protocol-Version: 2025-11-25`；现已与 MCP SDK 2.0.1 对齐接受 `2024-11-05`、`2025-03-26`、`2025-06-18`、`2025-11-25`。
+- 切换后 `/api/health` 返回 200；云端内网和 `http://jsn1024.cn/mcp` 在带 `2025-11-25` 请求头但无凭据时均返回预期 401，而不是 400。PAT 需重新创建，OAuth 远程正式接入仍需 HTTPS。
+
 ### 2026-09-23 Agent 受控写入与峰谷计价生产发布记录
 
 - 应用提交：`fd08695`，发布目录：`/home/ubuntu/salary-tracker/releases/fd08695`；后端和前端均在服务器上从提交归档构建为 `amd64` 镜像 `salary-backend:fd08695` 与 `salary-frontend:fd08695`。
