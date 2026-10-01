@@ -197,6 +197,52 @@ GET    /api/v1/mcp/events?limit=30
 
 ## 4. PAT 客户端配置
 
+### 4.1 云服务器 WorkBuddy 配置
+
+2026-10-01 云服务器已开启 `APP_MCP_WRITE_ENABLED=true` 与 `APP_MCP_OAUTH_ENABLED=true`，公开地址当前为 `http://jsn1024.cn`。PAT 连接可直接使用；OAuth discovery 已可访问，但由于域名目前尚未提供 HTTPS，WorkBuddy 等远程客户端可能拒绝执行 OAuth 授权。正式使用 OAuth 前应先为域名配置 HTTPS，并将 `APP_PUBLIC_BASE_URL` 改为 `https://jsn1024.cn`。
+
+WorkBuddy 使用 PAT 时，在自定义 MCP 配置中添加：
+
+```json
+{
+  "mcpServers": {
+    "workboard": {
+      "type": "streamableHttp",
+      "url": "http://jsn1024.cn/mcp",
+      "timeout": 30000,
+      "disabled": false,
+      "headers": {
+        "Authorization": "Bearer wbt_替换为完整PAT"
+      }
+    }
+  }
+}
+```
+
+WorkBuddy 使用 OAuth 时，不要手写 `Authorization`，使用同一个 MCP 地址让客户端自动发现 OAuth：
+
+```json
+{
+  "mcpServers": {
+    "workboard": {
+      "type": "streamableHttp",
+      "url": "http://jsn1024.cn/mcp",
+      "timeout": 30000,
+      "disabled": false
+    }
+  }
+}
+```
+
+客户端应通过以下 discovery 地址找到授权端点：
+
+```text
+http://jsn1024.cn/.well-known/oauth-protected-resource/mcp
+http://jsn1024.cn/.well-known/oauth-authorization-server
+```
+
+OAuth 授权页登录网站后选择账本范围和 scope；如果 WorkBuddy 报“不安全的 HTTP OAuth”“需要 HTTPS”或无法打开授权页，应先完成域名 TLS，再把配置中的 URL 和 `APP_PUBLIC_BASE_URL` 一并切换为 `https://jsn1024.cn`。
+
 外部 MCP Host 的界面和配置字段名称可能不同，但核心参数一致：
 
 ```json

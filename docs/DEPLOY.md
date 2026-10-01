@@ -279,6 +279,13 @@ unset VERIFY_DB_PASSWORD
 
 ## 健康检查与配置
 
+### 2026-10-01 云端 MCP OAuth 与写入开关
+
+- 云服务器 `/home/ubuntu/salary-tracker/.env` 已开启 `APP_MCP_ENABLED=true`、`APP_MCP_WRITE_ENABLED=true`、`APP_MCP_OAUTH_ENABLED=true`，并设置 `APP_PUBLIC_BASE_URL=http://jsn1024.cn`。
+- 后端和前端按 `--no-deps --force-recreate` 重启，MySQL 容器和数据卷未重建；健康检查第 7 次通过，后端正常启动。
+- `/.well-known/oauth-protected-resource/mcp`、`/.well-known/oauth-authorization-server` 和 `/.well-known/openid-configuration` 均返回 HTTP 200；未认证 `POST /mcp` 返回带 `resource_metadata` 的 HTTP 401。
+- 当前域名 443 端口尚未提供 HTTPS。PAT 可立即用于 WorkBuddy；OAuth discovery 已开启，但正式远程 OAuth 仍应先配置 TLS，然后将 `APP_PUBLIC_BASE_URL` 切换为 `https://jsn1024.cn`。
+
 ### 2026-09-30 暗色模式对比度修正发布记录
 
 - 应用提交：`12299cf`，发布目录：`/home/ubuntu/salary-tracker/releases/12299cf`；后端和前端在服务器构建为 `amd64` 镜像 `salary-backend:12299cf` 与 `salary-frontend:12299cf`。
