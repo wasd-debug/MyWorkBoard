@@ -314,7 +314,7 @@ curl -i \
 
 服务端会在响应头返回 `Mcp-Session-Id`。后续 `tools/list` 和 `tools/call` 请求必须同时携带 PAT 与该 session ID。
 
-初始化时可以不带 `MCP-Protocol-Version`，由 initialize 完成版本协商；后续显式发送时当前只接受 `2025-06-18`。显式不支持的版本返回 HTTP 400 `unsupported_protocol_version`，不会误报成认证失败；无效 Token 返回 HTTP 401 并通过 `WWW-Authenticate` 提供 `resource_metadata`，限流返回 HTTP 429。
+初始化时可以不带 `MCP-Protocol-Version`，由 initialize 完成版本协商；当前服务端接受 SDK 2.0.1 支持的 `2024-11-05`、`2025-03-26`、`2025-06-18` 和 `2025-11-25`。WorkBuddy 5.6.2 使用的 `2025-11-25` 可以直接连接。显式不支持的版本返回 HTTP 400 `unsupported_protocol_version`，不会误报成认证失败；无效 Token 返回 HTTP 401 并通过 `WWW-Authenticate` 提供 `resource_metadata`，限流返回 HTTP 429。
 
 预期行为：
 
@@ -396,7 +396,7 @@ Phase 3C-5 已完成服务端兼容与运维自动化验证：显式不支持协
 
 ### 400 unsupported_protocol_version
 
-- 当前服务端仅支持 MCP `2025-06-18`；升级或调整客户端显式发送的 `MCP-Protocol-Version`。
+- 当前服务端接受 MCP `2024-11-05`、`2025-03-26`、`2025-06-18`、`2025-11-25`；若客户端发送其他版本，升级客户端或让它省略 `MCP-Protocol-Version` 以执行 initialize 协商。
 - initialize 首次协商可以不发送该请求头，不要把协议版本错误当作 Token 失效处理。
 
 ### 429 rate_limited

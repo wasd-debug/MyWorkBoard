@@ -44,7 +44,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Configuration
 public class McpServerConfiguration {
-    private static final Set<String> SUPPORTED_PROTOCOL_VERSIONS = Set.of("2025-06-18");
+    /** Keep the routing guard aligned with the protocol versions supported by MCP SDK 2.0.1. */
+    private static final Set<String> SUPPORTED_PROTOCOL_VERSIONS = Set.of(
+            "2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25");
     static final String TOKEN_CONTEXT_KEY = "salary.mcp.token";
     private static final String BASE_URL_CONTEXT_KEY = "salary.mcp.base-url";
     private static final String CLIENT_CONTEXT_KEY = "salary.mcp.client";
@@ -447,7 +449,7 @@ public class McpServerConfiguration {
                     && !SUPPORTED_PROTOCOL_VERSIONS.contains(protocolVersion.trim())) {
                 httpResponse.setStatus(HttpServletResponse.SC_BAD_REQUEST);
                 httpResponse.setContentType("application/json;charset=UTF-8");
-                httpResponse.getWriter().write("{\"error\":\"unsupported_protocol_version\",\"error_description\":\"仅支持 MCP 2025-06-18\"}");
+                httpResponse.getWriter().write("{\"error\":\"unsupported_protocol_version\",\"error_description\":\"支持 MCP 2024-11-05、2025-03-26、2025-06-18、2025-11-25\"}");
                 return;
             }
             try {

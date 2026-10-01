@@ -112,7 +112,7 @@
 | MCP-OAUTH-003 | 用户在设置页撤销外部应用 | grants/revoke | grant 下全部 access/refresh 立即失效，PAT 不受影响 |
 | MCP-OAUTH-004 | 伪造 redirect_uri、resource、plain PKCE 或扩大 scope | authorize/token | 请求被拒绝，不签发 token，不产生 MCP 业务访问 |
 | MCP-COMPAT-001 | 显式发送不支持的 `MCP-Protocol-Version` | initialize/后续请求 | HTTP 400 `unsupported_protocol_version`，不带认证 challenge |
-| MCP-COMPAT-002 | 未带协议版本头发起 initialize | initialize | 允许进入 `2025-06-18` 版本协商，不因缺少请求头被拒绝 |
+| MCP-COMPAT-002 | 未带协议版本头发起 initialize | initialize | 允许进入服务端支持版本协商，不因缺少请求头被拒绝 |
 | MCP-OPS-001 | 用户查看诊断、客户端和协议事件 | 站内设置 | 只返回当前用户数据，IP 脱敏，不返回 Token、密钥或完整业务参数 |
 | MCP-OPS-002 | 用户断开一个 OAuth 客户端 | disconnect | 当前用户 grant、关联 Token 和未用授权码失效；其他用户授权不受影响 |
 | MCP-OPS-003 | 同一 IP 高频动态注册 | register | 每小时第 21 次或活动客户端达到 100 个时返回 HTTP 429 |

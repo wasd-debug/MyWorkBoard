@@ -336,7 +336,7 @@ com.salarytracker.ai/
 - 保留现有 OpenAI 兼容网关配置和服务端密钥管理。
 - 在其上增加 `AgentModel` 抽象，首个实现支持工具调用、结构化 JSON 和流式文本。
 - Domain Tool、action 状态机和确认策略不得依赖特定模型 SDK。
-- MCP 采用官方 Java MCP SDK `2.0.1` 的 Servlet Streamable HTTP 传输；首轮协议版本已使用 `2025-06-18` 完成 initialize、tools/list 和 tools/call 联调，后续客户端兼容结果持续记录在连接指南。
+- MCP 采用官方 Java MCP SDK `2.0.1` 的 Servlet Streamable HTTP 传输；路由层与 SDK 对齐支持 `2024-11-05`、`2025-03-26`、`2025-06-18`、`2025-11-25`，其中 WorkBuddy 5.6.2 使用 `2025-11-25`，后续客户端兼容结果持续记录在连接指南。
 - 更换模型或 MCP SDK 不能改变领域工具的名称、Schema、风险级别和业务结果。
 
 ## 4. 工具契约与执行模型

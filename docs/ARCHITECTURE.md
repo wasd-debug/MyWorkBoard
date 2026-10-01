@@ -675,7 +675,7 @@ Phase 3A-D 只依赖已完成的工时和账本能力，可在 Phase 1 稳定后
 - [ ] MCP Inspector、Codex 和 WorkBuddy 真实兼容验证
 - **验收**：默认只读；未审批、过期、重放、伪造用户和越权账本均不能写入；真实客户端完成查询和低风险写入。
 
-当前实现使用官方 Java MCP SDK `2.0.1`、协议版本 `2025-06-18` 和 Servlet Streamable HTTP。`POST /mcp` 在后端逐请求校验 PAT 或 OAuth access token，并按 scope 选择工具目录；Vite 与 Nginx 同源代理 `/mcp`、`/.well-known/*` 和 OAuth 协议端点。OAuth token 与 PAT 共用领域权限、账本范围、限流和审计，但分别管理生命周期。完整连接与验收步骤见 [`MCP连接指南.md`](MCP连接指南.md)。
+当前实现使用官方 Java MCP SDK `2.0.1` 和 Servlet Streamable HTTP，路由层接受 SDK 支持的协议版本 `2024-11-05`、`2025-03-26`、`2025-06-18`、`2025-11-25`（WorkBuddy 5.6.2 使用后者）。`POST /mcp` 在后端逐请求校验 PAT 或 OAuth access token，并按 scope 选择工具目录；Vite 与 Nginx 同源代理 `/mcp`、`/.well-known/*` 和 OAuth 协议端点。OAuth token 与 PAT 共用领域权限、账本范围、限流和审计，但分别管理生命周期。完整连接与验收步骤见 [`MCP连接指南.md`](MCP连接指南.md)。
 
 PAT 生命周期区分撤销与永久删除：有效 PAT 只能先撤销，永久删除只允许当前用户自己的已撤销 PAT；OAuth token 由 grant/客户端撤销流程管理。V29 允许凭据删除时将工具调用和协议事件中的 `token_id` 置空，审计主体、认证类型、客户端、工具、结果和耗时继续保留，避免凭据清理破坏追溯链路。
 

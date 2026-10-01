@@ -95,7 +95,8 @@ public class McpOperationsService {
         }
         return new Diagnostics(baseUrl + "/mcp", baseUrl + "/.well-known/oauth-protected-resource/mcp",
                 baseUrl + "/.well-known/oauth-authorization-server", enabled, writeEnabled, oauthEnabled,
-                activePat, activeGrants, calls24h, failures24h, List.of("2025-06-18"),
+                activePat, activeGrants, calls24h, failures24h,
+                List.of("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"),
                 configuredBaseUrl, observedBaseUrl, List.copyOf(warnings));
     }
 
