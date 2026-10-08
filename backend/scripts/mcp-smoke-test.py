@@ -71,6 +71,26 @@ def require(condition, message):
         fail(message)
 
 
+def check_text_tool_result(client, name, arguments):
+    result = client.call("tools/call", {"name": name, "arguments": arguments})
+    require(not result.get("isError"), f"{name} failed")
+    text_items = [item.get("text", "") for item in result.get("content", []) if item.get("type") == "text"]
+    require(bool(text_items), f"{name} did not return text")
+    try:
+        summary, raw_json = text_items[0].split("\n", 1)
+        payload = json.loads(raw_json)
+    except (ValueError, TypeError):
+        fail(f"{name} text did not contain a complete JSON result")
+    require(payload == result.get("structuredContent"), f"{name} text and structured results differ")
+    require(summary == payload.get("summary"), f"{name} summary differs")
+    items = payload.get("structuredContent")
+    require(isinstance(items, list), f"{name} did not return a list")
+    require(all(item.get("id") and item.get("name") for item in items), f"{name} resource id/name missing")
+    if name == "ledger.category.list":
+        require(all(item.get("kind") for item in items), "category kind missing")
+    print(f"{name}: text/structured JSON match, {len(items)} resources with id/name")
+
+
 def main():
     url = os.environ.get("WORKBOARD_MCP_URL", "http://127.0.0.1:8080/mcp")
     token = os.environ.get("WORKBOARD_MCP_TOKEN")
@@ -107,6 +127,9 @@ def main():
     book_id = os.environ.get("MCP_BOOK_ID")
     if book_id:
         require("workbench://ledger/books" in resource_uris, "ledger scope does not expose ledger books")
+        check_text_tool_result(client, "ledger.books.list", {})
+        check_text_tool_result(client, "ledger.account.list", {"bookId": book_id})
+        check_text_tool_result(client, "ledger.category.list", {"bookId": book_id})
         client.call("resources/read", {"uri": "workbench://ledger/books"})
         client.call("resources/read", {"uri": f"workbench://ledger/{book_id}/overview"})
         client.call("prompts/get", {

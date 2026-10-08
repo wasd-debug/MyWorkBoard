@@ -199,7 +199,8 @@ public class McpServerConfiguration {
             payload.put("confirmationUrl", binding.confirmationUrl());
             payload.put("expiresAt", result.expiresAt());
             return McpSchema.CallToolResult.builder()
-                    .addTextContent(result.summary())
+                    // Text-only MCP hosts must receive the same scoped data and action metadata.
+                    .addTextContent(result.summary() + "\n" + mapper.valueToTree(payload))
                     .structuredContent(payload)
                     .isError(false)
                     .build();

@@ -284,7 +284,7 @@ export WORKBOARD_MCP_URL='http://127.0.0.1:5173/mcp'
 python3 backend/scripts/mcp-smoke-test.py
 ```
 
-脚本会检查 `initialize` 的 resources/prompts 能力、`resources/list`、`resources/templates/list`、帮助资源、工时补录 Prompt；设置 `MCP_BOOK_ID` 后额外检查账本资源和摘要 Prompt。脚本不会宣称完成 MCP Inspector、Codex 或 WorkBuddy 的客户端 UI 验收。
+脚本会检查 `initialize` 的 resources/prompts 能力、`resources/list`、`resources/templates/list`、帮助资源、工时补录 Prompt；设置 `MCP_BOOK_ID` 后额外检查账本资源、摘要 Prompt，以及账本/账户/分类工具的文本 JSON 与结构化返回一致、完整列表包含真实 id/name。脚本只输出数量和检查结果，不打印 Token 或业务明细；不会宣称完成 MCP Inspector、Codex 或 WorkBuddy 的客户端 UI 验收。
 
 以下示例用环境变量保存 Token，避免出现在命令历史正文中：
 
@@ -329,6 +329,8 @@ curl -i \
 - 单 Token 每分钟超过 120 次请求：HTTP 429，并带 `Retry-After: 60`。
 
 ## 6. prepare 与站内确认
+
+2026-10-08 文本客户端兼容补充：领域工具的 `tools/call` 响应继续保留顶层 `structuredContent`；`content[0].text` 改为一行摘要加换行后的完整 JSON 结果，与顶层结构化结果一致。只读取文本的客户端也能取得 `structuredContent` 内的完整列表，例如账本/账户的 `id/name` 和分类的 `id/name/kind/parentId`，不再只能看到数量。JSON 同时保留 status、actionId、confirmationUrl 和 expiresAt；所有数据先经过原有 Token/账本权限过滤，文本不会额外暴露未授权资源。空列表明确返回 `[]`，名称中的引号和换行按 JSON 转义。
 
 外部 Agent 调用 `*.prepare` 后，统一结果包含：
 

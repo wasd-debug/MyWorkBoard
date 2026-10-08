@@ -1,5 +1,12 @@
 # 部署说明
 
+## 2026-10-08 MCP 文本完整结果兼容
+
+- 领域工具继续返回顶层 `structuredContent`，同时在 `content[0].text` 摘要后附上完整 JSON payload，使仅读取文本的客户端可取得账本、账户、分类真实 ID 和操作元数据。文本与结构化结果共用权限过滤后的数据；无数据库迁移，无前端代码变更。
+- 后端全量 `mvn -q test`：238 项，236 通过、2 项既有跳过；新增 MCP 工具处理器回归 5/5（账户、分类父子关系、账本范围、空数组、越权，含中文及特殊字符）。`mvn -q -pl app -am package -DskipTests`、`git diff --check` 通过。
+- 本地后端已重启加载新 JAR，健康接口通过；协议版本 `2025-11-25` 的后端直连与 Nginx `/mcp` 均实测文本 JSON 和结构化结果一致，授权账本返回 7 个账户、58 个分类的完整 id/name，越权账本拒绝。临时只读诊断 PAT 已删除，审计记录保留。
+- 发布方式：上传本机验证过的 JAR 并校验 SHA-256，在服务器以提交归档内 `Dockerfile.backend.runtime` 构建 `amd64` 后端镜像；切换前备份数据库并保留旧镜像/Compose，仅重建后端。生产实际发布与验收结果在完成后补充。WorkBuddy 真实客户端和站内页面仍按《前端手工检查清单》待人工验收。
+
 ## 2026-10-08 生产发布记录
 
 - 应用提交：`989de6c`，远程 `main` 已包含此前未推送的 4 个提交；发布目录为 `/home/ubuntu/salary-tracker/releases/989de6c`，服务器从提交归档构建 `amd64` 镜像 `salary-backend:989de6c` 与 `salary-frontend:989de6c`。
