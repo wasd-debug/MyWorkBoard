@@ -28,7 +28,7 @@ public class LedgerCategoryListTool implements DomainTool {
         ToolSchemas.booleanProperty(schema, "includeHidden", "是否包含已隐藏分类");
         ToolSchemas.required(schema, "bookId");
         definition = new ToolDefinition("ledger.category.list", 1,
-                "列出指定账本的一二级收支分类和 revision，不修改数据。",
+                "只读查询指定账本已有一二级收支分类列表（id、名称、kind、parentId 和 revision）。收入或支出记账前调用，按用途匹配对应 kind 的二级分类（parentId 非空），使用返回的真实 id，不得编造分类；bookId 来自 ledger.books.list。不修改数据，默认排除隐藏分类。",
                 ToolRisk.R1, Set.of("ledger:read"), schema);
     }
 

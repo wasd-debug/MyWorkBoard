@@ -98,11 +98,8 @@ public class McpServerConfiguration {
                         BASE_URL_CONTEXT_KEY, request.getAttribute(BASE_URL_CONTEXT_KEY),
                         CLIENT_CONTEXT_KEY, request.getAttribute(CLIENT_CONTEXT_KEY))))
                 .build();
-        List<McpServerFeatures.SyncToolSpecification> specifications = new ArrayList<>(registry.definitions().stream()
-                .filter(definition -> visible(definition.name(), scopes))
-                .filter(definition -> !definition.name().endsWith(".commit"))
-                .map(definition -> specification(definition, registry, tokens, mapper, externalActions))
-                .toList());
+        List<McpServerFeatures.SyncToolSpecification> specifications = new ArrayList<>(domainSpecifications(
+                registry, tokens, mapper, externalActions, scopes));
         if (hasActionScope(scopes)) {
             specifications.addAll(actionSpecifications(registry, tokens, mapper, externalActions, scopes));
         }
@@ -111,11 +108,14 @@ public class McpServerConfiguration {
         var promptSpecifications = contentService.prompts(scopes);
         McpSyncServer server = McpServer.sync(transport)
                 .serverInfo("salary-sync", "1.0.0")
-                .instructions(hasCommitScope(scopes)
+                .instructions((hasCommitScope(scopes)
                         ? "个人工作台 MCP。R2 prepare 经网站批准后可使用 agent.action.commit 单次提交；R3/R4 不允许 MCP commit。所有工具按 Token 用户、scope 和账本范围执行。"
                         : hasPrepareScope(scopes)
                         ? "个人工作台 MCP。prepare 只生成待确认 action；批准后仍需具备 commit scope 才能提交。所有工具按 Token 用户、scope 和账本范围执行。"
                         : "个人工作台只读 MCP。所有工具均按 Token 用户、scope 和账本范围执行。")
+                        + "记账前先用 ledger.books.list 获取账本 ID，再用 ledger.account.list、ledger.category.list 查询该账本已有账户和分类；"
+                        + "提及商户时用 ledger.merchant.list 查询已有商户。只能使用返回的真实 ID，收入和支出必须匹配对应类型的二级分类，"
+                        + "不得编造名称或 ID；找不到或存在多个候选时向用户询问。目录工具需要 mcp:ledger:read scope。")
                 .capabilities(McpSchema.ServerCapabilities.builder()
                         .tools(false).resources(false, false).prompts(false).build())
                 .strictToolNameValidation(false)
@@ -127,6 +127,16 @@ public class McpServerConfiguration {
                 .build();
         servers.add(server);
         return transport;
+    }
+
+    List<McpServerFeatures.SyncToolSpecification> domainSpecifications(
+            DomainToolRegistry registry, McpPersonalTokenService tokens, ObjectMapper mapper,
+            McpExternalActionService externalActions, Set<String> scopes) {
+        return registry.definitions().stream()
+                .filter(definition -> visible(definition.name(), scopes))
+                .filter(definition -> !definition.name().endsWith(".commit"))
+                .map(definition -> specification(definition, registry, tokens, mapper, externalActions))
+                .toList();
     }
 
     private McpServerFeatures.SyncToolSpecification specification(

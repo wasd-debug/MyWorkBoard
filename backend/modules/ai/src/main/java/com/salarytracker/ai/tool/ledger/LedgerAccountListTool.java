@@ -28,7 +28,7 @@ public class LedgerAccountListTool implements DomainTool {
         ToolSchemas.booleanProperty(schema, "includeHidden", "是否包含已隐藏账户");
         ToolSchemas.required(schema, "bookId");
         definition = new ToolDefinition("ledger.account.list", 1,
-                "列出指定账本的账户、余额、类型和 revision，不修改数据。",
+                "只读查询指定账本已有账户列表（id、名称、余额、类型和 revision）。记账或转账前调用，使用返回的真实账户 id，不得编造账户；bookId 来自 ledger.books.list。不修改数据，默认排除隐藏账户。",
                 ToolRisk.R1, Set.of("ledger:read"), schema);
     }
 

@@ -1,5 +1,12 @@
 # 工作台 Agent 与 MCP 改造计划
 
+## 2026-10-08 MCP 记账目录发现补强
+
+- 核实既有 `ledger.account.list` / `ledger.category.list` 已由 Domain Tool Registry 注册，`mcp:ledger:read` 即可发现，无需开放写入。
+- MCP initialize 指引和两个工具说明明确：先查询账本、账户、分类，提及商户时查询商户；仅使用目录返回的真实 ID，收入/支出选对应类型的二级分类，禁止编造，多候选或无匹配时询问用户。Web Agent 系统 Prompt 不会自动传给外部 Host，因此同时补充 MCP 指引。
+- 目录回归测试使用真实账户/分类工具生成生产适配器使用的 MCP specifications，验证工具名称、必填 bookId、includeHidden 及工时 scope 不泄露账本工具。
+- 尚未取得用户 WorkBuddy 实际 tools/list 响应，不能将缺失原因确定为缓存或旧部署。云端只读版本核实被 SSH 主机指纹校验阻止，未绕过校验、未发布生产。
+
 > 版本：v3.2（2026-09-29）
 > 状态：实施中（Phase 3C-7 已完成可重复的只读 MCP smoke test 与双入口协议检查；R3/R4 commit 继续关闭，Inspector/Codex/WorkBuddy 真实客户端验收待用户执行）
 

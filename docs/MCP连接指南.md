@@ -420,6 +420,10 @@ Phase 3C-5 已完成服务端兼容与运维自动化验证：显式不支持协
 
 ### tools/list 缺少工具
 
+- 账户列表工具是 `ledger.account.list`，分类列表工具是 `ledger.category.list`；二者均为只读，传入 `{"bookId":"账本 ID"}` 即可调用，账本 ID 先通过 `ledger.books.list` 获取。可选 `includeHidden` 默认 false。
+- 分类返回 `id/name/kind/parentId`，收入和支出记账选取对应 kind 且 parentId 非空的二级分类；账户和商户同样必须使用目录返回的真实 ID，不自行创建名称或 ID。
+- PAT 必须包含 `mcp:ledger:read`；只拥有 prepare/commit 自定义 scope 不会隐含 read 权限。四种内置权限模板都包含 read。
+- 服务端更新或 Token 权限变更后，在 WorkBuddy 禁用再启用连接或重启客户端，重新 initialize 和 tools/list；不能只依据旧对话里模型声称“没有工具”判断目录缺失。若重新发现仍缺失，核对所连接域名的后端版本与实际 tools/list 响应。
 - 检查 PAT scope；工具目录按 scope 在服务端生成。
 - 账本 read 与工时 read 相互独立。
 - 检查 `app.mcp.write-enabled` / `APP_MCP_WRITE_ENABLED`；关闭时 prepare 和 action 工具会被隐藏。

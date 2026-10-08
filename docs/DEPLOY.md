@@ -1,5 +1,12 @@
 # 部署说明
 
+## 2026-10-08 MCP 目录发现补强本地验证
+
+- `mvn -q -pl modules/ai -am test` 通过（AI 111 项，110 通过，1 项真实模型评测默认跳过）；`mvn -q -pl app -am package -DskipTests` 打包通过，`git diff --check` 通过。
+- 本地 Docker 已恢复；新 JAR 通过既有 `backend/target` 目录挂载供 `salary-backend` 读取，重启后端加载本轮代码，`GET http://127.0.0.1:8080/api/health` 返回 `{"ok":true}`。前端无需构建，无新增数据库迁移。
+- 云端镜像版本检查被 SSH 主机指纹校验拦截，未绕过安全校验。用户 WorkBuddy 的实际 tools/list、Token scope 及缓存状态尚未验证，不能确定生产缺失工具的根因。本轮仅本地提交，未推送、未云部署。
+- 客户端重连后先调用 `ledger.books.list`，再以 bookId 调用 `ledger.account.list` / `ledger.category.list`，确认具有 `mcp:ledger:read`；步骤见 [MCP 连接指南](MCP连接指南.md)。
+
 > 状态日期：2026-09-28
 > SSH 规则：所有连接必须使用仓库根目录的 `workboard.pem`，禁止密码认证。
 
