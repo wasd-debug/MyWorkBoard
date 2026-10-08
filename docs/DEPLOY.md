@@ -1,5 +1,12 @@
 # 部署说明
 
+## 2026-10-08 生产发布记录
+
+- 应用提交：`989de6c`，远程 `main` 已包含此前未推送的 4 个提交；发布目录为 `/home/ubuntu/salary-tracker/releases/989de6c`，服务器从提交归档构建 `amd64` 镜像 `salary-backend:989de6c` 与 `salary-frontend:989de6c`。
+- 发布前备份 `/home/ubuntu/salary-tracker/backups/salary-before-989de6c-20261008-160004.sql.gz` 已通过 gzip 完整性检查；旧镜像保留为 `salary-backend:pre-989de6c`、`salary-frontend:pre-989de6c`。生产 Compose 固定镜像标签已更新为 `989de6c`。
+- 仅以 `--no-deps --force-recreate backend frontend` 重建应用容器，MySQL 容器及数据卷未重建。Flyway 成功校验 31 个迁移，当前版本 v29；发布后核心记录为 `app_user=3`、`work_record=49`、`ledger_book=5`、`ledger_transaction=16562`。
+- 后端在 10.36 秒内启动；服务器 IP 与 `jsn1024.cn` 的首页、`/api/health` 和 OAuth protected-resource discovery 均返回 HTTP 200，未认证 MCP initialize 返回 401。前后端容器运行镜像 ID 与本轮构建镜像一致。
+
 ## 2026-10-08 移动端控件与流水高度修复
 
 - 仅前端样式变更，无后端接口或数据库迁移；本轮不推送、不云部署。
