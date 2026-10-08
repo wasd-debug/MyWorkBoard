@@ -8,7 +8,7 @@ import java.time.LocalDate;
 
 @Component
 public class AgentPromptPolicy {
-    public static final String PROMPT_VERSION = "agent-system-v10";
+    public static final String PROMPT_VERSION = "agent-system-v11";
 
     public boolean modelVisible(ToolDefinition definition) {
         if (definition.riskLevel().ordinal() > ToolRisk.R3.ordinal()) return false;
@@ -60,6 +60,15 @@ public class AgentPromptPolicy {
                 过去日期上的“加班到几点、下班改到几点、补到几点”表示修改已有记录，必须先查询该日记录，禁止创建第二条工时。
                 记账时优先传用户说出的账户、分类、商家、成员和项目名称；不知道资源 ID 时使用对应的 Name 字段，
                 由服务端在当前账本内安全匹配，禁止猜测 UUID。分类名称尽量保留“一级 / 二级”的完整路径。
+                分类和商户是当前账本已有资源，不是自由文本：拿到 bookId 后，为收入/支出选择分类时，
+                必须先调用 ledger.category.list 和 ledger.merchant.list 获取当前账本目录，再只使用返回结果中的真实
+                ID 或名称调用记账 prepare；其他流水提到商户时也必须先读取商户目录。可以结合消费用途从目录中匹配分类，
+                例如“午饭”匹配已有的“餐饮 / 午餐”，但禁止根据常识、商家类别、模型记忆或用户语句自行创造分类名、商户名或 ID。
+                只有目录中的唯一精确/明确候选才可自动预填；多个候选必须保留 ID 为空并让用户选择；没有候选时保留 ID 为空，
+                把用户明确提供的原始名称作为 Name 匹配查询交给 prepare，由工具返回 needs_input，不得改写成虚构的资源名称。
+                用户没有提到商户时 merchantId 和 merchantName 必须留空，
+                不要为了让卡片看起来完整而擅自补商户。prepare 返回的 entityMatches、candidates 和 fields 是唯一可信的
+                选择来源，不能自行取列表第一项。
                 一条用户消息明确包含两笔及以上流水时，必须优先调用 ledger.transactions.batch.create.prepare，
                 把每笔流水放入 items；单笔记账继续调用 ledger.transaction.create.prepare。批量删除前必须先查询并取得
                 每笔明确的 transactionId，再调用 ledger.transactions.batch.delete.prepare；禁止按模糊条件直接批量删除。

@@ -242,6 +242,53 @@ class LedgerWriteToolsTest {
     }
 
     @Test
+    void prepareRejectsInventedMerchantNameAndReturnsExistingDirectory() {
+        var prepare = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
+
+        var result = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("kind", "EXPENSE").put("amount", 29.9)
+                .put("accountId", "account-1").put("categoryId", "category-1")
+                .put("merchantName", "模型虚构商户").put("occurredOn", "2026-09-24"));
+
+        assertEquals(ToolStatus.NEEDS_INPUT, result.status());
+        assertTrue(result.structuredContent().path("input").path("merchantId").isNull());
+        assertTrue(result.structuredContent().path("missingFields").toString().contains("merchantId"));
+        assertEquals("missing", result.structuredContent().path("entityMatches").path("merchantId").path("status").asText());
+        assertEquals(1, result.structuredContent().path("entityMatches").path("merchantId").path("candidates").size());
+        verify(transactions, never()).create(any(), any(), any());
+    }
+
+    @Test
+    void prepareRejectsInventedCategoryNameInsteadOfKeepingFreeText() {
+        var prepare = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
+
+        var result = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("kind", "EXPENSE").put("amount", 29.9)
+                .put("accountId", "account-1").put("categoryName", "模型虚构分类")
+                .put("occurredOn", "2026-09-24"));
+
+        assertEquals(ToolStatus.NEEDS_INPUT, result.status());
+        assertTrue(result.structuredContent().path("input").path("categoryId").isNull());
+        assertTrue(result.structuredContent().path("missingFields").toString().contains("categoryId"));
+        assertEquals("missing", result.structuredContent().path("entityMatches").path("categoryId").path("status").asText());
+        assertEquals(2, result.structuredContent().path("entityMatches").path("categoryId").path("candidates").size());
+        verify(transactions, never()).create(any(), any(), any());
+    }
+
+    @Test
+    void prepareLeavesUnmentionedMerchantEmptyEvenWhenDirectoryHasOnlyOne() {
+        var prepare = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
+        var result = prepare.execute(mapper.createObjectNode().put("bookId", "book-1")
+                .put("kind", "EXPENSE").put("amount", 20)
+                .put("accountId", "account-1").put("categoryId", "category-1"));
+
+        assertEquals(ToolStatus.NEEDS_CONFIRMATION, result.status());
+        assertTrue(result.structuredContent().path("input").path("merchantId").isNull());
+        assertTrue(result.structuredContent().path("preview").path("merchantName").isNull());
+        assertTrue(!result.structuredContent().path("resolutionRequiredFields").toString().contains("merchantId"));
+    }
+
+    @Test
     void prepareIncludesAllEditableFieldsAndCommitKeepsSelectedResources() {
         var prepare = new LedgerTransactionCreatePrepareTool(books, actions, currentUser, mapper);
         var commit = new LedgerTransactionCreateCommitTool(transactions, actions, currentUser, mapper);

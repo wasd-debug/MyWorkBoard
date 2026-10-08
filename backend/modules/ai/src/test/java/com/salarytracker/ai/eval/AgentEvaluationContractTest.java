@@ -52,6 +52,8 @@ class AgentEvaluationContractTest {
         assertFalse(policy.modelVisible(definition("ledger.role.delete.prepare", ToolRisk.R4)));
         assertTrue(policy.systemPrompt(java.time.LocalDate.of(2026, 9, 24)).contains("今天是 2026-09-24"));
         assertTrue(policy.systemPrompt(java.time.LocalDate.of(2026, 9, 24)).contains("你不得调用 commit"));
+        assertTrue(policy.systemPrompt(java.time.LocalDate.of(2026, 9, 24)).contains("必须先调用 ledger.category.list 和 ledger.merchant.list"));
+        assertTrue(policy.systemPrompt(java.time.LocalDate.of(2026, 9, 24)).contains("禁止根据常识、商家类别、模型记忆或用户语句自行创造分类名、商户名或 ID"));
     }
 
     @Test

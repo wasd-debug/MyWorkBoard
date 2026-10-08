@@ -54,9 +54,9 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         ToolSchemas.stringProperty(schema, "targetAccountId", "转账的转入账户公开 ID", null);
         ToolSchemas.stringProperty(schema, "targetAccountName", "转账的转入账户名称或简称", null);
         ToolSchemas.stringProperty(schema, "categoryId", "有效二级分类公开 ID", null);
-        ToolSchemas.stringProperty(schema, "categoryName", "二级分类名称", null);
+        ToolSchemas.stringProperty(schema, "categoryName", "当前账本已有二级分类名称或一级 / 二级路径；先查 ledger.category.list，禁止创造名称", null);
         ToolSchemas.stringProperty(schema, "merchantId", "商家公开 ID", null);
-        ToolSchemas.stringProperty(schema, "merchantName", "商家或交易对方名称", null);
+        ToolSchemas.stringProperty(schema, "merchantName", "当前账本已有商家或交易对方名称；先查 ledger.merchant.list，未提及则留空，禁止创造名称", null);
         ToolSchemas.stringProperty(schema, "memberId", "成员公开 ID", null);
         ToolSchemas.stringProperty(schema, "memberName", "成员名称", null);
         ToolSchemas.stringProperty(schema, "projectId", "项目公开 ID", null);
@@ -64,7 +64,7 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         ToolSchemas.stringProperty(schema, "occurredOn", "发生日期 yyyy-MM-dd，缺省为今天", "date");
         ToolSchemas.stringProperty(schema, "note", "备注", null);
         definition = new ToolDefinition("ledger.transaction.create.prepare", 2,
-                "校验单笔收入、支出、转账或借贷流水并生成确认预览；不写入账本数据。",
+                "校验单笔收入、支出、转账或借贷流水并生成确认预览；分类和商家只能匹配当前账本已有资源，不创建资源，不写入账本数据。",
                 ToolRisk.R2, Set.of("ledger:write"), schema);
     }
 
@@ -154,6 +154,7 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
             categoryName = null;
         }
         Match<NamedResource> merchantMatch = matchNamed(merchants, merchantId, merchantName);
+        boolean merchantRequested = merchantId != null || merchantName != null;
         if (merchantId == null && merchantMatch.selected() != null) { merchantId = merchantMatch.selected().id(); suggested.add("merchantId"); }
         Match<Member> memberMatch = matchMembers(members, memberId, memberName);
         if (memberId == null && memberMatch.selected() != null) { memberId = memberMatch.selected().id(); suggested.add("memberId"); }
@@ -181,7 +182,7 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
         }
         writeMatch(entityMatches, ambiguous, resolutionRequired, "merchantId", merchantName, merchantMatch,
                 merchants.stream().map(item -> namedOption(item, "商家")).toList(),
-                "ambiguous".equals(merchantMatch.status()));
+                merchantRequested);
         writeMatch(entityMatches, ambiguous, resolutionRequired, "memberId", memberName, memberMatch,
                 members.stream().map(this::memberOption).toList(), "ambiguous".equals(memberMatch.status()));
         writeMatch(entityMatches, ambiguous, resolutionRequired, "projectId", projectName, projectMatch,
@@ -467,7 +468,13 @@ public class LedgerTransactionCreatePrepareTool implements DomainTool {
             if (item instanceof Member value) return value.id();
             return "";
         }).collect(java.util.stream.Collectors.toSet());
-        allOptions.stream().filter(option -> candidateIds.contains(option.path("value").asText())).forEach(candidates::add);
+        if ("missing".equals(match.status()) && query != null) {
+            // A supplied but unknown name must return the existing directory as the only source
+            // for correction; never pass the model's free-text guess to the commit path.
+            allOptions.forEach(candidates::add);
+        } else {
+            allOptions.stream().filter(option -> candidateIds.contains(option.path("value").asText())).forEach(candidates::add);
+        }
         if ("ambiguous".equals(match.status())) ambiguous.add(field);
         if (required && match.selected() == null) resolutionRequired.add(field);
     }
