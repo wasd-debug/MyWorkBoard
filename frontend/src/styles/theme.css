@@ -857,11 +857,18 @@ html.dark .ui-button.variant-ink:hover:not(:disabled) { background: color-mix(in
 
 /* ---------- 15. 响应式 ---------- */
 @media (max-width: 767px) {
-  :where(button, a[href], input, select, textarea, [role="button"], [role="tab"], [role="switch"]) {
-    min-height: 44px;
+  :where(button, input:not([type="checkbox"]):not([type="radio"]), select, textarea, [role="button"], [role="tab"], [role="switch"]) {
+    min-height: 36px;
   }
-  :where(button, a[href], [role="button"], [role="tab"], [role="switch"], input[type="checkbox"], input[type="radio"], input[type="file"]) {
-    min-width: 44px;
+  :where(button, [role="button"], [role="tab"], [role="switch"]) {
+    min-width: 32px;
+  }
+  input[type="checkbox"], input[type="radio"] {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    min-height: 16px;
   }
   .page-content {
     min-height: 100dvh;
@@ -1620,3 +1627,19 @@ html[data-theme="night"] .ledger-summary-grid > .card:nth-child(3) .summary-valu
   color:var(--accent-contrast);
 }
 .agent-card-recovery-notice { margin:12px 0; padding:12px 14px; border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--ink2); font-size:13px; line-height:1.6; }
+
+/* Compact mobile controls; model metadata must never compete with actions for width. */
+.model-list-item > div { min-width:0; }
+@media (max-width:1023px) {
+  .model-list-item { grid-template-columns:minmax(0,1fr) auto; gap:10px; }
+  .model-list-actions { grid-column:1 / -1; }
+}
+@media (max-width:767px) {
+  .ui-button.size-sm { min-height:32px; }
+  .deep-thinking-toggle { min-width:0; min-height:30px; white-space:nowrap; flex-shrink:0; }
+}
+@media (max-width:560px) {
+  .model-list-item { grid-template-columns:minmax(0,1fr); }
+  .model-list-actions { justify-content:flex-start; }
+  .statistics-card-tools { flex-direction:row; align-items:center; }
+}

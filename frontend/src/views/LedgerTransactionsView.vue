@@ -589,7 +589,7 @@ onBeforeUnmount(() => {
 .flow-search button { position: absolute; right: 5px; top: 4px; width: 26px; height: 26px; border: 0; background: transparent; color: var(--muted); font-size: 18px }
 .flow-loading { padding: 70px 20px; color: var(--muted); text-align: center }
 .flow-desktop-table { max-width: 100%; overflow: hidden }
-.flow-desktop-table :deep(.ui-table-wrap) { overflow: auto; max-height: calc(100vh - 225px); border: 0; border-radius: 0 }
+.flow-desktop-table :deep(.ui-table-wrap) { overflow-x: auto; border: 0; border-radius: 0 }
 .flow-desktop-table :deep(.ui-table) { width: max-content; min-width: 100%; table-layout: fixed }
 .flow-desktop-table :deep(th) { position: sticky; top: 0; z-index: 4; height: 42px; padding: 0 12px; background: var(--paper); white-space: nowrap }
 .flow-desktop-table :deep(td) { height: 50px; padding: 8px 12px; overflow: hidden; background: var(--card); text-overflow: ellipsis; white-space: nowrap }

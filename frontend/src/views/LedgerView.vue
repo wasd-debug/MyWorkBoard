@@ -586,7 +586,7 @@ onBeforeUnmount(()=>{
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   font-size:clamp(14px,7.2cqi,32px);line-height:1.2;font-variant-numeric:tabular-nums;
 }
-.category-card .head-right{display:flex;width:100%;min-width:0;align-items:center;gap:6px;flex-wrap:nowrap;overflow:visible}
+.category-card .head-right{display:flex;min-width:0;align-items:center;gap:6px;flex-wrap:nowrap;overflow:visible}
 .category-card .head-right .seg{flex:0 1 auto;min-width:0;gap:2px}
 .category-card .head-right .seg button{min-width:0;padding:0 clamp(5px,1vw,9px);white-space:nowrap}
 .accounts-card{grid-column:1 / -1;min-width:0}
@@ -625,7 +625,9 @@ onBeforeUnmount(()=>{
   .overview-period-control{width:auto;max-width:100%;align-items:flex-start}
   .overview-range-mode,.period-picker{width:fit-content;align-self:flex-start;flex:none}
   .home-custom-range{width:min(100%,360px)}
-  .category-card .head-right{justify-content:flex-start;overflow:visible}
+  .category-card .head-right{width:100%;justify-content:space-between;overflow:visible}
+  .category-card .head-right .seg{flex:0 0 auto;overflow:visible}
+  .category-card .head-right .seg button{height:30px;min-height:30px}
   .category-card .head-right .seg button{padding:0 5px;font-size:12px}
   .transactions :deep(th:last-child),.transactions :deep(td:last-child){width:72px}
   .transactions .home-row-actions .ledger-action-icon{width:28px;height:28px;min-width:28px;margin-left:2px}
