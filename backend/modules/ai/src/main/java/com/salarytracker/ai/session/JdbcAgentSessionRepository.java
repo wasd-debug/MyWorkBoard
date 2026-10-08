@@ -90,8 +90,11 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
     @Override
     public List<AgentConversationService.MessageView> messages(String sessionId, long userId) {
         return jdbc.query("""
-                        SELECT id,turn_id,role,content,metadata_json,created_at
-                        FROM agent_message WHERE session_id=? AND user_id=? ORDER BY id
+                        SELECT m.id,m.turn_id,m.role,m.content,m.created_at,
+                               COALESCE(m.metadata_json,CASE WHEN m.role='assistant' THEN t.response_json END) AS metadata_json
+                        FROM agent_message m LEFT JOIN agent_turn t
+                          ON t.id=m.turn_id AND t.user_id=m.user_id AND t.session_id=m.session_id
+                        WHERE m.session_id=? AND m.user_id=? ORDER BY m.id
                         """, (result, rowNum) -> new AgentConversationService.MessageView(
                         result.getLong("id"), result.getString("turn_id"), result.getString("role"),
                         result.getString("content"), result.getString("metadata_json"),
@@ -102,9 +105,11 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
     @Transactional
     public void replaceAction(long userId, String previousActionId, JsonNode replacement) {
         List<MessageMetadata> candidates = jdbc.query("""
-                        SELECT id,metadata_json FROM agent_message
-                        WHERE user_id=? AND role='assistant' AND metadata_json IS NOT NULL
-                          AND metadata_json LIKE ?
+                        SELECT m.id,COALESCE(m.metadata_json,t.response_json) AS metadata_json
+                        FROM agent_message m LEFT JOIN agent_turn t
+                          ON t.id=m.turn_id AND t.user_id=m.user_id AND t.session_id=m.session_id
+                        WHERE m.user_id=? AND m.role='assistant'
+                          AND COALESCE(m.metadata_json,t.response_json) LIKE ?
                         """, (result, rowNum) -> new MessageMetadata(
                         result.getLong("id"), result.getString("metadata_json")),
                 userId, "%\"" + previousActionId + "\"%");

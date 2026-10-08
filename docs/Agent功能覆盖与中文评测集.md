@@ -1,9 +1,16 @@
 # Agent 功能覆盖与中文评测集
 
-> 版本：v1.10（2026-10-08）
+> 版本：v1.11（2026-10-08）
 > 用途：Phase 3A/3B 自动回归基线。当前首页真实模型已接入 R0/R1 查询和获准的 R2/R3 prepare；commit 仅能由站内确认卡片触发。
 
 ## 1. 功能覆盖矩阵
+
+### 本轮历史卡片恢复回归
+
+- Prompt `agent-system-v12`：仅本轮 prepare 实际返回待输入/待确认及 actionId 时可以声称生成卡片；延续旧记账请求必须重新调用必要查询和 prepare，不能只输出 Markdown 表格。
+- 普通请求响应保存完整 metadata（含 actions）；历史 assistant 消息缺失 metadata 时从同用户、同会话、同 turn 的 response_json 恢复。
+- 恢复卡片编辑后的消息 metadata 优先于 turn 快照；用户消息和其他用户会话不恢复该操作。
+- 自动契约断言不代表真实模型每次均遵循 Prompt；实际多轮记账行为仍需人工检查。
 
 | 业务能力 | Domain Tool | 风险 | 当前状态 | 下一门禁 |
 |---|---|---:|---|---|

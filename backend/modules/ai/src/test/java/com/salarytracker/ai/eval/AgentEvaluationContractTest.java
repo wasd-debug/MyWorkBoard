@@ -54,6 +54,7 @@ class AgentEvaluationContractTest {
         assertTrue(policy.systemPrompt(java.time.LocalDate.of(2026, 9, 24)).contains("你不得调用 commit"));
         assertTrue(policy.systemPrompt(java.time.LocalDate.of(2026, 9, 24)).contains("必须先调用 ledger.category.list 和 ledger.merchant.list"));
         assertTrue(policy.systemPrompt(java.time.LocalDate.of(2026, 9, 24)).contains("禁止根据常识、商家类别、模型记忆或用户语句自行创造分类名、商户名或 ID"));
+        assertTrue(policy.systemPrompt(java.time.LocalDate.of(2026, 9, 24)).contains("不得只输出 Markdown 表格代替工具调用"));
     }
 
     @Test

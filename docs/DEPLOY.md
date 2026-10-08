@@ -388,3 +388,10 @@ sudo docker compose --env-file .env -f docker-compose.prod.yml up -d --no-deps b
 ```
 
 若切换到 HTTPS，再设置 `COOKIE_SECURE=true` 并确保反代传递 HTTPS；不要在明文 HTTP 站点启用该选项。
+## 2026-10-08 操作卡片恢复修复
+
+本轮无数据库迁移、无 OpenAPI 契约变化。普通请求开始保存完整响应，已有 SSE turn 数据可用于历史卡片恢复；完全缺失结构化操作数据的旧消息不做猜测回填。
+
+本地验证：AgentConversationIntegrationTest、ArchitectureBoundaryTest、AgentOrchestratorTest、AgentEvaluationContractTest 定向共 25 项通过，包含独立 Testcontainers MySQL；前端卡片恢复单测、类型检查与生产构建通过。本地打包后重启 salary-backend，更新 frontend/dist 并启动 Vite 5173；服务刷新结果以本轮交付说明为准。未推送或部署云端，前端操作待按手工清单验收。
+
+本轮刷新结果：后端打包及容器重启成功，`http://127.0.0.1:8080/api/health` 返回 `{"ok":true}`；Vite `5173` 与本地 Nginx `80` 首页均返回 HTTP 200。

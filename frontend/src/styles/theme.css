@@ -1619,3 +1619,4 @@ html[data-theme="night"] .ledger-summary-grid > .card:nth-child(3) .summary-valu
   border-color:color-mix(in srgb,var(--accent) 86%,#000);
   color:var(--accent-contrast);
 }
+.agent-card-recovery-notice { margin:12px 0; padding:12px 14px; border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--ink2); font-size:13px; line-height:1.6; }

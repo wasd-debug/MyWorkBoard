@@ -248,8 +248,9 @@ class AgentOrchestratorTest {
 
         assertEquals("conversation-1", response.sessionId());
         assertEquals("默认账本。", response.content());
-        verify(conversations).complete(any(), org.mockito.ArgumentMatchers.eq("它叫什么？"),
-                org.mockito.ArgumentMatchers.eq("默认账本。"));
+        verify(conversations).complete(any(), org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq("它叫什么？"), org.mockito.ArgumentMatchers.eq("默认账本。"),
+                org.mockito.ArgumentMatchers.argThat(json -> json.contains("conversation-1")));
     }
 
     @Test
@@ -295,6 +296,15 @@ class AgentOrchestratorTest {
         assertEquals("请选择具体账户后再生成预览。", response.content());
         assertEquals(2, response.toolExecutions().size());
         assertEquals(1, response.actions().size());
+        verify(conversations).complete(any(), org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq("中行买软件花了29.9"),
+                org.mockito.ArgumentMatchers.eq(response.content()), org.mockito.ArgumentMatchers.argThat(json -> {
+                    try {
+                        var stored = mapper.readTree(json);
+                        return stored.path("actions").size() == 1
+                                && stored.path("actions").get(0).equals(mapper.valueToTree(response.actions().get(0)));
+                    } catch (Exception exception) { return false; }
+                }));
         verify(tools).invoke(org.mockito.ArgumentMatchers.eq("ledger.books.list"), any());
         verify(tools).invoke(org.mockito.ArgumentMatchers.eq("ledger.transaction.create.prepare"),
                 org.mockito.ArgumentMatchers.argThat(input -> "book-1".equals(input.path("bookId").asText())

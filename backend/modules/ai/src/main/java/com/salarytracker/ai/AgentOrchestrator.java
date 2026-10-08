@@ -272,10 +272,11 @@ public class AgentOrchestrator {
                                              List<LlmGateway.ToolExecution> executions,
                                              List<LlmGateway.ActionRequest> actionRequests,
                                              long startedAt, long firstTokenMs) {
-        conversations.complete(context, userMessage, content);
-        return new LlmGateway.ChatResponse(content, provider, configured, context.sessionId(), usage,
+        LlmGateway.ChatResponse response = new LlmGateway.ChatResponse(content, provider, configured, context.sessionId(), usage,
                 elapsedMs(startedAt), firstTokenMs, List.copyOf(modelExecutions), List.copyOf(executions),
                 List.copyOf(actionRequests), null, false);
+        conversations.complete(context, null, userMessage, content, write(response));
+        return response;
     }
 
     private List<LlmGateway.AgentMessage> messages(AgentConversationService.SessionContext context, String message) {
@@ -332,7 +333,7 @@ public class AgentOrchestrator {
         }
     }
 
-    private String write(ToolResult result) {
+    private String write(Object result) {
         try {
             return mapper.writeValueAsString(result);
         } catch (Exception exception) {

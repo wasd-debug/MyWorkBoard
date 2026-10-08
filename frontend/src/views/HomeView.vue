@@ -132,6 +132,7 @@
                 </details>
                 <div class="message-markdown" v-html="renderMarkdown(item.content)"></div>
                 <span v-if="item.typing" class="typing-cursor" aria-label="正在输入">▍</span>
+                <p v-if="missingActionCard(item)" class="agent-card-recovery-notice" role="status">这条回复提到了待处理卡片，但没有可恢复的操作数据。文字预览不代表已保存，请重新发送原始请求生成新的卡片。</p>
                 <div v-if="pendingLedgerActions(item).length > 1" class="agent-action-batch">
                   <span><b>{{ pendingLedgerActions(item).length }} 笔待处理</b><small>支出合计 {{ batchAmount(item, 'EXPENSE') }} · 收入合计 {{ batchAmount(item, 'INCOME') }}</small></span>
                   <div><button type="button" :disabled="item.batchBusy" @click="rejectAllActions(item)">全部取消</button><button class="primary" type="button" :disabled="item.batchBusy || !allLedgerActionsConfirmable(item)" @click="confirmAllActions(item)">{{ item.batchBusy ? '正在处理…' : '全部确认' }}</button></div>
@@ -338,6 +339,7 @@ import { Archive, ArrowDown, ArrowRight, ArrowUp, ArrowUpRight, Check, CheckCirc
 import { Calendar, List, Timer, Wallet } from '../icons.js'
 import { message } from '../services/message.js'
 import { autoGrowTextarea } from '../directives/autoGrowTextarea.js'
+import { parseAgentMetadata, normalizeAgentActions, recoverAgentMetadata, missingActionCard } from '../utils/agentMessageRecovery.js'
 import { useAppStore } from '../stores/app'
 import { useLedgerStore } from '../stores/ledger'
 import { useWorktimeStore } from '../stores/worktime'
@@ -389,9 +391,9 @@ const cards = [
 
 function uid() { return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}` }
 function persist() { localStorage.setItem(historyKey.value, JSON.stringify(conversations.value.slice(0, 60))) }
-function parseMetadata(value) { if (!value) return {}; if (typeof value === 'object') return value; try { return JSON.parse(value) } catch { return {} } }
+function parseMetadata(value) { return parseAgentMetadata(value) }
 function cloneValue(value) { return value == null ? value : JSON.parse(JSON.stringify(value)) }
-function normalizeActions(actions = []) { return actions.map(action => ({ ...action, form: cloneValue(action.structuredContent?.input || {}) })) }
+function normalizeActions(actions = []) { return normalizeAgentActions(actions) }
 function responseFields(value = {}) { return { usage: value.usage, durationMs: value.durationMs, firstTokenMs: value.firstTokenMs, modelExecutions: value.modelExecutions || [], toolExecutions: value.toolExecutions || [], actions: normalizeActions(value.actions || []), reasoningContent: value.reasoningContent || '', deepThinking: Boolean(value.deepThinking) } }
 function inferRoute(text) { if (/工时|打卡|上班|下班/.test(text)) return { route: '/punch', routeLabel: '工时' }; if (/报表/.test(text)) return { route: '/ledger/reports', routeLabel: '账本报表' }; if (/流水/.test(text)) return { route: '/ledger/transactions', routeLabel: '账本流水' }; if (/记账|支出|收入|账本/.test(text)) return { route: '/ledger', routeLabel: '账本' }; return {} }
 function assistantRoute(role, text) { return role === 'assistant' ? inferRoute(text) : {} }
@@ -402,13 +404,13 @@ async function loadMessages(id, forceScroll = false) {
   const rows = await apiListAgentMessages(id)
   const current = target.messages || [], claimed = new Set()
   const restored = (rows || []).map(row => {
-    const metadata = row.role === 'assistant' ? parseMetadata(row.metadataJson) : {}
     const existing = current.find(item => !claimed.has(item) && item.role === row.role && (
       (row.turnId && item.turnId === row.turnId)
       || (!row.turnId && item.content === row.content)
       || (row.role === 'user' && item.content === row.content)
     ))
     if (existing) claimed.add(existing)
+    const metadata = row.role === 'assistant' ? recoverAgentMetadata(row.metadataJson, existing) : {}
     return { id: existing?.id || `server-${row.id}`, turnId: row.turnId, role: row.role, content: row.content, createdAt: row.createdAt, typing: false, status: metadata.status || 'COMPLETED', ...responseFields(metadata), ...assistantRoute(row.role, row.content) }
   })
   await reconcileActionStates(restored)

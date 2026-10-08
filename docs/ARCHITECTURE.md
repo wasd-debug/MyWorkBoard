@@ -972,3 +972,6 @@ frontend/
 任务 payload 复用流水写入契约，仍经过账户、二级分类、权限及金额校验，并沿用 append-only 版本、审计日志和同步 oplog。创建或修改调度规则时根据生效日期物化 `next_run_on`，任务完成后按同一规则推进，达到截止日期或执行次数后自动暂停。
 
 `STATEMENT_IMPORT` 为支付宝、微信支付和银行卡账单拉取预留类型，当前明确标记为“待接入”，不会伪造成功或自动生成流水。后台每日 00:05（Asia/Shanghai）由 ShedLock 扫描到期任务；用户也可在页面手动立即执行。
+## Agent 消息与操作卡片恢复
+
+Agent 普通请求与 SSE 均持久化结构化响应。查询历史 assistant 消息时优先读取 agent_message.metadata_json，缺失才通过 user_id、session_id、turn_id 三重关联读取 agent_turn.response_json；用户消息不使用该回退。恢复卡片发生编辑时写回消息 metadata，避免被旧 turn 快照覆盖。前端不得从文字预览虚构 actionId 或审批状态，无可恢复数据时提示重新生成操作。

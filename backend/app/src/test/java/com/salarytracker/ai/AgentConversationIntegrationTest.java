@@ -151,4 +151,32 @@ class AgentConversationIntegrationTest extends MySqlIntegrationTestSupport {
         jdbc.update("INSERT INTO app_user(username,password_hash,nickname) VALUES(?, '!', 'agent')", username);
         return jdbc.queryForObject("SELECT id FROM app_user WHERE username=?", Long.class, username);
     }
+
+    @Test
+    void recoversLegacyCardsFromOwnedTurnWithoutReplacingEditedMessageMetadata() throws Exception {
+        long userId = createUser("agent-legacy-card-");
+        var sessions = new JdbcAgentSessionRepository(jdbc);
+        var turns = new JdbcAgentTurnRepository(jdbc);
+        String sessionId = UUID.randomUUID().toString();
+        String turnId = UUID.randomUUID().toString();
+        sessions.create(sessionId, userId, "记账");
+        turns.enqueue(turnId, sessionId, userId, UUID.randomUUID().toString(), "两笔支出", null);
+        turns.claimNext(sessionId, userId).orElseThrow();
+        turns.markPlanning(turnId, userId);
+        String metadata = """
+                {"actions":[{"actionId":"original","status":"NEEDS_CONFIRMATION"}]}
+                """;
+        assertTrue(turns.complete(turnId, userId, "请确认", null, metadata));
+        sessions.appendExchange(sessionId, userId, turnId, "两笔支出", "请确认", null);
+
+        var messages = sessions.messages(sessionId, userId);
+        assertEquals(null, messages.get(0).metadataJson(), "用户消息不恢复助手卡片");
+        var mapper = new ObjectMapper();
+        assertEquals("original", mapper.readTree(messages.get(1).metadataJson()).path("actions").get(0).path("actionId").asText());
+        assertTrue(sessions.messages(sessionId, userId + 1).isEmpty());
+
+        sessions.replaceAction(userId, "original", mapper.readTree("{\"actionId\":\"edited\"}"));
+        assertEquals("edited", mapper.readTree(sessions.messages(sessionId, userId).get(1).metadataJson())
+                .path("actions").get(0).path("actionId").asText());
+    }
 }

@@ -1075,3 +1075,8 @@ Agent 与 MCP 改造只有在以下条件全部满足时才算完成：
 - 永久删除接口只接受当前登录用户自己的 `PAT`，不允许删除其他用户凭据、有效 PAT 或 OAuth access/refresh token。
 - V29 将 `mcp_tool_call.token_id` 和 `mcp_protocol_event.token_id` 的外键调整为 `ON DELETE SET NULL`。凭据记录可删除，但用户、认证类型、客户端、工具、状态、耗时和脱敏摘要等历史审计继续保留。
 - 删除列表末页最后一项后，前端自动回退上一页并刷新总数；撤销与永久删除保持两个独立操作。
+## 2026-10-08 历史操作卡片恢复
+
+普通请求降级路径保存完整 ChatResponse metadata，包含工具调用、消耗统计和 actions，避免仅持久化文字。历史消息 metadata 缺失时只从同用户、同会话、同 turn 的 response_json 恢复；编辑恢复卡片后将新数据写回消息，优先于旧 turn 快照。首页重新加载同一消息时保留已有有效卡片，服务端明确返回空 actions 时遵从服务端。
+
+Prompt 升级为 agent-system-v12：历史文字预览不能作为真实待处理操作，模型必须在本轮调用 prepare，不能用 Markdown 表格代替卡片。没有结构化数据的旧回复无法可靠重建 action，页面提示重新发送原始请求；不从文字或时间猜测待审批操作。仍需校验原有 action 终态、过期和权限，恢复不产生业务写入。本轮不增加迁移或接口。

@@ -8,7 +8,7 @@ import java.time.LocalDate;
 
 @Component
 public class AgentPromptPolicy {
-    public static final String PROMPT_VERSION = "agent-system-v11";
+    public static final String PROMPT_VERSION = "agent-system-v12";
 
     public boolean modelVisible(ToolDefinition definition) {
         if (definition.riskLevel().ordinal() > ToolRisk.R3.ordinal()) return false;
@@ -55,6 +55,9 @@ public class AgentPromptPolicy {
                 修改或删除前必须先使用查询工具获得真实且唯一的 recordId 或 transactionId；若查询返回多个候选，
                 必须列出候选并要求用户明确选择，禁止自行猜测。prepare 不会写入数据；你不得调用 commit，
                 也不得声称已经保存。必须告诉用户在站内操作卡片中补充信息并明确确认。
+                只有本轮 prepare 工具实际返回 NEEDS_INPUT 或 NEEDS_CONFIRMATION 且带 actionId 时，才能声称已生成操作卡片。
+                历史对话里的文字预览不代表仍有可执行卡片，禁止仅凭旧回复声称已准备好；用户继续旧记账请求时，
+                应重新查询必要的资源并调用 prepare 生成本轮真实卡片，不得只输出 Markdown 表格代替工具调用。
                 用户要求新增工时时直接调用 worktime.record.create.prepare 收集缺失信息，不要先读取工时设置。
                 用户要求修改或删除某天工时但没有 recordId 时，必须先调用 worktime.records.search 定位记录，不要先读取工时设置。
                 过去日期上的“加班到几点、下班改到几点、补到几点”表示修改已有记录，必须先查询该日记录，禁止创建第二条工时。
