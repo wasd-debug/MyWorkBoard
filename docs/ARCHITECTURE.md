@@ -402,7 +402,7 @@ task            (id, user_id, list_id, parent_id, title, content, priority,
 tag             (id, user_id, name, color)
 task_tag_rel    (task_id, tag_id)
 filter          (id, user_id, name, condition_json, sort)   -- 用户自定义筛选器
-task_attachment (id, user_id, task_id, file_id, name)       -- 关联附件（见 file 域）
+task_attachment (id, user_id, task_id, file_id, name)       -- Phase 4 file 稳定后以独立迁移增加
 task_activity   (id, user_id, task_id, type, from_json, to_json, created_at)
                 -- 任务日志：创建/完成/改期/加标签…（领域事件快照，供时间线与AI）
 pomodoro        (id, user_id, task_id, started_at, minutes, completed, tag)
@@ -642,13 +642,14 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 
 ### Phase 2 —— 任务管理（滴答清单形态）
 
-- [ ] 清单（含分组）/任务/子任务/标签/优先级/自定义筛选器；使用 shadcn-vue `Command`、`Tabs`、`DropdownMenu` 组合筛选交互
-- [ ] 任务日志 task_activity（时间线）；附件关联延后到 Phase 4 file 模块落地后接入，不阻塞任务核心流程
-- [ ] 日历视图：FullCalendar 日/周/月 + 自研年视图；多日/多周切换；移动端默认日/周视图，桌面端支持月视图；与打卡、记账叠加显示
-- [ ] 提醒：reminder 表 + notification 模块（站内 + Web Push）
+- [ ] 按 `P2-I1` 先交付收件箱任务纵向闭环，`P2-I2` 随即接入任务核心写入与清单的 local-first；其余 P0 能力跨后续增量完成，不组织为一次性大版本
+- [ ] 清单（含分组）/任务/子任务/标签/优先级/自定义筛选器；前端复用现有 `components/ui`、Reka UI 与语义 token
+- [ ] 重复任务保留每个已完成实例并生成下一实例；任务日志 task_activity 提供时间线；协作列、协作表和附件表均延后到对应阶段以独立迁移增加
+- [ ] 日历视图：FullCalendar 日/周/月 + 自研年视图；由 app 组装层聚合 task/worktime/ledger/holiday 的公开只读接口，单层失败独立降级
+- [ ] 提醒：任务域首版使用 `task_inbox_message` + ShedLock + SSE/轮询，不依赖 notification、Web Push、Redis 或 RabbitMQ；F3 后保持 API 语义迁移投递端
 - [ ] 番茄钟（前端计时 + 统计上报）；习惯打卡；倒数日/纪念日
 - [ ] 全局搜索 v1（MySQL 全文索引，任务+账本；附件名在 Phase 4 接入）；离线同步覆盖 task 域；桌面快捷键与移动端显式入口一致
-- **验收**：任务全流程离线可用；提醒准点送达（±1min）；日历四视图切换流畅；手机端无 hover-only 操作。
+- **验收**：完整个人版范围全部完成；任务全流程离线可用；提醒准点送达（±1min）；日历四视图切换流畅；手机端无 hover-only 操作。前端页面只走非浏览器自动门禁与用户手工检查，不以 Playwright、截图或交互式浏览器代替人工验收。
 
 ### Phase 3A —— 统一领域工具层
 
@@ -911,7 +912,7 @@ GET    /api/v1/sync/pull?cursor=&limit=
 |---|---|---|---|
 | Phase 0 地基 | 决策项确认；完成 0A 备份 | identity、worktime v1、迁移/兼容层、CI、恢复演练、Tailwind/shadcn-vue 设计基座和响应式应用壳 | 新旧数据对账无 P0/P1 差异；可回滚；核心页面通过三类视口和基础无障碍检查 |
 | Phase 1 账本 | Phase 0 通过；事件信封和同步契约冻结 | 账户/交易/预算、导入导出、sync-engine v1、周期账单、自然语言记账预览、账本桌面/移动布局 | 断网记账无重复/丢失；金额对账通过；写工具必须确认；手机端录入无需缩放 |
-| Phase 2 任务 | sync-engine ledger 稳定 | 任务/日历/提醒/番茄钟/习惯、移动端底部导航和日历布局；附件关联延后至 Phase 4 | 离线任务重放通过；提醒误差 ≤1 分钟；无 hover-only 核心操作 |
+| Phase 2 任务 | sync-engine ledger 稳定；P2-0 决议冻结 | 按 I1-I8 交付完整个人版：收件箱闭环、核心离线、任务组织、重复/提醒、日历、效率工具、增强视图/导入及 Agent/ICS；协作与附件后置 | 完整范围通过；离线任务重放无丢失重复；提醒误差 ≤1 分钟；用户手工确认无 hover-only 核心操作 |
 | Phase 3A 工具层 | Phase 1 稳定；领域公开接口和权限契约冻结 | Domain Tool、风险分级、prepare/commit、action 状态机 | prepare 无业务写入；幂等、冲突和越权测试全绿 |
 | Phase 3B Web Agent | 3A 通过；模型预算与隐私策略确定 | 会话、SSE、受控表单、确认、工时/账本 Agent | 断流可恢复；错误写入为 0；同步投影一致 |
 | Phase 3C MCP | 3B 写入链稳定；外部授权策略冻结 | Streamable HTTP、PAT/OAuth、scope、站内审批、真实客户端验证 | Inspector、Codex、WorkBuddy 通过；撤销即时生效；越权为 0 |
