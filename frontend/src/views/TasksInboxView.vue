@@ -1,17 +1,19 @@
 <template>
   <section class="task-workspace">
     <button class="task-navigation-trigger" type="button" aria-controls="task-navigation" :aria-expanded="navigationOpen" @click="navigationOpen = true"><Menu :size="18" />任务菜单</button>
-    <Transition name="task-navigation-fade">
-      <button v-if="navigationOpen" class="task-navigation-backdrop" type="button" aria-label="关闭任务菜单" @pointerdown.prevent.stop="closeNavigation" @click.prevent.stop="closeNavigation"></button>
-    </Transition>
-    <aside id="task-navigation" class="task-sidebar" :class="{ open: navigationOpen }" aria-label="任务导航">
-      <header class="task-sidebar-head"><strong>任务菜单</strong><button type="button" aria-label="关闭任务菜单" @pointerdown.prevent.stop="closeNavigation" @click.prevent.stop="closeNavigation"><X :size="18" /></button></header>
-      <nav><RouterLink v-for="item in builtins" :key="item.to" :to="item.to" @click="closeNavigation"><component :is="item.icon" :size="16" />{{ item.label }}</RouterLink></nav>
-      <div class="side-heading"><span>清单</span><button type="button" aria-label="新建清单" title="新建清单" @click="newList"><Plus :size="15" /></button></div>
-      <nav><span v-for="list in store.lists" :key="list.publicId" class="side-item"><RouterLink :to="list.systemKey === 'INBOX' ? '/tasks/inbox' : `/tasks/list/${list.publicId}`" @click="closeNavigation"><ListTodo :size="16" />{{ list.name }}</RouterLink><span v-if="!list.systemKey" class="side-actions"><button type="button" title="编辑清单" :aria-label="`编辑清单${list.name}`" @click="editList(list)"><Pencil :size="13" /></button><button type="button" title="删除清单" :aria-label="`删除清单${list.name}`" @click="deleteList(list)"><Trash2 :size="13" /></button></span></span></nav>
-      <div class="side-heading"><span>标签</span><button type="button" aria-label="新建标签" title="新建标签" @click="newTag"><Plus :size="15" /></button></div>
-      <nav><span v-for="tag in store.tags" :key="tag.publicId" class="side-item"><RouterLink :to="`/tasks/tag/${tag.publicId}`" @click="closeNavigation"><Tag :size="15" />{{ tag.name }}</RouterLink><span class="side-actions"><button type="button" title="编辑标签" :aria-label="`编辑标签${tag.name}`" @click="editTag(tag)"><Pencil :size="13" /></button><button type="button" title="删除标签" :aria-label="`删除标签${tag.name}`" @click="deleteTag(tag)"><Trash2 :size="13" /></button></span></span></nav>
-    </aside>
+    <Teleport to="body" :disabled="!compactNavigation">
+      <Transition name="task-navigation-fade">
+        <button v-if="navigationOpen" class="task-navigation-backdrop" type="button" aria-label="关闭任务菜单" @click="closeNavigation"></button>
+      </Transition>
+      <aside id="task-navigation" class="task-sidebar" :class="{ open: navigationOpen }" aria-label="任务导航">
+        <header class="task-sidebar-head"><strong>任务菜单</strong><button type="button" aria-label="关闭任务菜单" @click="closeNavigation"><X :size="18" /></button></header>
+        <nav><RouterLink v-for="item in builtins" :key="item.to" :to="item.to" @click="closeNavigation"><component :is="item.icon" :size="16" />{{ item.label }}</RouterLink></nav>
+        <div class="side-heading"><span>清单</span><button type="button" aria-label="新建清单" title="新建清单" @click="newList"><Plus :size="15" /></button></div>
+        <nav><span v-for="list in store.lists" :key="list.publicId" class="side-item"><RouterLink :to="list.systemKey === 'INBOX' ? '/tasks/inbox' : `/tasks/list/${list.publicId}`" @click="closeNavigation"><ListTodo :size="16" />{{ list.name }}</RouterLink><span v-if="!list.systemKey" class="side-actions"><button type="button" title="编辑清单" :aria-label="`编辑清单${list.name}`" @click="editList(list)"><Pencil :size="13" /></button><button type="button" title="删除清单" :aria-label="`删除清单${list.name}`" @click="deleteList(list)"><Trash2 :size="13" /></button></span></span></nav>
+        <div class="side-heading"><span>标签</span><button type="button" aria-label="新建标签" title="新建标签" @click="newTag"><Plus :size="15" /></button></div>
+        <nav><span v-for="tag in store.tags" :key="tag.publicId" class="side-item"><RouterLink :to="`/tasks/tag/${tag.publicId}`" @click="closeNavigation"><Tag :size="15" />{{ tag.name }}</RouterLink><span class="side-actions"><button type="button" title="编辑标签" :aria-label="`编辑标签${tag.name}`" @click="editTag(tag)"><Pencil :size="13" /></button><button type="button" title="删除标签" :aria-label="`删除标签${tag.name}`" @click="deleteTag(tag)"><Trash2 :size="13" /></button></span></span></nav>
+      </aside>
+    </Teleport>
 
     <main class="tasks-page">
       <header class="tasks-head"><div><p class="label">TASKS</p><h1>{{ viewTitle }}</h1><p class="tasks-summary">{{ visibleOpen.length }} 项待完成 · {{ visibleCompleted.length }} 项已完成</p></div><Button v-if="viewKey !== 'trash'" @click="openCreate"><Plus :size="16" />新建任务</Button></header>
@@ -55,6 +57,8 @@ import { useAppStore } from '../stores/app.js'; import { useTasksStore } from '.
 import { apiCreateTaskReminder, apiDeleteTaskReminder, apiListTaskReminders, apiUpdateTaskReminder } from '../../packages/api-client/src/index.js'
 
 const route = useRoute(); const store = useTasksStore(); const appStore = useAppStore(); const editorOpen = ref(false); const editing = ref(null); const editorError = ref(''); const sortBy = ref('default'); const navigationOpen = ref(false)
+const compactNavigation = ref(false)
+let compactNavigationQuery
 const form = reactive({ title: '', description: '', priority: 'NONE', dueLocal: '', listId: '', parentId: '', tagIds: [], checklistText: '', recurrence: '', customRrule: '', recurrenceAnchor: 'DUE_DATE', reminderEnabled: false, reminderKind: 'RELATIVE', reminderOffset: 30, remindLocal: '', reminder: null })
 const organizationOpen = ref(false)
 const organizationItem = ref(null)
@@ -97,7 +101,8 @@ const parentOptions = computed(() => store.openTasks.filter(item => {
 }))
 const emptyLabel = computed(() => viewKey.value === 'today' ? '今天没有安排' : viewKey.value === 'completed' ? '还没有已完成任务' : '这里还没有任务')
 function resetForm(task = null) { const known = ['', 'FREQ=DAILY', 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', 'FREQ=WEEKLY', 'FREQ=MONTHLY', 'FREQ=YEARLY']; const recurrence = known.includes(task?.rrule || '') ? task?.rrule || '' : 'CUSTOM'; Object.assign(form, { title: task?.title || '', description: task?.description || '', priority: task?.priority || 'NONE', dueLocal: task?.dueAt ? toLocalInput(task.dueAt) : '', listId: task?.listId || currentListId(), parentId: task?.parentId || '', tagIds: [...(task?.tagIds || [])], checklistText: (task?.checklist || []).map(item => `${item.completed ? '[x] ' : ''}${item.title}`).join('\n'), recurrence, customRrule: recurrence === 'CUSTOM' ? task.rrule : '', recurrenceAnchor: task?.recurrenceAnchor || 'DUE_DATE', reminderEnabled: false, reminderKind: 'RELATIVE', reminderOffset: 30, remindLocal: '', reminder: null }); editorError.value = '' }
-function closeNavigation(event) { event?.preventDefault(); event?.stopPropagation(); navigationOpen.value = false }
+function closeNavigation() { navigationOpen.value = false }
+function updateCompactNavigation(event) { compactNavigation.value = event.matches; if (!event.matches) closeNavigation() }
 function currentListId() { return route.name === 'tasks-list' ? String(route.params.publicId) : store.inbox?.publicId || '' }
 function openCreate() { editing.value = null; resetForm(); editorOpen.value = true } async function openEdit(task) { editing.value = task; resetForm(task); editorOpen.value = true; if (store.online) { try { const reminders = await apiListTaskReminders(task.publicId); const reminder = reminders?.[0]; if (reminder) Object.assign(form, { reminderEnabled: true, reminderKind: reminder.kind, reminderOffset: reminder.offsetMinutes ?? 30, remindLocal: reminder.remindAt ? toLocalInput(reminder.remindAt) : '', reminder }) } catch (error) { editorError.value = detail(error, '提醒加载失败') } } }
 function payload() { const rrule = form.recurrence === 'CUSTOM' ? form.customRrule.trim() : form.recurrence; return { listId: form.listId, parentId: form.parentId || '', tagIds: form.tagIds, checklist: form.checklistText.split('\n').map(line => line.trim()).filter(Boolean).map((line, index) => ({ publicId: editing.value?.checklist?.[index]?.publicId, title: line.replace(/^\[x\]\s*/i, ''), completed: /^\[x\]/i.test(line), sortOrder: index })), title: form.title.trim(), description: form.description.trim(), priority: form.priority, dueAt: form.dueLocal ? new Date(form.dueLocal).toISOString() : '', allDay: false, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai', rrule, recurrenceAnchor: rrule ? form.recurrenceAnchor : '' } }
@@ -138,8 +143,20 @@ function listName(id) { return store.lists.find(item => item.publicId === id)?.n
 function onEscape(event) { if (event.key === 'Escape') closeNavigation() }
 watch(navigationOpen, open => document.body.classList.toggle('task-navigation-open', open))
 watch(() => route.fullPath, closeNavigation)
-onMounted(() => { store.init().catch(() => {}); window.addEventListener('keydown', onEscape) })
-onBeforeUnmount(() => { document.body.classList.remove('task-navigation-open'); window.removeEventListener('keydown', onEscape) })
+onMounted(() => {
+  store.init().catch(() => {})
+  compactNavigationQuery = window.matchMedia('(max-width: 1024px)')
+  updateCompactNavigation(compactNavigationQuery)
+  if (compactNavigationQuery.addEventListener) compactNavigationQuery.addEventListener('change', updateCompactNavigation)
+  else compactNavigationQuery.addListener?.(updateCompactNavigation)
+  window.addEventListener('keydown', onEscape)
+})
+onBeforeUnmount(() => {
+  document.body.classList.remove('task-navigation-open')
+  if (compactNavigationQuery?.removeEventListener) compactNavigationQuery.removeEventListener('change', updateCompactNavigation)
+  else compactNavigationQuery?.removeListener?.(updateCompactNavigation)
+  window.removeEventListener('keydown', onEscape)
+})
 </script>
 
 <style scoped>
@@ -351,7 +368,7 @@ onBeforeUnmount(() => { document.body.classList.remove('task-navigation-open'); 
   font-weight:700}
 .task-navigation-backdrop {
   position:fixed;
-  z-index:59;
+  z-index:1000;
   inset:0;
   display:block;
   width:100%;
@@ -361,7 +378,7 @@ onBeforeUnmount(() => { document.body.classList.remove('task-navigation-open'); 
   background:rgba(15,23,42,.38)}
 .task-sidebar {
   position:fixed;
-  z-index:60;
+  z-index:1001;
   top:0;
   bottom:0;
   left:0;
