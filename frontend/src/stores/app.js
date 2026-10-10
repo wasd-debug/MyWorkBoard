@@ -3,6 +3,7 @@ import { apiLogout, apiRefresh, clearAccessToken, getHolidays } from '../../pack
 import { accountScopeFor } from '../utils/accountScope.js'
 import { useLedgerStore } from './ledger.js'
 import { useWorktimeStore } from './worktime.js'
+import { useTasksStore } from './tasks.js'
 
 const LS_THEME = 'st_theme'
 const LS_ACCENT = 'st_accent'
@@ -134,6 +135,7 @@ export const useAppStore = defineStore('app', {
       this.dbMode = false
       useWorktimeStore().reset()
       await useLedgerStore().switchUser(user)
+      await useTasksStore().switchUser(user)
       await this.connectDb()
     },
 
@@ -149,6 +151,7 @@ export const useAppStore = defineStore('app', {
       this.dbMode = false
       useWorktimeStore().reset()
       await useLedgerStore().switchUser(user)
+      await useTasksStore().switchUser(user)
       return true
     },
 
@@ -162,6 +165,7 @@ export const useAppStore = defineStore('app', {
         clearAccessToken()
         clearOfflineUser()
         await useLedgerStore().clearSession()
+        await useTasksStore().clearSession()
         useWorktimeStore().reset()
         this.authUser = null
         this.accountScope = ''
@@ -207,6 +211,7 @@ export const useAppStore = defineStore('app', {
         clearAccessToken()
         clearOfflineUser()
         await useLedgerStore().clearSession()
+        await useTasksStore().clearSession()
         useWorktimeStore().reset()
         this.authUser = null
         this.accountScope = ''

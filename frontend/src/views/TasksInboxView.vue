@@ -9,8 +9,18 @@
       <Button :disabled="writeDisabled" @click="openCreate"><Plus :size="16" />新建任务</Button>
     </header>
 
-    <div v-if="!store.online || appStore.offlineSession" class="tasks-warning" role="status">
-      <WifiOff :size="18" />当前离线，仅显示已加载内容；任务变更需要联网。
+    <div v-if="!store.online || appStore.offlineSession || store.pending" class="tasks-warning" role="status">
+      <WifiOff v-if="!store.online || appStore.offlineSession" :size="18" />
+      <span v-if="!store.online || appStore.offlineSession">当前离线，变更已保存在本机。</span>
+      <span v-else>{{ store.pending }} 项变更等待同步。</span>
+    </div>
+    <div v-if="store.conflicts.length" class="tasks-error" role="alert">
+      任务“{{ issueTitle(store.conflicts[0]) }}”发生版本冲突，请选择保留版本。
+      <Button size="sm" variant="ghost" @click="resolveConflict('server')">采用服务端</Button>
+      <Button size="sm" variant="ghost" @click="resolveConflict('local')">保留本地</Button>
+    </div>
+    <div v-if="store.rejected.length" class="tasks-error" role="alert">
+      任务“{{ issueTitle(store.rejected[0]) }}”未同步：{{ store.rejected[0].result?.message || '服务端拒绝了本次变更' }}
     </div>
     <div v-if="store.error" class="tasks-error" role="alert">{{ store.error }}</div>
 
@@ -84,7 +94,7 @@ const editorOpen = ref(false)
 const editing = ref(null)
 const editorError = ref('')
 const form = reactive({ title: '', description: '', priority: 'NONE', dueLocal: '' })
-const writeDisabled = computed(() => !store.online || appStore.offlineSession)
+const writeDisabled = computed(() => false)
 
 function resetForm(task = null) {
   form.title = task?.title || ''
@@ -105,11 +115,13 @@ async function save() {
 async function complete(task) { try { await store.complete(task) } catch (error) { store.error = detail(error, '完成任务失败') } }
 async function reopen(task) { try { await store.reopen(task) } catch (error) { store.error = detail(error, '重新打开失败') } }
 async function remove(task) { if (!window.confirm(`删除任务“${task.title}”？`)) return; try { await store.remove(task); if (editing.value?.publicId === task.publicId) editorOpen.value = false } catch (error) { editorError.value = detail(error, '删除任务失败') } }
+async function resolveConflict(strategy) { try { await store.resolveConflict(store.conflicts[0].id, strategy) } catch (error) { store.error = detail(error, '冲突处理失败') } }
 function priorityLabel(value) { return ({ LOW: '低', MEDIUM: '中', HIGH: '高' })[value] || '' }
 function formatTime(value) { return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) }
 function toLocalInput(value) { const date = new Date(value); const offset = date.getTimezoneOffset() * 60000; return new Date(date.getTime() - offset).toISOString().slice(0, 16) }
+function issueTitle(issue) { return issue?.operation?.payload?.title || issue?.operation?.entityId || '未知任务' }
 
-onMounted(() => store.fetch().catch(() => {}))
+onMounted(() => store.init().catch(() => {}))
 </script>
 
 <style scoped>

@@ -35,4 +35,45 @@ public final class TaskModels {
     @Schema(name = "TaskSettings")
     public record Settings(String defaultListId, String defaultView, int weekStart, String timezone, long revision) {
     }
+
+    public enum SyncAction { UPSERT, DELETE }
+
+    public enum SyncStatus { APPLIED, DUPLICATE, CONFLICT, FORBIDDEN, REJECTED }
+
+    @Schema(name = "TaskSyncPayload")
+    public record SyncPayload(String id, String listId, String title, String description, String status,
+                              String priority, String startAt, String dueAt, Boolean allDay, String timezone,
+                              Integer durationMinutes, Long revision) {
+    }
+
+    @Schema(name = "TaskSyncOperation")
+    public record SyncOperation(String opId, String entityType, String entityId, SyncAction operation,
+                                Long baseRevision, SyncPayload payload) {
+    }
+
+    @Schema(name = "TaskSyncEntity")
+    public record SyncEntity(String id, String listId, String title, String description, String status,
+                             String priority, String startAt, String dueAt, boolean allDay, String timezone,
+                             Integer durationMinutes, String source, String completedAt, long revision,
+                             boolean deleted) {
+    }
+
+    @Schema(name = "TaskSyncOperationResult")
+    public record SyncOperationResult(String opId, String entityType, String entityId, SyncStatus status,
+                                      SyncEntity entity, Long serverRevision, SyncEntity serverEntity,
+                                      List<String> conflictFields, String message) {
+    }
+
+    @Schema(name = "TaskSyncPushResponse")
+    public record SyncPushResponse(List<SyncOperationResult> results, long applied, long duplicates) {
+    }
+
+    @Schema(name = "TaskSyncChange")
+    public record SyncChange(long cursor, String opId, String entityType, String entityId,
+                             SyncAction operation, SyncEntity payload, String createdAt) {
+    }
+
+    @Schema(name = "TaskSyncPullResponse")
+    public record SyncPullResponse(List<SyncChange> operations, long cursor, boolean hasMore, long serverCursor) {
+    }
 }

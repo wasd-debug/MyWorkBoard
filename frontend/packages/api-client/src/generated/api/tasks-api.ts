@@ -34,7 +34,13 @@ import type { ApiResponseTaskPage } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskSettings } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseTaskSyncPullResponse } from '../models/index.ts';
+// @ts-ignore
+import type { ApiResponseTaskSyncPushResponse } from '../models/index.ts';
+// @ts-ignore
 import type { TaskCommand } from '../models/index.ts';
+// @ts-ignore
+import type { TaskSyncOperation } from '../models/index.ts';
 /**
  * TasksApi - axios parameter creator
  */
@@ -300,6 +306,79 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
         },
         /**
          *
+         * @param {number} [cursor]
+         * @param {number} [limit]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        pullTaskSync: async (cursor?: number, limit?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/tasks/sync/pull`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (cursor !== undefined) {
+                localVarQueryParameter['cursor'] = cursor;
+            }
+
+            if (limit !== undefined) {
+                localVarQueryParameter['limit'] = limit;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {Array<TaskSyncOperation>} taskSyncOperation
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        pushTaskSync: async (taskSyncOperation: Array<TaskSyncOperation>, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'taskSyncOperation' is not null or undefined
+            assertParamExists('pushTaskSync', 'taskSyncOperation', taskSyncOperation)
+            const localVarPath = `/api/v1/tasks/sync/push`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(taskSyncOperation, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {*} [options] Override http request option.
@@ -480,6 +559,31 @@ export const TasksApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {number} [cursor]
+         * @param {number} [limit]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async pullTaskSync(cursor?: number, limit?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskSyncPullResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.pullTaskSync(cursor, limit, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.pullTaskSync']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {Array<TaskSyncOperation>} taskSyncOperation
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async pushTaskSync(taskSyncOperation: Array<TaskSyncOperation>, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskSyncPushResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.pushTaskSync(taskSyncOperation, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.pushTaskSync']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {*} [options] Override http request option.
@@ -577,6 +681,24 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         },
         /**
          *
+         * @param {TasksApiPullTaskSyncRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        pullTaskSync(requestParameters: TasksApiPullTaskSyncRequest = {}, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskSyncPullResponse> {
+            return localVarFp.pullTaskSync(requestParameters.cursor, requestParameters.limit, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {TasksApiPushTaskSyncRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        pushTaskSync(requestParameters: TasksApiPushTaskSyncRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskSyncPushResponse> {
+            return localVarFp.pushTaskSync(requestParameters.taskSyncOperation, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {TasksApiReopenTaskRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -641,6 +763,22 @@ export interface TasksApiListTasksRequest {
     readonly page?: number
 
     readonly size?: number
+}
+
+/**
+ * Request parameters for pullTaskSync operation in TasksApi.
+ */
+export interface TasksApiPullTaskSyncRequest {
+    readonly cursor?: number
+
+    readonly limit?: number
+}
+
+/**
+ * Request parameters for pushTaskSync operation in TasksApi.
+ */
+export interface TasksApiPushTaskSyncRequest {
+    readonly taskSyncOperation: Array<TaskSyncOperation>
 }
 
 /**
@@ -733,6 +871,26 @@ export class TasksApi extends BaseAPI {
      */
     public listTasks(requestParameters: TasksApiListTasksRequest = {}, options?: RawAxiosRequestConfig) {
         return TasksApiFp(this.configuration).listTasks(requestParameters.listId, requestParameters.status, requestParameters.page, requestParameters.size, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {TasksApiPullTaskSyncRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public pullTaskSync(requestParameters: TasksApiPullTaskSyncRequest = {}, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).pullTaskSync(requestParameters.cursor, requestParameters.limit, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {TasksApiPushTaskSyncRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public pushTaskSync(requestParameters: TasksApiPushTaskSyncRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).pushTaskSync(requestParameters.taskSyncOperation, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

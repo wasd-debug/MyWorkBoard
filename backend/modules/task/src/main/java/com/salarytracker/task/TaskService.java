@@ -31,10 +31,12 @@ public class TaskService {
             "t.source, t.completed_at, t.revision";
     private final JdbcTemplate jdbcTemplate;
     private final CurrentUserResolver currentUser;
+    private final TaskChangeLog changeLog;
 
-    public TaskService(JdbcTemplate jdbcTemplate, CurrentUserResolver currentUser) {
+    public TaskService(JdbcTemplate jdbcTemplate, CurrentUserResolver currentUser, TaskChangeLog changeLog) {
         this.jdbcTemplate = jdbcTemplate;
         this.currentUser = currentUser;
+        this.changeLog = changeLog;
     }
 
     @Transactional
@@ -83,22 +85,32 @@ public class TaskService {
 
     @Transactional
     public TaskItem create(TaskCommand command, String idempotencyKey) {
+        return create(command, "OPEN", idempotencyKey, UUID.randomUUID().toString());
+    }
+
+    @Transactional
+    TaskItem createForSync(TaskCommand command, String status, String opId, String publicId) {
+        return create(command, status, opId, validUuid(publicId, "entityId"));
+    }
+
+    private TaskItem create(TaskCommand command, String status, String opKey, String publicId) {
         long userId = currentUser.id();
-        String opKey = requiredText(idempotencyKey, "Idempotency-Key", 120);
+        opKey = requiredText(opKey, "opId", 120);
         List<String> replay = jdbcTemplate.query("SELECT public_id FROM task WHERE user_id = ? AND client_op_key = ?",
                 (result, rowNum) -> result.getString(1), userId, opKey);
         if (!replay.isEmpty()) return taskForUser(userId, replay.get(0));
         ensureDefaults(userId);
         long listDatabaseId = resolveListId(userId, command == null ? null : command.listId());
         ValidatedTask values = validate(command, null);
-        String publicId = UUID.randomUUID().toString();
+        String normalizedStatus = enumValue(status, "OPEN", List.of("OPEN", "COMPLETED"), "status");
         try {
             jdbcTemplate.update("INSERT INTO task (public_id, user_id, list_id, title, description, status, priority, " +
-                            "start_at, due_at, all_day, timezone, duration_minutes, source, created_by, client_op_key) " +
-                            "VALUES (?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?, 'WEB', ?, ?)",
-                    publicId, userId, listDatabaseId, values.title(), values.description(), values.priority(),
+                            "start_at, due_at, all_day, timezone, duration_minutes, source, completed_at, created_by, client_op_key) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'WEB', ?, ?, ?)",
+                    publicId, userId, listDatabaseId, values.title(), values.description(), normalizedStatus, values.priority(),
                     timestamp(values.startAt()), timestamp(values.dueAt()), values.allDay(), values.timezone(),
-                    values.durationMinutes(), userId, opKey);
+                    values.durationMinutes(), "COMPLETED".equals(normalizedStatus) ? Timestamp.from(Instant.now()) : null,
+                    userId, opKey);
         } catch (DuplicateKeyException exception) {
             List<String> concurrent = jdbcTemplate.query(
                     "SELECT public_id FROM task WHERE user_id = ? AND client_op_key = ?",
@@ -106,39 +118,65 @@ public class TaskService {
             if (!concurrent.isEmpty()) return taskForUser(userId, concurrent.get(0));
             throw exception;
         }
-        return taskForUser(userId, publicId);
+        TaskItem created = taskForUser(userId, publicId);
+        changeLog.append(userId, opKey, publicId, "UPSERT", syncEntity(created, false));
+        return created;
     }
 
     @Transactional
     public TaskItem update(String publicId, TaskCommand command, String ifMatch) {
+        return update(publicId, command, null, ifMatch, UUID.randomUUID().toString());
+    }
+
+    @Transactional
+    TaskItem updateForSync(String publicId, TaskCommand command, String status, long revision, String opId) {
+        return update(publicId, command, status, String.valueOf(revision), opId);
+    }
+
+    private TaskItem update(String publicId, TaskCommand command, String status, String ifMatch, String opId) {
         long userId = currentUser.id();
         TaskItem before = taskForUser(userId, publicId);
         long expected = requiredRevision(ifMatch);
         if (before.revision() != expected) throw new ConflictException("任务版本已变化", before.revision());
         long listDatabaseId = resolveListId(userId, command == null ? before.listId() : command.listId());
         ValidatedTask values = validate(command, before);
-        int updated = jdbcTemplate.update("UPDATE task SET list_id = ?, title = ?, description = ?, priority = ?, " +
-                        "start_at = ?, due_at = ?, all_day = ?, timezone = ?, duration_minutes = ?, revision = revision + 1 " +
+        String normalizedStatus = status == null ? before.status()
+                : enumValue(status, before.status(), List.of("OPEN", "COMPLETED"), "status");
+        int updated = jdbcTemplate.update("UPDATE task SET list_id = ?, title = ?, description = ?, status = ?, priority = ?, " +
+                        "start_at = ?, due_at = ?, all_day = ?, timezone = ?, duration_minutes = ?, completed_at = ?, revision = revision + 1 " +
                         "WHERE public_id = ? AND user_id = ? AND deleted = FALSE AND revision = ?",
-                listDatabaseId, values.title(), values.description(), values.priority(), timestamp(values.startAt()),
+                listDatabaseId, values.title(), values.description(), normalizedStatus, values.priority(), timestamp(values.startAt()),
                 timestamp(values.dueAt()), values.allDay(), values.timezone(), values.durationMinutes(),
+                "COMPLETED".equals(normalizedStatus) ? timestamp(before.completedAt() == null
+                        ? Instant.now() : Instant.parse(before.completedAt())) : null,
                 validUuid(publicId, "publicId"), userId, expected);
         ensureUpdated(updated, userId, publicId);
-        return taskForUser(userId, publicId);
+        TaskItem changed = taskForUser(userId, publicId);
+        changeLog.append(userId, opId, publicId, "UPSERT", syncEntity(changed, false));
+        return changed;
     }
 
     @Transactional
     public TaskItem complete(String publicId, String ifMatch) {
-        return changeStatus(publicId, ifMatch, "COMPLETED");
+        return changeStatus(publicId, ifMatch, "COMPLETED", UUID.randomUUID().toString());
     }
 
     @Transactional
     public TaskItem reopen(String publicId, String ifMatch) {
-        return changeStatus(publicId, ifMatch, "OPEN");
+        return changeStatus(publicId, ifMatch, "OPEN", UUID.randomUUID().toString());
     }
 
     @Transactional
     public DeletedResource delete(String publicId, String ifMatch) {
+        return delete(publicId, ifMatch, UUID.randomUUID().toString());
+    }
+
+    @Transactional
+    DeletedResource deleteForSync(String publicId, long revision, String opId) {
+        return delete(publicId, String.valueOf(revision), opId);
+    }
+
+    private DeletedResource delete(String publicId, String ifMatch, String opId) {
         long userId = currentUser.id();
         TaskItem before = taskForUser(userId, publicId);
         long expected = requiredRevision(ifMatch);
@@ -147,7 +185,12 @@ public class TaskService {
                         "revision = revision + 1 WHERE public_id = ? AND user_id = ? AND deleted = FALSE AND revision = ?",
                 validUuid(publicId, "publicId"), userId, expected);
         ensureUpdated(updated, userId, publicId);
-        return new DeletedResource(publicId, expected + 1, true);
+        DeletedResource deleted = new DeletedResource(publicId, expected + 1, true);
+        changeLog.append(userId, opId, publicId, "DELETE", new TaskModels.SyncEntity(publicId,
+                before.listId(), before.title(), before.description(), before.status(), before.priority(),
+                before.startAt(), before.dueAt(), before.allDay(), before.timezone(), before.durationMinutes(),
+                before.source(), before.completedAt(), expected + 1, true));
+        return deleted;
     }
 
     @Transactional
@@ -160,7 +203,7 @@ public class TaskService {
                         result.getInt("week_start"), result.getString("timezone"), result.getLong("revision")), userId);
     }
 
-    private TaskItem changeStatus(String publicId, String ifMatch, String status) {
+    private TaskItem changeStatus(String publicId, String ifMatch, String status, String opId) {
         long userId = currentUser.id();
         TaskItem before = taskForUser(userId, publicId);
         long expected = requiredRevision(ifMatch);
@@ -170,7 +213,24 @@ public class TaskService {
                         ", revision = revision + 1 WHERE public_id = ? AND user_id = ? AND deleted = FALSE AND revision = ?",
                 status, validUuid(publicId, "publicId"), userId, expected);
         ensureUpdated(updated, userId, publicId);
-        return taskForUser(userId, publicId);
+        TaskItem changed = taskForUser(userId, publicId);
+        changeLog.append(userId, opId, publicId, "UPSERT", syncEntity(changed, false));
+        return changed;
+    }
+
+    TaskItem currentForSync(String publicId) {
+        return taskForUser(currentUser.id(), publicId);
+    }
+
+    boolean existsForAnotherUser(String publicId) {
+        return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM task WHERE public_id = ? AND user_id <> ?",
+                Long.class, validUuid(publicId, "entityId"), currentUser.id()) > 0;
+    }
+
+    static TaskModels.SyncEntity syncEntity(TaskItem item, boolean deleted) {
+        return new TaskModels.SyncEntity(item.publicId(), item.listId(), item.title(), item.description(), item.status(),
+                item.priority(), item.startAt(), item.dueAt(), item.allDay(), item.timezone(), item.durationMinutes(),
+                item.source(), item.completedAt(), item.revision(), deleted);
     }
 
     private void ensureDefaults(long userId) {

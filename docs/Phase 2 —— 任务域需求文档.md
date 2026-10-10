@@ -1,7 +1,7 @@
 # Phase 2 —— 任务域需求文档（滴答清单形态）
 
 > 状态日期：2026-10-09
-> 文档状态：**P2-I1 已完成**，待实施 P2-I2 核心 local-first
+> 文档状态：**P2-I2 已完成**，待实施 P2-I3 任务组织与多视图
 > 适用范围：MyWorkBoard 个人工作台（`wasd-debug/MyWorkBoard`）
 > 上游依据：`docs/ARCHITECTURE.md` 第 10 章 Phase 2、`docs/overview.md`、`docs/后续特性路线图.md`
 > 目标：把滴答清单（TickTick）的任务管理能力完整复刻为独立 `task` 域，嵌入现有个人工作台，并沿用仓库既有的 v1 契约、local-first 同步、受控写入和阶段门禁。
@@ -63,7 +63,7 @@
 | 认证与用户隔离   | Spring Security + JWT access（15min，内存）+ HttpOnly refresh cookie（30 天，MySQL 持久化轮换）                                               | 任务域所有接口继承同一套鉴权，数据按 `user_id` 隔离                                                                     |
 | 统一响应      | `ApiResponse<T>` 成功体；RFC 7807 `ApiProblem`（`code`/`traceId`/`path`/`timestamp`）                                                 | 任务域 Controller 沿用                                                                                   |
 | DTO 约定    | 后端使用 record/enum DTO                                                                                                            | 任务域沿用                                                                                               |
-| 数据库迁移     | Flyway 已到 V30，已建立 I1 三张任务表                                                                                                     | 后续任务结构继续新增迁移，禁止改写已应用 V30                                                                          |
+| 数据库迁移     | Flyway 已到 V31，已建立 I1 三张任务表与 I2 用户级同步 oplog                                                                                          | 后续任务结构继续新增迁移，禁止改写已应用 V30/V31                                                                      |
 | 模块边界      | Maven 物理模块 `platform/identity/worktime/ledger/task/ai`，Spring Modulith + ArchUnit 校验                                                | `task` 仅依赖 platform/identity，不依赖 worktime/ledger                                                  |
 | 前端栈       | Vue 3 + Vite + Pinia + Vue Router + Tailwind CSS 4 + Reka UI + Lucide + ECharts                                                 | 任务页面沿用；日历需引入 FullCalendar                                                                           |
 | API 客户端   | 运行时 OpenAPI 生成 `typescript-axios`，集中在 `frontend/packages/api-client`，应用只经 transport + 领域 facade                                 | 新增 `task` facade                                                                                    |

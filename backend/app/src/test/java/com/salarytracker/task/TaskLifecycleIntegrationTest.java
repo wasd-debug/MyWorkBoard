@@ -9,6 +9,7 @@ import com.salarytracker.task.TaskModels.TaskItem;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -61,7 +62,7 @@ class TaskLifecycleIntegrationTest extends MySqlIntegrationTestSupport {
     private TaskService service(long userId) {
         CurrentUserResolver currentUser = mock(CurrentUserResolver.class);
         when(currentUser.id()).thenReturn(userId);
-        return new TaskService(jdbc, currentUser);
+        return new TaskService(jdbc, currentUser, new TaskChangeLog(jdbc, new ObjectMapper().findAndRegisterModules()));
     }
 
     private long createUser(String prefix) {

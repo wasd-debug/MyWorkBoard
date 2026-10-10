@@ -8,6 +8,9 @@ import com.salarytracker.task.TaskModels.TaskCommand;
 import com.salarytracker.task.TaskModels.TaskItem;
 import com.salarytracker.task.TaskModels.TaskList;
 import com.salarytracker.task.TaskModels.TaskPage;
+import com.salarytracker.task.TaskModels.SyncOperation;
+import com.salarytracker.task.TaskModels.SyncPullResponse;
+import com.salarytracker.task.TaskModels.SyncPushResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
@@ -30,9 +33,11 @@ import java.util.List;
 @Tag(name = "Tasks")
 public class TaskController {
     private final TaskService taskService;
+    private final TaskSyncService taskSyncService;
 
-    public TaskController(TaskService taskService) {
+    public TaskController(TaskService taskService, TaskSyncService taskSyncService) {
         this.taskService = taskService;
+        this.taskSyncService = taskSyncService;
     }
 
     @GetMapping("/lists")
@@ -109,5 +114,20 @@ public class TaskController {
     @Operation(operationId = "getTaskSettings")
     public ApiResponse<Settings> settings() {
         return ApiResponse.ok(taskService.settings());
+    }
+
+    @PostMapping(value = "/sync/push", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "pushTaskSync")
+    public ApiResponse<SyncPushResponse> syncPush(@RequestBody List<SyncOperation> operations) {
+        return ApiResponse.ok(taskSyncService.push(operations));
+    }
+
+    @GetMapping("/sync/pull")
+    @PreAuthorize("hasAuthority('task:read')")
+    @Operation(operationId = "pullTaskSync")
+    public ApiResponse<SyncPullResponse> syncPull(@RequestParam(defaultValue = "0") long cursor,
+                                                  @RequestParam(defaultValue = "200") int limit) {
+        return ApiResponse.ok(taskSyncService.pull(cursor, limit));
     }
 }

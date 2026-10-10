@@ -45,6 +45,14 @@ test('工厂允许为不同用户指定独立数据库名', async () => {
   assert.notEqual(alice.dbName, bob.dbName)
 })
 
+test('任务工厂使用独立存储且保留账本工厂行为', async () => {
+  const { createTaskSyncEngine } = await import('./index.js')
+  const engine = createTaskSyncEngine({ dbName: 'tasks:id-1' })
+  await engine.put('task', { id: 'task-1', title: '本地任务' }, { bookId: 'tasks' })
+  assert.equal((await engine.list('task', { bookId: 'tasks' }))[0].title, '本地任务')
+  assert.deepEqual(engine.stores, ['task-lists', 'tasks'])
+})
+
 test('写入前清理嵌套展示对象中的不可克隆值', async () => {
   const engine = new SyncEngine()
   const row = await engine.put('category', {
@@ -157,4 +165,26 @@ test('服务端校验拒绝移出待同步队列并保留可定位信息', async
   assert.equal(exported.operations[0].opId, 'invalid-budget')
   assert.equal(exported.rejections[0].status, 'REJECTED')
   assert.equal(exported.rejections[0].message, '预算金额必须大于 0')
+})
+
+test('冲突操作后续应用成功会清理旧冲突记录', async () => {
+  let round = 0
+  const engine = new SyncEngine({
+    transport: {
+      push: async (_bookId, operations) => ({ results: operations.map(operation => ({
+        opId: operation.opId,
+        entityType: operation.entityType,
+        entityId: operation.entityId,
+        status: round++ === 0 ? 'CONFLICT' : 'APPLIED',
+        serverRevision: 2,
+        entity: { ...operation.payload, revision: 3 }
+      })) }),
+      pull: async (_bookId, cursor) => ({ cursor, operations: [] })
+    }
+  })
+  await engine.put('transaction', { id: 'a', amount: 40, revision: 1 }, { bookId: 'book-a', opId: 'op-a' })
+  await engine.sync('book-a')
+  assert.equal((await engine.conflicts('book-a')).length, 1)
+  await engine.sync('book-a')
+  assert.equal((await engine.conflicts('book-a')).length, 0)
 })

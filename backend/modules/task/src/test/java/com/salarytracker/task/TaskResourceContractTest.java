@@ -14,10 +14,13 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -42,6 +45,9 @@ class TaskResourceContractTest {
 
     @MockBean
     private TaskService taskService;
+
+    @MockBean
+    private TaskSyncService taskSyncService;
 
     @Test
     void rejectsAnonymousReads() throws Exception {
@@ -93,6 +99,19 @@ class TaskResourceContractTest {
 
         verify(taskService).create(any(TaskCommand.class), eq("create-1"));
         verify(taskService).complete(TASK_ID, "2");
+    }
+
+    @Test
+    @WithMockUser(authorities = {"task:read", "task:write"})
+    void exposesUserScopedSyncEndpoints() throws Exception {
+        when(taskSyncService.push(anyList())).thenReturn(new TaskModels.SyncPushResponse(List.of(), 0, 0));
+        when(taskSyncService.pull(0, 20)).thenReturn(new TaskModels.SyncPullResponse(List.of(), 0, false, 0));
+
+        mockMvc.perform(post("/api/v1/tasks/sync/push").with(csrf()).contentType("application/json")
+                        .content("[]"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.applied").value(0));
+        mockMvc.perform(get("/api/v1/tasks/sync/pull").param("cursor", "0").param("limit", "20"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.hasMore").value(false));
     }
 
     private TaskItem item(String status, long revision) {

@@ -14,6 +14,10 @@ export function ledgerDatabaseName(scope) {
   return scope ? `salary-tracker-sync-v2:${scope}` : 'salary-tracker-sync-v2:anonymous'
 }
 
+export function taskDatabaseName(scope) {
+  return scope ? `salary-tracker-task-sync-v1:${scope}` : 'salary-tracker-task-sync-v1:anonymous'
+}
+
 export function setActiveAccountScope(scope) {
   if (typeof localStorage === 'undefined') return
   if (scope) localStorage.setItem(ACTIVE_SCOPE_KEY, scope)

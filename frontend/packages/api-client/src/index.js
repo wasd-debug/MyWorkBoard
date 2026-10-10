@@ -206,6 +206,8 @@ export const apiLedgerAiImagePreview = async (bookId, file) => data(await ledger
 export const apiLedgerAiConfirm = async (bookId, draftId, transactions, idempotencyKey) => data(await ledger.confirmLedgerAiDraft({ bookId, draftId, aiConfirmCommand: { transactions }, idempotencyKey }))
 export const apiPushLedgerSync = async (bookId, operations) => data(await ledger.pushLedgerSync({ bookId, syncOperationRequest: operations }))
 export const apiPullLedgerSync = async (bookId, cursor = 0) => data(await ledger.pullLedgerSync({ bookId, cursor }))
+export const apiPushTaskSync = async operations => data(await tasks.pushTaskSync({ taskSyncOperation: operations }))
+export const apiPullTaskSync = async (cursor = 0, limit = 200) => data(await tasks.pullTaskSync({ cursor, limit }))
 
 export async function apiImportLedgerPreview(bookId, file, template = 'AUTO', onUploadProgress) {
   return data(await ledger.previewLedgerImport({ bookId, file, template }, {

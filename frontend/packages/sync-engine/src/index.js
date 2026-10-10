@@ -12,10 +12,11 @@ const DEFAULT_STORES = [
 ]
 
 export class SyncEngine {
-  constructor({ dbName = DEFAULT_DB, stores = DEFAULT_STORES, transport = {} } = {}) {
+  constructor({ dbName = DEFAULT_DB, stores = DEFAULT_STORES, transport = {}, entityPrefix = 'ledger' } = {}) {
     this.dbName = dbName
     this.stores = stores
     this.transport = transport
+    this.entityPrefix = entityPrefix
     this.memory = new Map([...stores, 'oplog', 'meta', 'conflicts', 'rejected'].map(store => [store, new Map()]))
     this.dbPromise = null
   }
@@ -144,6 +145,7 @@ export class SyncEngine {
         if (!operation) continue
         if (result.status === 'APPLIED' || result.status === 'DUPLICATE') {
           await this.removeStore('oplog', operation.opId)
+          await this.removeStore('conflicts', operation.opId)
           if (result.entity) {
             await this.merge({ ...result, operation: 'UPSERT', payload: result.entity }, bookId)
           }
@@ -308,6 +310,10 @@ export class SyncEngine {
 
   storeName(entityType) {
     const normalized = singular(entityType)
+    if (this.entityPrefix === 'task') {
+      if (normalized === 'task-list') return 'task-lists'
+      return 'tasks'
+    }
     if (normalized === 'category') return 'ledger-categories'
     return `ledger-${normalized}s`
   }
@@ -434,4 +440,13 @@ function randomId() {
 export function createLedgerSyncEngine(options = {}) {
   if ('transport' in options || 'dbName' in options || 'stores' in options) return new SyncEngine(options)
   return new SyncEngine({ transport: options })
+}
+
+export function createTaskSyncEngine(options = {}) {
+  return new SyncEngine({
+    dbName: options.dbName || 'salary-tracker-task-sync:anonymous',
+    stores: options.stores || ['task-lists', 'tasks'],
+    transport: options.transport || {},
+    entityPrefix: 'task'
+  })
 }
