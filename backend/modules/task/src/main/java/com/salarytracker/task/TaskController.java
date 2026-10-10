@@ -8,6 +8,9 @@ import com.salarytracker.task.TaskModels.TaskCommand;
 import com.salarytracker.task.TaskModels.TaskItem;
 import com.salarytracker.task.TaskModels.TaskList;
 import com.salarytracker.task.TaskModels.TaskPage;
+import com.salarytracker.task.TaskModels.TaskListCommand;
+import com.salarytracker.task.TaskModels.TaskTag;
+import com.salarytracker.task.TaskModels.TaskTagCommand;
 import com.salarytracker.task.TaskModels.SyncOperation;
 import com.salarytracker.task.TaskModels.SyncPullResponse;
 import com.salarytracker.task.TaskModels.SyncPushResponse;
@@ -47,14 +50,85 @@ public class TaskController {
         return ApiResponse.ok(taskService.listLists());
     }
 
+    @GetMapping("/lists/trash")
+    @PreAuthorize("hasAuthority('task:read')")
+    @Operation(operationId = "listDeletedTaskLists")
+    public ApiResponse<List<TaskList>> deletedLists() {
+        return ApiResponse.ok(taskService.listDeletedLists());
+    }
+
+    @PostMapping(value = "/lists", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "createTaskList")
+    public ApiResponse<TaskList> createList(@RequestBody TaskListCommand body,
+                                            @RequestHeader("Idempotency-Key") String idempotencyKey) {
+        return ApiResponse.ok(taskService.createList(body, idempotencyKey));
+    }
+
+    @PutMapping(value = "/lists/{publicId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "updateTaskList")
+    public ApiResponse<TaskList> updateList(@PathVariable String publicId, @RequestBody TaskListCommand body,
+                                            @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(taskService.updateList(publicId, body, ifMatch));
+    }
+
+    @DeleteMapping("/lists/{publicId}")
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "deleteTaskList")
+    public ApiResponse<DeletedResource> deleteList(@PathVariable String publicId,
+                                                   @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(taskService.deleteList(publicId, ifMatch));
+    }
+
+    @PostMapping("/lists/{publicId}/restore")
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "restoreTaskList")
+    public ApiResponse<TaskList> restoreList(@PathVariable String publicId,
+                                             @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(taskService.restoreList(publicId, ifMatch));
+    }
+
+    @GetMapping("/tags")
+    @PreAuthorize("hasAuthority('task:read')")
+    @Operation(operationId = "listTaskTags")
+    public ApiResponse<List<TaskTag>> tags() {
+        return ApiResponse.ok(taskService.listTags());
+    }
+
+    @PostMapping(value = "/tags", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "createTaskTag")
+    public ApiResponse<TaskTag> createTag(@RequestBody TaskTagCommand body) {
+        return ApiResponse.ok(taskService.createTag(body));
+    }
+
+    @PutMapping(value = "/tags/{publicId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "updateTaskTag")
+    public ApiResponse<TaskTag> updateTag(@PathVariable String publicId, @RequestBody TaskTagCommand body,
+                                          @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(taskService.updateTag(publicId, body, ifMatch));
+    }
+
+    @DeleteMapping("/tags/{publicId}")
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "deleteTaskTag")
+    public ApiResponse<DeletedResource> deleteTag(@PathVariable String publicId,
+                                                  @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(taskService.deleteTag(publicId, ifMatch));
+    }
+
     @GetMapping
     @PreAuthorize("hasAuthority('task:read')")
     @Operation(operationId = "listTasks")
     public ApiResponse<TaskPage> tasks(@RequestParam(required = false) String listId,
                                       @RequestParam(required = false) String status,
+                                      @RequestParam(required = false) String view,
+                                      @RequestParam(required = false) String tagId,
                                       @RequestParam(defaultValue = "0") int page,
                                       @RequestParam(defaultValue = "50") int size) {
-        return ApiResponse.ok(taskService.listTasks(listId, status, page, size));
+        return ApiResponse.ok(taskService.listTasks(listId, status, view, tagId, page, size));
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -98,6 +172,24 @@ public class TaskController {
     public ApiResponse<TaskItem> reopen(@PathVariable String publicId,
                                         @RequestHeader("If-Match") String ifMatch) {
         return ApiResponse.ok(taskService.reopen(publicId, ifMatch));
+    }
+
+    @PostMapping("/{publicId}/restore")
+    @PreAuthorize("hasAuthority('task:write')")
+    @Audit(module = "task", action = "task.restore", targetType = "task")
+    @Operation(operationId = "restoreTask")
+    public ApiResponse<TaskItem> restore(@PathVariable String publicId,
+                                         @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(taskService.restore(publicId, ifMatch));
+    }
+
+    @DeleteMapping("/trash/{publicId}")
+    @PreAuthorize("hasAuthority('task:write')")
+    @Audit(module = "task", action = "task.purge", targetType = "task")
+    @Operation(operationId = "purgeTask")
+    public ApiResponse<DeletedResource> purge(@PathVariable String publicId,
+                                              @RequestParam String confirmation) {
+        return ApiResponse.ok(taskService.purge(publicId, confirmation));
     }
 
     @DeleteMapping("/{publicId}")

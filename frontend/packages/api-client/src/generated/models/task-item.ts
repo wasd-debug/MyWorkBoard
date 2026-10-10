@@ -13,6 +13,9 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { TaskChecklistItem } from './task-checklist-item.ts';
 
 export interface TaskItem {
     'publicId'?: string;
@@ -29,4 +32,11 @@ export interface TaskItem {
     'source'?: string;
     'completedAt'?: string;
     'revision'?: number;
+    'parentId'?: string;
+    'tagIds'?: Array<string>;
+    'checklist'?: Array<TaskChecklistItem>;
+    'completedSubtasks'?: number;
+    'totalSubtasks'?: number;
+    'deleted'?: boolean;
+    'deletedAt'?: string;
 }

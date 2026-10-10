@@ -13,14 +13,11 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { TaskTag } from './task-tag.ts';
 
-export interface TaskList {
-    'publicId'?: string;
-    'name'?: string;
-    'color'?: string;
-    'icon'?: string;
-    'systemKey'?: string;
-    'sortOrder'?: number;
-    'archived'?: boolean;
-    'revision'?: number;
+export interface ApiResponseTaskTag {
+    'data'?: TaskTag;
+    'traceId'?: string;
 }

@@ -13,6 +13,9 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { TaskChecklistCommand } from './task-checklist-command.ts';
 
 export interface TaskSyncPayload {
     'id'?: string;
@@ -27,4 +30,12 @@ export interface TaskSyncPayload {
     'timezone'?: string;
     'durationMinutes'?: number;
     'revision'?: number;
+    'parentId'?: string;
+    'tagIds'?: Array<string>;
+    'checklist'?: Array<TaskChecklistCommand>;
+    'name'?: string;
+    'color'?: string;
+    'icon'?: string;
+    'sortOrder'?: number;
+    'archived'?: boolean;
 }

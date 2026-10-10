@@ -9,13 +9,43 @@ public final class TaskModels {
     }
 
     @Schema(name = "TaskList")
-    public record TaskList(String publicId, String name, String systemKey, int sortOrder, long revision) {
+    public record TaskList(String publicId, String name, String color, String icon, String systemKey,
+                           int sortOrder, boolean archived, long revision) {
+    }
+
+    @Schema(name = "TaskListCommand")
+    public record TaskListCommand(String name, String color, String icon, Integer sortOrder, Boolean archived) {
+    }
+
+    @Schema(name = "TaskTag")
+    public record TaskTag(String publicId, String parentId, String name, String color, int sortOrder,
+                          long revision) {
+    }
+
+    @Schema(name = "TaskTagCommand")
+    public record TaskTagCommand(String parentId, String name, String color, Integer sortOrder) {
+    }
+
+    @Schema(name = "TaskChecklistItem")
+    public record ChecklistItem(String publicId, String title, boolean completed, int sortOrder, long revision) {
+    }
+
+    @Schema(name = "TaskChecklistCommand")
+    public record ChecklistCommand(String publicId, String title, Boolean completed, Integer sortOrder) {
     }
 
     @Schema(name = "TaskItem")
     public record TaskItem(String publicId, String listId, String title, String description, String status,
                            String priority, String startAt, String dueAt, boolean allDay, String timezone,
-                           Integer durationMinutes, String source, String completedAt, long revision) {
+                           Integer durationMinutes, String source, String completedAt, long revision,
+                           String parentId, List<String> tagIds, List<ChecklistItem> checklist,
+                           int completedSubtasks, int totalSubtasks, boolean deleted, String deletedAt) {
+        public TaskItem(String publicId, String listId, String title, String description, String status,
+                        String priority, String startAt, String dueAt, boolean allDay, String timezone,
+                        Integer durationMinutes, String source, String completedAt, long revision) {
+            this(publicId, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
+                    durationMinutes, source, completedAt, revision, null, List.of(), List.of(), 0, 0, false, null);
+        }
     }
 
     @Schema(name = "TaskPage")
@@ -25,7 +55,13 @@ public final class TaskModels {
     @Schema(name = "TaskCommand")
     public record TaskCommand(String listId, String title, String description, String priority,
                               String startAt, String dueAt, Boolean allDay, String timezone,
-                              Integer durationMinutes) {
+                              Integer durationMinutes, String parentId, List<String> tagIds,
+                              List<ChecklistCommand> checklist) {
+        public TaskCommand(String listId, String title, String description, String priority, String startAt,
+                           String dueAt, Boolean allDay, String timezone, Integer durationMinutes) {
+            this(listId, title, description, priority, startAt, dueAt, allDay, timezone, durationMinutes,
+                    null, null, null);
+        }
     }
 
     @Schema(name = "TaskDeletedResource")
@@ -36,14 +72,22 @@ public final class TaskModels {
     public record Settings(String defaultListId, String defaultView, int weekStart, String timezone, long revision) {
     }
 
-    public enum SyncAction { UPSERT, DELETE }
+    public enum SyncAction { UPSERT, DELETE, PURGE }
 
     public enum SyncStatus { APPLIED, DUPLICATE, CONFLICT, FORBIDDEN, REJECTED }
 
     @Schema(name = "TaskSyncPayload")
     public record SyncPayload(String id, String listId, String title, String description, String status,
                               String priority, String startAt, String dueAt, Boolean allDay, String timezone,
-                              Integer durationMinutes, Long revision) {
+                              Integer durationMinutes, Long revision, String parentId, List<String> tagIds,
+                              List<ChecklistCommand> checklist, String name, String color, String icon,
+                              Integer sortOrder, Boolean archived) {
+        public SyncPayload(String id, String listId, String title, String description, String status,
+                           String priority, String startAt, String dueAt, Boolean allDay, String timezone,
+                           Integer durationMinutes, Long revision) {
+            this(id, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
+                    durationMinutes, revision, null, null, null, null, null, null, null, null);
+        }
     }
 
     @Schema(name = "TaskSyncOperation")
@@ -55,7 +99,17 @@ public final class TaskModels {
     public record SyncEntity(String id, String listId, String title, String description, String status,
                              String priority, String startAt, String dueAt, boolean allDay, String timezone,
                              Integer durationMinutes, String source, String completedAt, long revision,
-                             boolean deleted) {
+                             boolean deleted, String parentId, List<String> tagIds, List<ChecklistItem> checklist,
+                             String deletedAt, String name, String color, String icon, String systemKey,
+                             Integer sortOrder, Boolean archived) {
+        public SyncEntity(String id, String listId, String title, String description, String status,
+                          String priority, String startAt, String dueAt, boolean allDay, String timezone,
+                          Integer durationMinutes, String source, String completedAt, long revision,
+                          boolean deleted) {
+            this(id, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
+                    durationMinutes, source, completedAt, revision, deleted, null, List.of(), List.of(), null,
+                    null, null, null, null, null, null);
+        }
     }
 
     @Schema(name = "TaskSyncOperationResult")

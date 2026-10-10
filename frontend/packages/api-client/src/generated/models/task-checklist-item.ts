@@ -14,13 +14,10 @@
 
 
 
-export interface TaskList {
+export interface TaskChecklistItem {
     'publicId'?: string;
-    'name'?: string;
-    'color'?: string;
-    'icon'?: string;
-    'systemKey'?: string;
+    'title'?: string;
+    'completed'?: boolean;
     'sortOrder'?: number;
-    'archived'?: boolean;
     'revision'?: number;
 }

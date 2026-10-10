@@ -54,3 +54,42 @@ test('task getters separate open and completed rows', () => {
   assert.deepEqual(store.openTasks.map(item => item.publicId), ['1'])
   assert.deepEqual(store.completedTasks.map(item => item.publicId), ['2'])
 })
+
+test('task getters retain deleted rows for the trash view', () => {
+  setActivePinia(createPinia())
+  const store = useTasksStore()
+  store.tasks = [{ publicId: 'open', status: 'OPEN', deleted: false },
+    { publicId: 'trash', status: 'OPEN', deleted: true }]
+  assert.deepEqual(store.openTasks.map(item => item.publicId), ['open'])
+  assert.deepEqual(store.trashedTasks.map(item => item.publicId), ['trash'])
+})
+
+test('offline lists and tags use distinct projections and oplog entries', async () => {
+  offline()
+  setActivePinia(createPinia())
+  const store = useTasksStore()
+  await store.switchUser({ id: 'offline-organization' })
+  await store.init()
+  await store.createList({ name: '离线清单' })
+  await store.createTag({ name: '离线标签' })
+  assert.equal(store.lists[0].name, '离线清单')
+  assert.equal(store.tags[0].name, '离线标签')
+  assert.equal(store.pending, 2)
+  const list = store.lists[0]
+  await store.updateList(list, { name: '离线清单改名' })
+  await store.updateList(store.lists[0], { color: '#123456' })
+  await store.updateTag(store.tags[0], { name: '离线标签改名' })
+  assert.equal(store.pending, 2)
+  assert.equal(store.lists[0].name, '离线清单改名')
+  await store.deleteList(list)
+  assert.equal(store.lists.length, 0)
+  assert.equal(store.pending, 1)
+  assert.equal(store.deletedLists.length, 0)
+  store.deletedLists = []
+  await store.hydrate()
+  assert.equal(store.deletedLists.length, 0)
+  await store.deleteTag(store.tags[0])
+  assert.equal(store.tags.length, 0)
+  assert.equal(store.pending, 0)
+  await assert.rejects(store.restore({ publicId: 'deleted' }), /需要联网/)
+})

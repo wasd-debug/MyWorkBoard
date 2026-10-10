@@ -16,10 +16,14 @@ class TaskChangeLog {
     }
 
     void append(long userId, String opId, String entityId, String operation, Object payload) {
+        append(userId, opId, "task", entityId, operation, payload);
+    }
+
+    void append(long userId, String opId, String entityType, String entityId, String operation, Object payload) {
         try {
             jdbc.update("INSERT INTO task_sync_oplog(user_id,op_id,entity_type,entity_id,operation,payload_json) " +
-                            "VALUES(?,?,'task',?,?,?)",
-                    userId, opId, entityId, operation, mapper.writeValueAsString(payload));
+                            "VALUES(?,?,?,?,?,?)",
+                    userId, opId, entityType, entityId, operation, mapper.writeValueAsString(payload));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("任务同步数据序列化失败", exception);
         }

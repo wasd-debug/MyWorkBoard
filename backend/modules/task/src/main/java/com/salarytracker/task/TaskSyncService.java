@@ -16,6 +16,8 @@ import com.salarytracker.task.TaskModels.SyncPushResponse;
 import com.salarytracker.task.TaskModels.SyncStatus;
 import com.salarytracker.task.TaskModels.TaskCommand;
 import com.salarytracker.task.TaskModels.TaskItem;
+import com.salarytracker.task.TaskModels.TaskListCommand;
+import com.salarytracker.task.TaskModels.TaskTagCommand;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -74,17 +76,24 @@ public class TaskSyncService {
         String opId = operation == null ? null : operation.opId();
         String entityId = operation == null ? null : first(operation.entityId(),
                 operation.payload() == null ? null : operation.payload().id());
-        if (!validId(opId, 120)) return result(opId, entityId, SyncStatus.REJECTED, null, null,
+        String entityType = operation == null ? "task" : operation.entityType();
+        if (!validId(opId, 120)) return result(opId, entityType, entityId, SyncStatus.REJECTED, null, null,
                 "opId 必填且长度不能超过 120");
-        if (!"task".equals(operation.entityType())) return result(opId, entityId, SyncStatus.REJECTED,
-                null, null, "entityType 仅支持 task");
-        if (!validUuid(entityId)) return result(opId, entityId, SyncStatus.REJECTED,
+        if (entityType == null || !List.of("task", "task-list", "task-tag").contains(entityType)) return result(opId,
+                operation == null ? "task" : operation.entityType(), entityId, SyncStatus.REJECTED,
+                null, null, "entityType 不支持");
+        if (!validUuid(entityId)) return result(opId, entityType, entityId, SyncStatus.REJECTED,
                 null, null, "entityId 必须是 UUID");
+        if (operation.operation() == null || operation.operation() == SyncAction.PURGE) {
+            return result(opId, entityType, entityId, SyncStatus.REJECTED, null, null, "operation 不支持");
+        }
         if (jdbc.queryForObject("SELECT COUNT(*) FROM task_sync_oplog WHERE user_id=? AND op_id=?",
                 Long.class, currentUser.id(), opId) > 0) {
-            return result(opId, entityId, SyncStatus.DUPLICATE, null, null, null);
+            return result(opId, operation.entityType(), entityId, SyncStatus.DUPLICATE, null, null, null);
         }
         try {
+            if ("task-list".equals(operation.entityType())) return applyList(operation, entityId);
+            if ("task-tag".equals(operation.entityType())) return applyTag(operation, entityId);
             TaskItem current = current(entityId);
             long baseRevision = operation.baseRevision() == null ? 0 : operation.baseRevision();
             if (operation.operation() == SyncAction.DELETE) {
@@ -92,43 +101,103 @@ public class TaskSyncService {
                     return inaccessible(opId, entityId, "任务不存在");
                 }
                 tasks.deleteForSync(entityId, baseRevision, opId);
-                SyncEntity deleted = new SyncEntity(entityId, current.listId(), current.title(), current.description(),
-                        current.status(), current.priority(), current.startAt(), current.dueAt(), current.allDay(),
-                        current.timezone(), current.durationMinutes(), current.source(), current.completedAt(),
-                        baseRevision + 1, true);
+                SyncEntity deleted = tasks.deletedEntityForSync(entityId);
                 return result(opId, entityId, SyncStatus.APPLIED, deleted, null, null);
             }
             SyncPayload payload = operation.payload();
             if (payload == null) throw new IllegalArgumentException("payload 必填");
+            if (current == null && (baseRevision > 0 || tasks.existsForAnotherUser(entityId))) return inaccessible(opId, entityId, "任务不存在或已删除，请刷新垃圾桶");
             TaskCommand command = new TaskCommand(payload.listId(), payload.title(), payload.description(),
                     payload.priority(), payload.startAt(), payload.dueAt(), payload.allDay(), payload.timezone(),
-                    payload.durationMinutes());
+                    payload.durationMinutes(), payload.parentId(), payload.tagIds(), payload.checklist());
             TaskItem saved = current == null
                     ? tasks.createForSync(command, payload.status(), opId, entityId)
                     : tasks.updateForSync(entityId, command, payload.status(), baseRevision, opId);
             return result(opId, entityId, SyncStatus.APPLIED, TaskService.syncEntity(saved, false), null, null);
         } catch (ConflictException exception) {
+            if ("task-list".equals(operation.entityType())) {
+                var server = currentList(entityId);
+                return new SyncOperationResult(opId, "task-list", entityId, SyncStatus.CONFLICT, null,
+                        exception.getServerRevision(), server == null ? null : TaskService.syncEntity(server, false),
+                        List.of(), exception.getMessage());
+            }
+            if ("task-tag".equals(operation.entityType())) {
+                var server = currentTag(entityId);
+                return new SyncOperationResult(opId, "task-tag", entityId, SyncStatus.CONFLICT, null,
+                        exception.getServerRevision(), server == null ? null : TaskService.syncEntity(server, false),
+                        List.of(), exception.getMessage());
+            }
             TaskItem server = current(entityId);
             return new SyncOperationResult(opId, "task", entityId, SyncStatus.CONFLICT, null,
                     exception.getServerRevision(), server == null ? null : TaskService.syncEntity(server, false),
                     conflictFields(operation.payload(), server), exception.getMessage());
         } catch (NotFoundException exception) {
-            return inaccessible(opId, entityId, exception.getMessage());
+            return "task".equals(entityType) ? inaccessible(opId, entityId, exception.getMessage())
+                    : inaccessible(opId, entityType, entityId, exception.getMessage());
         } catch (DuplicateKeyException exception) {
             if (jdbc.queryForObject("SELECT COUNT(*) FROM task_sync_oplog WHERE user_id=? AND op_id=?",
                     Long.class, currentUser.id(), opId) > 0) {
-                return result(opId, entityId, SyncStatus.DUPLICATE, null, null, null);
+                return result(opId, operation.entityType(), entityId, SyncStatus.DUPLICATE, null, null, null);
             }
-            return result(opId, entityId, SyncStatus.REJECTED, null, null, "任务标识或操作已存在");
+            return result(opId, entityType, entityId, SyncStatus.REJECTED, null, null, "资源标识、名称或操作已存在");
         } catch (IllegalArgumentException exception) {
-            return result(opId, entityId, SyncStatus.REJECTED, null, null, exception.getMessage());
+            return result(opId, entityType, entityId, SyncStatus.REJECTED, null, null, exception.getMessage());
         }
+    }
+
+    private SyncOperationResult applyList(SyncOperation operation, String entityId) {
+        var current = currentList(entityId);
+        long base = operation.baseRevision() == null ? 0 : operation.baseRevision();
+        if (operation.operation() == SyncAction.DELETE) {
+            if (current == null) return inaccessible(operation.opId(), "task-list", entityId, "任务清单不存在");
+            tasks.deleteListForSync(entityId, base, operation.opId());
+            return result(operation.opId(), "task-list", entityId, SyncStatus.APPLIED,
+                    TaskService.syncEntity(current, true), null, null);
+        }
+        SyncPayload payload = operation.payload();
+        if (payload == null) throw new IllegalArgumentException("payload 必填");
+        if (current == null && (base > 0 || tasks.listExistsForAnotherUser(entityId))) return inaccessible(operation.opId(), "task-list", entityId, "清单不存在或已删除");
+        TaskListCommand command = new TaskListCommand(payload.name(), payload.color(), payload.icon(),
+                payload.sortOrder(), payload.archived());
+        var saved = current == null ? tasks.createListForSync(command, entityId, operation.opId())
+                : tasks.updateListForSync(entityId, command, base, operation.opId());
+        return result(operation.opId(), "task-list", entityId, SyncStatus.APPLIED,
+                TaskService.syncEntity(saved, false), null, null);
+    }
+
+    private SyncOperationResult applyTag(SyncOperation operation, String entityId) {
+        var current = currentTag(entityId);
+        long base = operation.baseRevision() == null ? 0 : operation.baseRevision();
+        if (operation.operation() == SyncAction.DELETE) {
+            if (current == null) return inaccessible(operation.opId(), "task-tag", entityId, "任务标签不存在");
+            tasks.deleteTagForSync(entityId, base, operation.opId());
+            return result(operation.opId(), "task-tag", entityId, SyncStatus.APPLIED,
+                    TaskService.syncEntity(current, true), null, null);
+        }
+        SyncPayload payload = operation.payload();
+        if (payload == null) throw new IllegalArgumentException("payload 必填");
+        if (current == null && (base > 0 || tasks.tagExistsForAnotherUser(entityId))) return inaccessible(operation.opId(), "task-tag", entityId, "标签不存在或已删除");
+        TaskTagCommand command = new TaskTagCommand(payload.parentId(), payload.name(), payload.color(), payload.sortOrder());
+        var saved = current == null ? tasks.createTagForSync(command, entityId, operation.opId())
+                : tasks.updateTagForSync(entityId, command, base, operation.opId());
+        return result(operation.opId(), "task-tag", entityId, SyncStatus.APPLIED,
+                TaskService.syncEntity(saved, false), null, null);
     }
 
     private SyncOperationResult inaccessible(String opId, String entityId, String message) {
         SyncStatus status = tasks.existsForAnotherUser(entityId) ? SyncStatus.FORBIDDEN : SyncStatus.REJECTED;
         return result(opId, entityId, status, null, null, message);
     }
+
+    private SyncOperationResult inaccessible(String opId, String entityType, String entityId, String message) {
+        boolean foreign = "task-list".equals(entityType) ? tasks.listExistsForAnotherUser(entityId)
+                : tasks.tagExistsForAnotherUser(entityId);
+        return result(opId, entityType, entityId, foreign ? SyncStatus.FORBIDDEN : SyncStatus.REJECTED,
+                null, null, message);
+    }
+
+    private TaskModels.TaskList currentList(String entityId) { try { return tasks.currentListForSync(entityId); } catch (NotFoundException exception) { return null; } }
+    private TaskModels.TaskTag currentTag(String entityId) { try { return tasks.currentTagForSync(entityId); } catch (NotFoundException exception) { return null; } }
 
     private TaskItem current(String entityId) {
         try {
@@ -156,7 +225,12 @@ public class TaskSyncService {
 
     private SyncOperationResult result(String opId, String entityId, SyncStatus status, SyncEntity entity,
                                        Long serverRevision, String message) {
-        return new SyncOperationResult(opId, "task", entityId, status, entity, serverRevision,
+        return result(opId, "task", entityId, status, entity, serverRevision, message);
+    }
+
+    private SyncOperationResult result(String opId, String entityType, String entityId, SyncStatus status,
+                                       SyncEntity entity, Long serverRevision, String message) {
+        return new SyncOperationResult(opId, entityType, entityId, status, entity, serverRevision,
                 null, List.of(), message);
     }
 

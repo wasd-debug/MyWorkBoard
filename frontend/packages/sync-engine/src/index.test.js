@@ -49,8 +49,25 @@ test('任务工厂使用独立存储且保留账本工厂行为', async () => {
   const { createTaskSyncEngine } = await import('./index.js')
   const engine = createTaskSyncEngine({ dbName: 'tasks:id-1' })
   await engine.put('task', { id: 'task-1', title: '本地任务' }, { bookId: 'tasks' })
+  await engine.put('task-tag', { id: 'tag-1', name: '工作' }, { bookId: 'tasks' })
   assert.equal((await engine.list('task', { bookId: 'tasks' }))[0].title, '本地任务')
-  assert.deepEqual(engine.stores, ['task-lists', 'tasks'])
+  assert.equal((await engine.list('task-tag', { bookId: 'tasks' }))[0].name, '工作')
+  assert.deepEqual(engine.stores, ['task-lists', 'task-tags', 'tasks'])
+})
+
+test('任务永久清除移除同批次和跨页墓碑而不影响其他任务', async () => {
+  const { createTaskSyncEngine } = await import('./index.js')
+  const engine = createTaskSyncEngine()
+  await engine.put('task', { id: 'keep', revision: 1 }, { bookId: 'tasks', recordOp: false })
+  const caches = new Map()
+  await engine.mergeBatch([
+    { entityType: 'task', entityId: 'gone', operation: 'UPSERT', payload: { revision: 1 } },
+    { entityType: 'task', entityId: 'gone', operation: 'DELETE', payload: { revision: 2, parentId: 'parent' } },
+    { entityType: 'task', entityId: 'gone', operation: 'PURGE', payload: { revision: 2 } }
+  ], 'tasks', caches)
+  assert.equal(await engine.get('task', 'gone', { bookId: 'tasks' }), undefined)
+  await engine.mergeBatch([{ entityType: 'task', entityId: 'keep', operation: 'PURGE', payload: { revision: 1 } }], 'tasks', caches)
+  assert.equal((await engine.list('task', { bookId: 'tasks', includeDeleted: true })).length, 0)
 })
 
 test('写入前清理嵌套展示对象中的不可克隆值', async () => {

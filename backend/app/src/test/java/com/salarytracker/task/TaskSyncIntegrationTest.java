@@ -99,6 +99,24 @@ class TaskSyncIntegrationTest extends MySqlIntegrationTestSupport {
         assertThrows(SyncResetRequiredException.class, () -> ownerFixture.sync.pull(999999, 20));
     }
 
+    @Test
+    void syncsListsAndTagsThroughTheSharedOplog() {
+        Fixture fixture = fixture(createUser("sync-resources-"));
+        String listId = UUID.randomUUID().toString();
+        String tagId = UUID.randomUUID().toString();
+        SyncPayload list = resourcePayload("工作", "#2563eb", "briefcase", 1, false, null);
+        SyncPayload tag = resourcePayload("重要", "#dc2626", null, 0, null, null);
+
+        var response = fixture.sync.push(List.of(
+                new SyncOperation("list-create", "task-list", listId, SyncAction.UPSERT, 0L, list),
+                new SyncOperation("tag-create", "task-tag", tagId, SyncAction.UPSERT, 0L, tag)));
+
+        assertEquals(2, response.applied());
+        assertEquals("工作", fixture.tasks.listLists().stream().filter(item -> item.publicId().equals(listId)).findFirst().orElseThrow().name());
+        assertEquals("重要", fixture.tasks.listTags().get(0).name());
+        assertTrue(fixture.sync.pull(0, 20).operations().stream().anyMatch(item -> "task-tag".equals(item.entityType())));
+    }
+
     private SyncOperation operation(String opId, String entityId, SyncAction action, long revision, SyncPayload payload) {
         return new SyncOperation(opId, "task", entityId, action, revision, payload);
     }
@@ -106,6 +124,12 @@ class TaskSyncIntegrationTest extends MySqlIntegrationTestSupport {
     private SyncPayload payload(String id, String title, String status, long revision) {
         return new SyncPayload(id, null, title, "", status, "NONE", null, null,
                 false, "Asia/Shanghai", null, revision);
+    }
+
+    private SyncPayload resourcePayload(String name, String color, String icon, Integer sortOrder,
+                                        Boolean archived, String parentId) {
+        return new SyncPayload(null, null, null, null, null, null, null, null, null, null,
+                null, 0L, parentId, null, null, name, color, icon, sortOrder, archived);
     }
 
     private Fixture fixture(long userId) {

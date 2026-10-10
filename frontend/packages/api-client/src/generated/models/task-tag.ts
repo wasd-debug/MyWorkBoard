@@ -14,13 +14,11 @@
 
 
 
-export interface TaskList {
+export interface TaskTag {
     'publicId'?: string;
+    'parentId'?: string;
     'name'?: string;
     'color'?: string;
-    'icon'?: string;
-    'systemKey'?: string;
     'sortOrder'?: number;
-    'archived'?: boolean;
     'revision'?: number;
 }

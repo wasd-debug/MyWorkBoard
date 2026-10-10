@@ -14,13 +14,9 @@
 
 
 
-export interface TaskList {
-    'publicId'?: string;
+export interface TaskTagCommand {
+    'parentId'?: string;
     'name'?: string;
     'color'?: string;
-    'icon'?: string;
-    'systemKey'?: string;
     'sortOrder'?: number;
-    'archived'?: boolean;
-    'revision'?: number;
 }

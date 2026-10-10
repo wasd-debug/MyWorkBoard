@@ -1,12 +1,13 @@
 import { defineStore } from 'pinia'
 import { createTaskSyncEngine } from '../../packages/sync-engine/src/index.js'
-import { apiListTaskLists, apiListTasks, apiPullTaskSync, apiPushTaskSync } from '../../packages/api-client/src/index.js'
+import { apiListDeletedTaskLists, apiListTaskLists, apiListTaskTags, apiListTasks, apiPullTaskSync,
+  apiPurgeTask, apiPushTaskSync, apiRestoreTask, apiRestoreTaskList } from '../../packages/api-client/src/index.js'
 import { accountScopeFor, taskDatabaseName } from '../utils/accountScope.js'
 import { createClientId } from '../utils/clientId.js'
 
 const SCOPE = 'tasks'
 const transport = {
-  push: (_scope, operations) => apiPushTaskSync(operations.map(({ bookId, payload, ...operation }) => ({
+  push: (_scope, operations) => apiPushTaskSync([...operations].sort((a, b) => Number(a.operation === 'DELETE') - Number(b.operation === 'DELETE')).map(({ bookId, payload, ...operation }) => ({
     ...operation,
     payload: payload ? Object.fromEntries(Object.entries(payload).filter(([key]) => key !== 'bookId')) : payload
   }))),
@@ -20,7 +21,7 @@ let syncTimer
 let activeSyncPromise
 
 function clearState(store) {
-  Object.assign(store, { ready: false, loading: false, syncing: false, lists: [], tasks: [], total: 0,
+  Object.assign(store, { ready: false, loading: false, syncing: false, lists: [], deletedLists: [], tags: [], tasks: [], total: 0,
     conflicts: [], rejected: [], pending: 0, error: '' })
 }
 
@@ -29,16 +30,28 @@ function localTask(value) {
   return { ...rest, id, publicId: id }
 }
 
+async function replaceRemoteCollection(scoped, type, records) {
+  const pending = new Set((await scoped.pendingOperations(SCOPE)).filter(item => item.entityType === type).map(item => item.entityId))
+  const local = (await scoped.list(type, { bookId: SCOPE, includeDeleted: true })).filter(item => pending.has(item.id))
+  await scoped.replace(type, [...records.filter(item => !pending.has(item.publicId)).map(item => ({ ...item, id: item.publicId })), ...local], { bookId: SCOPE })
+}
+
+async function organizationOptions(type, item) {
+  const pending = (await engine.pendingOperations(SCOPE)).find(value => value.entityType === type && value.entityId === item.publicId)
+  return { bookId: SCOPE, opId: pending?.opId, baseRevision: pending?.baseRevision ?? item.revision ?? 0 }
+}
+
 export const useTasksStore = defineStore('tasks', {
   state: () => ({
     ready: false, loading: false, saving: false, syncing: false,
     online: typeof navigator === 'undefined' ? true : navigator.onLine,
-    accountScope: '', lists: [], tasks: [], total: 0, conflicts: [], rejected: [], pending: 0, error: ''
+    accountScope: '', lists: [], deletedLists: [], tags: [], tasks: [], total: 0, conflicts: [], rejected: [], pending: 0, error: ''
   }),
   getters: {
     inbox: state => state.lists.find(item => item.systemKey === 'INBOX') || state.lists[0],
-    openTasks: state => state.tasks.filter(item => item.status !== 'COMPLETED'),
-    completedTasks: state => state.tasks.filter(item => item.status === 'COMPLETED')
+    openTasks: state => state.tasks.filter(item => !item.deleted && item.status !== 'COMPLETED'),
+    completedTasks: state => state.tasks.filter(item => !item.deleted && item.status === 'COMPLETED'),
+    trashedTasks: state => state.tasks.filter(item => item.deleted)
   },
   actions: {
     async switchUser(user) {
@@ -83,12 +96,15 @@ export const useTasksStore = defineStore('tasks', {
     async hydrate() {
       const epoch = sessionEpoch
       const scoped = engine
-      const [lists, tasks, conflicts, rejected, pending] = await Promise.all([
-        scoped.list('task-list', { bookId: SCOPE }), scoped.list('task', { bookId: SCOPE }),
+      const [lists, tags, tasks, conflicts, rejected, pending] = await Promise.all([
+        scoped.list('task-list', { bookId: SCOPE, includeDeleted: true }), scoped.list('task-tag', { bookId: SCOPE }),
+        scoped.list('task', { bookId: SCOPE, includeDeleted: true }),
         scoped.conflicts(SCOPE), scoped.rejected(SCOPE), scoped.pendingOperations(SCOPE)
       ])
       if (epoch !== sessionEpoch || scoped !== engine) return
-      this.lists = lists.map(item => ({ ...item, publicId: item.id }))
+      this.lists = lists.filter(item => !item.deleted).map(item => ({ ...item, publicId: item.id })).sort((a, b) => a.sortOrder - b.sortOrder)
+      this.deletedLists = lists.filter(item => item.deleted).map(item => ({ ...item, publicId: item.id }))
+      this.tags = tags.map(item => ({ ...item, publicId: item.id })).sort((a, b) => a.sortOrder - b.sortOrder)
       this.tasks = tasks.map(localTask)
       this.total = this.tasks.length
       this.conflicts = conflicts
@@ -101,19 +117,27 @@ export const useTasksStore = defineStore('tasks', {
       const scoped = engine
       this.error = ''
       try {
-        const lists = await apiListTaskLists()
-        if (epoch !== sessionEpoch || scoped !== engine) return
         await this.syncNow()
-        await scoped.replace('task-list', (lists || []).map(item => ({ ...item, id: item.publicId })), { bookId: SCOPE })
+        const [lists, deletedLists, tags] = await Promise.all([apiListTaskLists(), apiListDeletedTaskLists(), apiListTaskTags()])
+        if (epoch !== sessionEpoch || scoped !== engine) return
+        await replaceRemoteCollection(scoped, 'task-list', [...(lists || []), ...(deletedLists || []).map(item => ({ ...item, deleted: true }))])
+        await replaceRemoteCollection(scoped, 'task-tag', tags || [])
         const remoteTasks = []
-        let pageNumber = 0
-        let total = 0
-        do {
-          const page = await apiListTasks({ page: pageNumber, size: 200 })
-          remoteTasks.push(...(page?.items || []))
-          total = Number(page?.total || remoteTasks.length)
-          pageNumber += 1
-        } while (remoteTasks.length < total)
+        for (const view of ['ALL', 'TRASH']) {
+          let pageNumber = 0
+          let fetched = 0
+          let total = 0
+          do {
+            const page = await apiListTasks({ view, page: pageNumber, size: 200 })
+            if (epoch !== sessionEpoch || scoped !== engine) return
+            const items = page?.items || []
+            remoteTasks.push(...items)
+            fetched += items.length
+            total = Number(page?.total ?? fetched)
+            pageNumber += 1
+            if (!items.length) break
+          } while (fetched < total)
+        }
         const pendingIds = new Set((await scoped.pendingOperations(SCOPE)).map(item => item.entityId))
         for (const item of remoteTasks) {
           if (!pendingIds.has(item.publicId)) {
@@ -151,12 +175,123 @@ export const useTasksStore = defineStore('tasks', {
     },
     async update(item, payload) {
       this.saving = true
-      try { return await this.saveLocal({ ...item, ...payload, publicId: item.publicId }) }
+      try {
+        if (payload.listId && payload.listId !== item.listId) {
+          const queue = [item.publicId]
+          for (let index = 0; index < queue.length; index += 1) {
+            for (const child of this.tasks.filter(value => value.parentId === queue[index])) {
+              if (queue.includes(child.publicId)) continue
+              queue.push(child.publicId)
+              await engine.put('task', { ...child, id: child.publicId, listId: payload.listId }, { bookId: SCOPE, recordOp: false })
+            }
+          }
+        }
+        return await this.saveLocal({ ...item, ...payload, publicId: item.publicId })
+      }
       finally { this.saving = false }
     },
     async complete(item) { return this.saveLocal({ ...item, status: 'COMPLETED', completedAt: new Date().toISOString() }) },
     async reopen(item) { return this.saveLocal({ ...item, status: 'OPEN', completedAt: null }) },
-    async remove(item) { return this.saveLocal(item, 'DELETE') },
+    async remove(item) {
+      const descendants = []
+      const queue = [item.publicId]
+      for (let index = 0; index < queue.length; index += 1) {
+        for (const child of this.tasks.filter(value => value.parentId === queue[index] && !value.deleted)) {
+          if (!queue.includes(child.publicId)) { queue.push(child.publicId); descendants.push(child) }
+        }
+      }
+      for (const child of descendants) {
+        const pending = (await engine.pendingOperations(SCOPE)).find(value => value.entityId === child.publicId)
+        if (pending && Number(pending.baseRevision || 0) === 0) {
+          await engine.removeStore('oplog', pending.opId)
+          await engine.removeStore('tasks', `${SCOPE}:${child.publicId}`)
+        } else {
+          await engine.put('task', { ...child, id: child.publicId, deleted: true }, { bookId: SCOPE, recordOp: false })
+        }
+      }
+      return this.saveLocal(item, 'DELETE')
+    },
+    async restore(item) {
+      if (!this.online) throw new Error('恢复任务需要联网执行')
+      const epoch = sessionEpoch
+      const scoped = engine
+      const restored = await apiRestoreTask(item.publicId, item.revision)
+      if (epoch !== sessionEpoch || scoped !== engine) return restored
+      await scoped.put('task', { ...restored, id: restored.publicId }, { bookId: SCOPE, recordOp: false })
+      await this.hydrate()
+      await this.refreshServer()
+      return restored
+    },
+    async restoreList(item) {
+      if (!this.online) throw new Error('恢复清单需要联网执行')
+      const epoch = sessionEpoch
+      await apiRestoreTaskList(item.publicId, item.revision)
+      if (epoch === sessionEpoch) await this.refreshServer()
+    },
+    async purge(item) {
+      if (!this.online) throw new Error('永久清除需要联网执行')
+      const epoch = sessionEpoch
+      const scoped = engine
+      await apiPurgeTask(item.publicId)
+      if (epoch !== sessionEpoch || scoped !== engine) return
+      await scoped.removeStore('tasks', `${SCOPE}:${item.publicId}`)
+      await this.hydrate()
+    },
+    async createList(payload) {
+      const created = await engine.put('task-list', { ...payload, id: createClientId(), revision: 0,
+        archived: Boolean(payload.archived), sortOrder: payload.sortOrder ?? this.lists.length }, { bookId: SCOPE })
+      await this.hydrate()
+      this.scheduleSync()
+      return created
+    },
+    async updateList(item, payload) {
+      const changed = await engine.put('task-list', { ...item, ...payload, id: item.publicId, publicId: undefined },
+        await organizationOptions('task-list', item))
+      await this.hydrate()
+      this.scheduleSync()
+      return changed
+    },
+    async deleteList(item) {
+      const options = await organizationOptions('task-list', item)
+      if (options.opId && Number(options.baseRevision) === 0) {
+        await engine.removeStore('oplog', options.opId)
+        await engine.removeStore('task-lists', `${SCOPE}:${item.publicId}`)
+        for (const task of this.tasks.filter(value => value.listId === item.publicId && !value.deleted)) await this.remove(task)
+      } else {
+        await engine.remove('task-list', item.publicId, options)
+      }
+      await this.hydrate()
+      this.scheduleSync()
+    },
+    async createTag(payload) {
+      const created = await engine.put('task-tag', { ...payload, id: createClientId(), revision: 0,
+        sortOrder: payload.sortOrder ?? this.tags.length }, { bookId: SCOPE })
+      await this.hydrate()
+      this.scheduleSync()
+      return created
+    },
+    async updateTag(item, payload) {
+      const changed = await engine.put('task-tag', { ...item, ...payload, id: item.publicId, publicId: undefined },
+        await organizationOptions('task-tag', item))
+      await this.hydrate()
+      this.scheduleSync()
+      return changed
+    },
+    async deleteTag(item) {
+      const options = await organizationOptions('task-tag', item)
+      if (options.opId && Number(options.baseRevision) === 0) {
+        await engine.removeStore('oplog', options.opId)
+        await engine.removeStore('task-tags', `${SCOPE}:${item.publicId}`)
+      } else {
+        await engine.remove('task-tag', item.publicId, options)
+      }
+      for (const task of this.tasks.filter(value => value.tagIds?.includes(item.publicId))) {
+        await engine.put('task', { ...task, id: task.publicId, tagIds: task.tagIds.filter(id => id !== item.publicId) },
+          { bookId: SCOPE, recordOp: false })
+      }
+      await this.hydrate()
+      this.scheduleSync()
+    },
     scheduleSync() {
       clearTimeout(syncTimer)
       const epoch = sessionEpoch

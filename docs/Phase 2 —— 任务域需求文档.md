@@ -1,7 +1,7 @@
 # Phase 2 —— 任务域需求文档（滴答清单形态）
 
 > 状态日期：2026-10-09
-> 文档状态：**P2-I2 已完成**，待实施 P2-I3 任务组织与多视图
+> 文档状态：**P2-I3 已完成**，待实施 P2-I4 重复、提醒与任务站内信
 > 适用范围：MyWorkBoard 个人工作台（`wasd-debug/MyWorkBoard`）
 > 上游依据：`docs/ARCHITECTURE.md` 第 10 章 Phase 2、`docs/overview.md`、`docs/后续特性路线图.md`
 > 目标：把滴答清单（TickTick）的任务管理能力完整复刻为独立 `task` 域，嵌入现有个人工作台，并沿用仓库既有的 v1 契约、local-first 同步、受控写入和阶段门禁。
@@ -63,7 +63,7 @@
 | 认证与用户隔离   | Spring Security + JWT access（15min，内存）+ HttpOnly refresh cookie（30 天，MySQL 持久化轮换）                                               | 任务域所有接口继承同一套鉴权，数据按 `user_id` 隔离                                                                     |
 | 统一响应      | `ApiResponse<T>` 成功体；RFC 7807 `ApiProblem`（`code`/`traceId`/`path`/`timestamp`）                                                 | 任务域 Controller 沿用                                                                                   |
 | DTO 约定    | 后端使用 record/enum DTO                                                                                                            | 任务域沿用                                                                                               |
-| 数据库迁移     | Flyway 已到 V31，已建立 I1 三张任务表与 I2 用户级同步 oplog                                                                                          | 后续任务结构继续新增迁移，禁止改写已应用 V30/V31                                                                      |
+| 数据库迁移     | Flyway 已到 V33，已建立任务核心、用户级同步 oplog、标签关系、检查项与任务树删除来源                                                                                          | 后续任务结构继续新增迁移，禁止改写已应用 V30-V33                                                                      |
 | 模块边界      | Maven 物理模块 `platform/identity/worktime/ledger/task/ai`，Spring Modulith + ArchUnit 校验                                                | `task` 仅依赖 platform/identity，不依赖 worktime/ledger                                                  |
 | 前端栈       | Vue 3 + Vite + Pinia + Vue Router + Tailwind CSS 4 + Reka UI + Lucide + ECharts                                                 | 任务页面沿用；日历需引入 FullCalendar                                                                           |
 | API 客户端   | 运行时 OpenAPI 生成 `typescript-axios`，集中在 `frontend/packages/api-client`，应用只经 transport + 领域 facade                                 | 新增 `task` facade                                                                                    |
@@ -1693,6 +1693,7 @@ com.salarytracker.task
 - 增加清单管理、标签、子任务、检查项、排序、移动、五种列表视图、垃圾桶恢复和分页筛选。
 - 新增资源按同一 local-first 契约接入；批量、永久清除和导入仍要求联网。
 - **门禁**：树形软删/恢复、五视图口径、跨用户隔离和同步完整性通过。
+- **完成记录（2026-10-10）**：V32 落地清单属性、父/子/孙任务、标签与检查项，并扩展标题/描述上限，V33 保存树删除来源；前端交付收件箱、今天、最近 7 天、全部、已完成和垃圾桶，支持基础截止时间/优先级/标题排序与移动端组织入口。任务、清单、标签共享 local-first；删除清单隐藏完整任务树，恢复时保留任务原有删除状态；删除父任务级联删除后代并按来源恢复，移动父任务同步移动后代；永久清除要求 `DELETE:<taskId>` 并广播 PURGE 投影清除。清单分组、智能清单、标签合并和增强排序/分组按冻结边界留到 I7。
 
 ### P2-I4：重复、提醒与任务站内信
 - 重复任务采用历史实例留存模型；增加提醒、ShedLock 扫描、`task_inbox_message`、SSE 与轮询降级，不引入 Redis/RabbitMQ。

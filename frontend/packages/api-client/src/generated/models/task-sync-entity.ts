@@ -13,6 +13,9 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { TaskChecklistItem } from './task-checklist-item.ts';
 
 export interface TaskSyncEntity {
     'id'?: string;
@@ -30,4 +33,14 @@ export interface TaskSyncEntity {
     'completedAt'?: string;
     'revision'?: number;
     'deleted'?: boolean;
+    'parentId'?: string;
+    'tagIds'?: Array<string>;
+    'checklist'?: Array<TaskChecklistItem>;
+    'deletedAt'?: string;
+    'name'?: string;
+    'color'?: string;
+    'icon'?: string;
+    'systemKey'?: string;
+    'sortOrder'?: number;
+    'archived'?: boolean;
 }

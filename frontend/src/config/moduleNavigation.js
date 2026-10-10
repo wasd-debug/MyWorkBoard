@@ -18,7 +18,12 @@ export const ledgerNavigation = [
 ]
 
 export const taskNavigation = [
-  { key: 'inbox', to: '/tasks/inbox', label: '收件箱' }
+  { key: 'inbox', to: '/tasks/inbox', label: '收件箱' },
+  { key: 'today', to: '/tasks/today', label: '今天' },
+  { key: 'next7', to: '/tasks/next7', label: '7 天' },
+  { key: 'all', to: '/tasks/all', label: '全部' },
+  { key: 'completed', to: '/tasks/completed', label: '已完成' },
+  { key: 'trash', to: '/tasks/trash', label: '垃圾桶' }
 ]
 
 export function navigationItemIsActive(route, item) {

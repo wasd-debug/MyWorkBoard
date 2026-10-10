@@ -13,6 +13,9 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { TaskChecklistCommand } from './task-checklist-command.ts';
 
 export interface TaskCommand {
     'listId'?: string;
@@ -24,4 +27,7 @@ export interface TaskCommand {
     'allDay'?: boolean;
     'timezone'?: string;
     'durationMinutes'?: number;
+    'parentId'?: string;
+    'tagIds'?: Array<string>;
+    'checklist'?: Array<TaskChecklistCommand>;
 }

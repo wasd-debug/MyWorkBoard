@@ -28,5 +28,6 @@ export interface TaskSyncOperation {
 
 export enum TaskSyncOperationOperationEnum {
     UPSERT = 'UPSERT',
-    DELETE = 'DELETE'
+    DELETE = 'DELETE',
+    PURGE = 'PURGE'
 }

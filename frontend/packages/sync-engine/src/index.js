@@ -243,6 +243,13 @@ export class SyncEngine {
           key: entityKey(scope, entityId)
         }
         const current = cache.get(payload.key)
+        if (operation.operation === 'PURGE') {
+          cache.delete(payload.key)
+          writes.delete(payload.key)
+          await this.removeStore(store, payload.key)
+          results[index] = null
+          continue
+        }
         if (current && Number(current.revision || 0) > Number(payload.revision || 0)) {
           results[index] = stripLocal(current)
           continue
@@ -312,6 +319,7 @@ export class SyncEngine {
     const normalized = singular(entityType)
     if (this.entityPrefix === 'task') {
       if (normalized === 'task-list') return 'task-lists'
+      if (normalized === 'task-tag') return 'task-tags'
       return 'tasks'
     }
     if (normalized === 'category') return 'ledger-categories'
@@ -445,7 +453,7 @@ export function createLedgerSyncEngine(options = {}) {
 export function createTaskSyncEngine(options = {}) {
   return new SyncEngine({
     dbName: options.dbName || 'salary-tracker-task-sync:anonymous',
-    stores: options.stores || ['task-lists', 'tasks'],
+    stores: options.stores || ['task-lists', 'task-tags', 'tasks'],
     transport: options.transport || {},
     entityPrefix: 'task'
   })

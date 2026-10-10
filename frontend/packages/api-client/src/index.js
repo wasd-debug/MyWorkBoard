@@ -169,7 +169,8 @@ export const apiUpdateLedgerRole = async (bookId, id, payload, currentRevision, 
 export const apiDeleteLedgerRole = async (bookId, id, currentRevision, idempotencyKey) => data(await ledger.deleteLedgerRole({ bookId, id, ifMatch: revision(currentRevision), idempotencyKey }))
 
 export const apiListTaskLists = async () => data(await tasks.listTaskLists())
-export const apiListTasks = async (params = {}) => data(await tasks.listTasks(params))
+export const apiListDeletedTaskLists = async () => data(await api.get('/api/v1/tasks/lists/trash'))
+export const apiListTasks = async (params = {}) => data(await api.get('/api/v1/tasks', { params }))
 export const apiGetTask = async publicId => data(await tasks.getTask({ publicId }))
 export const apiGetTaskSettings = async () => data(await tasks.getTaskSettings())
 export const apiCreateTask = async (payload, idempotencyKey) => data(await tasks.createTask({ idempotencyKey, taskCommand: payload }))
@@ -177,6 +178,12 @@ export const apiUpdateTask = async (publicId, payload, currentRevision) => data(
 export const apiCompleteTask = async (publicId, currentRevision) => data(await tasks.completeTask({ publicId, ifMatch: revision(currentRevision) }))
 export const apiReopenTask = async (publicId, currentRevision) => data(await tasks.reopenTask({ publicId, ifMatch: revision(currentRevision) }))
 export const apiDeleteTask = async (publicId, currentRevision) => data(await tasks.deleteTask({ publicId, ifMatch: revision(currentRevision) }))
+export const apiListTaskTags = async () => data(await api.get('/api/v1/tasks/tags'))
+export const apiCreateTaskList = async payload => data(await api.post('/api/v1/tasks/lists', payload, { headers: { 'Idempotency-Key': crypto.randomUUID() } }))
+export const apiCreateTaskTag = async payload => data(await api.post('/api/v1/tasks/tags', payload))
+export const apiRestoreTask = async (publicId, currentRevision) => data(await api.post(`/api/v1/tasks/${publicId}/restore`, null, { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiRestoreTaskList = async (publicId, currentRevision) => data(await api.post(`/api/v1/tasks/lists/${publicId}/restore`, null, { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiPurgeTask = async publicId => data(await api.delete(`/api/v1/tasks/trash/${publicId}`, { params: { confirmation: `DELETE:${publicId}` } }))
 
 export const apiListLedgerTransactions = async (bookId, params = {}) => data(await ledger.listLedgerTransactions({ bookId, ...params }))
 export const apiListRecentLedgerTransactions = async (bookId, limit = 10) => data(await ledger.listRecentLedgerTransactions({ bookId, limit }))
