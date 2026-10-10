@@ -2,10 +2,10 @@
   <section class="task-workspace">
     <button class="task-navigation-trigger" type="button" aria-controls="task-navigation" :aria-expanded="navigationOpen" @click="navigationOpen = true"><Menu :size="18" />任务菜单</button>
     <Transition name="task-navigation-fade">
-      <button v-if="navigationOpen" class="task-navigation-backdrop" type="button" aria-label="关闭任务菜单" @click="navigationOpen = false"></button>
+      <button v-if="navigationOpen" class="task-navigation-backdrop" type="button" aria-label="关闭任务菜单" @pointerdown.prevent.stop="closeNavigation" @click.prevent.stop="closeNavigation"></button>
     </Transition>
     <aside id="task-navigation" class="task-sidebar" :class="{ open: navigationOpen }" aria-label="任务导航">
-      <header class="task-sidebar-head"><strong>任务菜单</strong><button type="button" aria-label="关闭任务菜单" @click="navigationOpen = false"><X :size="18" /></button></header>
+      <header class="task-sidebar-head"><strong>任务菜单</strong><button type="button" aria-label="关闭任务菜单" @pointerdown.prevent.stop="closeNavigation" @click.prevent.stop="closeNavigation"><X :size="18" /></button></header>
       <nav><RouterLink v-for="item in builtins" :key="item.to" :to="item.to" @click="closeNavigation"><component :is="item.icon" :size="16" />{{ item.label }}</RouterLink></nav>
       <div class="side-heading"><span>清单</span><button type="button" aria-label="新建清单" title="新建清单" @click="newList"><Plus :size="15" /></button></div>
       <nav><span v-for="list in store.lists" :key="list.publicId" class="side-item"><RouterLink :to="list.systemKey === 'INBOX' ? '/tasks/inbox' : `/tasks/list/${list.publicId}`" @click="closeNavigation"><ListTodo :size="16" />{{ list.name }}</RouterLink><span v-if="!list.systemKey" class="side-actions"><button type="button" title="编辑清单" :aria-label="`编辑清单${list.name}`" @click="editList(list)"><Pencil :size="13" /></button><button type="button" title="删除清单" :aria-label="`删除清单${list.name}`" @click="deleteList(list)"><Trash2 :size="13" /></button></span></span></nav>
@@ -97,7 +97,7 @@ const parentOptions = computed(() => store.openTasks.filter(item => {
 }))
 const emptyLabel = computed(() => viewKey.value === 'today' ? '今天没有安排' : viewKey.value === 'completed' ? '还没有已完成任务' : '这里还没有任务')
 function resetForm(task = null) { const known = ['', 'FREQ=DAILY', 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', 'FREQ=WEEKLY', 'FREQ=MONTHLY', 'FREQ=YEARLY']; const recurrence = known.includes(task?.rrule || '') ? task?.rrule || '' : 'CUSTOM'; Object.assign(form, { title: task?.title || '', description: task?.description || '', priority: task?.priority || 'NONE', dueLocal: task?.dueAt ? toLocalInput(task.dueAt) : '', listId: task?.listId || currentListId(), parentId: task?.parentId || '', tagIds: [...(task?.tagIds || [])], checklistText: (task?.checklist || []).map(item => `${item.completed ? '[x] ' : ''}${item.title}`).join('\n'), recurrence, customRrule: recurrence === 'CUSTOM' ? task.rrule : '', recurrenceAnchor: task?.recurrenceAnchor || 'DUE_DATE', reminderEnabled: false, reminderKind: 'RELATIVE', reminderOffset: 30, remindLocal: '', reminder: null }); editorError.value = '' }
-function closeNavigation() { navigationOpen.value = false }
+function closeNavigation(event) { event?.preventDefault(); event?.stopPropagation(); navigationOpen.value = false }
 function currentListId() { return route.name === 'tasks-list' ? String(route.params.publicId) : store.inbox?.publicId || '' }
 function openCreate() { editing.value = null; resetForm(); editorOpen.value = true } async function openEdit(task) { editing.value = task; resetForm(task); editorOpen.value = true; if (store.online) { try { const reminders = await apiListTaskReminders(task.publicId); const reminder = reminders?.[0]; if (reminder) Object.assign(form, { reminderEnabled: true, reminderKind: reminder.kind, reminderOffset: reminder.offsetMinutes ?? 30, remindLocal: reminder.remindAt ? toLocalInput(reminder.remindAt) : '', reminder }) } catch (error) { editorError.value = detail(error, '提醒加载失败') } } }
 function payload() { const rrule = form.recurrence === 'CUSTOM' ? form.customRrule.trim() : form.recurrence; return { listId: form.listId, parentId: form.parentId || '', tagIds: form.tagIds, checklist: form.checklistText.split('\n').map(line => line.trim()).filter(Boolean).map((line, index) => ({ publicId: editing.value?.checklist?.[index]?.publicId, title: line.replace(/^\[x\]\s*/i, ''), completed: /^\[x\]/i.test(line), sortOrder: index })), title: form.title.trim(), description: form.description.trim(), priority: form.priority, dueAt: form.dueLocal ? new Date(form.dueLocal).toISOString() : '', allDay: false, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai', rrule, recurrenceAnchor: rrule ? form.recurrenceAnchor : '' } }
@@ -392,6 +392,8 @@ onBeforeUnmount(() => { document.body.classList.remove('task-navigation-open'); 
   border-radius:8px;
   background:transparent;
   color:var(--ink)}
+.task-sidebar:not(.open) {
+  pointer-events:none}
 .tasks-head h1 {
   font-size:1.75rem}
 .task-form-grid {
