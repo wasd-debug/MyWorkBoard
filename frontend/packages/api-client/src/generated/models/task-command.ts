@@ -30,4 +30,6 @@ export interface TaskCommand {
     'parentId'?: string;
     'tagIds'?: Array<string>;
     'checklist'?: Array<TaskChecklistCommand>;
+    'rrule'?: string;
+    'recurrenceAnchor'?: string;
 }

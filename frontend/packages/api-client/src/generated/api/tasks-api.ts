@@ -24,17 +24,29 @@ import { BASE_PATH, COLLECTION_FORMATS, type RequestArgs, BaseAPI, RequiredError
 // @ts-ignore
 import type { ApiProblem } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseBoolean } from '../models/index.ts';
+// @ts-ignore
 import type { ApiResponseListTaskList } from '../models/index.ts';
+// @ts-ignore
+import type { ApiResponseListTaskReminder } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseListTaskTag } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseLong } from '../models/index.ts';
+// @ts-ignore
 import type { ApiResponseTaskDeletedResource } from '../models/index.ts';
+// @ts-ignore
+import type { ApiResponseTaskInboxPage } from '../models/index.ts';
+// @ts-ignore
+import type { ApiResponseTaskInboxUnread } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskItem } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskList } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskPage } from '../models/index.ts';
+// @ts-ignore
+import type { ApiResponseTaskReminder } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskSettings } from '../models/index.ts';
 // @ts-ignore
@@ -44,9 +56,15 @@ import type { ApiResponseTaskSyncPushResponse } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskTag } from '../models/index.ts';
 // @ts-ignore
+import type { SseEmitter } from '../models/index.ts';
+// @ts-ignore
 import type { TaskCommand } from '../models/index.ts';
 // @ts-ignore
+import type { TaskInboxReadCommand } from '../models/index.ts';
+// @ts-ignore
 import type { TaskListCommand } from '../models/index.ts';
+// @ts-ignore
+import type { TaskReminderCommand } from '../models/index.ts';
 // @ts-ignore
 import type { TaskSyncOperation } from '../models/index.ts';
 // @ts-ignore
@@ -56,6 +74,35 @@ import type { TaskTagCommand } from '../models/index.ts';
  */
 export const TasksApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
+        /**
+         *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        clearTaskInbox: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/tasks/inbox`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'DELETE', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
         /**
          *
          * @param {string} publicId
@@ -177,6 +224,44 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
         },
         /**
          *
+         * @param {string} publicId
+         * @param {TaskReminderCommand} taskReminderCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createTaskReminder: async (publicId: string, taskReminderCommand: TaskReminderCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('createTaskReminder', 'publicId', publicId)
+            // verify required parameter 'taskReminderCommand' is not null or undefined
+            assertParamExists('createTaskReminder', 'taskReminderCommand', taskReminderCommand)
+            const localVarPath = `/api/v1/tasks/{publicId}/reminders`
+                .replace('{publicId}', encodeURIComponent(String(publicId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(taskReminderCommand, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {TaskTagCommand} taskTagCommand
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -290,6 +375,51 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
         /**
          *
          * @param {string} publicId
+         * @param {string} reminderId
+         * @param {number} ifMatch
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteTaskReminder: async (publicId: string, reminderId: string, ifMatch: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('deleteTaskReminder', 'publicId', publicId)
+            // verify required parameter 'reminderId' is not null or undefined
+            assertParamExists('deleteTaskReminder', 'reminderId', reminderId)
+            // verify required parameter 'ifMatch' is not null or undefined
+            assertParamExists('deleteTaskReminder', 'ifMatch', ifMatch)
+            const localVarPath = `/api/v1/tasks/{publicId}/reminders/{reminderId}`
+                .replace('{publicId}', encodeURIComponent(String(publicId)))
+                .replace('{reminderId}', encodeURIComponent(String(reminderId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'DELETE', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            if (ifMatch != null) {
+                localVarHeaderParameter['If-Match'] = typeof ifMatch === 'string'
+                    ? ifMatch
+                    : JSON.stringify(ifMatch, replaceWithSerializableTypeIfNeeded);
+            }
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} publicId
          * @param {string} ifMatch
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -337,6 +467,35 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
             assertParamExists('getTask', 'publicId', publicId)
             const localVarPath = `/api/v1/tasks/{publicId}`
                 .replace('{publicId}', encodeURIComponent(String(publicId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getTaskInboxUnread: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/tasks/inbox/unread`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
@@ -419,11 +578,88 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
         },
         /**
          *
+         * @param {boolean} [unread]
+         * @param {number} [page]
+         * @param {number} [size]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listTaskInbox: async (unread?: boolean, page?: number, size?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/tasks/inbox`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (unread !== undefined) {
+                localVarQueryParameter['unread'] = unread;
+            }
+
+            if (page !== undefined) {
+                localVarQueryParameter['page'] = page;
+            }
+
+            if (size !== undefined) {
+                localVarQueryParameter['size'] = size;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
         listTaskLists: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/tasks/lists`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} publicId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listTaskReminders: async (publicId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('listTaskReminders', 'publicId', publicId)
+            const localVarPath = `/api/v1/tasks/{publicId}/reminders`
+                .replace('{publicId}', encodeURIComponent(String(publicId)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
@@ -649,6 +885,40 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
         },
         /**
          *
+         * @param {TaskInboxReadCommand} taskInboxReadCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        readTaskInbox: async (taskInboxReadCommand: TaskInboxReadCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'taskInboxReadCommand' is not null or undefined
+            assertParamExists('readTaskInbox', 'taskInboxReadCommand', taskInboxReadCommand)
+            const localVarPath = `/api/v1/tasks/inbox/read`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(taskInboxReadCommand, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {*} [options] Override http request option.
@@ -766,6 +1036,35 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
         },
         /**
          *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        streamTaskInbox: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/tasks/inbox/stream`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'text/event-stream,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {TaskCommand} taskCommand
@@ -855,6 +1154,56 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
         /**
          *
          * @param {string} publicId
+         * @param {string} reminderId
+         * @param {number} ifMatch
+         * @param {TaskReminderCommand} taskReminderCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateTaskReminder: async (publicId: string, reminderId: string, ifMatch: number, taskReminderCommand: TaskReminderCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('updateTaskReminder', 'publicId', publicId)
+            // verify required parameter 'reminderId' is not null or undefined
+            assertParamExists('updateTaskReminder', 'reminderId', reminderId)
+            // verify required parameter 'ifMatch' is not null or undefined
+            assertParamExists('updateTaskReminder', 'ifMatch', ifMatch)
+            // verify required parameter 'taskReminderCommand' is not null or undefined
+            assertParamExists('updateTaskReminder', 'taskReminderCommand', taskReminderCommand)
+            const localVarPath = `/api/v1/tasks/{publicId}/reminders/{reminderId}`
+                .replace('{publicId}', encodeURIComponent(String(publicId)))
+                .replace('{reminderId}', encodeURIComponent(String(reminderId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'PUT', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            if (ifMatch != null) {
+                localVarHeaderParameter['If-Match'] = typeof ifMatch === 'string'
+                    ? ifMatch
+                    : JSON.stringify(ifMatch, replaceWithSerializableTypeIfNeeded);
+            }
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(taskReminderCommand, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} publicId
          * @param {string} ifMatch
          * @param {TaskTagCommand} taskTagCommand
          * @param {*} [options] Override http request option.
@@ -907,6 +1256,17 @@ export const TasksApiFp = function(configuration?: Configuration) {
     return {
         /**
          *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async clearTaskInbox(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseLong>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.clearTaskInbox(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.clearTaskInbox']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {*} [options] Override http request option.
@@ -942,6 +1302,19 @@ export const TasksApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.createTaskList(idempotencyKey, taskListCommand, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['TasksApi.createTaskList']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} publicId
+         * @param {TaskReminderCommand} taskReminderCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async createTaskReminder(publicId: string, taskReminderCommand: TaskReminderCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskReminder>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createTaskReminder(publicId, taskReminderCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.createTaskReminder']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -985,6 +1358,20 @@ export const TasksApiFp = function(configuration?: Configuration) {
         /**
          *
          * @param {string} publicId
+         * @param {string} reminderId
+         * @param {number} ifMatch
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async deleteTaskReminder(publicId: string, reminderId: string, ifMatch: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseBoolean>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.deleteTaskReminder(publicId, reminderId, ifMatch, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.deleteTaskReminder']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} publicId
          * @param {string} ifMatch
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -1012,6 +1399,17 @@ export const TasksApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
+        async getTaskInboxUnread(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskInboxUnread>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getTaskInboxUnread(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.getTaskInboxUnread']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
         async getTaskSettings(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskSettings>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.getTaskSettings(options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
@@ -1031,6 +1429,20 @@ export const TasksApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {boolean} [unread]
+         * @param {number} [page]
+         * @param {number} [size]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listTaskInbox(unread?: boolean, page?: number, size?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskInboxPage>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listTaskInbox(unread, page, size, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.listTaskInbox']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -1038,6 +1450,18 @@ export const TasksApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.listTaskLists(options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['TasksApi.listTaskLists']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} publicId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listTaskReminders(publicId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseListTaskReminder>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listTaskReminders(publicId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.listTaskReminders']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -1108,6 +1532,18 @@ export const TasksApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {TaskInboxReadCommand} taskInboxReadCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async readTaskInbox(taskInboxReadCommand: TaskInboxReadCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskInboxUnread>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.readTaskInbox(taskInboxReadCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.readTaskInbox']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {*} [options] Override http request option.
@@ -1147,6 +1583,17 @@ export const TasksApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async streamTaskInbox(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SseEmitter>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.streamTaskInbox(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.streamTaskInbox']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {TaskCommand} taskCommand
@@ -1176,6 +1623,21 @@ export const TasksApiFp = function(configuration?: Configuration) {
         /**
          *
          * @param {string} publicId
+         * @param {string} reminderId
+         * @param {number} ifMatch
+         * @param {TaskReminderCommand} taskReminderCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async updateTaskReminder(publicId: string, reminderId: string, ifMatch: number, taskReminderCommand: TaskReminderCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskReminder>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.updateTaskReminder(publicId, reminderId, ifMatch, taskReminderCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.updateTaskReminder']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} publicId
          * @param {string} ifMatch
          * @param {TaskTagCommand} taskTagCommand
          * @param {*} [options] Override http request option.
@@ -1196,6 +1658,14 @@ export const TasksApiFp = function(configuration?: Configuration) {
 export const TasksApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
     const localVarFp = TasksApiFp(configuration)
     return {
+        /**
+         *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        clearTaskInbox(options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseLong> {
+            return localVarFp.clearTaskInbox(options).then((request) => request(axios, basePath));
+        },
         /**
          *
          * @param {TasksApiCompleteTaskRequest} requestParameters Request parameters.
@@ -1222,6 +1692,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
          */
         createTaskList(requestParameters: TasksApiCreateTaskListRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskList> {
             return localVarFp.createTaskList(requestParameters.idempotencyKey, requestParameters.taskListCommand, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {TasksApiCreateTaskReminderRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createTaskReminder(requestParameters: TasksApiCreateTaskReminderRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskReminder> {
+            return localVarFp.createTaskReminder(requestParameters.publicId, requestParameters.taskReminderCommand, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -1252,6 +1731,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         },
         /**
          *
+         * @param {TasksApiDeleteTaskReminderRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteTaskReminder(requestParameters: TasksApiDeleteTaskReminderRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseBoolean> {
+            return localVarFp.deleteTaskReminder(requestParameters.publicId, requestParameters.reminderId, requestParameters.ifMatch, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {TasksApiDeleteTaskTagRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -1273,6 +1761,14 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
+        getTaskInboxUnread(options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskInboxUnread> {
+            return localVarFp.getTaskInboxUnread(options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
         getTaskSettings(options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskSettings> {
             return localVarFp.getTaskSettings(options).then((request) => request(axios, basePath));
         },
@@ -1286,11 +1782,29 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         },
         /**
          *
+         * @param {TasksApiListTaskInboxRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listTaskInbox(requestParameters: TasksApiListTaskInboxRequest = {}, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskInboxPage> {
+            return localVarFp.listTaskInbox(requestParameters.unread, requestParameters.page, requestParameters.size, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
         listTaskLists(options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseListTaskList> {
             return localVarFp.listTaskLists(options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {TasksApiListTaskRemindersRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listTaskReminders(requestParameters: TasksApiListTaskRemindersRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseListTaskReminder> {
+            return localVarFp.listTaskReminders(requestParameters.publicId, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -1338,6 +1852,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         },
         /**
          *
+         * @param {TasksApiReadTaskInboxRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        readTaskInbox(requestParameters: TasksApiReadTaskInboxRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskInboxUnread> {
+            return localVarFp.readTaskInbox(requestParameters.taskInboxReadCommand, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {TasksApiReopenTaskRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -1365,6 +1888,14 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         },
         /**
          *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        streamTaskInbox(options?: RawAxiosRequestConfig): AxiosPromise<SseEmitter> {
+            return localVarFp.streamTaskInbox(options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {TasksApiUpdateTaskRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -1380,6 +1911,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
          */
         updateTaskList(requestParameters: TasksApiUpdateTaskListRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskList> {
             return localVarFp.updateTaskList(requestParameters.publicId, requestParameters.ifMatch, requestParameters.taskListCommand, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {TasksApiUpdateTaskReminderRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateTaskReminder(requestParameters: TasksApiUpdateTaskReminderRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskReminder> {
+            return localVarFp.updateTaskReminder(requestParameters.publicId, requestParameters.reminderId, requestParameters.ifMatch, requestParameters.taskReminderCommand, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -1421,6 +1961,15 @@ export interface TasksApiCreateTaskListRequest {
 }
 
 /**
+ * Request parameters for createTaskReminder operation in TasksApi.
+ */
+export interface TasksApiCreateTaskReminderRequest {
+    readonly publicId: string
+
+    readonly taskReminderCommand: TaskReminderCommand
+}
+
+/**
  * Request parameters for createTaskTag operation in TasksApi.
  */
 export interface TasksApiCreateTaskTagRequest {
@@ -1446,6 +1995,17 @@ export interface TasksApiDeleteTaskListRequest {
 }
 
 /**
+ * Request parameters for deleteTaskReminder operation in TasksApi.
+ */
+export interface TasksApiDeleteTaskReminderRequest {
+    readonly publicId: string
+
+    readonly reminderId: string
+
+    readonly ifMatch: number
+}
+
+/**
  * Request parameters for deleteTaskTag operation in TasksApi.
  */
 export interface TasksApiDeleteTaskTagRequest {
@@ -1458,6 +2018,24 @@ export interface TasksApiDeleteTaskTagRequest {
  * Request parameters for getTask operation in TasksApi.
  */
 export interface TasksApiGetTaskRequest {
+    readonly publicId: string
+}
+
+/**
+ * Request parameters for listTaskInbox operation in TasksApi.
+ */
+export interface TasksApiListTaskInboxRequest {
+    readonly unread?: boolean
+
+    readonly page?: number
+
+    readonly size?: number
+}
+
+/**
+ * Request parameters for listTaskReminders operation in TasksApi.
+ */
+export interface TasksApiListTaskRemindersRequest {
     readonly publicId: string
 }
 
@@ -1501,6 +2079,13 @@ export interface TasksApiPurgeTaskRequest {
  */
 export interface TasksApiPushTaskSyncRequest {
     readonly taskSyncOperation: Array<TaskSyncOperation>
+}
+
+/**
+ * Request parameters for readTaskInbox operation in TasksApi.
+ */
+export interface TasksApiReadTaskInboxRequest {
+    readonly taskInboxReadCommand: TaskInboxReadCommand
 }
 
 /**
@@ -1553,6 +2138,19 @@ export interface TasksApiUpdateTaskListRequest {
 }
 
 /**
+ * Request parameters for updateTaskReminder operation in TasksApi.
+ */
+export interface TasksApiUpdateTaskReminderRequest {
+    readonly publicId: string
+
+    readonly reminderId: string
+
+    readonly ifMatch: number
+
+    readonly taskReminderCommand: TaskReminderCommand
+}
+
+/**
  * Request parameters for updateTaskTag operation in TasksApi.
  */
 export interface TasksApiUpdateTaskTagRequest {
@@ -1567,6 +2165,15 @@ export interface TasksApiUpdateTaskTagRequest {
  * TasksApi - object-oriented interface
  */
 export class TasksApi extends BaseAPI {
+    /**
+     *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public clearTaskInbox(options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).clearTaskInbox(options).then((request) => request(this.axios, this.basePath));
+    }
+
     /**
      *
      * @param {TasksApiCompleteTaskRequest} requestParameters Request parameters.
@@ -1595,6 +2202,16 @@ export class TasksApi extends BaseAPI {
      */
     public createTaskList(requestParameters: TasksApiCreateTaskListRequest, options?: RawAxiosRequestConfig) {
         return TasksApiFp(this.configuration).createTaskList(requestParameters.idempotencyKey, requestParameters.taskListCommand, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {TasksApiCreateTaskReminderRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public createTaskReminder(requestParameters: TasksApiCreateTaskReminderRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).createTaskReminder(requestParameters.publicId, requestParameters.taskReminderCommand, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -1629,6 +2246,16 @@ export class TasksApi extends BaseAPI {
 
     /**
      *
+     * @param {TasksApiDeleteTaskReminderRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public deleteTaskReminder(requestParameters: TasksApiDeleteTaskReminderRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).deleteTaskReminder(requestParameters.publicId, requestParameters.reminderId, requestParameters.ifMatch, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
      * @param {TasksApiDeleteTaskTagRequest} requestParameters Request parameters.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -1652,6 +2279,15 @@ export class TasksApi extends BaseAPI {
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
+    public getTaskInboxUnread(options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).getTaskInboxUnread(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
     public getTaskSettings(options?: RawAxiosRequestConfig) {
         return TasksApiFp(this.configuration).getTaskSettings(options).then((request) => request(this.axios, this.basePath));
     }
@@ -1667,11 +2303,31 @@ export class TasksApi extends BaseAPI {
 
     /**
      *
+     * @param {TasksApiListTaskInboxRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listTaskInbox(requestParameters: TasksApiListTaskInboxRequest = {}, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).listTaskInbox(requestParameters.unread, requestParameters.page, requestParameters.size, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
     public listTaskLists(options?: RawAxiosRequestConfig) {
         return TasksApiFp(this.configuration).listTaskLists(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {TasksApiListTaskRemindersRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listTaskReminders(requestParameters: TasksApiListTaskRemindersRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).listTaskReminders(requestParameters.publicId, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -1725,6 +2381,16 @@ export class TasksApi extends BaseAPI {
 
     /**
      *
+     * @param {TasksApiReadTaskInboxRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public readTaskInbox(requestParameters: TasksApiReadTaskInboxRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).readTaskInbox(requestParameters.taskInboxReadCommand, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
      * @param {TasksApiReopenTaskRequest} requestParameters Request parameters.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -1755,6 +2421,15 @@ export class TasksApi extends BaseAPI {
 
     /**
      *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public streamTaskInbox(options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).streamTaskInbox(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
      * @param {TasksApiUpdateTaskRequest} requestParameters Request parameters.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -1771,6 +2446,16 @@ export class TasksApi extends BaseAPI {
      */
     public updateTaskList(requestParameters: TasksApiUpdateTaskListRequest, options?: RawAxiosRequestConfig) {
         return TasksApiFp(this.configuration).updateTaskList(requestParameters.publicId, requestParameters.ifMatch, requestParameters.taskListCommand, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {TasksApiUpdateTaskReminderRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public updateTaskReminder(requestParameters: TasksApiUpdateTaskReminderRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).updateTaskReminder(requestParameters.publicId, requestParameters.reminderId, requestParameters.ifMatch, requestParameters.taskReminderCommand, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

@@ -12,8 +12,10 @@ import com.salarytracker.task.TaskModels.TaskPage;
 import com.salarytracker.task.TaskModels.TaskListCommand;
 import com.salarytracker.task.TaskModels.TaskTag;
 import com.salarytracker.task.TaskModels.TaskTagCommand;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,10 +31,11 @@ import java.util.UUID;
 
 @Service
 public class TaskService {
-    private static final String TASK_COLUMNS = "t.public_id, l.public_id list_public_id, t.title, t.description, " +
+    private static final String TASK_COLUMNS = "t.public_id,t.user_id, l.public_id list_public_id, t.title, t.description, " +
             "t.status, t.priority, t.start_at, t.due_at, t.all_day, t.timezone, t.duration_minutes, " +
             "t.source, t.completed_at, t.revision, t.deleted, t.deleted_at, " +
-            "(SELECT p.public_id FROM task p WHERE p.id = t.parent_id) parent_public_id";
+            "(SELECT p.public_id FROM task p WHERE p.id = t.parent_id) parent_public_id, " +
+            "t.rrule,t.recurrence_anchor,t.series_id,t.series_sequence,t.planned_due_at";
     private final JdbcTemplate jdbcTemplate;
     private final CurrentUserResolver currentUser;
     private final TaskChangeLog changeLog;
@@ -385,13 +388,19 @@ public class TaskService {
         }
         ValidatedTask values = validate(command, null);
         String normalizedStatus = enumValue(status, "OPEN", List.of("OPEN", "COMPLETED"), "status");
+        String rrule = TaskRecurrence.validate(command == null ? null : command.rrule());
+        String anchor = rrule == null ? null : enumValue(command.recurrenceAnchor(), "DUE_DATE",
+                List.of("DUE_DATE", "COMPLETION_DATE"), "recurrenceAnchor");
+        if (rrule != null && values.dueAt() == null) throw new IllegalArgumentException("重复任务必须设置到期时间");
+        String seriesId = rrule == null ? null : UUID.randomUUID().toString();
         try {
             jdbcTemplate.update("INSERT INTO task (public_id, user_id, list_id, parent_id, title, description, status, priority, " +
-                            "start_at, due_at, all_day, timezone, duration_minutes, source, completed_at, created_by, client_op_key) " +
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'WEB', ?, ?, ?)",
+                            "start_at, due_at, all_day, timezone, duration_minutes,series_id,series_sequence,planned_due_at,rrule,recurrence_anchor,source, completed_at, created_by, client_op_key) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'WEB', ?, ?, ?)",
                     publicId, userId, listDatabaseId, parentDatabaseId, values.title(), values.description(), normalizedStatus, values.priority(),
                     timestamp(values.startAt()), timestamp(values.dueAt()), values.allDay(), values.timezone(),
-                    values.durationMinutes(), "COMPLETED".equals(normalizedStatus) ? Timestamp.from(Instant.now()) : null,
+                    values.durationMinutes(), seriesId, seriesId == null ? null : 1, timestamp(values.dueAt()), rrule, anchor,
+                    "COMPLETED".equals(normalizedStatus) ? Timestamp.from(Instant.now()) : null,
                     userId, opKey);
         } catch (DuplicateKeyException exception) {
             List<String> concurrent = jdbcTemplate.query(
@@ -401,6 +410,8 @@ public class TaskService {
             throw exception;
         }
         replaceTagsAndChecklist(userId, publicId, command.tagIds(), command.checklist());
+        if (seriesId != null) jdbcTemplate.update("INSERT IGNORE INTO task_recurrence_instance(series_id,planned_due_at,task_id) " +
+                "SELECT series_id,planned_due_at,id FROM task WHERE public_id=?", publicId);
         TaskItem created = taskForUser(userId, publicId);
         changeLog.append(userId, opKey, publicId, "UPSERT", syncEntity(created, false));
         return created;
@@ -432,16 +443,31 @@ public class TaskService {
         ValidatedTask values = validate(command, before);
         String normalizedStatus = status == null ? before.status()
                 : enumValue(status, before.status(), List.of("OPEN", "COMPLETED"), "status");
+        String rrule = command.rrule() == null ? before.rrule() : TaskRecurrence.validate(command.rrule());
+        String anchor = rrule == null ? null : enumValue(command.recurrenceAnchor(),
+                before.recurrenceAnchor() == null ? "DUE_DATE" : before.recurrenceAnchor(),
+                List.of("DUE_DATE", "COMPLETION_DATE"), "recurrenceAnchor");
+        if (rrule != null && values.dueAt() == null) throw new IllegalArgumentException("重复任务必须设置到期时间");
+        String seriesId = rrule == null ? null : before.seriesId() == null ? UUID.randomUUID().toString() : before.seriesId();
+        Integer sequence = rrule == null ? null : before.seriesSequence() == null ? 1 : before.seriesSequence();
         int updated = jdbcTemplate.update("UPDATE task SET list_id = ?, parent_id = ?, title = ?, description = ?, status = ?, priority = ?, " +
-                        "start_at = ?, due_at = ?, all_day = ?, timezone = ?, duration_minutes = ?, completed_at = ?, revision = revision + 1 " +
+                        "start_at = ?, due_at = ?, all_day = ?, timezone = ?, duration_minutes = ?,rrule=?,recurrence_anchor=?,series_id=?,series_sequence=?,planned_due_at=?, completed_at = ?, revision = revision + 1 " +
                         "WHERE public_id = ? AND user_id = ? AND deleted = FALSE AND revision = ?",
                 listDatabaseId, parentDatabaseId, values.title(), values.description(), normalizedStatus, values.priority(), timestamp(values.startAt()),
-                timestamp(values.dueAt()), values.allDay(), values.timezone(), values.durationMinutes(),
+                timestamp(values.dueAt()), values.allDay(), values.timezone(), values.durationMinutes(), rrule, anchor, seriesId, sequence,
+                rrule == null ? null : timestamp(values.dueAt()),
                 "COMPLETED".equals(normalizedStatus) ? timestamp(before.completedAt() == null
                         ? Instant.now() : Instant.parse(before.completedAt())) : null,
                 validUuid(publicId, "publicId"), userId, expected);
         ensureUpdated(updated, userId, publicId);
         replaceTagsAndChecklist(userId, publicId, command.tagIds(), command.checklist());
+        if (seriesId != null) jdbcTemplate.update("INSERT IGNORE INTO task_recurrence_instance(series_id,planned_due_at,task_id) " +
+                "SELECT series_id,planned_due_at,id FROM task WHERE public_id=?", publicId);
+        if (!"COMPLETED".equals(before.status()) && "COMPLETED".equals(normalizedStatus)) {
+            generateNextInstance(userId, before, Instant.now());
+            jdbcTemplate.update("UPDATE task_reminder r JOIN task t ON t.id=r.task_id SET r.cancelled_at=CURRENT_TIMESTAMP(3),r.revision=r.revision+1 " +
+                    "WHERE t.public_id=? AND t.user_id=? AND r.cancelled_at IS NULL AND r.sent_at IS NULL", publicId, userId);
+        }
         if (!before.listId().equals(command.listId()) && command.listId() != null) {
             List<String> children = jdbcTemplate.query("WITH RECURSIVE tree AS (" +
                     "SELECT id,public_id FROM task WHERE public_id=? AND user_id=? UNION ALL " +
@@ -502,6 +528,8 @@ public class TaskService {
                     "WHERE public_id=? AND user_id=? AND deleted=FALSE", publicId, child, userId);
             changeLog.append(userId, UUID.randomUUID().toString(), child, "DELETE", syncEntity(taskForUser(userId, child, true), true));
         }
+        jdbcTemplate.update("UPDATE task_reminder r JOIN task t ON t.id=r.task_id SET r.cancelled_at=CURRENT_TIMESTAMP(3),r.revision=r.revision+1 " +
+                "WHERE t.user_id=? AND t.deleted=TRUE AND r.cancelled_at IS NULL AND r.sent_at IS NULL", userId);
         DeletedResource deleted = new DeletedResource(publicId, expected + 1, true);
         changeLog.append(userId, opId, publicId, "DELETE", syncEntity(taskForUser(userId, publicId, true), true));
         return deleted;
@@ -527,9 +555,59 @@ public class TaskService {
                         ", revision = revision + 1 WHERE public_id = ? AND user_id = ? AND deleted = FALSE AND revision = ?",
                 status, validUuid(publicId, "publicId"), userId, expected);
         ensureUpdated(updated, userId, publicId);
+        if ("COMPLETED".equals(status)) {
+            generateNextInstance(userId, before, Instant.now());
+            jdbcTemplate.update("UPDATE task_reminder r JOIN task t ON t.id=r.task_id SET r.cancelled_at=CURRENT_TIMESTAMP(3),r.revision=r.revision+1 " +
+                    "WHERE t.public_id=? AND t.user_id=? AND r.cancelled_at IS NULL AND r.sent_at IS NULL", publicId, userId);
+        }
         TaskItem changed = taskForUser(userId, publicId);
         changeLog.append(userId, opId, publicId, "UPSERT", syncEntity(changed, false));
         return changed;
+    }
+
+    private void generateNextInstance(long userId, TaskItem current, Instant completedAt) {
+        if (current.rrule() == null || current.seriesId() == null || current.plannedDueAt() == null) return;
+        Instant next = TaskRecurrence.next(current.rrule(), Instant.parse(current.plannedDueAt()), completedAt,
+                current.recurrenceAnchor(), current.timezone(), (current.seriesSequence() == null ? 1 : current.seriesSequence()) + 1);
+        if (next == null) return;
+        int sequence = current.seriesSequence() + 1;
+        String nextId = UUID.randomUUID().toString();
+        String opKey = "recurrence:" + current.seriesId() + ":" + next;
+        try {
+            int inserted = jdbcTemplate.update("INSERT INTO task(public_id,user_id,list_id,parent_id,title,description,status,priority," +
+                            "start_at,due_at,all_day,timezone,duration_minutes,series_id,series_sequence,planned_due_at,rrule," +
+                            "recurrence_anchor,source,created_by,client_op_key) SELECT ?,user_id,list_id,parent_id,title,description,'OPEN',priority," +
+                            "CASE WHEN start_at IS NULL THEN NULL ELSE TIMESTAMPADD(MICROSECOND,TIMESTAMPDIFF(MICROSECOND,due_at,?),start_at) END," +
+                            "?,all_day,timezone,duration_minutes,series_id,?,?,rrule,recurrence_anchor,'RECURRENCE',created_by,? " +
+                            "FROM task WHERE public_id=? AND user_id=?", nextId, Timestamp.from(next), Timestamp.from(next),
+                    sequence, Timestamp.from(next), opKey, current.publicId(), userId);
+            if (inserted == 0) return;
+        } catch (DuplicateKeyException duplicate) {
+            return;
+        }
+        Long sourceId = jdbcTemplate.queryForObject("SELECT id FROM task WHERE public_id=?", Long.class, current.publicId());
+        Long targetId = jdbcTemplate.queryForObject("SELECT id FROM task WHERE public_id=?", Long.class, nextId);
+        jdbcTemplate.update("INSERT INTO task_tag_link(task_id,tag_id) SELECT ?,tag_id FROM task_tag_link WHERE task_id=?", targetId, sourceId);
+        jdbcTemplate.update("INSERT INTO task_checklist_item(public_id,user_id,task_id,title,completed,sort_order) " +
+                "SELECT UUID(),user_id,?,title,FALSE,sort_order FROM task_checklist_item WHERE task_id=? AND deleted=FALSE", targetId, sourceId);
+        jdbcTemplate.update("INSERT INTO task_reminder(public_id,user_id,task_id,kind,offset_minutes,remind_at,channel,daily_until_done) " +
+                "SELECT UUID(),user_id,?,kind,offset_minutes,CASE WHEN kind='RELATIVE' THEN TIMESTAMPADD(MINUTE,-offset_minutes,?) ELSE remind_at END,channel,daily_until_done " +
+                "FROM task_reminder WHERE task_id=? AND cancelled_at IS NULL", targetId, Timestamp.from(next), sourceId);
+        jdbcTemplate.update("INSERT IGNORE INTO task_recurrence_instance(series_id,planned_due_at,task_id) VALUES(?,?,?)",
+                current.seriesId(), Timestamp.from(next), targetId);
+        TaskItem generated = taskForUser(userId, nextId);
+        changeLog.append(userId, opKey, nextId, "UPSERT", syncEntity(generated, false));
+    }
+
+    @Scheduled(fixedDelay = 30000, initialDelay = 10000)
+    @SchedulerLock(name = "taskRecurrenceScan", lockAtMostFor = "PT25S", lockAtLeastFor = "PT1S")
+    @Transactional
+    public void scanDueRecurrences() {
+        List<ScheduledRecurrence> due = jdbcTemplate.query("SELECT " + TASK_COLUMNS +
+                        " FROM task t JOIN task_list l ON l.id=t.list_id WHERE t.deleted=FALSE AND t.status='OPEN' " +
+                        "AND t.recurrence_anchor='DUE_DATE' AND t.planned_due_at<=CURRENT_TIMESTAMP(3)",
+                (result, rowNum) -> new ScheduledRecurrence(result.getLong("user_id"), task(result)));
+        for (ScheduledRecurrence recurrence : due) generateNextInstance(recurrence.userId(), recurrence.task(), Instant.now());
     }
 
     TaskItem currentForSync(String publicId) {
@@ -549,19 +627,21 @@ public class TaskService {
         return new TaskModels.SyncEntity(item.publicId(), item.listId(), item.title(), item.description(), item.status(),
                 item.priority(), item.startAt(), item.dueAt(), item.allDay(), item.timezone(), item.durationMinutes(),
                 item.source(), item.completedAt(), item.revision(), deleted, item.parentId(), item.tagIds(),
-                item.checklist(), item.deletedAt(), null, null, null, null, null, null);
+                item.checklist(), item.deletedAt(), null, null, null, null, null, null, item.rrule(),
+                item.recurrenceAnchor(), item.seriesId(), item.seriesSequence(), item.plannedDueAt());
     }
 
     static TaskModels.SyncEntity syncEntity(TaskList item, boolean deleted) {
         return new TaskModels.SyncEntity(item.publicId(), null, null, null, null, null, null, null, false,
                 null, null, null, null, item.revision() + (deleted ? 1 : 0), deleted, null, List.of(), List.of(), null,
-                item.name(), item.color(), item.icon(), item.systemKey(), item.sortOrder(), item.archived());
+                item.name(), item.color(), item.icon(), item.systemKey(), item.sortOrder(), item.archived(), null, null,
+                null, null, null);
     }
 
     static TaskModels.SyncEntity syncEntity(TaskTag item, boolean deleted) {
         return new TaskModels.SyncEntity(item.publicId(), null, null, null, null, null, null, null, false,
                 null, null, null, null, item.revision() + (deleted ? 1 : 0), deleted, item.parentId(), List.of(), List.of(), null,
-                item.name(), item.color(), null, null, item.sortOrder(), null);
+                item.name(), item.color(), null, null, item.sortOrder(), null, null, null, null, null, null);
     }
 
     TaskList currentListForSync(String publicId) { return listForUser(currentUser.id(), publicId, false); }
@@ -726,6 +806,7 @@ public class TaskService {
 
     private TaskItem task(ResultSet result) throws SQLException {
         String publicId = result.getString("public_id");
+        long userId = result.getLong("user_id");
         List<String> tags = jdbcTemplate.query("SELECT t.public_id FROM task_tag t JOIN task_tag_link l ON l.tag_id=t.id " +
                         "JOIN task x ON x.id=l.task_id WHERE x.public_id=? ORDER BY t.sort_order, t.id",
                 (row, rowNum) -> row.getString(1), publicId);
@@ -733,11 +814,11 @@ public class TaskService {
                         "FROM task_checklist_item WHERE task_id=(SELECT id FROM task WHERE public_id=? AND user_id=?) " +
                         "AND deleted=FALSE ORDER BY sort_order,id", (row, rowNum) -> new TaskModels.ChecklistItem(
                         row.getString("public_id"), row.getString("title"), row.getBoolean("completed"),
-                        row.getInt("sort_order"), row.getLong("revision")), publicId, currentUser.id());
+                        row.getInt("sort_order"), row.getLong("revision")), publicId, userId);
         int completedSubtasks = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM task child JOIN task parent ON parent.id=child.parent_id " +
-                "WHERE parent.public_id=? AND child.user_id=? AND child.deleted=FALSE AND child.status='COMPLETED'", Integer.class, publicId, currentUser.id());
+                "WHERE parent.public_id=? AND child.user_id=? AND child.deleted=FALSE AND child.status='COMPLETED'", Integer.class, publicId, userId);
         int totalSubtasks = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM task child JOIN task parent ON parent.id=child.parent_id " +
-                "WHERE parent.public_id=? AND child.user_id=? AND child.deleted=FALSE", Integer.class, publicId, currentUser.id());
+                "WHERE parent.public_id=? AND child.user_id=? AND child.deleted=FALSE", Integer.class, publicId, userId);
         return new TaskItem(publicId, result.getString("list_public_id"),
                 result.getString("title"), result.getString("description"), result.getString("status"),
                 result.getString("priority"), instant(result.getTimestamp("start_at")),
@@ -745,7 +826,9 @@ public class TaskService {
                 (Integer) result.getObject("duration_minutes"), result.getString("source"),
                 instant(result.getTimestamp("completed_at")), result.getLong("revision"),
                 result.getString("parent_public_id"), tags, checklist, completedSubtasks, totalSubtasks,
-                result.getBoolean("deleted"), instant(result.getTimestamp("deleted_at")));
+                result.getBoolean("deleted"), instant(result.getTimestamp("deleted_at")), result.getString("rrule"),
+                result.getString("recurrence_anchor"), result.getString("series_id"),
+                (Integer) result.getObject("series_sequence"), instant(result.getTimestamp("planned_due_at")));
     }
 
     private ValidatedTask validate(TaskCommand command, TaskItem before) {
@@ -848,5 +931,8 @@ public class TaskService {
     }
 
     private record ParentRef(long id, Long parentId, Long grandparentId) {
+    }
+
+    private record ScheduledRecurrence(long userId, TaskItem task) {
     }
 }

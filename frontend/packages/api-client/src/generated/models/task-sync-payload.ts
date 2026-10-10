@@ -38,4 +38,6 @@ export interface TaskSyncPayload {
     'icon'?: string;
     'sortOrder'?: number;
     'archived'?: boolean;
+    'rrule'?: string;
+    'recurrenceAnchor'?: string;
 }

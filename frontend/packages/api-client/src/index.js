@@ -178,6 +178,38 @@ export const apiUpdateTask = async (publicId, payload, currentRevision) => data(
 export const apiCompleteTask = async (publicId, currentRevision) => data(await tasks.completeTask({ publicId, ifMatch: revision(currentRevision) }))
 export const apiReopenTask = async (publicId, currentRevision) => data(await tasks.reopenTask({ publicId, ifMatch: revision(currentRevision) }))
 export const apiDeleteTask = async (publicId, currentRevision) => data(await tasks.deleteTask({ publicId, ifMatch: revision(currentRevision) }))
+export const apiListTaskReminders = async publicId => data(await api.get(`/api/v1/tasks/${publicId}/reminders`))
+export const apiCreateTaskReminder = async (publicId, payload) => data(await api.post(`/api/v1/tasks/${publicId}/reminders`, payload))
+export const apiUpdateTaskReminder = async (publicId, reminderId, payload, currentRevision) => data(await api.put(`/api/v1/tasks/${publicId}/reminders/${reminderId}`, payload, { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiDeleteTaskReminder = async (publicId, reminderId, currentRevision) => data(await api.delete(`/api/v1/tasks/${publicId}/reminders/${reminderId}`, { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiListTaskInbox = async (params = {}) => data(await api.get('/api/v1/tasks/inbox', { params }))
+export const apiGetTaskInboxUnread = async () => data(await api.get('/api/v1/tasks/inbox/unread'))
+export const apiReadTaskInbox = async payload => data(await api.post('/api/v1/tasks/inbox/read', payload))
+export const apiClearTaskInbox = async () => data(await api.delete('/api/v1/tasks/inbox'))
+export async function apiStreamTaskInbox(onMessage, onConnected, signal) {
+  const request = () => fetch('/api/v1/tasks/inbox/stream', {
+    credentials: 'include', signal, headers: { Accept: 'text/event-stream',
+      ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}) }
+  })
+  let response = await request()
+  if (response.status === 401 && !signal?.aborted) { await apiRefresh(); response = await request() }
+  if (!response.ok || !response.body) throw new Error(`提醒实时连接失败 (${response.status})`)
+  const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''
+  while (!signal?.aborted) {
+    const { value, done } = await reader.read()
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+    const blocks = buffer.split(/\r?\n\r?\n/); buffer = blocks.pop() || ''
+    for (const block of blocks) {
+      const event = block.split(/\r?\n/).find(line => line.startsWith('event:'))?.slice(6).trim() || 'message'
+      const raw = block.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).join('\n')
+      if (!raw) continue
+      const payload = JSON.parse(raw)
+      if (event === 'connected') onConnected?.()
+      if (event === 'message') onMessage?.(payload)
+    }
+    if (done) throw new Error('提醒实时连接已断开')
+  }
+}
 export const apiListTaskTags = async () => data(await api.get('/api/v1/tasks/tags'))
 export const apiCreateTaskList = async payload => data(await api.post('/api/v1/tasks/lists', payload, { headers: { 'Idempotency-Key': crypto.randomUUID() } }))
 export const apiCreateTaskTag = async payload => data(await api.post('/api/v1/tasks/tags', payload))

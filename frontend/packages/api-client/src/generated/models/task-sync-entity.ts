@@ -43,4 +43,9 @@ export interface TaskSyncEntity {
     'systemKey'?: string;
     'sortOrder'?: number;
     'archived'?: boolean;
+    'rrule'?: string;
+    'recurrenceAnchor'?: string;
+    'seriesId'?: string;
+    'seriesSequence'?: number;
+    'plannedDueAt'?: string;
 }

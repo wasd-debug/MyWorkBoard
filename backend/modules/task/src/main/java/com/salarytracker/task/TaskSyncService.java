@@ -109,7 +109,8 @@ public class TaskSyncService {
             if (current == null && (baseRevision > 0 || tasks.existsForAnotherUser(entityId))) return inaccessible(opId, entityId, "任务不存在或已删除，请刷新垃圾桶");
             TaskCommand command = new TaskCommand(payload.listId(), payload.title(), payload.description(),
                     payload.priority(), payload.startAt(), payload.dueAt(), payload.allDay(), payload.timezone(),
-                    payload.durationMinutes(), payload.parentId(), payload.tagIds(), payload.checklist());
+                    payload.durationMinutes(), payload.parentId(), payload.tagIds(), payload.checklist(), payload.rrule(),
+                    payload.recurrenceAnchor());
             TaskItem saved = current == null
                     ? tasks.createForSync(command, payload.status(), opId, entityId)
                     : tasks.updateForSync(entityId, command, payload.status(), baseRevision, opId);
@@ -216,6 +217,8 @@ public class TaskSyncService {
         different(fields, "status", local.status(), server.status());
         different(fields, "priority", local.priority(), server.priority());
         different(fields, "dueAt", local.dueAt(), server.dueAt());
+        different(fields, "rrule", local.rrule(), server.rrule());
+        different(fields, "recurrenceAnchor", local.recurrenceAnchor(), server.recurrenceAnchor());
         return fields;
     }
 

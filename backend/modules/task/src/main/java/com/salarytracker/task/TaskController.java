@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 
@@ -37,10 +38,12 @@ import java.util.List;
 public class TaskController {
     private final TaskService taskService;
     private final TaskSyncService taskSyncService;
+    private final TaskReminderService reminderService;
 
-    public TaskController(TaskService taskService, TaskSyncService taskSyncService) {
+    public TaskController(TaskService taskService, TaskSyncService taskSyncService, TaskReminderService reminderService) {
         this.taskService = taskService;
         this.taskSyncService = taskSyncService;
+        this.reminderService = reminderService;
     }
 
     @GetMapping("/lists")
@@ -222,4 +225,68 @@ public class TaskController {
                                                   @RequestParam(defaultValue = "200") int limit) {
         return ApiResponse.ok(taskSyncService.pull(cursor, limit));
     }
+
+    @GetMapping("/{publicId}/reminders")
+    @PreAuthorize("hasAuthority('task:read')")
+    @Operation(operationId = "listTaskReminders")
+    public ApiResponse<List<TaskModels.Reminder>> reminders(@PathVariable String publicId) {
+        return ApiResponse.ok(reminderService.list(publicId));
+    }
+
+    @PostMapping(value = "/{publicId}/reminders", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "createTaskReminder")
+    public ApiResponse<TaskModels.Reminder> createReminder(@PathVariable String publicId,
+                                                            @RequestBody TaskModels.ReminderCommand body) {
+        return ApiResponse.ok(reminderService.create(publicId, body));
+    }
+
+    @PutMapping(value = "/{publicId}/reminders/{reminderId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "updateTaskReminder")
+    public ApiResponse<TaskModels.Reminder> updateReminder(@PathVariable String publicId, @PathVariable String reminderId,
+                                                            @RequestBody TaskModels.ReminderCommand body,
+                                                            @RequestHeader("If-Match") long revision) {
+        return ApiResponse.ok(reminderService.update(publicId, reminderId, body, revision));
+    }
+
+    @DeleteMapping("/{publicId}/reminders/{reminderId}")
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "deleteTaskReminder")
+    public ApiResponse<Boolean> deleteReminder(@PathVariable String publicId, @PathVariable String reminderId,
+                                                @RequestHeader("If-Match") long revision) {
+        reminderService.delete(publicId, reminderId, revision);
+        return ApiResponse.ok(true);
+    }
+
+    @GetMapping("/inbox")
+    @PreAuthorize("hasAuthority('task:read')")
+    @Operation(operationId = "listTaskInbox")
+    public ApiResponse<TaskModels.InboxPage> inbox(@RequestParam(defaultValue = "false") boolean unread,
+                                                    @RequestParam(defaultValue = "0") int page,
+                                                    @RequestParam(defaultValue = "50") int size) {
+        return ApiResponse.ok(reminderService.inbox(unread, page, size));
+    }
+
+    @GetMapping("/inbox/unread")
+    @PreAuthorize("hasAuthority('task:read')")
+    @Operation(operationId = "getTaskInboxUnread")
+    public ApiResponse<TaskModels.InboxUnread> inboxUnread() { return ApiResponse.ok(reminderService.unread()); }
+
+    @GetMapping(value = "/inbox/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PreAuthorize("hasAuthority('task:read')")
+    @Operation(operationId = "streamTaskInbox")
+    public SseEmitter inboxStream() { return reminderService.stream(); }
+
+    @PostMapping(value = "/inbox/read", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "readTaskInbox")
+    public ApiResponse<TaskModels.InboxUnread> readInbox(@RequestBody TaskModels.InboxReadCommand body) {
+        return ApiResponse.ok(reminderService.read(body));
+    }
+
+    @DeleteMapping("/inbox")
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "clearTaskInbox")
+    public ApiResponse<Long> clearInbox() { return ApiResponse.ok(reminderService.clearRead()); }
 }

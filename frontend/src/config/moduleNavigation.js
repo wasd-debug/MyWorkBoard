@@ -23,6 +23,7 @@ export const taskNavigation = [
   { key: 'next7', to: '/tasks/next7', label: '7 天' },
   { key: 'all', to: '/tasks/all', label: '全部' },
   { key: 'completed', to: '/tasks/completed', label: '已完成' },
+  { key: 'notifications', to: '/tasks/inbox-notify', label: '提醒' },
   { key: 'trash', to: '/tasks/trash', label: '垃圾桶' }
 ]
 

@@ -15,6 +15,7 @@ const routes = [
   { path: '/tasks/next7', name: 'tasks-next7', component: () => import('../views/TasksInboxView.vue'), meta: { title: '最近 7 天' } },
   { path: '/tasks/all', name: 'tasks-all', component: () => import('../views/TasksInboxView.vue'), meta: { title: '全部任务' } },
   { path: '/tasks/completed', name: 'tasks-completed', component: () => import('../views/TasksInboxView.vue'), meta: { title: '已完成任务' } },
+  { path: '/tasks/inbox-notify', name: 'tasks-notifications', component: () => import('../views/TaskNotificationsView.vue'), meta: { title: '任务提醒' } },
   { path: '/tasks/trash', name: 'tasks-trash', component: () => import('../views/TasksInboxView.vue'), meta: { title: '任务垃圾桶' } },
   { path: '/tasks/list/:publicId', name: 'tasks-list', component: () => import('../views/TasksInboxView.vue'), meta: { title: '任务清单' } },
   { path: '/tasks/tag/:publicId', name: 'tasks-tag', component: () => import('../views/TasksInboxView.vue'), meta: { title: '任务标签' } },

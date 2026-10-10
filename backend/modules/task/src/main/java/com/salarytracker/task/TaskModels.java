@@ -39,12 +39,15 @@ public final class TaskModels {
                            String priority, String startAt, String dueAt, boolean allDay, String timezone,
                            Integer durationMinutes, String source, String completedAt, long revision,
                            String parentId, List<String> tagIds, List<ChecklistItem> checklist,
-                           int completedSubtasks, int totalSubtasks, boolean deleted, String deletedAt) {
+                           int completedSubtasks, int totalSubtasks, boolean deleted, String deletedAt,
+                           String rrule, String recurrenceAnchor, String seriesId, Integer seriesSequence,
+                           String plannedDueAt) {
         public TaskItem(String publicId, String listId, String title, String description, String status,
                         String priority, String startAt, String dueAt, boolean allDay, String timezone,
                         Integer durationMinutes, String source, String completedAt, long revision) {
             this(publicId, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
-                    durationMinutes, source, completedAt, revision, null, List.of(), List.of(), 0, 0, false, null);
+                    durationMinutes, source, completedAt, revision, null, List.of(), List.of(), 0, 0, false, null,
+                    null, null, null, null, null);
         }
     }
 
@@ -56,11 +59,17 @@ public final class TaskModels {
     public record TaskCommand(String listId, String title, String description, String priority,
                               String startAt, String dueAt, Boolean allDay, String timezone,
                               Integer durationMinutes, String parentId, List<String> tagIds,
-                              List<ChecklistCommand> checklist) {
+                              List<ChecklistCommand> checklist, String rrule, String recurrenceAnchor) {
+        public TaskCommand(String listId, String title, String description, String priority, String startAt,
+                           String dueAt, Boolean allDay, String timezone, Integer durationMinutes, String parentId,
+                           List<String> tagIds, List<ChecklistCommand> checklist) {
+            this(listId, title, description, priority, startAt, dueAt, allDay, timezone, durationMinutes,
+                    parentId, tagIds, checklist, null, null);
+        }
         public TaskCommand(String listId, String title, String description, String priority, String startAt,
                            String dueAt, Boolean allDay, String timezone, Integer durationMinutes) {
             this(listId, title, description, priority, startAt, dueAt, allDay, timezone, durationMinutes,
-                    null, null, null);
+                    null, null, null, null, null);
         }
     }
 
@@ -72,6 +81,33 @@ public final class TaskModels {
     public record Settings(String defaultListId, String defaultView, int weekStart, String timezone, long revision) {
     }
 
+    @Schema(name = "TaskReminder")
+    public record Reminder(String publicId, String taskId, String kind, Integer offsetMinutes, String remindAt,
+                           String channel, boolean sent, String sentAt, boolean dailyUntilDone, long revision) {
+    }
+
+    @Schema(name = "TaskReminderCommand")
+    public record ReminderCommand(String kind, Integer offsetMinutes, String remindAt, String channel,
+                                  Boolean dailyUntilDone) {
+    }
+
+    @Schema(name = "TaskInboxMessage")
+    public record InboxMessage(String publicId, String category, String type, String title, String body,
+                               String level, String taskId, String deepLink, String readAt, String createdAt) {
+    }
+
+    @Schema(name = "TaskInboxPage")
+    public record InboxPage(List<InboxMessage> items, int page, int size, long total) {
+    }
+
+    @Schema(name = "TaskInboxUnread")
+    public record InboxUnread(long unread, long overdue) {
+    }
+
+    @Schema(name = "TaskInboxReadCommand")
+    public record InboxReadCommand(List<String> ids, Boolean all) {
+    }
+
     public enum SyncAction { UPSERT, DELETE, PURGE }
 
     public enum SyncStatus { APPLIED, DUPLICATE, CONFLICT, FORBIDDEN, REJECTED }
@@ -81,12 +117,21 @@ public final class TaskModels {
                               String priority, String startAt, String dueAt, Boolean allDay, String timezone,
                               Integer durationMinutes, Long revision, String parentId, List<String> tagIds,
                               List<ChecklistCommand> checklist, String name, String color, String icon,
-                              Integer sortOrder, Boolean archived) {
+                              Integer sortOrder, Boolean archived, String rrule, String recurrenceAnchor) {
+        public SyncPayload(String id, String listId, String title, String description, String status,
+                           String priority, String startAt, String dueAt, Boolean allDay, String timezone,
+                           Integer durationMinutes, Long revision, String parentId, List<String> tagIds,
+                           List<ChecklistCommand> checklist, String name, String color, String icon,
+                           Integer sortOrder, Boolean archived) {
+            this(id, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
+                    durationMinutes, revision, parentId, tagIds, checklist, name, color, icon, sortOrder, archived,
+                    null, null);
+        }
         public SyncPayload(String id, String listId, String title, String description, String status,
                            String priority, String startAt, String dueAt, Boolean allDay, String timezone,
                            Integer durationMinutes, Long revision) {
             this(id, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
-                    durationMinutes, revision, null, null, null, null, null, null, null, null);
+                    durationMinutes, revision, null, null, null, null, null, null, null, null, null, null);
         }
     }
 
@@ -101,14 +146,15 @@ public final class TaskModels {
                              Integer durationMinutes, String source, String completedAt, long revision,
                              boolean deleted, String parentId, List<String> tagIds, List<ChecklistItem> checklist,
                              String deletedAt, String name, String color, String icon, String systemKey,
-                             Integer sortOrder, Boolean archived) {
+                             Integer sortOrder, Boolean archived, String rrule, String recurrenceAnchor,
+                             String seriesId, Integer seriesSequence, String plannedDueAt) {
         public SyncEntity(String id, String listId, String title, String description, String status,
                           String priority, String startAt, String dueAt, boolean allDay, String timezone,
                           Integer durationMinutes, String source, String completedAt, long revision,
                           boolean deleted) {
             this(id, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
                     durationMinutes, source, completedAt, revision, deleted, null, List.of(), List.of(), null,
-                    null, null, null, null, null, null);
+                    null, null, null, null, null, null, null, null, null, null, null);
         }
     }
 

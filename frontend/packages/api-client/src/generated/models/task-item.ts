@@ -39,4 +39,9 @@ export interface TaskItem {
     'totalSubtasks'?: number;
     'deleted'?: boolean;
     'deletedAt'?: string;
+    'rrule'?: string;
+    'recurrenceAnchor'?: string;
+    'seriesId'?: string;
+    'seriesSequence'?: number;
+    'plannedDueAt'?: string;
 }
