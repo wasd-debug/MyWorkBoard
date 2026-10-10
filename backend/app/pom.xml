@@ -41,6 +41,11 @@
             <artifactId>salary-tracker-ai</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>cn.6tail</groupId>
+            <artifactId>lunar</artifactId>
+            <version>1.7.4</version>
+        </dependency>
     </dependencies>
     <build>
         <directory>../target</directory>

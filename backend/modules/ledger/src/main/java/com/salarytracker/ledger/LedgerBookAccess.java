@@ -37,6 +37,10 @@ public class LedgerBookAccess {
         return bookPublicId;
     }
 
+    public long currentUserId() {
+        return currentUser.id();
+    }
+
     public Context resolve(String publicId) {
         String selected = publicId;
         if (selected == null || selected.isBlank() || "default".equalsIgnoreCase(selected)) {

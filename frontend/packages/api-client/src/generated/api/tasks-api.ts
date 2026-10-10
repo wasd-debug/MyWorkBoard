@@ -34,6 +34,8 @@ import type { ApiResponseListTaskTag } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseLong } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseTaskCalendarResponse } from '../models/index.ts';
+// @ts-ignore
 import type { ApiResponseTaskDeletedResource } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskInboxPage } from '../models/index.ts';
@@ -65,6 +67,8 @@ import type { TaskInboxReadCommand } from '../models/index.ts';
 import type { TaskListCommand } from '../models/index.ts';
 // @ts-ignore
 import type { TaskReminderCommand } from '../models/index.ts';
+// @ts-ignore
+import type { TaskRescheduleCommand } from '../models/index.ts';
 // @ts-ignore
 import type { TaskSyncOperation } from '../models/index.ts';
 // @ts-ignore
@@ -479,6 +483,59 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
             const localVarQueryParameter = {} as any;
 
             localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} from
+         * @param {string} to
+         * @param {string} [layers]
+         * @param {string} [lunar]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getTaskCalendar: async (from: string, to: string, layers?: string, lunar?: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'from' is not null or undefined
+            assertParamExists('getTaskCalendar', 'from', from)
+            // verify required parameter 'to' is not null or undefined
+            assertParamExists('getTaskCalendar', 'to', to)
+            const localVarPath = `/api/v1/tasks/calendar`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (from !== undefined) {
+                localVarQueryParameter['from'] = from;
+            }
+
+            if (to !== undefined) {
+                localVarQueryParameter['to'] = to;
+            }
+
+            if (layers !== undefined) {
+                localVarQueryParameter['layers'] = layers;
+            }
+
+            if (lunar !== undefined) {
+                localVarQueryParameter['lunar'] = lunar;
+            }
+
+            localVarHeaderParameter['Accept'] = '*/*,application/problem+json';
 
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
@@ -960,6 +1017,50 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
          *
          * @param {string} publicId
          * @param {string} ifMatch
+         * @param {TaskRescheduleCommand} taskRescheduleCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        rescheduleTask: async (publicId: string, ifMatch: string, taskRescheduleCommand: TaskRescheduleCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('rescheduleTask', 'publicId', publicId)
+            // verify required parameter 'ifMatch' is not null or undefined
+            assertParamExists('rescheduleTask', 'ifMatch', ifMatch)
+            // verify required parameter 'taskRescheduleCommand' is not null or undefined
+            assertParamExists('rescheduleTask', 'taskRescheduleCommand', taskRescheduleCommand)
+            const localVarPath = `/api/v1/tasks/{publicId}/reschedule`
+                .replace('{publicId}', encodeURIComponent(String(publicId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            if (ifMatch != null) {
+                localVarHeaderParameter['If-Match'] = String(ifMatch);
+            }
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(taskRescheduleCommand, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} publicId
+         * @param {string} ifMatch
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -1396,6 +1497,21 @@ export const TasksApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {string} from
+         * @param {string} to
+         * @param {string} [layers]
+         * @param {string} [lunar]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getTaskCalendar(from: string, to: string, layers?: string, lunar?: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskCalendarResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getTaskCalendar(from, to, layers, lunar, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.getTaskCalendar']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -1553,6 +1669,20 @@ export const TasksApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.reopenTask(publicId, ifMatch, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['TasksApi.reopenTask']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} publicId
+         * @param {string} ifMatch
+         * @param {TaskRescheduleCommand} taskRescheduleCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async rescheduleTask(publicId: string, ifMatch: string, taskRescheduleCommand: TaskRescheduleCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskItem>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.rescheduleTask(publicId, ifMatch, taskRescheduleCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.rescheduleTask']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -1758,6 +1888,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         },
         /**
          *
+         * @param {TasksApiGetTaskCalendarRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getTaskCalendar(requestParameters: TasksApiGetTaskCalendarRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskCalendarResponse> {
+            return localVarFp.getTaskCalendar(requestParameters.from, requestParameters.to, requestParameters.layers, requestParameters.lunar, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -1867,6 +2006,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
          */
         reopenTask(requestParameters: TasksApiReopenTaskRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskItem> {
             return localVarFp.reopenTask(requestParameters.publicId, requestParameters.ifMatch, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {TasksApiRescheduleTaskRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        rescheduleTask(requestParameters: TasksApiRescheduleTaskRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskItem> {
+            return localVarFp.rescheduleTask(requestParameters.publicId, requestParameters.ifMatch, requestParameters.taskRescheduleCommand, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -2022,6 +2170,19 @@ export interface TasksApiGetTaskRequest {
 }
 
 /**
+ * Request parameters for getTaskCalendar operation in TasksApi.
+ */
+export interface TasksApiGetTaskCalendarRequest {
+    readonly from: string
+
+    readonly to: string
+
+    readonly layers?: string
+
+    readonly lunar?: string
+}
+
+/**
  * Request parameters for listTaskInbox operation in TasksApi.
  */
 export interface TasksApiListTaskInboxRequest {
@@ -2095,6 +2256,17 @@ export interface TasksApiReopenTaskRequest {
     readonly publicId: string
 
     readonly ifMatch: string
+}
+
+/**
+ * Request parameters for rescheduleTask operation in TasksApi.
+ */
+export interface TasksApiRescheduleTaskRequest {
+    readonly publicId: string
+
+    readonly ifMatch: string
+
+    readonly taskRescheduleCommand: TaskRescheduleCommand
 }
 
 /**
@@ -2276,6 +2448,16 @@ export class TasksApi extends BaseAPI {
 
     /**
      *
+     * @param {TasksApiGetTaskCalendarRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public getTaskCalendar(requestParameters: TasksApiGetTaskCalendarRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).getTaskCalendar(requestParameters.from, requestParameters.to, requestParameters.layers, requestParameters.lunar, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -2397,6 +2579,16 @@ export class TasksApi extends BaseAPI {
      */
     public reopenTask(requestParameters: TasksApiReopenTaskRequest, options?: RawAxiosRequestConfig) {
         return TasksApiFp(this.configuration).reopenTask(requestParameters.publicId, requestParameters.ifMatch, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {TasksApiRescheduleTaskRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public rescheduleTask(requestParameters: TasksApiRescheduleTaskRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).rescheduleTask(requestParameters.publicId, requestParameters.ifMatch, requestParameters.taskRescheduleCommand, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

@@ -1,7 +1,7 @@
 # Phase 2 —— 任务域需求文档（滴答清单形态）
 
 > 状态日期：2026-10-09
-> 文档状态：**P2-I4 已完成**，待实施 P2-I5 日历与跨域只读叠加
+> 文档状态：**P2-I5 已完成**，待实施 P2-I6 效率工具
 > 适用范围：MyWorkBoard 个人工作台（`wasd-debug/MyWorkBoard`）
 > 上游依据：`docs/ARCHITECTURE.md` 第 10 章 Phase 2、`docs/overview.md`、`docs/后续特性路线图.md`
 > 目标：把滴答清单（TickTick）的任务管理能力完整复刻为独立 `task` 域，嵌入现有个人工作台，并沿用仓库既有的 v1 契约、local-first 同步、受控写入和阶段门禁。
@@ -1700,6 +1700,7 @@ com.salarytracker.task
 - **门禁结果**：重复规则单元测试、真实 MySQL 重复实例/提醒投递/未读数定向测试、Flyway V34 与架构边界测试通过；前端 Node、类型检查与生产构建通过。提醒实际准点偏差和 SSE/移动端页面行为仍待用户手工验收。
 
 ### P2-I5：日历、农历与跨域叠加
+- **完成记录（2026-10-10）**：本增量无新迁移。`app` 组装层提供 `/api/v1/tasks/calendar`，调用 task/worktime/ledger 公开只读投影与 HolidayService，工时、账本、节假日逐层降级；task 模块未读取其他域表。前端交付 FullCalendar 日/周/月、3/5/7 日、2/4/6 周、自研十二月年密度视图、账号级视图/图层偏好、桌面拖拽和移动端显式改期；改期复用 IndexedDB/oplog 与 revision。`lunar-java 1.7.4`（Apache-2.0，1900-2100）封装于 app 内部适配器，关闭、越界与错误只移除农历文本。习惯叠加在 I6 数据能力完成后接入。
 - 日/周/月由 FullCalendar 提供，年视图后续补齐；`app` 组装层聚合 task/worktime/ledger/holiday，只读且逐层降级。
 - 农历通过隔离适配器接入；拖拽改期仍走 revision 与 local-first 命令。
 - **门禁**：关闭任一叠加层日历仍可用；农历关闭零退化；多端与拖拽结果记录到手工检查清单。

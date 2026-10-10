@@ -2,7 +2,7 @@
 
 一个正在从“真实时薪与加班追踪”演进为“身份与设置 + 工时 + 账本 + 任务 + AI + 通知 + 音乐 + 洞察”的个人效率平台。
 
-当前可用主线是多用户工时、个人账本与 local-first 任务工作区。Phase 0/1 已完成资源化、local-first、物理模块拆分、唯一 v1 API、OpenAPI 生成客户端、视觉/无障碍和自动化验收收口；Phase 2 已完成 I3 任务组织与基础视图，重复提醒、RAG 知识库和跨域洞察仍属于后续增量。
+当前可用主线是多用户工时、个人账本与 local-first 任务工作区。Phase 0/1 已完成资源化、local-first、物理模块拆分、唯一 v1 API、OpenAPI 生成客户端、视觉/无障碍和自动化验收收口；Phase 2 已完成 I5 日历与跨域只读叠加，效率工具、增强视图与任务 Agent/MCP 仍属于后续增量。
 
 ## 当前能力
 
@@ -33,7 +33,7 @@
 
 ### 后续阶段
 
-- **Phase 2 任务管理：P2-I4 已完成。** 已交付 V30-V34、清单与标签、父/子/孙任务、检查项、重复实例、站内提醒、SSE/轮询提醒中心、基础日期视图、按删除来源恢复任务树的垃圾桶，以及任务/清单/标签共享的账号隔离 IndexedDB/oplog push/pull；I5 将交付日历与跨域只读叠加。
+- **Phase 2 任务管理：P2-I5 已完成。** 在 V30-V34 任务基础上交付 FullCalendar 日/周/月、自研年密度视图、农历/节气/节日、工时/账本/节假日只读叠加及逐层降级；日历改期继续写入账号隔离 IndexedDB/oplog，并由 revision 防止覆盖新版本。本增量无新迁移，习惯层留到 I6。
 - **Phase 3A-D Agent/MCP：Phase 3A/3B 增量实施。** 七个 R1 查询工具、会话/队列/SSE、模型连接和 Trace 已落地；首页现支持新增工时和单笔收入/支出的 R2 prepare、动态补参、站内确认和幂等 commit。修改删除、自动评测和 MCP 尚未开放。
 - **Phase 4 文件/RAG：未启动。** 计划在 Agent/MCP 稳定后建设文件域、向量库和知识库。
 - **Phase 5 跨域洞察：未启动。** 计划通过领域事件生成日/周/月/年报。
@@ -46,8 +46,8 @@
 
 | 层 | 当前实现 | 后续目标 |
 |---|---|---|
-| 前端 | Vue 3、Vite、Pinia、Vue Router、ECharts、Tailwind CSS 4、Reka UI、Lucide、OpenAPI 生成客户端 | PWA，并把 local-first 模式扩展到后续领域 |
-| 后端 | Java 17、Spring Boot 3.2、Spring Security、Spring Modulith、JDBC/MyBatis-Plus、Flyway、EasyExcel、ShedLock；platform/identity/worktime/ledger/task/ai/app 物理模块 | 按阶段引入通知、任务运行、文件、音乐、RAG 和洞察模块 |
+| 前端 | Vue 3、Vite、Pinia、Vue Router、ECharts、FullCalendar 6、Tailwind CSS 4、Reka UI、Lucide、OpenAPI 生成客户端 | PWA，并把 local-first 模式扩展到后续领域 |
+| 后端 | Java 17、Spring Boot 3.2、Spring Security、Spring Modulith、JDBC/MyBatis-Plus、Flyway、EasyExcel、ShedLock、lunar-java 1.7.4；platform/identity/worktime/ledger/task/ai/app 物理模块 | 按阶段引入通知、任务运行、文件、音乐、RAG 和洞察模块 |
 | 数据库/中间件 | MySQL 8，Flyway V1-V22 | 后续按需增加 Redis、RabbitMQ、MinIO/NAS、Qdrant 和搜索服务；MySQL 保持权威数据源 |
 | 部署 | Docker Compose、Nginx、Spring Boot、MySQL | 健康检查、备份恢复和可观测体系持续完善 |
 

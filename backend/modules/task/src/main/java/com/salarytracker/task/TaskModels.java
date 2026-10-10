@@ -55,6 +55,16 @@ public final class TaskModels {
     public record TaskPage(List<TaskItem> items, int page, int size, long total) {
     }
 
+    @Schema(name = "TaskCalendarItem")
+    public record CalendarItem(String publicId, String title, String status, String priority,
+                               String startAt, String dueAt, boolean allDay, String timezone,
+                               Integer durationMinutes, long revision) {
+    }
+
+    @Schema(name = "TaskRescheduleCommand")
+    public record RescheduleCommand(String startAt, String dueAt, Boolean allDay, Integer durationMinutes) {
+    }
+
     @Schema(name = "TaskCommand")
     public record TaskCommand(String listId, String title, String description, String priority,
                               String startAt, String dueAt, Boolean allDay, String timezone,

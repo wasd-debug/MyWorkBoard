@@ -12,6 +12,8 @@ import com.salarytracker.task.TaskModels.TaskPage;
 import com.salarytracker.task.TaskModels.TaskListCommand;
 import com.salarytracker.task.TaskModels.TaskTag;
 import com.salarytracker.task.TaskModels.TaskTagCommand;
+import com.salarytracker.task.TaskModels.CalendarItem;
+import com.salarytracker.task.TaskModels.RescheduleCommand;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -112,6 +114,32 @@ public class TaskService {
                         " ORDER BY t.status = 'COMPLETED', t.created_at DESC, t.id DESC LIMIT ? OFFSET ?",
                 (result, rowNum) -> task(result), pageArgs.toArray());
         return new TaskPage(items, safePage, safeSize, total);
+    }
+
+    public List<CalendarItem> calendarItems(Instant from, Instant to) {
+        if (from == null || to == null || !to.isAfter(from)) throw new IllegalArgumentException("日历时间范围无效");
+        if (to.isAfter(from.plusSeconds(370L * 24 * 60 * 60))) throw new IllegalArgumentException("日历查询范围不能超过 370 天");
+        return jdbcTemplate.query("SELECT public_id,title,status,priority,start_at,due_at,all_day,timezone,duration_minutes,revision " +
+                        "FROM task WHERE user_id=? AND deleted=FALSE AND (" +
+                        "(start_at IS NOT NULL AND start_at<? AND COALESCE(due_at,DATE_ADD(start_at,INTERVAL COALESCE(duration_minutes,0) MINUTE))>=?) " +
+                        "OR (start_at IS NULL AND due_at>=? AND due_at<?)) ORDER BY COALESCE(start_at,due_at),id",
+                (result, rowNum) -> new CalendarItem(result.getString("public_id"), result.getString("title"),
+                        result.getString("status"), result.getString("priority"), instant(result.getTimestamp("start_at")),
+                        instant(result.getTimestamp("due_at")), result.getBoolean("all_day"), result.getString("timezone"),
+                        (Integer) result.getObject("duration_minutes"), result.getLong("revision")),
+                currentUser.id(), Timestamp.from(to), Timestamp.from(from), Timestamp.from(from), Timestamp.from(to));
+    }
+
+    @Transactional
+    public TaskItem reschedule(String publicId, RescheduleCommand command, String ifMatch) {
+        if (command == null) throw new IllegalArgumentException("改期内容不能为空");
+        TaskItem current = get(publicId);
+        TaskCommand update = new TaskCommand(current.listId(), current.title(), current.description(), current.priority(),
+                command.startAt(), command.dueAt(), command.allDay() == null ? current.allDay() : command.allDay(),
+                current.timezone(), command.durationMinutes(), current.parentId(), current.tagIds(),
+                current.checklist().stream().map(item -> new TaskModels.ChecklistCommand(item.publicId(), item.title(),
+                        item.completed(), item.sortOrder())).toList(), current.rrule(), current.recurrenceAnchor());
+        return update(publicId, update, ifMatch);
     }
 
     @Transactional

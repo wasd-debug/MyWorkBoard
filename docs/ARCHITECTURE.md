@@ -17,7 +17,7 @@
 |---|---|---|
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
-| Phase 2 任务 | I4 完成 | V30-V34、task 物理模块、任务/清单/标签 local-first、基础组织、多视图、重复实例、提醒与站内信已落地；I5 日历待实施 |
+| Phase 2 任务 | I5 完成 | V30-V34、task 物理模块、任务/清单/标签 local-first、基础组织、多视图、重复/提醒、日历与跨域只读叠加已落地；I6 效率工具待实施 |
 | Phase 3A-D Agent/MCP | Phase 3A/3B/3D 核心闭环，Phase 3C-4 完成 | Web Agent、受控写入和 R4 审批已落地；MCP 已支持只读、PAT、OAuth 2.1 + PKCE、独立 prepare/commit scope、R2 单次提交和结果回放，R3/R4 commit 继续关闭 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
@@ -393,7 +393,7 @@ recurring       (id, user_id, name, rule_json, next_run_at, amount, category_id,
 
 ### 6.5 任务域（task）
 
-当前实现（P2-I4）：V30 建立 `task_list`、`task`、`task_setting`；V31 建立用户级 `task_sync_oplog`；V32 增加清单属性、父任务、排序、标签关系和检查项；V33 记录任务树删除来源；V34 增加重复实例、提醒、投递去重和任务站内信。删除父任务级联删除尚未删除的后代，恢复只恢复同一删除来源；重复完成保留历史并按系列计划时间幂等生成下一实例；提醒由 ShedLock 扫描并通过带 Bearer token 的 SSE 推送，失败后 30 秒轮询。普通 REST 与同步回放共用校验、revision 和变更日志，任务、清单、标签使用同一同步契约；前端按账号隔离 IndexedDB、游标、oplog、冲突与拒绝队列。筛选器、活动、日历与效率工具仍是后续增量目标，不应视为已建表。
+当前实现（P2-I5）：V30 建立 `task_list`、`task`、`task_setting`；V31 建立用户级 `task_sync_oplog`；V32 增加清单属性、父任务、排序、标签关系和检查项；V33 记录任务树删除来源；V34 增加重复实例、提醒、投递去重和任务站内信。I5 不新增表：`app` 组装层调用 task、worktime、ledger 的公开只读投影和 HolidayService，统一提供 `/api/v1/tasks/calendar`；各叠加层独立捕获失败，task 模块仍不依赖工时或账本。前端日历改期继续写入账号隔离 IndexedDB/oplog，在线同步沿用 revision 与变更日志。筛选器、活动和效率工具仍是后续增量目标，不应视为已建表。
 
 ```sql
 task_list       (id, user_id, name, color, sort, kind, archived)
@@ -414,7 +414,7 @@ countdown       (id, user_id, name, target_date, repeat_yearly, icon)
 reminder        (id, user_id, target_type, target_id, remind_at, channel, status)
 ```
 
-日历视图不建表：日/周/月/年由 `task(due_at/start_at)` + `work_record(date)` + `transaction(date)` 三源聚合渲染；日程（有起止时间的任务）与打卡、记账在同一日历叠加展示。
+日历视图不建表：日/周/月/年由 `task(due_at/start_at)` + `work_record(date)` + `ledger_transaction(occurred_on)` + `holiday(date)` 聚合渲染；日程、打卡、每日收支和节假日在同一日历叠加展示。`cn.6tail:lunar-java:1.7.4`（Apache-2.0）仅位于 app 内部 `LunarCalendar` 适配器之后，支持范围固定为 1900-2100；关闭 `task.lunar-enabled`、越界或单日计算异常只移除农历文本。
 
 ### 6.6 附件与文件域（file —— NAS 方案核心）
 
@@ -650,7 +650,7 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 - [x] `P2-I4` 重复、提醒与任务站内信：V34、历史实例、ShedLock 投递去重、SSE/轮询和未读中心
 - [ ] 清单分组、自定义筛选器与增强排序/分组排在 P2-I7；前端继续复用现有 `components/ui`、Reka UI 与语义 token
 - [x] 重复任务保留每个已完成实例并生成下一实例；使用 `series_id + planned_due_at` 幂等；任务日志 task_activity、协作列、协作表和附件表仍延后到对应阶段
-- [ ] 日历视图：FullCalendar 日/周/月 + 自研年视图；由 app 组装层聚合 task/worktime/ledger/holiday 的公开只读接口，单层失败独立降级
+- [x] `P2-I5` 日历视图：FullCalendar 日/周/月 + 自研年视图；由 app 组装层聚合 task/worktime/ledger/holiday 的公开只读接口，单层失败独立降级；农历通过适配器计算
 - [x] 提醒：任务域首版使用 `task_reminder`、`task_reminder_fire`、`task_inbox_message` + ShedLock + SSE/轮询，不依赖 notification、Web Push、Redis 或 RabbitMQ；F3 后保持 API 语义迁移投递端
 - [ ] 番茄钟（前端计时 + 统计上报）；习惯打卡；倒数日/纪念日
 - [ ] 全局搜索 v1（MySQL 全文索引，任务+账本；附件名在 Phase 4 接入）；离线同步覆盖 task 域；桌面快捷键与移动端显式入口一致

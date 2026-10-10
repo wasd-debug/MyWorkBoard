@@ -14,6 +14,7 @@ import com.salarytracker.task.TaskModels.TaskTagCommand;
 import com.salarytracker.task.TaskModels.SyncOperation;
 import com.salarytracker.task.TaskModels.SyncPullResponse;
 import com.salarytracker.task.TaskModels.SyncPushResponse;
+import com.salarytracker.task.TaskModels.RescheduleCommand;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
@@ -157,6 +158,15 @@ public class TaskController {
     public ApiResponse<TaskItem> update(@PathVariable String publicId, @RequestBody TaskCommand body,
                                         @RequestHeader("If-Match") String ifMatch) {
         return ApiResponse.ok(taskService.update(publicId, body, ifMatch));
+    }
+
+    @PostMapping(value = "/{publicId}/reschedule", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Audit(module = "task", action = "task.reschedule", targetType = "task")
+    @Operation(operationId = "rescheduleTask")
+    public ApiResponse<TaskItem> reschedule(@PathVariable String publicId, @RequestBody RescheduleCommand body,
+                                            @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(taskService.reschedule(publicId, body, ifMatch));
     }
 
     @PostMapping("/{publicId}/complete")

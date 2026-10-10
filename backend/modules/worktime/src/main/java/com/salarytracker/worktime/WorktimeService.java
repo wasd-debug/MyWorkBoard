@@ -14,6 +14,7 @@ import com.salarytracker.worktime.WorktimeModels.RecordPreview;
 import com.salarytracker.worktime.WorktimeModels.Settings;
 import com.salarytracker.worktime.WorktimeModels.SettingsUpdate;
 import com.salarytracker.worktime.WorktimeModels.WorkRecord;
+import com.salarytracker.worktime.WorktimeModels.CalendarItem;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -141,6 +142,15 @@ public class WorktimeService {
         args.add(Math.min(Math.max(limit, 1), 200));
         args.add(Math.max(offset, 0));
         return jdbcTemplate.query(sql.toString(), (result, rowNum) -> workRecord(result), args.toArray());
+    }
+
+    public List<CalendarItem> calendarItems(LocalDate from, LocalDate to) {
+        if (from == null || to == null || to.isBefore(from)) throw new IllegalArgumentException("工时日历范围无效");
+        return jdbcTemplate.query("SELECT DATE_FORMAT(date,'%Y-%m-%d') date,TIME_FORMAT(start_time,'%H:%i') start_time," +
+                        "IFNULL(TIME_FORMAT(end_time,'%H:%i'),'') end_time,overtime_min FROM work_record " +
+                        "WHERE user_id=? AND deleted=FALSE AND date BETWEEN ? AND ? ORDER BY date",
+                (result, rowNum) -> new CalendarItem(result.getString("date"), result.getString("start_time"),
+                        result.getString("end_time"), result.getInt("overtime_min")), currentUser.id(), from, to);
     }
 
     public WorkRecord record(long id) {

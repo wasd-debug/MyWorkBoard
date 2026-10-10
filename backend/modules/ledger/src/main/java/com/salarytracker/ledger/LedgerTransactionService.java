@@ -98,6 +98,20 @@ public class LedgerTransactionService {
                 context.bookId(), Math.min(Math.max(1, limit), 100)).stream().map(this::view).toList();
     }
 
+    public List<DailyTotal> calendarDailyTotals(LocalDate from, LocalDate to) {
+        if (from == null || to == null || to.isBefore(from)) throw new IllegalArgumentException("账本日历范围无效");
+        return DbRow.query(jdbc,
+                "SELECT t.occurred_on date," +
+                        "COALESCE(SUM(CASE WHEN t.kind IN ('INCOME','BORROW_IN','COLLECT_DEBT') THEN t.amount ELSE 0 END),0) income," +
+                        "COALESCE(SUM(CASE WHEN t.kind IN ('EXPENSE','LEND_OUT','REPAY_DEBT') THEN t.amount ELSE 0 END),0) expense " +
+                        "FROM ledger_transaction t JOIN ledger_book b ON b.id=t.book_id " +
+                        "JOIN ledger_book_member bm ON bm.book_id=b.id AND bm.user_id=? AND bm.deleted=FALSE " +
+                        "WHERE b.deleted=FALSE AND t.deleted=FALSE AND t.kind<>'TRANSFER_IN' AND t.occurred_on BETWEEN ? AND ? " +
+                        "GROUP BY t.occurred_on ORDER BY t.occurred_on",
+                access.currentUserId(), from, to).stream().map(row -> new DailyTotal(
+                        LocalDate.parse(text(row.get("date"))), decimal(row.get("income")), decimal(row.get("expense")))).toList();
+    }
+
     public Transaction transaction(String bookPublicId, String transactionPublicId) {
         return get(access.resolve(bookPublicId), transactionPublicId, true);
     }

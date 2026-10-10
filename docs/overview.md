@@ -76,7 +76,7 @@
 
 ### Phase 2-6
 
-- **Phase 2 任务管理：P2-I4 已完成。** V32/V33 增加组织与删除来源，V34 增加重复实例、提醒投递、投递去重和任务站内信；任务工作区提供重复规则、相对/绝对站内提醒，顶栏未读角标与提醒中心支持 SSE，失败时降级轮询。完成/删除会取消未投递提醒，完成重复任务保留历史并生成下一实例。下一步为 P2-I5 日历与跨域只读叠加；页面行为待用户按手工清单验收。
+- **Phase 2 任务管理：P2-I5 已完成。** V30-V34 数据结构保持不变；`app` 组装层通过 task/worktime/ledger 的公开只读接口和 HolidayService 聚合 `/api/v1/tasks/calendar`，任一叠加层失败只标记该层暂不可用。前端提供 FullCalendar 日/周/月、多日/多周范围、自研年密度视图、农历标签、账号级视图偏好、桌面拖拽和移动端显式改期；改期复用任务 IndexedDB/oplog 与 revision。习惯叠加留到 I6，页面行为待用户按手工清单验收。
 - **Phase 3A-D Agent/MCP：Phase 3A/3B Web 核心闭环完成，Phase 3C-5 已完成服务端收口。** 会话、队列、SSE、模型连接、Usage 与 Trace 已落地；首页支持 DeepSeek 深度思考开关及默认收起的思考块。MCP 通过 `/mcp` 暴露按 scope 裁剪的 read/prepare/action 工具，并在独立 commit scope 下允许 R2 新增工时和新增流水；PAT 与 OAuth 2.1 + PKCE 均可认证，设置页具备诊断、客户端断开和协议事件，R3/R4 commit 继续关闭。
 - **Phase 4 文件/RAG：未启动。** 尚无 MinIO/NAS 文件域、Tika、Qdrant 和知识库。
 - **Phase 5 跨域洞察：未启动。** 只有 `domain_event` 预留表，无事件发布/消费、`report_fact`、`report_snapshot` 或洞察页面。
@@ -163,7 +163,7 @@
 2. 确认 MoneyWiz 与外部账单源范围。
 3. 将恢复脚本纳入季度生产运维并持续留存发布/回滚记录。
 4. 继续 [工作台的 Agent 改造计划](工作台的Agent改造计划.md)：按 [前端手工检查清单](前端手工检查清单.md) 使用 MCP Inspector、Codex 和 WorkBuddy 完成真实 OAuth 连接与兼容记录；R3/R4 commit 继续关闭。连接方法见 [MCP 连接指南](MCP连接指南.md)。
-5. 按 [Phase 2 增量执行计划](superpowers/plans/2026-10-09-phase2-increment-plan.md) 启动 P2-I4 重复、提醒与任务站内信；任务域与现有工时/账本 Agent 可分别推进，完整任务能力完成后再注册为新的 Domain Tool。
+5. 按 [Phase 2 增量执行计划](superpowers/plans/2026-10-09-phase2-increment-plan.md) 启动 P2-I6 效率工具；任务域与现有工时/账本 Agent 可分别推进，完整任务能力完成后再注册为新的 Domain Tool。
 6. 按 [后续特性路线图](后续特性路线图.md) 的 F0 先冻结设置归属、事件信封、邀请/任务状态机与 NAS 接入决策，再分别启动 F1 设置/资料和 F2 异步基础设施；站内信与音乐不得绕过这些前置门禁。
 
 ## 文档约定

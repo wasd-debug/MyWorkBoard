@@ -81,6 +81,10 @@ public final class WorktimeModels {
         }
     }
 
+    @Schema(name = "WorktimeCalendarItem")
+    public record CalendarItem(String date, String start, String end, int overtimeMinutes) {
+    }
+
     @Schema(name = "DeletedResource")
     public record DeletedResource(long id, long revision, boolean deleted) {
     }

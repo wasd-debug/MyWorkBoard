@@ -173,6 +173,8 @@ export const apiListDeletedTaskLists = async () => data(await api.get('/api/v1/t
 export const apiListTasks = async (params = {}) => data(await api.get('/api/v1/tasks', { params }))
 export const apiGetTask = async publicId => data(await tasks.getTask({ publicId }))
 export const apiGetTaskSettings = async () => data(await tasks.getTaskSettings())
+export const apiGetTaskCalendar = async (params = {}) => data(await tasks.getTaskCalendar(params))
+export const apiRescheduleTask = async (publicId, payload, currentRevision) => data(await tasks.rescheduleTask({ publicId, taskRescheduleCommand: payload, ifMatch: revision(currentRevision) }))
 export const apiCreateTask = async (payload, idempotencyKey) => data(await tasks.createTask({ idempotencyKey, taskCommand: payload }))
 export const apiUpdateTask = async (publicId, payload, currentRevision) => data(await tasks.updateTask({ publicId, taskCommand: payload, ifMatch: revision(currentRevision) }))
 export const apiCompleteTask = async (publicId, currentRevision) => data(await tasks.completeTask({ publicId, ifMatch: revision(currentRevision) }))

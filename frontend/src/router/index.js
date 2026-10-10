@@ -13,6 +13,7 @@ const routes = [
   { path: '/tasks/inbox', name: 'tasks-inbox', component: () => import('../views/TasksInboxView.vue'), meta: { title: '任务收件箱' } },
   { path: '/tasks/today', name: 'tasks-today', component: () => import('../views/TasksInboxView.vue'), meta: { title: '今天' } },
   { path: '/tasks/next7', name: 'tasks-next7', component: () => import('../views/TasksInboxView.vue'), meta: { title: '最近 7 天' } },
+  { path: '/tasks/calendar', name: 'tasks-calendar', component: () => import('../views/TasksCalendarView.vue'), meta: { title: '任务日历' } },
   { path: '/tasks/all', name: 'tasks-all', component: () => import('../views/TasksInboxView.vue'), meta: { title: '全部任务' } },
   { path: '/tasks/completed', name: 'tasks-completed', component: () => import('../views/TasksInboxView.vue'), meta: { title: '已完成任务' } },
   { path: '/tasks/inbox-notify', name: 'tasks-notifications', component: () => import('../views/TaskNotificationsView.vue'), meta: { title: '任务提醒' } },
