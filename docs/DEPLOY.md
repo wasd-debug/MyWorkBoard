@@ -1,5 +1,12 @@
 # 部署说明
 
+## 2026-10-10 移动端任务抽屉点击穿透修复
+
+- 前端应用提交：`91af661`，已推送至远程 `main`；发布目录为 `/home/ubuntu/salary-tracker/releases/91af661`，提交归档 SHA-256 为 `a040ca18c40188a193f27e2137ce835b2b7ab1a8bfc364c3df77769ba51f0c65`。服务器从该归档构建 `amd64` 镜像 `salary-frontend:91af661`，实际运行镜像 ID 为 `sha256:cf4ab1b1afa9b0b46c28bd42a045de2d13fb04560a77c62761c265fd448a3678`。
+- 发布前数据库备份 `/home/ubuntu/salary-tracker/backups/salary-before-91af661-20261010-175159.sql.gz` 非空并通过 `gzip -t`；旧前端镜像保留为 `salary-frontend:pre-91af661`，旧 Compose 配置保留为 `docker-compose.prod.yml.bak.91af661`。
+- 本轮仅使用 `--no-deps --force-recreate frontend` 重建前端容器；后端继续运行 `salary-backend:330d26c`，MySQL 容器及数据卷未重建。Flyway 保持 v35 且无失败迁移，核心记录保持 `app_user=3`、`work_record=50`、`ledger_book=5`、`ledger_transaction=16573`。
+- 服务器本机、IP 与 `jsn1024.cn` 的首页、`/api/health`、`/tasks/today`、`/tasks/habits`、`/tasks/calendar`、`/tasks/countdowns` 均返回 HTTP 200。移动端关闭按钮、遮罩及抽屉内导航不再向页面下一层穿透，已由用户在本地完成人工交互验收。
+
 ## 2026-10-10 任务导航收口生产发布
 
 - 前端应用提交：`5882c9d`，已推送至远程 `main`；发布目录为 `/home/ubuntu/salary-tracker/releases/5882c9d`，提交归档 SHA-256 为 `de65c64cac4c84cb89a7dbfb7e3946cfd0c3966d5d6ef705c985ff0294bd5c56`。服务器从该归档构建 `amd64` 镜像 `salary-frontend:5882c9d`，实际运行镜像 ID 为 `sha256:0675d38980038e65543c205325991876f8a1a54f20f33a973eabec8321f07743`。
