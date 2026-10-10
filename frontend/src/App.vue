@@ -60,8 +60,8 @@ const userInitial = computed(() => String(store.authUser?.nickname || store.auth
 const isLedger = computed(() => route.path.startsWith('/ledger'))
 const isTasks = computed(() => route.path.startsWith('/tasks'))
 const isExternalFlow = computed(() => route.path === '/oauth/consent' || route.path === '/mcp/actions/confirm')
-const moduleLabel = computed(() => isLedger.value ? '账本' : isTasks.value ? '任务' : route.path.startsWith('/approvals') ? '审批中心' : route.path === '/settings' ? '设置' : isExternalFlow.value ? '外部授权' : '工时')
-const moduleNav = computed(() => isLedger.value ? ledgerNavigation : isTasks.value ? taskNavigation : route.path === '/settings' || route.path.startsWith('/approvals') || isExternalFlow.value ? [] : worktimeNavigation)
+const moduleLabel = computed(() => route.path === '/calendar' ? '日历' : isLedger.value ? '账本' : isTasks.value ? '任务' : route.path.startsWith('/approvals') ? '审批中心' : route.path === '/settings' ? '设置' : isExternalFlow.value ? '外部授权' : '工时')
+const moduleNav = computed(() => route.path === '/calendar' ? [] : isLedger.value ? ledgerNavigation : isTasks.value ? taskNavigation : route.path === '/settings' || route.path.startsWith('/approvals') || isExternalFlow.value ? [] : worktimeNavigation)
 function isNavActive(item) { return navigationItemIsActive(route, item) }
 function clearNavigationTimers() { window.clearTimeout(navigationFinishTimer); window.clearTimeout(navigationSafetyTimer) }
 function finishNavigationLoading(delay = 0) { clearNavigationTimers(); if (delay) navigationFinishTimer = window.setTimeout(() => { navigationLoading.value = false }, delay); else navigationLoading.value = false }

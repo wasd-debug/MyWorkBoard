@@ -76,7 +76,7 @@
 
 ### Phase 2-6
 
-- **Phase 2 任务管理：P2-I5 已完成。** V30-V34 数据结构保持不变；`app` 组装层通过 task/worktime/ledger 的公开只读接口和 HolidayService 聚合 `/api/v1/tasks/calendar`，任一叠加层失败只标记该层暂不可用。前端提供 FullCalendar 日/周/月、多日/多周范围、自研年密度视图、农历标签、账号级视图偏好、桌面拖拽和移动端显式改期；改期复用任务 IndexedDB/oplog 与 revision。习惯叠加留到 I6，页面行为待用户按手工清单验收。
+- **Phase 2 任务管理：P2-I5 已完成。** V30-V34 数据结构保持不变；`app` 组装层通过 task/worktime/ledger 的公开只读接口和 HolidayService 聚合日历数据，任一叠加层失败只标记该层暂不可用。前端 `/tasks/calendar` 只呈现任务日历；首页“日历”进入 `/calendar`，集中显示任务、工时、流水与节假日，并通过日期右键菜单进入各领域新增流程。任务卡片可直接编辑/删除，工时与流水卡片进入对应领域维护页面。习惯和专注写入留到 I6，页面行为待用户按手工清单验收。
 - **Phase 3A-D Agent/MCP：Phase 3A/3B Web 核心闭环完成，Phase 3C-5 已完成服务端收口。** 会话、队列、SSE、模型连接、Usage 与 Trace 已落地；首页支持 DeepSeek 深度思考开关及默认收起的思考块。MCP 通过 `/mcp` 暴露按 scope 裁剪的 read/prepare/action 工具，并在独立 commit scope 下允许 R2 新增工时和新增流水；PAT 与 OAuth 2.1 + PKCE 均可认证，设置页具备诊断、客户端断开和协议事件，R3/R4 commit 继续关闭。
 - **Phase 4 文件/RAG：未启动。** 尚无 MinIO/NAS 文件域、Tika、Qdrant 和知识库。
 - **Phase 5 跨域洞察：未启动。** 只有 `domain_event` 预留表，无事件发布/消费、`report_fact`、`report_snapshot` 或洞察页面。

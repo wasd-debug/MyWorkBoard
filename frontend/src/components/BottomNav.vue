@@ -70,7 +70,7 @@ const itemIcons = {
   inbox: List, today: Calendar, next7: Calendar, calendar: Calendar, all: Tickets, completed: Document, trash: Delete
 }
 
-const moduleKey = computed(() => route.path.startsWith('/ledger') ? 'ledger' : route.path.startsWith('/tasks') ? 'tasks' : route.path === '/settings' ? 'settings' : 'worktime')
+const moduleKey = computed(() => route.path === '/calendar' ? 'calendar' : route.path.startsWith('/ledger') ? 'ledger' : route.path.startsWith('/tasks') ? 'tasks' : route.path === '/settings' ? 'settings' : 'worktime')
 const moduleLabel = computed(() => moduleKey.value === 'ledger' ? '账本' : moduleKey.value === 'tasks' ? '任务' : moduleKey.value === 'worktime' ? '工时' : '设置')
 const moduleItems = computed(() => moduleKey.value === 'ledger' ? ledgerNavigation : moduleKey.value === 'tasks' ? taskNavigation : moduleKey.value === 'worktime' ? worktimeNavigation : [])
 const orderKeys = ref([])

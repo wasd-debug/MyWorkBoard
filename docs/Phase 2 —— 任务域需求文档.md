@@ -1,7 +1,7 @@
 # Phase 2 —— 任务域需求文档（滴答清单形态）
 
 > 状态日期：2026-10-09
-> 文档状态：**P2-I5 已完成**，待实施 P2-I6 效率工具
+> 文档状态：**P2-I5 已完成并完成日历入口纠偏**，待实施 P2-I6 效率工具
 > 适用范围：MyWorkBoard 个人工作台（`wasd-debug/MyWorkBoard`）
 > 上游依据：`docs/ARCHITECTURE.md` 第 10 章 Phase 2、`docs/overview.md`、`docs/后续特性路线图.md`
 > 目标：把滴答清单（TickTick）的任务管理能力完整复刻为独立 `task` 域，嵌入现有个人工作台，并沿用仓库既有的 v1 契约、local-first 同步、受控写入和阶段门禁。

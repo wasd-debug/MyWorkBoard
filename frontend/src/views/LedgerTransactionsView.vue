@@ -360,7 +360,7 @@ function blankForm() {
     accountId: account ? String(account.id) : '', targetAccountId: '', categoryId: '', payee: '',
     member: currentMemberName(ledgerStore.activeMembers, appStore.authUser), project: '', note: '' })
 }
-function openCreate() { editing.value = null; blankForm(); editorOpen.value = true }
+function openCreate(date = '') { editing.value = null; blankForm(); if (/^\d{4}-\d{2}-\d{2}$/.test(date)) form.occurredOn = date; editorOpen.value = true }
 function openEdit(item) { editing.value = item; Object.assign(form, { kind: item.kind, amount: item.amount, occurredOn: item.occurredOn, accountId: String(item.accountId), targetAccountId: item.targetAccountId ? String(item.targetAccountId) : '', categoryId: item.categoryId ? String(item.categoryId) : '', payee: item.payee || '', member: item.member || '', project: item.project || '', note: item.note || '' }); editorOpen.value = true }
 function openCopy(item) { editing.value = null; Object.assign(form, { kind: item.kind, amount: item.amount, occurredOn: today, accountId: String(item.accountId), targetAccountId: item.targetAccountId ? String(item.targetAccountId) : '', categoryId: item.categoryId ? String(item.categoryId) : '', payee: item.payee || '', member: item.member || '', project: item.project || '', note: item.note || '' }); editorOpen.value = true }
 const belongsToCurrentBook = item => String(item?.bookId) === String(ledgerStore.currentBookId)
@@ -526,7 +526,11 @@ watch([filters, searchText], () => {
   filterTimer = window.setTimeout(loadPage, 220)
 }, { deep: true })
 watch([currentPage, pageSize, () => sort.key, () => sort.direction], loadPage)
-onMounted(() => { loadData(); window.addEventListener('ledger-book-changed', loadData) })
+onMounted(async () => {
+  await loadData()
+  if (route.query.action === 'create') openCreate(queryValue(route.query.date))
+  window.addEventListener('ledger-book-changed', loadData)
+})
 onBeforeUnmount(() => {
   requestSequence++
   window.clearTimeout(filterTimer)

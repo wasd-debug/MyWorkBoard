@@ -384,7 +384,7 @@ const conversationSections = computed(() => {
 })
 const cards = [
   { key: 'ledger', title: '账本', description: '记账、流水与报表', route: '/ledger', icon: Wallet, tone: 'yellow' },
-  { key: 'knowledge', title: '知识库', description: '整理与连接知识', icon: Calendar, tone: 'cyan', planned: true },
+  { key: 'calendar', title: '日历', description: '任务、流水与工时', route: '/calendar', icon: Calendar, tone: 'cyan' },
   { key: 'worktime', title: '工时', description: '打卡、补录与统计', route: '/punch', icon: Timer, tone: 'pink' },
   { key: 'tasks', title: '任务', description: '拆解与推进计划', route: '/tasks/inbox', icon: List, tone: 'peach' }
 ]

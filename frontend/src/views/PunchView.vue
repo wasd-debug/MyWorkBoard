@@ -98,6 +98,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import Button from '../components/ui/Button.vue'
 import Input from '../components/ui/Input.vue'
 import { useAppStore } from '../stores/app'
@@ -107,7 +108,9 @@ import { message } from '../services/message.js'
 
 const appStore = useAppStore()
 const store = useWorktimeStore()
-const punchDate = ref(store.punchDate)
+const route = useRoute()
+const requestedDate = /^\d{4}-\d{2}-\d{2}$/.test(String(route.query.date || '')) ? String(route.query.date) : ''
+const punchDate = ref(requestedDate || store.punchDate)
 const recStart = ref('')
 const recEnd = ref('')
 const recRest = ref(0)
@@ -202,5 +205,5 @@ async function deleteCurrent() {
 }
 function nowStart() { recStart.value = nowStr() }
 function nowEnd() { recEnd.value = nowStr() }
-watch(() => appStore.ready, value => { if (value) { punchDate.value = store.punchDate; syncInputs() } }, { immediate: true })
+watch(() => appStore.ready, value => { if (value) { punchDate.value = requestedDate || store.punchDate; store.punchDate = punchDate.value; syncInputs() } }, { immediate: true })
 </script>

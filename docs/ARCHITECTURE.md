@@ -414,7 +414,7 @@ countdown       (id, user_id, name, target_date, repeat_yearly, icon)
 reminder        (id, user_id, target_type, target_id, remind_at, channel, status)
 ```
 
-日历视图不建表：日/周/月/年由 `task(due_at/start_at)` + `work_record(date)` + `ledger_transaction(occurred_on)` + `holiday(date)` 聚合渲染；日程、打卡、每日收支和节假日在同一日历叠加展示。`cn.6tail:lunar-java:1.7.4`（Apache-2.0）仅位于 app 内部 `LunarCalendar` 适配器之后，支持范围固定为 1900-2100；关闭 `task.lunar-enabled`、越界或单日计算异常只移除农历文本。
+日历视图不建表：`/tasks/calendar` 是任务域入口，只渲染任务和农历；工作台 `/calendar` 是全局入口，由 `task(due_at/start_at)` + `work_record(date)` + `ledger_transaction(occurred_on)` + `holiday(date)` 聚合渲染日程、打卡、每日收支和节假日。全局日历的新增/维护复用各领域既有写入入口，不由聚合层跨域写库。`cn.6tail:lunar-java:1.7.4`（Apache-2.0）仅位于 app 内部 `LunarCalendar` 适配器之后，支持范围固定为 1900-2100；关闭 `task.lunar-enabled`、越界或单日计算异常只移除农历文本。
 
 ### 6.6 附件与文件域（file —— NAS 方案核心）
 
