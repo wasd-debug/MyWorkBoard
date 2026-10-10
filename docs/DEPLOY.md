@@ -1,5 +1,13 @@
 # 部署说明
 
+## 2026-10-10 Phase 2 任务效率工具生产发布
+
+- 应用提交：`330d26c`，已推送至远程 `main`；发布目录为 `/home/ubuntu/salary-tracker/releases/330d26c`，提交归档 SHA-256 为 `156f377b479818dee0b450295559396b92b9d9b08421c54d2b74e964524ccf9c`。服务器从该归档构建 `amd64` 镜像 `salary-backend:330d26c` 与 `salary-frontend:330d26c`。
+- 发布前数据库备份 `/home/ubuntu/salary-tracker/backups/salary-before-330d26c-20261010-171356.sql.gz` 非空并通过 `gzip -t`；旧镜像保留为 `salary-backend:pre-330d26c`、`salary-frontend:pre-330d26c`，旧 Compose 配置保留为 `docker-compose.prod.yml.bak.330d26c`。
+- 仅使用 `--no-deps --force-recreate backend frontend` 重建应用容器，MySQL 容器与数据卷未重建。生产 Compose 和实际运行容器均指向 `330d26c`；后端镜像 ID 为 `sha256:fba1602db48963eba81066794e940f635779c0e889e53ff5e833f68f294b875a`，前端镜像 ID 为 `sha256:1a6abb13c802f56a81439f3b460670501be1005848a6677858b093209c7d71fc`。
+- Flyway 从 v29 顺序应用 V30～V35 共 6 个迁移并成功到达 v35，后端约 15.7 秒启动。发布后核心记录为 `app_user=3`、`work_record=50`、`ledger_book=5`、`ledger_transaction=16573`；新增效率工具表可查询，初始 `focus_setting=0`、`habit=0`、`countdown=0`。
+- 服务器 IP 与 `jsn1024.cn` 的首页、`/api/health`、`/calendar`，以及域名下 `/tasks/focus`、`/tasks/habits`、`/tasks/countdowns` 均返回 HTTP 200；未认证 MCP initialize 保持 HTTP 401。页面视觉、响应式、主题和登录后交互仍按《前端手工检查清单》由用户人工验收。
+
 ## 2026-10-08 MCP 文本完整结果兼容
 
 - 领域工具继续返回顶层 `structuredContent`，同时在 `content[0].text` 摘要后附上完整 JSON payload，使仅读取文本的客户端可取得账本、账户、分类真实 ID 和操作元数据。文本与结构化结果共用权限过滤后的数据；无数据库迁移，无前端代码变更。
