@@ -36,7 +36,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowLeft, House, Setting } from './icons.js'
 import { Moon, ShieldCheck, Sun } from 'lucide-vue-next'
-import { ledgerNavigation, navigationItemIsActive, worktimeNavigation } from './config/moduleNavigation.js'
+import { ledgerNavigation, navigationItemIsActive, taskNavigation, worktimeNavigation } from './config/moduleNavigation.js'
 import { useAppStore } from './stores/app'
 import { useWorktimeStore } from './stores/worktime.js'
 import BottomNav from './components/BottomNav.vue'
@@ -55,9 +55,10 @@ let navigationFinishTimer
 let navigationSafetyTimer
 const userInitial = computed(() => String(store.authUser?.nickname || store.authUser?.username || '我').slice(0, 1))
 const isLedger = computed(() => route.path.startsWith('/ledger'))
+const isTasks = computed(() => route.path.startsWith('/tasks'))
 const isExternalFlow = computed(() => route.path === '/oauth/consent' || route.path === '/mcp/actions/confirm')
-const moduleLabel = computed(() => isLedger.value ? '账本' : route.path.startsWith('/approvals') ? '审批中心' : route.path === '/settings' ? '设置' : isExternalFlow.value ? '外部授权' : '工时')
-const moduleNav = computed(() => isLedger.value ? ledgerNavigation : route.path === '/settings' || route.path.startsWith('/approvals') || isExternalFlow.value ? [] : worktimeNavigation)
+const moduleLabel = computed(() => isLedger.value ? '账本' : isTasks.value ? '任务' : route.path.startsWith('/approvals') ? '审批中心' : route.path === '/settings' ? '设置' : isExternalFlow.value ? '外部授权' : '工时')
+const moduleNav = computed(() => isLedger.value ? ledgerNavigation : isTasks.value ? taskNavigation : route.path === '/settings' || route.path.startsWith('/approvals') || isExternalFlow.value ? [] : worktimeNavigation)
 function isNavActive(item) { return navigationItemIsActive(route, item) }
 function clearNavigationTimers() { window.clearTimeout(navigationFinishTimer); window.clearTimeout(navigationSafetyTimer) }
 function finishNavigationLoading(delay = 0) { clearNavigationTimers(); if (delay) navigationFinishTimer = window.setTimeout(() => { navigationLoading.value = false }, delay); else navigationLoading.value = false }

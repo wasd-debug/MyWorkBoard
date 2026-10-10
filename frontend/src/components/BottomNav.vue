@@ -54,8 +54,8 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Calendar, DataAnalysis, Delete, Document, Grid, Management, MoreFilled, Setting, SortDown, SortUp, Tickets, Timer, User, Wallet, Close } from '../icons.js'
-import { ledgerNavigation, navigationItemIsActive, worktimeNavigation } from '../config/moduleNavigation.js'
+import { Calendar, DataAnalysis, Delete, Document, Grid, List, Management, MoreFilled, Setting, SortDown, SortUp, Tickets, Timer, User, Wallet, Close } from '../icons.js'
+import { ledgerNavigation, navigationItemIsActive, taskNavigation, worktimeNavigation } from '../config/moduleNavigation.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -66,12 +66,12 @@ let resizeObserver
 const itemIcons = {
   punch: Timer, records: Calendar, stats: DataAnalysis,
   overview: Grid, transactions: Tickets, accounts: Wallet, reports: DataAnalysis,
-  scheduled: Timer, manage: Management, members: User, recycle: Delete, audit: Document
+  scheduled: Timer, manage: Management, members: User, recycle: Delete, audit: Document, inbox: List
 }
 
-const moduleKey = computed(() => route.path.startsWith('/ledger') ? 'ledger' : route.path === '/settings' ? 'settings' : 'worktime')
-const moduleLabel = computed(() => moduleKey.value === 'ledger' ? '账本' : moduleKey.value === 'worktime' ? '工时' : '设置')
-const moduleItems = computed(() => moduleKey.value === 'ledger' ? ledgerNavigation : moduleKey.value === 'worktime' ? worktimeNavigation : [])
+const moduleKey = computed(() => route.path.startsWith('/ledger') ? 'ledger' : route.path.startsWith('/tasks') ? 'tasks' : route.path === '/settings' ? 'settings' : 'worktime')
+const moduleLabel = computed(() => moduleKey.value === 'ledger' ? '账本' : moduleKey.value === 'tasks' ? '任务' : moduleKey.value === 'worktime' ? '工时' : '设置')
+const moduleItems = computed(() => moduleKey.value === 'ledger' ? ledgerNavigation : moduleKey.value === 'tasks' ? taskNavigation : moduleKey.value === 'worktime' ? worktimeNavigation : [])
 const orderKeys = ref([])
 const storageKey = computed(() => `workspace_mobile_${moduleKey.value}_nav_order_v1`)
 

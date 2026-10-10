@@ -1,6 +1,6 @@
 # 个人效率中枢 · 整体架构设计与长期发展规划
 
-> 版本：v1.13（2026-09-28）
+> 版本：v1.14（2026-10-10）
 > 范围：基于现有 salary-sync（加班时长与时薪计算）系统，规划“身份与设置 + 工时 + 账本 + 任务 + AI + 通知 + 音乐”一体化个人效率平台的整体架构与演进路线。
 
 > 实施状态：Phase 0/Phase 1 自动化收口已完成，真机验收和周期生产运维按发布记录持续执行。本文同时包含目标架构与实施计划；除明确标注“当前实现”的内容外，其余技术组件和阶段能力均为目标状态，不代表已经上线。
@@ -17,7 +17,7 @@
 |---|---|---|
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
-| Phase 2 任务 | 未启动 | 只有禁用导航占位，无领域模块、数据表和页面 |
+| Phase 2 任务 | I1 完成 | V30、task 物理模块、默认收件箱与在线任务 CRUD/完成/重开/软删已落地；I2 local-first 待实施 |
 | Phase 3A-D Agent/MCP | Phase 3A/3B/3D 核心闭环，Phase 3C-4 完成 | Web Agent、受控写入和 R4 审批已落地；MCP 已支持只读、PAT、OAuth 2.1 + PKCE、独立 prepare/commit scope、R2 单次提交和结果回放，R3/R4 commit 继续关闭 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
@@ -52,8 +52,8 @@
 | 层 | 现状 | 评价 |
 |---|---|---|
 | 前端 | Vue 3 + Vite + Pinia + Vue Router + ECharts + Tailwind/token + Reka UI + Lucide；Element Plus 已移除 | 工时使用生成客户端访问资源 API；账本六类资源使用 IndexedDB/oplog local-first，在线命令由 store facade 统一管理 |
-| 后端 | Java 17 + Spring Boot 3.2；platform/identity/worktime/ledger/ai/app 六个 Maven 模块 | 业务源码和单测已物理归属对应模块，app 仅装配应用、迁移资源和跨模块测试；AI 当前只含原有网关和领域工具基础 |
-| 数据库 | MySQL 8 + Flyway V1-V19；用户、工时、账本、同步、定时任务、审计、AI 会话/队列、模型连接、Usage、Trace 与峰谷计价 | 多用户和账本数据模型已落地；事件、任务、文件、RAG 和洞察读模型仍未落地 |
+| 后端 | Java 17 + Spring Boot 3.2；platform/identity/worktime/ledger/task/ai/app 七个 Maven 模块 | 业务源码和单测已物理归属对应模块，app 仅装配应用、迁移资源和跨模块测试 |
+| 数据库 | MySQL 8 + Flyway V30；用户、工时、账本、任务收件箱、同步、定时任务、审计与 AI 数据 | 任务 I1 核心表已落地；任务 oplog、文件、RAG 和洞察读模型仍未落地 |
 | 鉴权 | Spring Security + JWT access token + HttpOnly refresh cookie；用户、角色和权限表 | 已替换静态 AccessCode；仍需限流、安全集成测试和更完整的会话运维能力 |
 | 部署 | Docker Compose（Nginx + Spring Boot + MySQL），源码/预构建镜像/本地产物三种模式 | 当前仍是三服务单机部署；Redis、MinIO、Qdrant、监控等按后续阶段引入 |
 
@@ -393,6 +393,8 @@ recurring       (id, user_id, name, rule_json, next_run_at, amount, category_id,
 
 ### 6.5 任务域（task）
 
+当前实现（P2-I1）：V30 仅建立 `task_list`、`task`、`task_setting`，服务端通过用户作用域查询、公共 UUID、创建幂等键与 revision 条件更新提供在线收件箱闭环。下列标签、筛选器、活动、提醒与效率工具仍是后续增量目标，不应视为已建表。
+
 ```sql
 task_list       (id, user_id, name, color, sort, kind, archived)
                 -- kind: list|folder（支持清单分组）
@@ -642,7 +644,8 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 
 ### Phase 2 —— 任务管理（滴答清单形态）
 
-- [ ] 按 `P2-I1` 先交付收件箱任务纵向闭环，`P2-I2` 随即接入任务核心写入与清单的 local-first；其余 P0 能力跨后续增量完成，不组织为一次性大版本
+- [x] `P2-I1` 收件箱任务纵向闭环：task 模块、V30、默认收件箱、在线新增/查看/编辑/完成/重开/软删、用户隔离与 revision
+- [ ] `P2-I2` 接入任务核心写入与清单的 local-first；其余 P0 能力跨后续增量完成，不组织为一次性大版本
 - [ ] 清单（含分组）/任务/子任务/标签/优先级/自定义筛选器；前端复用现有 `components/ui`、Reka UI 与语义 token
 - [ ] 重复任务保留每个已完成实例并生成下一实例；任务日志 task_activity 提供时间线；协作列、协作表和附件表均延后到对应阶段以独立迁移增加
 - [ ] 日历视图：FullCalendar 日/周/月 + 自研年视图；由 app 组装层聚合 task/worktime/ledger/holiday 的公开只读接口，单层失败独立降级

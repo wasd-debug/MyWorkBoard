@@ -35,6 +35,7 @@
         <module>modules/identity</module>
         <module>modules/worktime</module>
         <module>modules/ledger</module>
+        <module>modules/task</module>
         <module>modules/ai</module>
         <module>app</module>
     </modules>

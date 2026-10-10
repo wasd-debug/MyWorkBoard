@@ -30,9 +30,10 @@ class ArchitectureBoundaryTest {
         assertModuleOwns("identity");
         assertModuleOwns("worktime");
         assertModuleOwns("ledger");
+        assertModuleOwns("task");
         assertModuleOwns("ai");
         Path legacySource = BACKEND_ROOT.resolve("src/main/java/com/salarytracker");
-        for (String module : new String[]{"platform", "identity", "worktime", "ledger", "ai"}) {
+        for (String module : new String[]{"platform", "identity", "worktime", "ledger", "task", "ai"}) {
             assertFalse(Files.exists(legacySource.resolve(module)),
                     () -> "central source root still owns " + module);
         }
@@ -82,9 +83,20 @@ class ArchitectureBoundaryTest {
             .should().dependOnClassesThat().resideInAnyPackage("com.salarytracker.ledger..");
 
     @ArchTest
+    static final ArchRule task_does_not_depend_on_worktime_or_ledger = noClasses()
+            .that().resideInAnyPackage("com.salarytracker.task..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "com.salarytracker.worktime..", "com.salarytracker.ledger..");
+
+    @ArchTest
+    static final ArchRule worktime_and_ledger_do_not_depend_on_task = noClasses()
+            .that().resideInAnyPackage("com.salarytracker.worktime..", "com.salarytracker.ledger..")
+            .should().dependOnClassesThat().resideInAnyPackage("com.salarytracker.task..");
+
+    @ArchTest
     static final ArchRule core_domains_do_not_depend_on_ai = noClasses()
             .that().resideInAnyPackage("com.salarytracker.identity..", "com.salarytracker.worktime..",
-                    "com.salarytracker.ledger..")
+                    "com.salarytracker.ledger..", "com.salarytracker.task..")
             .should().dependOnClassesThat().resideInAnyPackage("com.salarytracker.ai..");
 
     @ArchTest

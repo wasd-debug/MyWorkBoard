@@ -53,6 +53,11 @@ public class ApiExceptionHandler {
         return problem(HttpStatus.NOT_FOUND, "NOT_FOUND", "请求的资源不存在", request, null);
     }
 
+    @ExceptionHandler(NotFoundException.class)
+    public ResponseEntity<ApiProblem> notFound(NotFoundException exception, HttpServletRequest request) {
+        return problem(HttpStatus.NOT_FOUND, "NOT_FOUND", exception.getMessage(), request, null);
+    }
+
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ApiProblem> methodNotAllowed(HttpRequestMethodNotSupportedException exception,
                                                        HttpServletRequest request) {

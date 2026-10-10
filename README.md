@@ -2,7 +2,7 @@
 
 一个正在从“真实时薪与加班追踪”演进为“身份与设置 + 工时 + 账本 + 任务 + AI + 通知 + 音乐 + 洞察”的个人效率平台。
 
-当前可用主线是多用户工时与个人账本。Phase 0/1 已完成资源化、local-first、物理模块拆分、唯一 v1 API、OpenAPI 生成客户端、视觉/无障碍和自动化验收收口；Android Chrome 与 iOS Safari 真机记录仍需在目标设备上执行，任务、RAG 知识库和跨域洞察属于后续阶段。
+当前可用主线是多用户工时、个人账本与在线任务收件箱。Phase 0/1 已完成资源化、local-first、物理模块拆分、唯一 v1 API、OpenAPI 生成客户端、视觉/无障碍和自动化验收收口；Phase 2 已完成 I1 在线任务闭环，任务 local-first、RAG 知识库和跨域洞察仍属于后续增量。
 
 ## 当前能力
 
@@ -33,7 +33,7 @@
 
 ### 后续阶段
 
-- **Phase 2 任务管理：P2-0 规划已收敛，编码未启动。** 已拆为 I1-I8：先交付收件箱任务纵向闭环和核心 local-first，再推进任务组织、重复/提醒、日历、效率工具、增强能力与 Agent/ICS 收口。
+- **Phase 2 任务管理：P2-I1 已完成。** 已交付 V30、独立 task 模块、默认收件箱和在线任务新增/查看/编辑/完成/重开/软删闭环；I2 将为任务核心写入与清单接入 local-first。
 - **Phase 3A-D Agent/MCP：Phase 3A/3B 增量实施。** 七个 R1 查询工具、会话/队列/SSE、模型连接和 Trace 已落地；首页现支持新增工时和单笔收入/支出的 R2 prepare、动态补参、站内确认和幂等 commit。修改删除、自动评测和 MCP 尚未开放。
 - **Phase 4 文件/RAG：未启动。** 计划在 Agent/MCP 稳定后建设文件域、向量库和知识库。
 - **Phase 5 跨域洞察：未启动。** 计划通过领域事件生成日/周/月/年报。
@@ -47,7 +47,7 @@
 | 层 | 当前实现 | 后续目标 |
 |---|---|---|
 | 前端 | Vue 3、Vite、Pinia、Vue Router、ECharts、Tailwind CSS 4、Reka UI、Lucide、OpenAPI 生成客户端 | PWA，并把 local-first 模式扩展到后续领域 |
-| 后端 | Java 17、Spring Boot 3.2、Spring Security、Spring Modulith、JDBC/MyBatis-Plus、Flyway、EasyExcel、ShedLock；platform/identity/worktime/ledger/ai/app 物理模块 | 按阶段引入通知、任务运行、文件、音乐、RAG 和洞察模块 |
+| 后端 | Java 17、Spring Boot 3.2、Spring Security、Spring Modulith、JDBC/MyBatis-Plus、Flyway、EasyExcel、ShedLock；platform/identity/worktime/ledger/task/ai/app 物理模块 | 按阶段引入通知、任务运行、文件、音乐、RAG 和洞察模块 |
 | 数据库/中间件 | MySQL 8，Flyway V1-V22 | 后续按需增加 Redis、RabbitMQ、MinIO/NAS、Qdrant 和搜索服务；MySQL 保持权威数据源 |
 | 部署 | Docker Compose、Nginx、Spring Boot、MySQL | 健康检查、备份恢复和可观测体系持续完善 |
 
@@ -65,7 +65,7 @@ salary-sync/
 ├── backend/
 │   ├── app/                         # 应用组装与 Spring Boot 打包
 │   │   └── src/                     # 装配、迁移、跨模块集成与架构测试
-│   └── modules/                     # platform/identity/worktime/ledger/ai 真实源码模块
+│   └── modules/                     # platform/identity/worktime/ledger/task/ai 真实源码模块
 ├── frontend/
 │   ├── src/views/                   # 工时和账本页面
 │   ├── src/components/              # 通用与账本组件
@@ -154,6 +154,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down
 | `/api/v1/auth/**` | 注册、登录、刷新、退出、修改密码 |
 | `/api/v1/worktime/**` | 工时设置与记录 CRUD |
 | `/api/v1/ledger/books/**` | 多账本、资源、预算、流水、报表数据、导入导出、同步、定时任务和 AI |
+| `/api/v1/tasks/**` | 默认收件箱、任务分页及在线新增/编辑/完成/重开/软删 |
 | `/api/v1/audit/logs` | 当前用户审计日志 |
 | `/api/v1/ai/**` | 通用 LLM 网关入口 |
 | `/api/v1/holidays?year=2026` | 节假日与调休 |
@@ -219,5 +220,5 @@ sudo bash deploy/deploy.sh
 1. 在 Android Chrome 与 iOS Safari 各执行一次真机验收并记录设备、系统和浏览器版本。
 2. 确定 MoneyWiz 专用模板范围，并按实际需求接入支付宝、微信和银行卡账单源。
 3. 将已验证的恢复脚本纳入季度生产演练和监控告警。
-4. 按 [Phase 2 增量执行计划](<docs/superpowers/plans/2026-10-09-phase2-increment-plan.md>) 启动 P2-I1，并继续沿用 v1 契约、生成客户端和 local-first 门禁。
+4. 按 [Phase 2 增量执行计划](<docs/superpowers/plans/2026-10-09-phase2-increment-plan.md>) 启动 P2-I2，为任务核心写入与清单接入 local-first，并沿用 v1 契约和生成客户端门禁。
 5. 后续跨模块需求按 [后续特性路线图](<docs/后续特性路线图.md>) 的 F1-F5 推进：先拆设置与用户资料，再建可靠异步和站内信，最后建设 NAS 音乐模块。

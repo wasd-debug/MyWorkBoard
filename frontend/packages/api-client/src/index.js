@@ -2,6 +2,7 @@ import { AuthenticationApi } from './generated/api/authentication-api.ts'
 import { AuditApi } from './generated/api/audit-api.ts'
 import { HolidaysApi } from './generated/api/holidays-api.ts'
 import { LedgerApi } from './generated/api/ledger-api.ts'
+import { TasksApi } from './generated/api/tasks-api.ts'
 import { WorktimeApi } from './generated/api/worktime-api.ts'
 import { api, clearAccessToken, generatedConfiguration, getAccessToken, setAccessToken } from './transport.js'
 
@@ -9,6 +10,7 @@ const auth = new AuthenticationApi(generatedConfiguration, '', api)
 const audit = new AuditApi(generatedConfiguration, '', api)
 const holidays = new HolidaysApi(generatedConfiguration, '', api)
 const ledger = new LedgerApi(generatedConfiguration, '', api)
+const tasks = new TasksApi(generatedConfiguration, '', api)
 const worktime = new WorktimeApi(generatedConfiguration, '', api)
 const data = response => response?.data?.data
 const revision = value => value === undefined || value === null || value === '' ? undefined : String(value)
@@ -165,6 +167,16 @@ export const apiListLedgerRoles = async bookId => data(await ledger.listLedgerRo
 export const apiCreateLedgerRole = async (bookId, payload, idempotencyKey) => data(await ledger.createLedgerRole({ bookId, roleCommand: payload, idempotencyKey }))
 export const apiUpdateLedgerRole = async (bookId, id, payload, currentRevision, idempotencyKey) => data(await ledger.updateLedgerRole({ bookId, id, roleCommand: payload, ifMatch: revision(currentRevision), idempotencyKey }))
 export const apiDeleteLedgerRole = async (bookId, id, currentRevision, idempotencyKey) => data(await ledger.deleteLedgerRole({ bookId, id, ifMatch: revision(currentRevision), idempotencyKey }))
+
+export const apiListTaskLists = async () => data(await tasks.listTaskLists())
+export const apiListTasks = async (params = {}) => data(await tasks.listTasks(params))
+export const apiGetTask = async publicId => data(await tasks.getTask({ publicId }))
+export const apiGetTaskSettings = async () => data(await tasks.getTaskSettings())
+export const apiCreateTask = async (payload, idempotencyKey) => data(await tasks.createTask({ idempotencyKey, taskCommand: payload }))
+export const apiUpdateTask = async (publicId, payload, currentRevision) => data(await tasks.updateTask({ publicId, taskCommand: payload, ifMatch: revision(currentRevision) }))
+export const apiCompleteTask = async (publicId, currentRevision) => data(await tasks.completeTask({ publicId, ifMatch: revision(currentRevision) }))
+export const apiReopenTask = async (publicId, currentRevision) => data(await tasks.reopenTask({ publicId, ifMatch: revision(currentRevision) }))
+export const apiDeleteTask = async (publicId, currentRevision) => data(await tasks.deleteTask({ publicId, ifMatch: revision(currentRevision) }))
 
 export const apiListLedgerTransactions = async (bookId, params = {}) => data(await ledger.listLedgerTransactions({ bookId, ...params }))
 export const apiListRecentLedgerTransactions = async (bookId, limit = 10) => data(await ledger.listRecentLedgerTransactions({ bookId, limit }))

@@ -30,4 +30,5 @@ export * from './api/mcpoauth-protocol-api.ts';
 export * from './api/mcpoperations-api.ts';
 export * from './api/mcppersonal-tokens-api.ts';
 export * from './api/operations-api.ts';
+export * from './api/tasks-api.ts';
 export * from './api/worktime-api.ts';

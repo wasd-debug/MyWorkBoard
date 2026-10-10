@@ -1,7 +1,7 @@
 # Phase 2 —— 任务域需求文档（滴答清单形态）
 
 > 状态日期：2026-10-09
-> 文档状态：**P2-0 决议已收敛**，待按增量实施
+> 文档状态：**P2-I1 已完成**，待实施 P2-I2 核心 local-first
 > 适用范围：MyWorkBoard 个人工作台（`wasd-debug/MyWorkBoard`）
 > 上游依据：`docs/ARCHITECTURE.md` 第 10 章 Phase 2、`docs/overview.md`、`docs/后续特性路线图.md`
 > 目标：把滴答清单（TickTick）的任务管理能力完整复刻为独立 `task` 域，嵌入现有个人工作台，并沿用仓库既有的 v1 契约、local-first 同步、受控写入和阶段门禁。
@@ -63,8 +63,8 @@
 | 认证与用户隔离   | Spring Security + JWT access（15min，内存）+ HttpOnly refresh cookie（30 天，MySQL 持久化轮换）                                               | 任务域所有接口继承同一套鉴权，数据按 `user_id` 隔离                                                                     |
 | 统一响应      | `ApiResponse<T>` 成功体；RFC 7807 `ApiProblem`（`code`/`traceId`/`path`/`timestamp`）                                                 | 任务域 Controller 沿用                                                                                   |
 | DTO 约定    | 后端使用 record/enum DTO                                                                                                            | 任务域沿用                                                                                               |
-| 数据库迁移     | Flyway 已到 V29                                                                                                                   | 任务域从 **V30** 起新增，禁止改写已应用迁移                                                                          |
-| 模块边界      | Maven 物理模块 `platform/identity/worktime/ledger/ai`，Spring Modulith + ArchUnit 校验                                                 | 新增 `backend/modules/task`，纳入 `ArchitectureBoundaryTest`                                             |
+| 数据库迁移     | Flyway 已到 V30，已建立 I1 三张任务表                                                                                                     | 后续任务结构继续新增迁移，禁止改写已应用 V30                                                                          |
+| 模块边界      | Maven 物理模块 `platform/identity/worktime/ledger/task/ai`，Spring Modulith + ArchUnit 校验                                                | `task` 仅依赖 platform/identity，不依赖 worktime/ledger                                                  |
 | 前端栈       | Vue 3 + Vite + Pinia + Vue Router + Tailwind CSS 4 + Reka UI + Lucide + ECharts                                                 | 任务页面沿用；日历需引入 FullCalendar                                                                           |
 | API 客户端   | 运行时 OpenAPI 生成 `typescript-axios`，集中在 `frontend/packages/api-client`，应用只经 transport + 领域 facade                                 | 新增 `task` facade                                                                                    |
 | 离线同步      | `frontend/packages/sync-engine`：IndexedDB 投影 + oplog、按用户/账本隔离、分页拉取、冲突与拒绝队列、游标重置                                                 | 扩展 `task` 域，复用 push/pull/幂等/冲突语义                                                                    |
@@ -78,8 +78,8 @@
 
 | 缺口                | 说明                                                                                                          |
 | ----------------- | ----------------------------------------------------------------------------------------------------------- |
-| `task` 后端模块与全部表结构 | 架构文档记录为"只有禁用导航占位"                                                                                           |
-| 任务前端页面与路由         | 现有 `router/index.js` 无 `/tasks/**`                                                                          |
+| `task` 后续表结构 | I1 已有收件箱、核心任务和最小设置；标签、重复、提醒、同步等表仍待后续增量                                                                            |
+| 任务前端后续页面 | I1 已有 `/tasks/inbox`；日期视图、组织管理、垃圾桶与日历仍待后续增量                                                                            |
 | 日历组件              | 现有前端无日历库，需引入 FullCalendar 并自研年视图                                                                            |
 | 提醒投递通道            | 无 Web Push、无持久化站内信。**已确认**：本期任务域自建最小站内信表 + SSE，不依赖 MQ                                                       |
 | 全局搜索              | 架构规划 Meilisearch，首版用 MySQL 全文索引                                                                             |
@@ -1279,7 +1279,7 @@ TASK / TRASH
 └────────────────────────────┘
 ```
 
-- 卡片内不承载操作，点击直达 `/tasks/today`。
+- I1 点击直达 `/tasks/inbox`；I3 上线日期视图后可按用户默认视图切换为 `/tasks/today`。
 - 与 `workspace-module-grid` 同一栅格：`≥1100px` 三列、`768–1100px` 两列、`<768px` 单列（沿用现有规则，不加新断点）。
 
 #### 8.4.19 批量操作条与多选态（P1）
@@ -1681,7 +1681,8 @@ com.salarytracker.task
 
 ### P2-I1：收件箱任务纵向切片
 - 新建 `task` 模块并纳入 ArchUnit；V30 只建立收件箱清单、任务核心表、最小设置表及必要索引。
-- 交付收件箱中的任务新增、查看、编辑、完成、重新打开和软删除；前端提供 `/tasks/today` 最小列表与详情编辑。
+- 交付收件箱中的任务新增、查看、编辑、完成、重新打开和软删除；前端提供 `/tasks/inbox` 最小列表与详情编辑（已完成）。
+- I1 为控制首批索引与页面输入规模，标题/描述先按 255/4,000 字符落库；在 I3 引入完整编辑能力时通过新迁移扩展至 T-201 的 500/20,000 字符，不改写已应用 V30。
 - **门禁**：真实用户隔离、幂等创建、revision 冲突、收件箱初始化和生产构建通过；用户可在线完成完整任务闭环。
 
 ### P2-I2：核心 local-first

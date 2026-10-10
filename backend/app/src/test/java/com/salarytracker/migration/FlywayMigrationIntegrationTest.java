@@ -34,7 +34,7 @@ class FlywayMigrationIntegrationTest {
         flyway.migrate();
         flyway.validate();
 
-        assertEquals("29", flyway.info().current().getVersion().getVersion());
+        assertEquals("30", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement()) {
@@ -54,6 +54,10 @@ class FlywayMigrationIntegrationTest {
             assertTrue(tableExists(connection, "mcp_grant"));
             assertTrue(tableExists(connection, "mcp_oauth_code"));
             assertTrue(tableExists(connection, "mcp_protocol_event"));
+            assertTrue(tableExists(connection, "task_list"));
+            assertTrue(tableExists(connection, "task"));
+            assertTrue(tableExists(connection, "task_setting"));
+            assertEquals(2L, scalar(statement, "SELECT COUNT(*) FROM permission WHERE code IN ('task:read','task:write')"));
             assertTrue(tableExists(connection, "ai_usage_budget"));
             assertTrue(tableExists(connection, "ai_usage_alert"));
             assertTrue(columnExists(connection, "mcp_external_action", "commit_status"));
@@ -91,7 +95,7 @@ class FlywayMigrationIntegrationTest {
         flyway.migrate();
         flyway.validate();
 
-        assertEquals("29", flyway.info().current().getVersion().getVersion());
+        assertEquals("30", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement()) {

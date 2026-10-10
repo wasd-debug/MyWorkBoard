@@ -17,6 +17,10 @@ export const ledgerNavigation = [
   { key: 'audit', to: { path: '/ledger/manage', query: { view: 'audit' } }, label: '操作日志' }
 ]
 
+export const taskNavigation = [
+  { key: 'inbox', to: '/tasks/inbox', label: '收件箱' }
+]
+
 export function navigationItemIsActive(route, item) {
   const target = typeof item.to === 'string' ? { path: item.to } : item.to
   if (route.path !== target.path) return false
