@@ -1,5 +1,12 @@
 # 部署说明
 
+## 2026-10-10 任务导航收口生产发布
+
+- 前端应用提交：`5882c9d`，已推送至远程 `main`；发布目录为 `/home/ubuntu/salary-tracker/releases/5882c9d`，提交归档 SHA-256 为 `de65c64cac4c84cb89a7dbfb7e3946cfd0c3966d5d6ef705c985ff0294bd5c56`。服务器从该归档构建 `amd64` 镜像 `salary-frontend:5882c9d`，实际运行镜像 ID 为 `sha256:0675d38980038e65543c205325991876f8a1a54f20f33a973eabec8321f07743`。
+- 发布前数据库备份 `/home/ubuntu/salary-tracker/backups/salary-before-5882c9d-20261010-173322.sql.gz` 非空并通过 `gzip -t`；旧前端镜像保留为 `salary-frontend:pre-5882c9d`，旧 Compose 配置保留为 `docker-compose.prod.yml.bak.5882c9d`。
+- 本轮仅使用 `--no-deps --force-recreate frontend` 重建前端容器；后端继续运行 `salary-backend:330d26c`，MySQL 容器及数据卷未重建。Flyway 保持 v35 success=1，核心记录保持 `app_user=3`、`work_record=50`、`ledger_book=5`、`ledger_transaction=16573`。
+- 服务器 IP 与 `jsn1024.cn` 的首页、`/api/health`、`/tasks/today` 均返回 HTTP 200；域名下 `/tasks/habits`、`/tasks/calendar`、`/tasks/countdowns` 同样返回 HTTP 200。顶部四项导航、任务页移动端左侧抽屉、亮暗主题和交互仍按《前端手工检查清单》由用户人工验收。
+
 ## 2026-10-10 Phase 2 任务效率工具生产发布
 
 - 应用提交：`330d26c`，已推送至远程 `main`；发布目录为 `/home/ubuntu/salary-tracker/releases/330d26c`，提交归档 SHA-256 为 `156f377b479818dee0b450295559396b92b9d9b08421c54d2b74e964524ccf9c`。服务器从该归档构建 `amd64` 镜像 `salary-backend:330d26c` 与 `salary-frontend:330d26c`。
