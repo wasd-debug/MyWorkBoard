@@ -6,7 +6,7 @@
         <div class="ui-drawer-handle" aria-hidden="true" />
         <header class="ui-drawer-head">
           <DialogTitle as="h2">{{ title }}</DialogTitle>
-          <DialogClose class="ui-sheet-close" aria-label="关闭">×</DialogClose>
+          <DialogClose class="ui-sheet-close ui-drawer-close" aria-label="关闭">×</DialogClose>
         </header>
         <div class="ui-drawer-body"><slot /></div>
         <footer v-if="$slots.footer" class="ui-sheet-foot"><slot name="footer" /></footer>
