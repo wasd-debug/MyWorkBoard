@@ -18,6 +18,12 @@ import com.salarytracker.task.TaskModels.TaskCommand;
 import com.salarytracker.task.TaskModels.TaskItem;
 import com.salarytracker.task.TaskModels.TaskListCommand;
 import com.salarytracker.task.TaskModels.TaskTagCommand;
+import com.salarytracker.task.TaskEfficiencyModels.Countdown;
+import com.salarytracker.task.TaskEfficiencyModels.CountdownCommand;
+import com.salarytracker.task.TaskEfficiencyModels.Habit;
+import com.salarytracker.task.TaskEfficiencyModels.HabitCheckin;
+import com.salarytracker.task.TaskEfficiencyModels.HabitCheckinCommand;
+import com.salarytracker.task.TaskEfficiencyModels.HabitCommand;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -33,12 +39,15 @@ public class TaskSyncService {
     private final ObjectMapper mapper;
     private final CurrentUserResolver currentUser;
     private final TaskService tasks;
+    private final TaskEfficiencyService efficiency;
 
-    public TaskSyncService(JdbcTemplate jdbc, ObjectMapper mapper, CurrentUserResolver currentUser, TaskService tasks) {
+    public TaskSyncService(JdbcTemplate jdbc, ObjectMapper mapper, CurrentUserResolver currentUser, TaskService tasks,
+                           TaskEfficiencyService efficiency) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.currentUser = currentUser;
         this.tasks = tasks;
+        this.efficiency = efficiency;
     }
 
     public SyncPushResponse push(List<SyncOperation> operations) {
@@ -79,7 +88,7 @@ public class TaskSyncService {
         String entityType = operation == null ? "task" : operation.entityType();
         if (!validId(opId, 120)) return result(opId, entityType, entityId, SyncStatus.REJECTED, null, null,
                 "opId 必填且长度不能超过 120");
-        if (entityType == null || !List.of("task", "task-list", "task-tag").contains(entityType)) return result(opId,
+        if (entityType == null || !List.of("task", "task-list", "task-tag", "habit", "habit-checkin", "countdown").contains(entityType)) return result(opId,
                 operation == null ? "task" : operation.entityType(), entityId, SyncStatus.REJECTED,
                 null, null, "entityType 不支持");
         if (!validUuid(entityId)) return result(opId, entityType, entityId, SyncStatus.REJECTED,
@@ -94,6 +103,9 @@ public class TaskSyncService {
         try {
             if ("task-list".equals(operation.entityType())) return applyList(operation, entityId);
             if ("task-tag".equals(operation.entityType())) return applyTag(operation, entityId);
+            if ("habit".equals(operation.entityType())) return applyHabit(operation, entityId);
+            if ("habit-checkin".equals(operation.entityType())) return applyHabitCheckin(operation, entityId);
+            if ("countdown".equals(operation.entityType())) return applyCountdown(operation, entityId);
             TaskItem current = current(entityId);
             long baseRevision = operation.baseRevision() == null ? 0 : operation.baseRevision();
             if (operation.operation() == SyncAction.DELETE) {
@@ -128,6 +140,9 @@ public class TaskSyncService {
                         exception.getServerRevision(), server == null ? null : TaskService.syncEntity(server, false),
                         List.of(), exception.getMessage());
             }
+            if ("habit".equals(operation.entityType())) return efficiencyConflict(operation, exception, currentHabit(entityId));
+            if ("habit-checkin".equals(operation.entityType())) return efficiencyConflict(operation, exception, currentCheckin(entityId));
+            if ("countdown".equals(operation.entityType())) return efficiencyConflict(operation, exception, currentCountdown(entityId));
             TaskItem server = current(entityId);
             return new SyncOperationResult(opId, "task", entityId, SyncStatus.CONFLICT, null,
                     exception.getServerRevision(), server == null ? null : TaskService.syncEntity(server, false),
@@ -185,12 +200,96 @@ public class TaskSyncService {
                 TaskService.syncEntity(saved, false), null, null);
     }
 
+    private SyncOperationResult applyHabit(SyncOperation operation, String entityId) {
+        Habit current = currentHabit(entityId);
+        long base = operation.baseRevision() == null ? 0 : operation.baseRevision();
+        if (operation.operation() == SyncAction.DELETE) {
+            if (current == null) return result(operation.opId(), "habit", entityId, SyncStatus.REJECTED, null, null, "习惯不存在");
+            efficiency.deleteHabitForSync(entityId, base, operation.opId());
+            return result(operation.opId(), "habit", entityId, SyncStatus.APPLIED,
+                    TaskEfficiencyService.syncEntity(current, true), null, null);
+        }
+        var extra = operation.payload() == null ? null : operation.payload().extra();
+        if (extra == null) throw new IllegalArgumentException("payload.extra 必填");
+        HabitCommand command = new HabitCommand(string(extra, "name"), string(extra, "icon"), string(extra, "color"),
+                string(extra, "frequency"), integer(extra, "targetCount"), integers(extra, "customDays"),
+                string(extra, "remindAt"), string(extra, "startDate"), bool(extra, "archived"), integer(extra, "sortOrder"));
+        Habit saved = current == null
+                ? efficiency.createHabitForSync(command, entityId, operation.opId())
+                : efficiency.updateHabitForSync(entityId, command, base, operation.opId());
+        return result(operation.opId(), "habit", entityId, SyncStatus.APPLIED,
+                TaskEfficiencyService.syncEntity(saved, false), null, null);
+    }
+
+    private SyncOperationResult applyHabitCheckin(SyncOperation operation, String entityId) {
+        if (operation.operation() == SyncAction.DELETE) throw new IllegalArgumentException("习惯打卡不支持删除");
+        var extra = operation.payload() == null ? null : operation.payload().extra();
+        if (extra == null) throw new IllegalArgumentException("payload.extra 必填");
+        HabitCheckin current = currentCheckin(entityId);
+        long base = operation.baseRevision() == null ? 0 : operation.baseRevision();
+        HabitCheckin saved = efficiency.checkinForSync(string(extra, "habitId"),
+                new HabitCheckinCommand(string(extra, "date"), integer(extra, "count"), string(extra, "status")),
+                entityId, base, operation.opId());
+        return result(operation.opId(), "habit-checkin", entityId, SyncStatus.APPLIED,
+                TaskEfficiencyService.syncEntity(saved, false), null, null);
+    }
+
+    private SyncOperationResult applyCountdown(SyncOperation operation, String entityId) {
+        Countdown current = currentCountdown(entityId);
+        long base = operation.baseRevision() == null ? 0 : operation.baseRevision();
+        if (operation.operation() == SyncAction.DELETE) {
+            if (current == null) return result(operation.opId(), "countdown", entityId, SyncStatus.REJECTED, null, null, "倒数日不存在");
+            efficiency.deleteCountdownForSync(entityId, base, operation.opId());
+            return result(operation.opId(), "countdown", entityId, SyncStatus.APPLIED,
+                    TaskEfficiencyService.syncEntity(current, true), null, null);
+        }
+        var extra = operation.payload() == null ? null : operation.payload().extra();
+        if (extra == null) throw new IllegalArgumentException("payload.extra 必填");
+        CountdownCommand command = new CountdownCommand(string(extra, "title"), string(extra, "targetDate"),
+                string(extra, "kind"), bool(extra, "repeatYearly"), bool(extra, "pinned"), string(extra, "color"),
+                string(extra, "note"));
+        Countdown saved = current == null
+                ? efficiency.createCountdownForSync(command, entityId, operation.opId())
+                : efficiency.updateCountdownForSync(entityId, command, base, operation.opId());
+        return result(operation.opId(), "countdown", entityId, SyncStatus.APPLIED,
+                TaskEfficiencyService.syncEntity(saved, false), null, null);
+    }
+
+    private SyncOperationResult efficiencyConflict(SyncOperation operation, ConflictException exception, Object current) {
+        SyncEntity server = current instanceof Habit habit ? TaskEfficiencyService.syncEntity(habit, false)
+                : current instanceof HabitCheckin checkin ? TaskEfficiencyService.syncEntity(checkin, false)
+                : current instanceof Countdown countdown ? TaskEfficiencyService.syncEntity(countdown, false) : null;
+        return new SyncOperationResult(operation.opId(), operation.entityType(), operation.entityId(), SyncStatus.CONFLICT,
+                null, exception.getServerRevision(), server, List.of(), exception.getMessage());
+    }
+
+    private Habit currentHabit(String id) { try { return efficiency.habitForSync(id); } catch (NotFoundException exception) { return null; } }
+    private HabitCheckin currentCheckin(String id) { try { return efficiency.checkinForSync(id); } catch (NotFoundException exception) { return null; } }
+    private Countdown currentCountdown(String id) { try { return efficiency.countdownForSync(id); } catch (NotFoundException exception) { return null; } }
+
+    private String string(java.util.Map<String, Object> values, String key) {
+        Object value = values.get(key); return value == null ? null : String.valueOf(value);
+    }
+    private Integer integer(java.util.Map<String, Object> values, String key) {
+        Object value = values.get(key); return value == null ? null : value instanceof Number number ? number.intValue() : Integer.valueOf(String.valueOf(value));
+    }
+    private Boolean bool(java.util.Map<String, Object> values, String key) {
+        Object value = values.get(key); return value == null ? null : value instanceof Boolean flag ? flag : Boolean.valueOf(String.valueOf(value));
+    }
+    private List<Integer> integers(java.util.Map<String, Object> values, String key) {
+        Object value = values.get(key); if (!(value instanceof List<?> list)) return null;
+        return list.stream().map(item -> item instanceof Number number ? number.intValue() : Integer.valueOf(String.valueOf(item))).toList();
+    }
+
     private SyncOperationResult inaccessible(String opId, String entityId, String message) {
         SyncStatus status = tasks.existsForAnotherUser(entityId) ? SyncStatus.FORBIDDEN : SyncStatus.REJECTED;
         return result(opId, entityId, status, null, null, message);
     }
 
     private SyncOperationResult inaccessible(String opId, String entityType, String entityId, String message) {
+        if (!List.of("task-list", "task-tag").contains(entityType)) {
+            return result(opId, entityType, entityId, SyncStatus.REJECTED, null, null, message);
+        }
         boolean foreign = "task-list".equals(entityType) ? tasks.listExistsForAnotherUser(entityId)
                 : tasks.tagExistsForAnotherUser(entityId);
         return result(opId, entityType, entityId, foreign ? SyncStatus.FORBIDDEN : SyncStatus.REJECTED,

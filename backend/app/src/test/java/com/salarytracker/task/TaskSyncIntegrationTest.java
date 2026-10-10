@@ -11,6 +11,7 @@ import com.salarytracker.task.TaskModels.SyncStatus;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -117,6 +118,31 @@ class TaskSyncIntegrationTest extends MySqlIntegrationTestSupport {
         assertTrue(fixture.sync.pull(0, 20).operations().stream().anyMatch(item -> "task-tag".equals(item.entityType())));
     }
 
+    @Test
+    void syncsHabitsCheckinsAndCountdownsThroughTheSharedOplog() {
+        Fixture fixture = fixture(createUser("sync-efficiency-"));
+        String habitId = UUID.randomUUID().toString();
+        String checkinId = UUID.randomUUID().toString();
+        String countdownId = UUID.randomUUID().toString();
+        String today = java.time.LocalDate.now().toString();
+
+        var response = fixture.sync.push(List.of(
+                efficiencyOperation("habit-create", "habit", habitId, 0, Map.of("name", "阅读", "icon", "book",
+                        "color", "#2f746f", "frequency", "DAILY", "targetCount", 1, "customDays", List.of(),
+                        "startDate", today, "archived", false, "sortOrder", 0)),
+                efficiencyOperation("checkin-create", "habit-checkin", checkinId, 0,
+                        Map.of("habitId", habitId, "date", today, "count", 1, "status", "DONE")),
+                efficiencyOperation("countdown-create", "countdown", countdownId, 0, Map.of("title", "纪念日",
+                        "targetDate", today, "kind", "ANNIVERSARY", "repeatYearly", true, "pinned", true,
+                        "color", "#2f746f", "note", ""))));
+
+        assertEquals(3, response.applied());
+        assertEquals("阅读", fixture.efficiency.habits(false).get(0).name());
+        assertEquals(1, fixture.efficiency.habitStats(habitId, null, null).checkins().size());
+        assertEquals("纪念日", fixture.efficiency.countdowns().get(0).title());
+        assertTrue(fixture.sync.pull(0, 20).operations().stream().anyMatch(item -> "habit-checkin".equals(item.entityType())));
+    }
+
     private SyncOperation operation(String opId, String entityId, SyncAction action, long revision, SyncPayload payload) {
         return new SyncOperation(opId, "task", entityId, action, revision, payload);
     }
@@ -132,12 +158,20 @@ class TaskSyncIntegrationTest extends MySqlIntegrationTestSupport {
                 null, 0L, parentId, null, null, name, color, icon, sortOrder, archived);
     }
 
+    private SyncOperation efficiencyOperation(String opId, String type, String id, long revision, Map<String, Object> extra) {
+        SyncPayload payload = new SyncPayload(id, null, null, null, null, null, null, null, null, null, null,
+                revision, null, null, null, null, null, null, null, null, null, null, extra);
+        return new SyncOperation(opId, type, id, SyncAction.UPSERT, revision, payload);
+    }
+
     private Fixture fixture(long userId) {
         CurrentUserResolver resolver = mock(CurrentUserResolver.class);
         when(resolver.id()).thenReturn(userId);
         ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
         TaskService tasks = new TaskService(jdbc, resolver, new TaskChangeLog(jdbc, mapper));
-        return new Fixture(tasks, new TaskSyncService(jdbc, mapper, resolver, tasks));
+        TaskChangeLog changeLog = new TaskChangeLog(jdbc, mapper);
+        TaskEfficiencyService efficiency = new TaskEfficiencyService(jdbc, resolver, tasks, changeLog);
+        return new Fixture(tasks, efficiency, new TaskSyncService(jdbc, mapper, resolver, tasks, efficiency));
     }
 
     private long createUser(String prefix) {
@@ -146,6 +180,6 @@ class TaskSyncIntegrationTest extends MySqlIntegrationTestSupport {
         return jdbc.queryForObject("SELECT id FROM app_user WHERE username=?", Long.class, username);
     }
 
-    private record Fixture(TaskService tasks, TaskSyncService sync) {
+    private record Fixture(TaskService tasks, TaskEfficiencyService efficiency, TaskSyncService sync) {
     }
 }

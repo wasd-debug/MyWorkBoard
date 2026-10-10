@@ -1,16 +1,20 @@
 import { defineStore } from 'pinia'
 import { createTaskSyncEngine } from '../../packages/sync-engine/src/index.js'
 import { apiListDeletedTaskLists, apiListTaskLists, apiListTaskTags, apiListTasks, apiPullTaskSync,
-  apiPurgeTask, apiPushTaskSync, apiRestoreTask, apiRestoreTaskList } from '../../packages/api-client/src/index.js'
+  apiGetHabitStats, apiListCountdowns, apiListHabits, apiPurgeTask, apiPushTaskSync, apiRestoreTask,
+  apiRestoreTaskList } from '../../packages/api-client/src/index.js'
 import { accountScopeFor, taskDatabaseName } from '../utils/accountScope.js'
 import { createClientId } from '../utils/clientId.js'
 
 const SCOPE = 'tasks'
 const transport = {
-  push: (_scope, operations) => apiPushTaskSync([...operations].sort((a, b) => Number(a.operation === 'DELETE') - Number(b.operation === 'DELETE')).map(({ bookId, payload, ...operation }) => ({
-    ...operation,
-    payload: payload ? Object.fromEntries(Object.entries(payload).filter(([key]) => key !== 'bookId')) : payload
-  }))),
+  push: (_scope, operations) => apiPushTaskSync([...operations].sort((a, b) => Number(a.operation === 'DELETE') - Number(b.operation === 'DELETE')).map(({ bookId, payload, ...operation }) => {
+    const clean = payload ? Object.fromEntries(Object.entries(payload).filter(([key]) => !['bookId', 'updatedAt'].includes(key))) : payload
+    if (clean && ['habit', 'habit-checkin', 'countdown'].includes(operation.entityType)) {
+      return { ...operation, payload: { id: clean.id, revision: clean.revision, extra: Object.fromEntries(Object.entries(clean).filter(([key]) => !['id', 'revision', 'deleted', 'deletedAt', 'extra'].includes(key))) } }
+    }
+    return { ...operation, payload: clean }
+  })),
   pull: (_scope, cursor) => apiPullTaskSync(cursor)
 }
 
@@ -22,7 +26,7 @@ let activeSyncPromise
 
 function clearState(store) {
   Object.assign(store, { ready: false, loading: false, syncing: false, lists: [], deletedLists: [], tags: [], tasks: [], total: 0,
-    conflicts: [], rejected: [], pending: 0, error: '' })
+    habits: [], habitCheckins: [], countdowns: [], conflicts: [], rejected: [], pending: 0, error: '' })
 }
 
 function localTask(value) {
@@ -45,7 +49,8 @@ export const useTasksStore = defineStore('tasks', {
   state: () => ({
     ready: false, loading: false, saving: false, syncing: false,
     online: typeof navigator === 'undefined' ? true : navigator.onLine,
-    accountScope: '', lists: [], deletedLists: [], tags: [], tasks: [], total: 0, conflicts: [], rejected: [], pending: 0, error: ''
+    accountScope: '', lists: [], deletedLists: [], tags: [], tasks: [], habits: [], habitCheckins: [], countdowns: [],
+    total: 0, conflicts: [], rejected: [], pending: 0, error: ''
   }),
   getters: {
     inbox: state => state.lists.find(item => item.systemKey === 'INBOX') || state.lists[0],
@@ -96,9 +101,12 @@ export const useTasksStore = defineStore('tasks', {
     async hydrate() {
       const epoch = sessionEpoch
       const scoped = engine
-      const [lists, tags, tasks, conflicts, rejected, pending] = await Promise.all([
+      const [lists, tags, tasks, habits, habitCheckins, countdowns, conflicts, rejected, pending] = await Promise.all([
         scoped.list('task-list', { bookId: SCOPE, includeDeleted: true }), scoped.list('task-tag', { bookId: SCOPE }),
         scoped.list('task', { bookId: SCOPE, includeDeleted: true }),
+        scoped.list('habit', { bookId: SCOPE, includeDeleted: true }),
+        scoped.list('habit-checkin', { bookId: SCOPE, includeDeleted: true }),
+        scoped.list('countdown', { bookId: SCOPE, includeDeleted: true }),
         scoped.conflicts(SCOPE), scoped.rejected(SCOPE), scoped.pendingOperations(SCOPE)
       ])
       if (epoch !== sessionEpoch || scoped !== engine) return
@@ -106,6 +114,9 @@ export const useTasksStore = defineStore('tasks', {
       this.deletedLists = lists.filter(item => item.deleted).map(item => ({ ...item, publicId: item.id }))
       this.tags = tags.map(item => ({ ...item, publicId: item.id })).sort((a, b) => a.sortOrder - b.sortOrder)
       this.tasks = tasks.map(localTask)
+      this.habits = habits.filter(item => !item.deleted).map(localTask).sort((a, b) => a.sortOrder - b.sortOrder)
+      this.habitCheckins = habitCheckins.filter(item => !item.deleted).map(localTask)
+      this.countdowns = countdowns.filter(item => !item.deleted).map(localTask)
       this.total = this.tasks.length
       this.conflicts = conflicts
       this.rejected = rejected
@@ -118,10 +129,17 @@ export const useTasksStore = defineStore('tasks', {
       this.error = ''
       try {
         await this.syncNow()
-        const [lists, deletedLists, tags] = await Promise.all([apiListTaskLists(), apiListDeletedTaskLists(), apiListTaskTags()])
+        const [lists, deletedLists, tags, habits, countdowns] = await Promise.all([
+          apiListTaskLists(), apiListDeletedTaskLists(), apiListTaskTags(), apiListHabits(), apiListCountdowns()
+        ])
         if (epoch !== sessionEpoch || scoped !== engine) return
         await replaceRemoteCollection(scoped, 'task-list', [...(lists || []), ...(deletedLists || []).map(item => ({ ...item, deleted: true }))])
         await replaceRemoteCollection(scoped, 'task-tag', tags || [])
+        await replaceRemoteCollection(scoped, 'habit', habits || [])
+        await replaceRemoteCollection(scoped, 'countdown', countdowns || [])
+        const checkins = []
+        for (const habit of habits || []) checkins.push(...((await apiGetHabitStats(habit.publicId))?.checkins || []))
+        await replaceRemoteCollection(scoped, 'habit-checkin', checkins || [])
         const remoteTasks = []
         for (const view of ['ALL', 'TRASH']) {
           let pageNumber = 0
@@ -166,6 +184,32 @@ export const useTasksStore = defineStore('tasks', {
       this.scheduleSync()
       return localTask(record)
     },
+    async saveEfficiency(type, value, operation = 'UPSERT') {
+      const id = value.publicId || value.id || createClientId()
+      const pending = (await engine.pendingOperations(SCOPE)).find(item => item.entityType === type && item.entityId === id)
+      if (operation === 'DELETE' && pending && Number(pending.baseRevision || 0) === 0) {
+        await engine.removeStore(engine.storeName(type), `${SCOPE}:${id}`)
+        await engine.removeStore('oplog', pending.opId)
+      } else if (operation === 'DELETE') {
+        await engine.remove(type, id, { bookId: SCOPE, opId: pending?.opId, baseRevision: value.revision || 0 })
+      } else {
+        await engine.put(type, { ...value, id, publicId: undefined }, { bookId: SCOPE, opId: pending?.opId, baseRevision: value.revision || 0 })
+      }
+      await this.hydrate(); this.scheduleSync()
+      return id
+    },
+    createHabit(payload) { return this.saveEfficiency('habit', { ...payload, publicId: createClientId(), revision: 0 }) },
+    updateHabit(item, payload) { return this.saveEfficiency('habit', { ...item, ...payload }) },
+    deleteHabit(item) { return this.saveEfficiency('habit', item, 'DELETE') },
+    checkinHabit(habit, payload) {
+      const existing = this.habitCheckins.find(item => item.habitId === habit.publicId && item.date === payload.date)
+      const count = payload.status === 'DONE' ? Number(existing?.count || 0) + Number(payload.count || 1) : 0
+      return this.saveEfficiency('habit-checkin', { ...(existing || {}), ...payload, count, habitId: habit.publicId,
+        publicId: existing?.publicId || createClientId(), revision: existing?.revision || 0 })
+    },
+    createCountdown(payload) { return this.saveEfficiency('countdown', { ...payload, publicId: createClientId(), revision: 0 }) },
+    updateCountdown(item, payload) { return this.saveEfficiency('countdown', { ...item, ...payload }) },
+    deleteCountdown(item) { return this.saveEfficiency('countdown', item, 'DELETE') },
     async create(payload) {
       this.saving = true
       try {

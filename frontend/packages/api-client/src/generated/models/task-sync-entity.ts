@@ -48,4 +48,6 @@ export interface TaskSyncEntity {
     'seriesId'?: string;
     'seriesSequence'?: number;
     'plannedDueAt'?: string;
+    'focusMinutes'?: number;
+    'extra'?: { [key: string]: object; };
 }

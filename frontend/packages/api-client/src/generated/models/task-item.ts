@@ -44,4 +44,5 @@ export interface TaskItem {
     'seriesId'?: string;
     'seriesSequence'?: number;
     'plannedDueAt'?: string;
+    'focusMinutes'?: number;
 }

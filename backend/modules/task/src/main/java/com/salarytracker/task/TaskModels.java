@@ -3,6 +3,7 @@ package com.salarytracker.task;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
+import java.util.Map;
 
 public final class TaskModels {
     private TaskModels() {
@@ -41,13 +42,13 @@ public final class TaskModels {
                            String parentId, List<String> tagIds, List<ChecklistItem> checklist,
                            int completedSubtasks, int totalSubtasks, boolean deleted, String deletedAt,
                            String rrule, String recurrenceAnchor, String seriesId, Integer seriesSequence,
-                           String plannedDueAt) {
+                           String plannedDueAt, int focusMinutes) {
         public TaskItem(String publicId, String listId, String title, String description, String status,
                         String priority, String startAt, String dueAt, boolean allDay, String timezone,
                         Integer durationMinutes, String source, String completedAt, long revision) {
             this(publicId, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
                     durationMinutes, source, completedAt, revision, null, List.of(), List.of(), 0, 0, false, null,
-                    null, null, null, null, null);
+                    null, null, null, null, null, 0);
         }
     }
 
@@ -127,7 +128,8 @@ public final class TaskModels {
                               String priority, String startAt, String dueAt, Boolean allDay, String timezone,
                               Integer durationMinutes, Long revision, String parentId, List<String> tagIds,
                               List<ChecklistCommand> checklist, String name, String color, String icon,
-                              Integer sortOrder, Boolean archived, String rrule, String recurrenceAnchor) {
+                              Integer sortOrder, Boolean archived, String rrule, String recurrenceAnchor,
+                              Map<String, Object> extra) {
         public SyncPayload(String id, String listId, String title, String description, String status,
                            String priority, String startAt, String dueAt, Boolean allDay, String timezone,
                            Integer durationMinutes, Long revision, String parentId, List<String> tagIds,
@@ -135,13 +137,13 @@ public final class TaskModels {
                            Integer sortOrder, Boolean archived) {
             this(id, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
                     durationMinutes, revision, parentId, tagIds, checklist, name, color, icon, sortOrder, archived,
-                    null, null);
+                    null, null, null);
         }
         public SyncPayload(String id, String listId, String title, String description, String status,
                            String priority, String startAt, String dueAt, Boolean allDay, String timezone,
                            Integer durationMinutes, Long revision) {
             this(id, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
-                    durationMinutes, revision, null, null, null, null, null, null, null, null, null, null);
+                    durationMinutes, revision, null, null, null, null, null, null, null, null, null, null, null);
         }
     }
 
@@ -157,14 +159,15 @@ public final class TaskModels {
                              boolean deleted, String parentId, List<String> tagIds, List<ChecklistItem> checklist,
                              String deletedAt, String name, String color, String icon, String systemKey,
                              Integer sortOrder, Boolean archived, String rrule, String recurrenceAnchor,
-                             String seriesId, Integer seriesSequence, String plannedDueAt) {
+                             String seriesId, Integer seriesSequence, String plannedDueAt, Integer focusMinutes,
+                             Map<String, Object> extra) {
         public SyncEntity(String id, String listId, String title, String description, String status,
                           String priority, String startAt, String dueAt, boolean allDay, String timezone,
                           Integer durationMinutes, String source, String completedAt, long revision,
                           boolean deleted) {
             this(id, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
                     durationMinutes, source, completedAt, revision, deleted, null, List.of(), List.of(), null,
-                    null, null, null, null, null, null, null, null, null, null, null);
+                    null, null, null, null, null, null, null, null, null, null, null, null, null);
         }
     }
 

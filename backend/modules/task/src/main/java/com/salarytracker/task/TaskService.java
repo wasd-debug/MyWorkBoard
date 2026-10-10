@@ -36,6 +36,7 @@ public class TaskService {
     private static final String TASK_COLUMNS = "t.public_id,t.user_id, l.public_id list_public_id, t.title, t.description, " +
             "t.status, t.priority, t.start_at, t.due_at, t.all_day, t.timezone, t.duration_minutes, " +
             "t.source, t.completed_at, t.revision, t.deleted, t.deleted_at, " +
+            "t.focus_minutes, " +
             "(SELECT p.public_id FROM task p WHERE p.id = t.parent_id) parent_public_id, " +
             "t.rrule,t.recurrence_anchor,t.series_id,t.series_sequence,t.planned_due_at";
     private final JdbcTemplate jdbcTemplate;
@@ -656,20 +657,20 @@ public class TaskService {
                 item.priority(), item.startAt(), item.dueAt(), item.allDay(), item.timezone(), item.durationMinutes(),
                 item.source(), item.completedAt(), item.revision(), deleted, item.parentId(), item.tagIds(),
                 item.checklist(), item.deletedAt(), null, null, null, null, null, null, item.rrule(),
-                item.recurrenceAnchor(), item.seriesId(), item.seriesSequence(), item.plannedDueAt());
+                item.recurrenceAnchor(), item.seriesId(), item.seriesSequence(), item.plannedDueAt(), item.focusMinutes(), null);
     }
 
     static TaskModels.SyncEntity syncEntity(TaskList item, boolean deleted) {
         return new TaskModels.SyncEntity(item.publicId(), null, null, null, null, null, null, null, false,
                 null, null, null, null, item.revision() + (deleted ? 1 : 0), deleted, null, List.of(), List.of(), null,
                 item.name(), item.color(), item.icon(), item.systemKey(), item.sortOrder(), item.archived(), null, null,
-                null, null, null);
+                null, null, null, null, null);
     }
 
     static TaskModels.SyncEntity syncEntity(TaskTag item, boolean deleted) {
         return new TaskModels.SyncEntity(item.publicId(), null, null, null, null, null, null, null, false,
                 null, null, null, null, item.revision() + (deleted ? 1 : 0), deleted, item.parentId(), List.of(), List.of(), null,
-                item.name(), item.color(), null, null, item.sortOrder(), null, null, null, null, null, null);
+                item.name(), item.color(), null, null, item.sortOrder(), null, null, null, null, null, null, null, null);
     }
 
     TaskList currentListForSync(String publicId) { return listForUser(currentUser.id(), publicId, false); }
@@ -856,7 +857,8 @@ public class TaskService {
                 result.getString("parent_public_id"), tags, checklist, completedSubtasks, totalSubtasks,
                 result.getBoolean("deleted"), instant(result.getTimestamp("deleted_at")), result.getString("rrule"),
                 result.getString("recurrence_anchor"), result.getString("series_id"),
-                (Integer) result.getObject("series_sequence"), instant(result.getTimestamp("planned_due_at")));
+                (Integer) result.getObject("series_sequence"), instant(result.getTimestamp("planned_due_at")),
+                result.getInt("focus_minutes"));
     }
 
     private ValidatedTask validate(TaskCommand command, TaskItem before) {

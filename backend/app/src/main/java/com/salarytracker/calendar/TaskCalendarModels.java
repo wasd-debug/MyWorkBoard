@@ -1,6 +1,7 @@
 package com.salarytracker.calendar;
 
 import com.salarytracker.task.TaskModels;
+import com.salarytracker.task.TaskEfficiencyModels;
 import com.salarytracker.worktime.WorktimeModels;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -32,7 +33,8 @@ public final class TaskCalendarModels {
     @Schema(name = "TaskCalendarResponse")
     public record CalendarResponse(String from, String to, List<TaskModels.CalendarItem> tasks,
                                    List<WorktimeModels.CalendarItem> worktime, List<LedgerDay> ledger,
-                                   List<HolidayDay> holidays, List<LunarDay> lunar,
+                                   List<HolidayDay> holidays, List<TaskEfficiencyModels.HabitCalendarDay> habits,
+                                   List<LunarDay> lunar,
                                    java.util.Map<String, LayerStatus> layers) {
     }
 }

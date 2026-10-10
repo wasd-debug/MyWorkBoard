@@ -4,6 +4,7 @@ import com.salarytracker.ledger.LedgerTransactionService;
 import com.salarytracker.service.HolidayService;
 import com.salarytracker.task.TaskModels;
 import com.salarytracker.task.TaskService;
+import com.salarytracker.task.TaskEfficiencyService;
 import com.salarytracker.worktime.WorktimeModels;
 import com.salarytracker.worktime.WorktimeService;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,7 @@ class TaskCalendarServiceTest {
         LedgerTransactionService ledger = mock(LedgerTransactionService.class);
         HolidayService holidays = mock(HolidayService.class);
         LunarCalendar lunar = mock(LunarCalendar.class);
+        TaskEfficiencyService efficiency = mock(TaskEfficiencyService.class);
         when(tasks.calendarItems(any(Instant.class), any(Instant.class))).thenReturn(List.of(
                 new TaskModels.CalendarItem("task-1", "计划", "OPEN", "HIGH", null,
                         "2026-10-10T10:00:00Z", false, "Asia/Shanghai", null, 1)));
@@ -41,7 +43,7 @@ class TaskCalendarServiceTest {
                 java.util.Map.of(), HolidayService.HolidaySource.NONE));
 
         TaskCalendarModels.CalendarResponse result = new TaskCalendarService(tasks, worktime, ledger, holidays,
-                lunar, false).calendar(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 11, 1), null, true);
+                lunar, efficiency, false).calendar(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 11, 1), null, true);
 
         assertEquals(1, result.tasks().size());
         assertEquals(BigDecimal.valueOf(9), result.ledger().get(0).net());

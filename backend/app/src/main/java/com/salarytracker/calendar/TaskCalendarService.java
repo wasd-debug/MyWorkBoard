@@ -5,6 +5,8 @@ import com.salarytracker.ledger.LedgerTransactionService;
 import com.salarytracker.service.HolidayService;
 import com.salarytracker.task.TaskModels;
 import com.salarytracker.task.TaskService;
+import com.salarytracker.task.TaskEfficiencyService;
+import com.salarytracker.task.TaskEfficiencyModels;
 import com.salarytracker.worktime.WorktimeModels;
 import com.salarytracker.worktime.WorktimeService;
 import org.slf4j.Logger;
@@ -30,23 +32,25 @@ import static com.salarytracker.calendar.TaskCalendarModels.*;
 @Service
 public class TaskCalendarService {
     private static final Logger log = LoggerFactory.getLogger(TaskCalendarService.class);
-    private static final Set<String> SUPPORTED_LAYERS = Set.of("worktime", "ledger", "holiday");
+    private static final Set<String> SUPPORTED_LAYERS = Set.of("worktime", "ledger", "holiday", "habit");
 
     private final TaskService tasks;
     private final WorktimeService worktime;
     private final LedgerTransactionService ledger;
     private final HolidayService holidays;
     private final LunarCalendar lunarCalendar;
+    private final TaskEfficiencyService efficiency;
     private final boolean lunarEnabled;
 
     public TaskCalendarService(TaskService tasks, WorktimeService worktime, LedgerTransactionService ledger,
-                               HolidayService holidays, LunarCalendar lunarCalendar,
+                               HolidayService holidays, LunarCalendar lunarCalendar, TaskEfficiencyService efficiency,
                                @Value("${task.lunar-enabled:true}") boolean lunarEnabled) {
         this.tasks = tasks;
         this.worktime = worktime;
         this.ledger = ledger;
         this.holidays = holidays;
         this.lunarCalendar = lunarCalendar;
+        this.efficiency = efficiency;
         this.lunarEnabled = lunarEnabled;
     }
 
@@ -67,9 +71,11 @@ public class TaskCalendarService {
                             item.income().subtract(item.expense()))).toList()) : List.of();
         List<HolidayDay> holidayItems = selected.contains("holiday")
                 ? layer("holiday", statuses, () -> holidayDays(from, inclusiveEnd)) : List.of();
+        List<TaskEfficiencyModels.HabitCalendarDay> habitItems = selected.contains("habit")
+                ? layer("habit", statuses, () -> efficiency.habitCalendar(from, toExclusive)) : List.of();
         List<LunarDay> lunarItems = lunar && lunarEnabled ? lunarDays(from, inclusiveEnd) : List.of();
         return new CalendarResponse(from.toString(), toExclusive.toString(), taskItems, worktimeItems, ledgerItems,
-                holidayItems, lunarItems, statuses);
+                holidayItems, habitItems, lunarItems, statuses);
     }
 
     private void validateRange(LocalDate from, LocalDate to) {

@@ -17,7 +17,7 @@
 |---|---|---|
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
-| Phase 2 任务 | I5 完成 | V30-V34、task 物理模块、任务/清单/标签 local-first、基础组织、多视图、重复/提醒、日历与跨域只读叠加已落地；I6 效率工具待实施 |
+| Phase 2 任务 | I6 完成 | V30-V35、任务/清单/标签/习惯/打卡/倒数日 local-first、重复/提醒、日历、专注计时与跨域只读叠加已落地；I7 增强与导入待实施 |
 | Phase 3A-D Agent/MCP | Phase 3A/3B/3D 核心闭环，Phase 3C-4 完成 | Web Agent、受控写入和 R4 审批已落地；MCP 已支持只读、PAT、OAuth 2.1 + PKCE、独立 prepare/commit scope、R2 单次提交和结果回放，R3/R4 commit 继续关闭 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
@@ -393,7 +393,7 @@ recurring       (id, user_id, name, rule_json, next_run_at, amount, category_id,
 
 ### 6.5 任务域（task）
 
-当前实现（P2-I5）：V30 建立 `task_list`、`task`、`task_setting`；V31 建立用户级 `task_sync_oplog`；V32 增加清单属性、父任务、排序、标签关系和检查项；V33 记录任务树删除来源；V34 增加重复实例、提醒、投递去重和任务站内信。I5 不新增表：`app` 组装层调用 task、worktime、ledger 的公开只读投影和 HolidayService，统一提供 `/api/v1/tasks/calendar`；各叠加层独立捕获失败，task 模块仍不依赖工时或账本。前端日历改期继续写入账号隔离 IndexedDB/oplog，在线同步沿用 revision 与变更日志。筛选器、活动和效率工具仍是后续增量目标，不应视为已建表。
+当前实现（P2-I6）：V30-V34 建立任务核心、同步、组织、重复与提醒；V35 增加 `focus_setting`、`focus_session`、`habit`、`habit_checkin`、`countdown` 及任务累计专注分钟。习惯、打卡和倒数日共享用户级 IndexedDB/oplog、revision 冲突与 pull 投影；实时专注的开始/结束要求在线，由数据库唯一键保证单用户仅一个 RUNNING 会话，页面刷新按服务端时间恢复。专注完成只累加任务专注分钟并写领域事件，不写 `work_record`，不参与加班、时薪或工资计算。全局日历增加习惯图层；app 组装层仍只经公开只读投影聚合跨域数据。
 
 ```sql
 task_list       (id, user_id, name, color, sort, kind, archived)
@@ -652,7 +652,7 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 - [x] 重复任务保留每个已完成实例并生成下一实例；使用 `series_id + planned_due_at` 幂等；任务日志 task_activity、协作列、协作表和附件表仍延后到对应阶段
 - [x] `P2-I5` 日历视图：FullCalendar 日/周/月 + 自研年视图；由 app 组装层聚合 task/worktime/ledger/holiday 的公开只读接口，单层失败独立降级；农历通过适配器计算
 - [x] 提醒：任务域首版使用 `task_reminder`、`task_reminder_fire`、`task_inbox_message` + ShedLock + SSE/轮询，不依赖 notification、Web Push、Redis 或 RabbitMQ；F3 后保持 API 语义迁移投递端
-- [ ] 番茄钟（前端计时 + 统计上报）；习惯打卡；倒数日/纪念日
+- [x] `P2-I6` 番茄钟、习惯与倒数日：V35、单用户单进行中、刷新恢复、周期统计、习惯图层、习惯/打卡/倒数日 local-first，专注与工时口径隔离
 - [ ] 全局搜索 v1（MySQL 全文索引，任务+账本；附件名在 Phase 4 接入）；离线同步覆盖 task 域；桌面快捷键与移动端显式入口一致
 - **验收**：完整个人版范围全部完成；任务全流程离线可用；提醒准点送达（±1min）；日历四视图切换流畅；手机端无 hover-only 操作。前端页面只走非浏览器自动门禁与用户手工检查，不以 Playwright、截图或交互式浏览器代替人工验收。
 

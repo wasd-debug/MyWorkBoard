@@ -15,6 +15,7 @@
           </nav>
         </template>
         <div class="workspace-top-actions">
+          <router-link v-if="focus.current" class="top-text-button focus-mini" to="/tasks/focus" aria-label="打开进行中的专注" title="打开专注"><Timer aria-hidden="true" /><b>{{ focus.remainingLabel }}</b><span>{{ focus.current.taskTitle || '专注中' }}</span></router-link>
           <button class="top-text-button" type="button" :aria-label="store.theme === 'dark' ? '切换为亮色模式' : '切换为暗色模式'" :title="store.theme === 'dark' ? '切换为亮色模式' : '切换为暗色模式'" @click="store.toggleTheme()"><Sun v-if="store.theme === 'dark'" aria-hidden="true" /><Moon v-else aria-hidden="true" /></button>
           <router-link class="top-text-button notification-link" to="/tasks/inbox-notify" aria-label="任务提醒" title="任务提醒"><Bell aria-hidden="true" /><span>提醒</span><b v-if="taskInbox.unread" class="notification-badge">{{ taskInbox.unread > 99 ? '99+' : taskInbox.unread }}</b></router-link>
           <router-link class="top-text-button" to="/approvals" aria-label="审批中心" title="审批中心"><ShieldCheck aria-hidden="true" /><span>审批</span></router-link>
@@ -36,11 +37,12 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowLeft, House, Setting } from './icons.js'
-import { Bell, Moon, ShieldCheck, Sun } from 'lucide-vue-next'
+import { Bell, Moon, ShieldCheck, Sun, Timer } from 'lucide-vue-next'
 import { ledgerNavigation, navigationItemIsActive, taskNavigation, worktimeNavigation } from './config/moduleNavigation.js'
 import { useAppStore } from './stores/app'
 import { useWorktimeStore } from './stores/worktime.js'
 import { useTaskInboxStore } from './stores/taskInbox.js'
+import { useTaskFocusStore } from './stores/taskFocus.js'
 import BottomNav from './components/BottomNav.vue'
 import FloatingAgentAssistant from './components/FloatingAgentAssistant.vue'
 import LoadingOverlay from './components/ledger/LoadingOverlay.vue'
@@ -51,6 +53,7 @@ import router from './router'
 const store = useAppStore()
 const worktimeStore = useWorktimeStore()
 const taskInbox = useTaskInboxStore()
+const focus = useTaskFocusStore()
 const route = useRoute()
 const isHome = computed(() => route.path === '/')
 const navigationLoading = ref(false)
@@ -72,9 +75,9 @@ const removeErrorGuard = router.onError(() => finishNavigationLoading())
 const basis = computed(() => worktimeStore.settings.basis)
 const showBasis = computed(() => ['/punch', '/records', '/stats'].includes(route.path))
 async function setBasis(value) { if (worktimeStore.settings.basis !== value) await worktimeStore.saveSettings({ basis: value }) }
-onMounted(async () => { await store.init(); if (store.authUser && !store.offlineSession) { await taskInbox.refresh(); taskInbox.connect() } })
+onMounted(async () => { await store.init(); if (store.authUser && !store.offlineSession) { await Promise.all([taskInbox.refresh(), focus.refresh()]); taskInbox.connect() } })
 watch(() => [store.authUser?.id, store.offlineSession], ([userId, offline]) => {
-  if (userId && !offline) { taskInbox.refresh(); taskInbox.connect() } else taskInbox.disconnect()
+  if (userId && !offline) { taskInbox.refresh(); focus.refresh(); taskInbox.connect() } else { taskInbox.disconnect(); focus.reset() }
 })
 onBeforeUnmount(() => { taskInbox.disconnect(); finishNavigationLoading(); removeBeforeGuard(); removeAfterGuard(); removeErrorGuard() })
 </script>

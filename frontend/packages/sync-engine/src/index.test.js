@@ -52,7 +52,11 @@ test('任务工厂使用独立存储且保留账本工厂行为', async () => {
   await engine.put('task-tag', { id: 'tag-1', name: '工作' }, { bookId: 'tasks' })
   assert.equal((await engine.list('task', { bookId: 'tasks' }))[0].title, '本地任务')
   assert.equal((await engine.list('task-tag', { bookId: 'tasks' }))[0].name, '工作')
-  assert.deepEqual(engine.stores, ['task-lists', 'task-tags', 'tasks'])
+  await engine.put('habit', { id: 'habit-1', name: '阅读' }, { bookId: 'tasks' })
+  await engine.put('countdown', { id: 'countdown-1', title: '纪念日' }, { bookId: 'tasks' })
+  assert.equal((await engine.list('habit', { bookId: 'tasks' }))[0].name, '阅读')
+  assert.equal((await engine.list('countdown', { bookId: 'tasks' }))[0].title, '纪念日')
+  assert.deepEqual(engine.stores, ['task-lists', 'task-tags', 'tasks', 'habits', 'habit-checkins', 'countdowns'])
 })
 
 test('任务永久清除移除同批次和跨页墓碑而不影响其他任务', async () => {

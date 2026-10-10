@@ -25,7 +25,7 @@ export class SyncEngine {
     if (this.dbPromise) return this.dbPromise
     if (typeof indexedDB === 'undefined') return null
     this.dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, 1)
+      const request = indexedDB.open(this.dbName, 2)
       request.onupgradeneeded = () => {
         const db = request.result
         for (const store of [...this.stores, 'oplog', 'meta', 'conflicts', 'rejected']) {
@@ -238,6 +238,7 @@ export class SyncEngine {
         const scope = String(bookId || operation.bookId || operation.payload?.bookId || 'default')
         const payload = {
           ...(operation.payload || {}),
+          ...(this.entityPrefix === 'task' ? operation.payload?.extra || {} : {}),
           id: entityId,
           bookId: scope,
           key: entityKey(scope, entityId)
@@ -320,6 +321,9 @@ export class SyncEngine {
     if (this.entityPrefix === 'task') {
       if (normalized === 'task-list') return 'task-lists'
       if (normalized === 'task-tag') return 'task-tags'
+      if (normalized === 'habit') return 'habits'
+      if (normalized === 'habit-checkin') return 'habit-checkins'
+      if (normalized === 'countdown') return 'countdowns'
       return 'tasks'
     }
     if (normalized === 'category') return 'ledger-categories'
@@ -453,7 +457,7 @@ export function createLedgerSyncEngine(options = {}) {
 export function createTaskSyncEngine(options = {}) {
   return new SyncEngine({
     dbName: options.dbName || 'salary-tracker-task-sync:anonymous',
-    stores: options.stores || ['task-lists', 'task-tags', 'tasks'],
+    stores: options.stores || ['task-lists', 'task-tags', 'tasks', 'habits', 'habit-checkins', 'countdowns'],
     transport: options.transport || {},
     entityPrefix: 'task'
   })

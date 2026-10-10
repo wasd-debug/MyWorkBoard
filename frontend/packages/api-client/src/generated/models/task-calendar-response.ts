@@ -15,6 +15,9 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
+import type { HabitCalendarDay } from './habit-calendar-day.ts';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { TaskCalendarHolidayDay } from './task-calendar-holiday-day.ts';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -39,6 +42,7 @@ export interface TaskCalendarResponse {
     'worktime'?: Array<WorktimeCalendarItem>;
     'ledger'?: Array<TaskCalendarLedgerDay>;
     'holidays'?: Array<TaskCalendarHolidayDay>;
+    'habits'?: Array<HabitCalendarDay>;
     'lunar'?: Array<TaskCalendarLunarDay>;
     'layers'?: { [key: string]: TaskCalendarLayerStatus; };
 }

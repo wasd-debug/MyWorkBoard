@@ -40,4 +40,5 @@ export interface TaskSyncPayload {
     'archived'?: boolean;
     'rrule'?: string;
     'recurrenceAnchor'?: string;
+    'extra'?: { [key: string]: object; };
 }
