@@ -18,20 +18,16 @@ export const ledgerNavigation = [
 ]
 
 export const taskNavigation = [
-  { key: 'inbox', to: '/tasks/inbox', label: '收件箱' },
-  { key: 'today', to: '/tasks/today', label: '今天' },
-  { key: 'next7', to: '/tasks/next7', label: '7 天' },
-  { key: 'calendar', to: '/tasks/calendar', label: '日历' },
+  { key: 'task', to: '/tasks/today', label: '任务', activePrefix: '/tasks', activeExclude: ['/tasks/habits', '/tasks/calendar', '/tasks/countdowns'] },
   { key: 'habits', to: '/tasks/habits', label: '习惯' },
-  { key: 'focus', to: '/tasks/focus', label: '专注' },
-  { key: 'countdowns', to: '/tasks/countdowns', label: '倒数日' },
-  { key: 'all', to: '/tasks/all', label: '全部' },
-  { key: 'completed', to: '/tasks/completed', label: '已完成' },
-  { key: 'notifications', to: '/tasks/inbox-notify', label: '提醒' },
-  { key: 'trash', to: '/tasks/trash', label: '垃圾桶' }
+  { key: 'calendar', to: '/tasks/calendar', label: '日历' },
+  { key: 'countdowns', to: '/tasks/countdowns', label: '倒数日' }
 ]
 
 export function navigationItemIsActive(route, item) {
+  if (item.activePrefix && (route.path === item.activePrefix || route.path.startsWith(`${item.activePrefix}/`))) {
+    return !(item.activeExclude || []).some(path => route.path === path || route.path.startsWith(`${path}/`))
+  }
   const target = typeof item.to === 'string' ? { path: item.to } : item.to
   if (route.path !== target.path) return false
   if (item.views) return item.views.includes(String(route.query.view || 'categories'))

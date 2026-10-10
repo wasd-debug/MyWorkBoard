@@ -1,15 +1,17 @@
 <template>
   <section class="task-workspace">
-    <details open class="task-navigation">
-      <summary>视图、清单与标签</summary>
-      <aside class="task-sidebar" aria-label="任务导航">
-      <nav><RouterLink v-for="item in builtins" :key="item.to" :to="item.to"><component :is="item.icon" :size="16" />{{ item.label }}</RouterLink></nav>
+    <button class="task-navigation-trigger" type="button" aria-controls="task-navigation" :aria-expanded="navigationOpen" @click="navigationOpen = true"><Menu :size="18" />任务菜单</button>
+    <Transition name="task-navigation-fade">
+      <button v-if="navigationOpen" class="task-navigation-backdrop" type="button" aria-label="关闭任务菜单" @click="navigationOpen = false"></button>
+    </Transition>
+    <aside id="task-navigation" class="task-sidebar" :class="{ open: navigationOpen }" aria-label="任务导航">
+      <header class="task-sidebar-head"><strong>任务菜单</strong><button type="button" aria-label="关闭任务菜单" @click="navigationOpen = false"><X :size="18" /></button></header>
+      <nav><RouterLink v-for="item in builtins" :key="item.to" :to="item.to" @click="closeNavigation"><component :is="item.icon" :size="16" />{{ item.label }}</RouterLink></nav>
       <div class="side-heading"><span>清单</span><button type="button" aria-label="新建清单" title="新建清单" @click="newList"><Plus :size="15" /></button></div>
-      <nav><span v-for="list in store.lists" :key="list.publicId" class="side-item"><RouterLink :to="list.systemKey === 'INBOX' ? '/tasks/inbox' : `/tasks/list/${list.publicId}`"><ListTodo :size="16" />{{ list.name }}</RouterLink><span v-if="!list.systemKey" class="side-actions"><button type="button" title="编辑清单" :aria-label="`编辑清单${list.name}`" @click="editList(list)"><Pencil :size="13" /></button><button type="button" title="删除清单" :aria-label="`删除清单${list.name}`" @click="deleteList(list)"><Trash2 :size="13" /></button></span></span></nav>
+      <nav><span v-for="list in store.lists" :key="list.publicId" class="side-item"><RouterLink :to="list.systemKey === 'INBOX' ? '/tasks/inbox' : `/tasks/list/${list.publicId}`" @click="closeNavigation"><ListTodo :size="16" />{{ list.name }}</RouterLink><span v-if="!list.systemKey" class="side-actions"><button type="button" title="编辑清单" :aria-label="`编辑清单${list.name}`" @click="editList(list)"><Pencil :size="13" /></button><button type="button" title="删除清单" :aria-label="`删除清单${list.name}`" @click="deleteList(list)"><Trash2 :size="13" /></button></span></span></nav>
       <div class="side-heading"><span>标签</span><button type="button" aria-label="新建标签" title="新建标签" @click="newTag"><Plus :size="15" /></button></div>
-      <nav><span v-for="tag in store.tags" :key="tag.publicId" class="side-item"><RouterLink :to="`/tasks/tag/${tag.publicId}`"><Tag :size="15" />{{ tag.name }}</RouterLink><span class="side-actions"><button type="button" title="编辑标签" :aria-label="`编辑标签${tag.name}`" @click="editTag(tag)"><Pencil :size="13" /></button><button type="button" title="删除标签" :aria-label="`删除标签${tag.name}`" @click="deleteTag(tag)"><Trash2 :size="13" /></button></span></span></nav>
-      </aside>
-    </details>
+      <nav><span v-for="tag in store.tags" :key="tag.publicId" class="side-item"><RouterLink :to="`/tasks/tag/${tag.publicId}`" @click="closeNavigation"><Tag :size="15" />{{ tag.name }}</RouterLink><span class="side-actions"><button type="button" title="编辑标签" :aria-label="`编辑标签${tag.name}`" @click="editTag(tag)"><Pencil :size="13" /></button><button type="button" title="删除标签" :aria-label="`删除标签${tag.name}`" @click="deleteTag(tag)"><Trash2 :size="13" /></button></span></span></nav>
+    </aside>
 
     <main class="tasks-page">
       <header class="tasks-head"><div><p class="label">TASKS</p><h1>{{ viewTitle }}</h1><p class="tasks-summary">{{ visibleOpen.length }} 项待完成 · {{ visibleCompleted.length }} 项已完成</p></div><Button v-if="viewKey !== 'trash'" @click="openCreate"><Plus :size="16" />新建任务</Button></header>
@@ -45,21 +47,21 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { CalendarClock, CheckCircle2, Circle, Inbox, ListTodo, Pencil, Plus, RotateCcw, Save, Tag, Trash2, WifiOff } from 'lucide-vue-next'
+import { Bell, CalendarClock, CheckCircle2, Circle, Inbox, ListTodo, Menu, Pencil, Plus, RotateCcw, Save, Tag, Timer, Trash2, WifiOff, X } from 'lucide-vue-next'
 import Button from '../components/ui/Button.vue'; import Drawer from '../components/ui/Drawer.vue'; import Input from '../components/ui/Input.vue'
 import { useAppStore } from '../stores/app.js'; import { useTasksStore } from '../stores/tasks.js'
 import { apiCreateTaskReminder, apiDeleteTaskReminder, apiListTaskReminders, apiUpdateTaskReminder } from '../../packages/api-client/src/index.js'
 
-const route = useRoute(); const store = useTasksStore(); const appStore = useAppStore(); const editorOpen = ref(false); const editing = ref(null); const editorError = ref(''); const sortBy = ref('default')
+const route = useRoute(); const store = useTasksStore(); const appStore = useAppStore(); const editorOpen = ref(false); const editing = ref(null); const editorError = ref(''); const sortBy = ref('default'); const navigationOpen = ref(false)
 const form = reactive({ title: '', description: '', priority: 'NONE', dueLocal: '', listId: '', parentId: '', tagIds: [], checklistText: '', recurrence: '', customRrule: '', recurrenceAnchor: 'DUE_DATE', reminderEnabled: false, reminderKind: 'RELATIVE', reminderOffset: 30, remindLocal: '', reminder: null })
 const organizationOpen = ref(false)
 const organizationItem = ref(null)
 const organizationType = ref('list')
 const organizationError = ref('')
 const organizationForm = reactive({ name: '', color: '#2563eb', icon: '', sortOrder: 0, archived: false, parentId: '' })
-const builtins = [{ to: '/tasks/inbox', label: '收件箱', icon: Inbox }, { to: '/tasks/today', label: '今天', icon: CalendarClock }, { to: '/tasks/next7', label: '最近 7 天', icon: CalendarClock }, { to: '/tasks/all', label: '全部', icon: ListTodo }, { to: '/tasks/completed', label: '已完成', icon: CheckCircle2 }, { to: '/tasks/trash', label: '垃圾桶', icon: Trash2 }]
+const builtins = [{ to: '/tasks/inbox', label: '收件箱', icon: Inbox }, { to: '/tasks/today', label: '今天', icon: CalendarClock }, { to: '/tasks/next7', label: '最近 7 天', icon: CalendarClock }, { to: '/tasks/focus', label: '专注', icon: Timer }, { to: '/tasks/all', label: '全部', icon: ListTodo }, { to: '/tasks/completed', label: '已完成', icon: CheckCircle2 }, { to: '/tasks/inbox-notify', label: '提醒', icon: Bell }, { to: '/tasks/trash', label: '垃圾桶', icon: Trash2 }]
 const viewKey = computed(() => route.path.split('/')[2] || 'today')
 const viewTitle = computed(() => route.name === 'tasks-list' ? listName(route.params.publicId) : route.name === 'tasks-tag' ? `#${tagName(route.params.publicId)}` : ({ inbox: '收件箱', today: '今天', next7: '最近 7 天', all: '全部任务', completed: '已完成', trash: '垃圾桶' })[viewKey.value] || '任务')
 const visibleTasks = computed(() => {
@@ -95,6 +97,7 @@ const parentOptions = computed(() => store.openTasks.filter(item => {
 }))
 const emptyLabel = computed(() => viewKey.value === 'today' ? '今天没有安排' : viewKey.value === 'completed' ? '还没有已完成任务' : '这里还没有任务')
 function resetForm(task = null) { const known = ['', 'FREQ=DAILY', 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', 'FREQ=WEEKLY', 'FREQ=MONTHLY', 'FREQ=YEARLY']; const recurrence = known.includes(task?.rrule || '') ? task?.rrule || '' : 'CUSTOM'; Object.assign(form, { title: task?.title || '', description: task?.description || '', priority: task?.priority || 'NONE', dueLocal: task?.dueAt ? toLocalInput(task.dueAt) : '', listId: task?.listId || currentListId(), parentId: task?.parentId || '', tagIds: [...(task?.tagIds || [])], checklistText: (task?.checklist || []).map(item => `${item.completed ? '[x] ' : ''}${item.title}`).join('\n'), recurrence, customRrule: recurrence === 'CUSTOM' ? task.rrule : '', recurrenceAnchor: task?.recurrenceAnchor || 'DUE_DATE', reminderEnabled: false, reminderKind: 'RELATIVE', reminderOffset: 30, remindLocal: '', reminder: null }); editorError.value = '' }
+function closeNavigation() { navigationOpen.value = false }
 function currentListId() { return route.name === 'tasks-list' ? String(route.params.publicId) : store.inbox?.publicId || '' }
 function openCreate() { editing.value = null; resetForm(); editorOpen.value = true } async function openEdit(task) { editing.value = task; resetForm(task); editorOpen.value = true; if (store.online) { try { const reminders = await apiListTaskReminders(task.publicId); const reminder = reminders?.[0]; if (reminder) Object.assign(form, { reminderEnabled: true, reminderKind: reminder.kind, reminderOffset: reminder.offsetMinutes ?? 30, remindLocal: reminder.remindAt ? toLocalInput(reminder.remindAt) : '', reminder }) } catch (error) { editorError.value = detail(error, '提醒加载失败') } } }
 function payload() { const rrule = form.recurrence === 'CUSTOM' ? form.customRrule.trim() : form.recurrence; return { listId: form.listId, parentId: form.parentId || '', tagIds: form.tagIds, checklist: form.checklistText.split('\n').map(line => line.trim()).filter(Boolean).map((line, index) => ({ publicId: editing.value?.checklist?.[index]?.publicId, title: line.replace(/^\[x\]\s*/i, ''), completed: /^\[x\]/i.test(line), sortOrder: index })), title: form.title.trim(), description: form.description.trim(), priority: form.priority, dueAt: form.dueLocal ? new Date(form.dueLocal).toISOString() : '', allDay: false, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai', rrule, recurrenceAnchor: rrule ? form.recurrenceAnchor : '' } }
@@ -102,6 +105,7 @@ async function save() { editorError.value = ''; try { const saved = editing.valu
 async function purge(task) { if (window.prompt(`永久清除后无法恢复。请输入 DELETE:${task.publicId}`) !== `DELETE:${task.publicId}`) return; try { await store.purge(task) } catch (error) { store.error = detail(error, '永久清除失败') } }
 async function restoreList(list) { try { await store.restoreList(list) } catch (error) { store.error = detail(error, '恢复清单失败') } }
 function editOrganization(type, item = null) {
+  closeNavigation()
   organizationType.value = type
   organizationItem.value = item
   organizationError.value = ''
@@ -131,7 +135,11 @@ async function resolveConflict(strategy) { await store.resolveConflict(store.con
 async function deleteList(list) { if (!window.confirm(`删除清单“${list.name}”并将其任务移入回收站？`)) return; try { await store.deleteList(list) } catch (error) { store.error = detail(error, '删除清单失败') } }
 async function deleteTag(tag) { if (!window.confirm(`删除标签“${tag.name}”？任务本身不会删除。`)) return; try { await store.deleteTag(tag) } catch (error) { store.error = detail(error, '删除标签失败') } }
 function listName(id) { return store.lists.find(item => item.publicId === id)?.name || '收件箱' } function tagName(id) { return store.tags.find(item => item.publicId === id)?.name || '标签' } function priorityLabel(value) { return ({ LOW: '低', MEDIUM: '中', HIGH: '高' })[value] || '' } function formatTime(value) { return value ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '' } function toLocalInput(value) { const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16) } function detail(error, fallback) { return error?.response?.data?.detail || error?.message || fallback } function issueTitle(issue) { return issue?.operation?.payload?.title || issue?.operation?.entityId || '未知任务' } function startOfToday() { const value = new Date(); value.setHours(0, 0, 0, 0); return value } function addDays(value, days) { const result = new Date(value); result.setDate(result.getDate() + days); return result }
-onMounted(() => store.init().catch(() => {}))
+function onEscape(event) { if (event.key === 'Escape') closeNavigation() }
+watch(navigationOpen, open => document.body.classList.toggle('task-navigation-open', open))
+watch(() => route.fullPath, closeNavigation)
+onMounted(() => { store.init().catch(() => {}); window.addEventListener('keydown', onEscape) })
+onBeforeUnmount(() => { document.body.classList.remove('task-navigation-open'); window.removeEventListener('keydown', onEscape) })
 </script>
 
 <style scoped>
@@ -144,6 +152,10 @@ onMounted(() => store.init().catch(() => {}))
 .task-sidebar {
   border-right:1px solid var(--line);
   padding:10px 18px 30px 0}
+.task-sidebar-head,
+.task-navigation-trigger,
+.task-navigation-backdrop {
+  display:none}
 .task-sidebar nav {
   display:grid;
   gap:3px}
@@ -322,19 +334,64 @@ onMounted(() => store.init().catch(() => {}))
   color:var(--down)}
 .task-delete {
   margin-right:auto}
-@media(max-width:1023px) {
+@media(max-width:1024px) {
   .task-workspace {
   display:block;
   padding:24px 16px 96px}
-.task-navigation summary {
+.task-navigation-trigger {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  margin-bottom:18px;
+  padding:9px 12px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--card);
+  color:var(--ink);
+  font-weight:700}
+.task-navigation-backdrop {
+  position:fixed;
+  z-index:59;
+  inset:0;
   display:block;
-  padding:12px 0;
-  cursor:pointer}
+  width:100%;
+  height:100%;
+  padding:0;
+  border:0;
+  background:rgba(15,23,42,.38)}
 .task-sidebar {
-  border-right:0;
-  border-bottom:1px solid var(--line);
-  padding:10px 0 20px;
-  margin-bottom:20px}
+  position:fixed;
+  z-index:60;
+  top:0;
+  bottom:0;
+  left:0;
+  width:min(84vw,320px);
+  overflow-y:auto;
+  border-right:1px solid var(--line);
+  padding:18px 16px calc(32px + env(safe-area-inset-bottom));
+  background:var(--card);
+  box-shadow:18px 0 44px rgba(15,23,42,.2);
+  transform:translateX(-105%);
+  transition:transform .2s ease}
+.task-sidebar.open {
+  transform:translateX(0)}
+.task-sidebar-head {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:12px;
+  padding:0 2px 12px;
+  border-bottom:1px solid var(--line)}
+.task-sidebar-head button {
+  display:grid;
+  width:36px;
+  height:36px;
+  place-items:center;
+  padding:0;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:transparent;
+  color:var(--ink)}
 .tasks-head h1 {
   font-size:1.75rem}
 .task-form-grid {
@@ -362,9 +419,6 @@ onMounted(() => store.init().catch(() => {}))
 .side-actions button:hover {
   color:var(--ink)}
 
-.task-navigation summary {
-  display:none}
-
 .task-sort {
   display:flex;
   align-items:center;
@@ -375,9 +429,7 @@ onMounted(() => store.init().catch(() => {}))
 .task-sort select {
   width:auto}
 
-@media(max-width:1023px) {
-  .task-navigation summary {
-  display:block}
+@media(max-width:1024px) {
 .tasks-head {
   gap:12px}
 .tasks-warning,
@@ -385,6 +437,15 @@ onMounted(() => store.init().catch(() => {}))
   flex-wrap:wrap}
 .task-workspace {
   padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+:global(body.task-navigation-open) {
+  overflow:hidden}
 }
+
+.task-navigation-fade-enter-active,
+.task-navigation-fade-leave-active {
+  transition:opacity .2s ease}
+.task-navigation-fade-enter-from,
+.task-navigation-fade-leave-to {
+  opacity:0}
 
 </style>
