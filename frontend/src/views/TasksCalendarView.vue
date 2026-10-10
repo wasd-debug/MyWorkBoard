@@ -99,6 +99,15 @@ const lunarMap = computed(() => new Map((response.value.lunar || []).map(item =>
 const rangeOptions = computed(() => view.value === 'week' ? [3, 5, 7] : [2, 4, 6])
 const calendarOptions = computed(() => ({ plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin], initialView: calendarView(view.value), headerToolbar: false, locale: zhCnLocale, firstDay: 1, height: 'auto', editable: window.innerWidth > 1024, eventResizableFromStart: true, fixedWeekCount: rangeSize.value === 6, showNonCurrentDates: true, views: { timeGridRange: { type: 'timeGrid', duration: { days: rangeSize.value }, dateIncrement: { days: rangeSize.value } }, dayGridRange: { type: 'dayGrid', duration: { weeks: 2 }, dateIncrement: { weeks: 2 } } }, dayMaxEvents: 3, nowIndicator: true, events: eventSource(), datesSet(info) { anchor.value = info.view.currentStart; if (!loading.value) load() }, dayCellContent(info) { const lunar = lunarMap.value.get(dateOnly(info.date)); return { html: `<span>${info.dayNumberText}</span>${lunar ? `<small>${lunar.festival || lunar.solarTerm || lunar.lunarDate}</small>` : ''}` } }, eventDrop: persistEventChange, eventResize: persistEventChange, eventClick: handleEventClick }))
 function calendarView(value) { return value === 'day' ? 'timeGridDay' : value === 'week' ? 'timeGridRange' : rangeSize.value >= 4 ? 'dayGridMonth' : 'dayGridRange' }
+async function restorePreferencesAndView() {
+  readPreferences()
+  await nextTick()
+  if (view.value === 'year') return load()
+  const api = calendarRef.value?.getApi()
+  const restoredView = calendarView(view.value)
+  if (api && api.view.type !== restoredView) api.changeView(restoredView, anchor.value)
+  else await load()
+}
 async function setView(next) { view.value = next; savePreferences(); if (next !== 'year') await nextTick(() => { calendarRef.value?.getApi().changeView(calendarView(next)); load() }); else await load() }
 async function setRangeSize(size) { rangeSize.value = size; savePreferences(); await nextTick(); calendarRef.value?.getApi().changeView(calendarView(view.value)); await load() }
 function navigate(direction) { if (view.value === 'year') { const delta = direction === 'prev' ? -1 : direction === 'next' ? 1 : 0; anchor.value = direction === 'today' ? new Date() : new Date(anchor.value.getFullYear() + delta, 0, 1); load(); return } const api = calendarRef.value?.getApi(); if (!api) return; api[direction](); anchor.value = api.getDate() }
@@ -133,8 +142,8 @@ const year = computed(() => anchor.value.getFullYear())
 const yearMonths = computed(() => Array.from({ length: 12 }, (_, index) => { const count = response.value.tasks.filter(task => { const date = new Date(task.startAt || task.dueAt); return date.getFullYear() === year.value && date.getMonth() === index }).length; return { month: index + 1, count, density: Math.min(1, count / 12) } }))
 async function openMonth(month) { anchor.value = new Date(year.value, month - 1, 1); view.value = 'month'; rangeSize.value = 6; savePreferences(); await nextTick(); const api = calendarRef.value?.getApi(); api?.changeView('dayGridMonth', anchor.value); await load() }
 function handleEscape(event) { if (event.key === 'Escape') closeDateMenu() }
-watch(() => appStore.authUser?.id, () => { readPreferences(); load() })
-onMounted(async () => { readPreferences(); await tasksStore.init({ waitForRemote: false }); await load(); window.addEventListener('keydown', handleEscape) })
+watch(() => appStore.authUser?.id, () => restorePreferencesAndView())
+onMounted(async () => { await tasksStore.init({ waitForRemote: false }); await restorePreferencesAndView(); window.addEventListener('keydown', handleEscape) })
 onBeforeUnmount(() => window.removeEventListener('keydown', handleEscape))
 </script>
 
