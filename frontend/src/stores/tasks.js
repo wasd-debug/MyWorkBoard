@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 import { createTaskSyncEngine } from '../../packages/sync-engine/src/index.js'
 import { apiListDeletedTaskLists, apiListTaskLists, apiListTaskTags, apiListTasks, apiPullTaskSync,
   apiGetHabitStats, apiListCountdowns, apiListHabits, apiPurgeTask, apiPushTaskSync, apiRestoreTask,
-  apiRestoreTaskList } from '../../packages/api-client/src/index.js'
+  apiRestoreTaskList, apiListTaskListGroups, apiCreateTaskListGroup, apiUpdateTaskListGroup,
+  apiDeleteTaskListGroup, apiAssignTaskListGroup } from '../../packages/api-client/src/index.js'
 import { accountScopeFor, taskDatabaseName } from '../utils/accountScope.js'
 import { createClientId } from '../utils/clientId.js'
 
@@ -25,7 +26,7 @@ let syncTimer
 let activeSyncPromise
 
 function clearState(store) {
-  Object.assign(store, { ready: false, loading: false, syncing: false, lists: [], deletedLists: [], tags: [], tasks: [], total: 0,
+  Object.assign(store, { ready: false, loading: false, syncing: false, listGroups: [], lists: [], deletedLists: [], tags: [], tasks: [], total: 0,
     habits: [], habitCheckins: [], countdowns: [], conflicts: [], rejected: [], pending: 0, error: '' })
 }
 
@@ -49,7 +50,7 @@ export const useTasksStore = defineStore('tasks', {
   state: () => ({
     ready: false, loading: false, saving: false, syncing: false,
     online: typeof navigator === 'undefined' ? true : navigator.onLine,
-    accountScope: '', lists: [], deletedLists: [], tags: [], tasks: [], habits: [], habitCheckins: [], countdowns: [],
+    accountScope: '', listGroups: [], lists: [], deletedLists: [], tags: [], tasks: [], habits: [], habitCheckins: [], countdowns: [],
     total: 0, conflicts: [], rejected: [], pending: 0, error: ''
   }),
   getters: {
@@ -129,10 +130,11 @@ export const useTasksStore = defineStore('tasks', {
       this.error = ''
       try {
         await this.syncNow()
-        const [lists, deletedLists, tags, habits, countdowns] = await Promise.all([
-          apiListTaskLists(), apiListDeletedTaskLists(), apiListTaskTags(), apiListHabits(), apiListCountdowns()
+        const [listGroups, lists, deletedLists, tags, habits, countdowns] = await Promise.all([
+          apiListTaskListGroups(), apiListTaskLists(), apiListDeletedTaskLists(), apiListTaskTags(), apiListHabits(), apiListCountdowns()
         ])
         if (epoch !== sessionEpoch || scoped !== engine) return
+        this.listGroups = listGroups || []
         await replaceRemoteCollection(scoped, 'task-list', [...(lists || []), ...(deletedLists || []).map(item => ({ ...item, deleted: true }))])
         await replaceRemoteCollection(scoped, 'task-tag', tags || [])
         await replaceRemoteCollection(scoped, 'habit', habits || [])
@@ -277,6 +279,28 @@ export const useTasksStore = defineStore('tasks', {
       await apiRestoreTaskList(item.publicId, item.revision)
       if (epoch === sessionEpoch) await this.refreshServer()
     },
+    async createListGroup(payload) {
+      if (!this.online) throw new Error('清单分组需要联网保存')
+      await apiCreateTaskListGroup(payload)
+      await this.refreshServer()
+    },
+    async updateListGroup(item, payload) {
+      if (!this.online) throw new Error('清单分组需要联网保存')
+      await apiUpdateTaskListGroup(item.publicId, payload, item.revision)
+      await this.refreshServer()
+    },
+    async deleteListGroup(item) {
+      if (!this.online) throw new Error('清单分组需要联网删除')
+      await apiDeleteTaskListGroup(item.publicId, item.revision)
+      await this.refreshServer()
+    },
+    async assignListGroup(item, groupId) {
+      if (!this.online) throw new Error('清单分组需要联网保存')
+      await this.syncNow()
+      const current = this.lists.find(value => value.publicId === item.publicId) || item
+      await apiAssignTaskListGroup(item.publicId, groupId || null, current.revision)
+      await this.refreshServer()
+    },
     async purge(item) {
       if (!this.online) throw new Error('永久清除需要联网执行')
       const epoch = sessionEpoch
@@ -287,14 +311,22 @@ export const useTasksStore = defineStore('tasks', {
       await this.hydrate()
     },
     async createList(payload) {
-      const created = await engine.put('task-list', { ...payload, id: createClientId(), revision: 0,
+      const groupId = payload.groupId || ''
+      const { groupId: ignoredGroupId, ...listPayload } = payload
+      const created = await engine.put('task-list', { ...listPayload, id: createClientId(), revision: 0,
         archived: Boolean(payload.archived), sortOrder: payload.sortOrder ?? this.lists.length }, { bookId: SCOPE })
       await this.hydrate()
-      this.scheduleSync()
+      if (groupId && this.online) {
+        await this.syncNow()
+        await this.refreshServer()
+        const saved = this.lists.find(item => item.publicId === created.id)
+        if (saved) await this.assignListGroup(saved, groupId)
+      } else this.scheduleSync()
       return created
     },
     async updateList(item, payload) {
-      const changed = await engine.put('task-list', { ...item, ...payload, id: item.publicId, publicId: undefined },
+      const { groupId: ignoredGroupId, ...listPayload } = payload
+      const changed = await engine.put('task-list', { ...item, ...listPayload, id: item.publicId, publicId: undefined },
         await organizationOptions('task-list', item))
       await this.hydrate()
       this.scheduleSync()

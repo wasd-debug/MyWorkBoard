@@ -15,13 +15,15 @@
 
 2026-10-12 P2-I8 最终收口：V37 扩展任务默认提醒、日历叠加、通知/免打扰与 ICS 描述开关，并新增只存 SHA-256 哈希的 `task_feed_token`。公网 ICS feed 使用 256-bit token、no-store、单实例 IP+token 限流与 Nginx 路径日志关闭，轮换/撤销立即失效。task/habit/focus Domain Tool 接入 Agent/MCP；MCP 新增 task read/prepare/commit scope，但不暴露领域 `.commit`，外部写入仍统一经 `agent.action.commit`，R3 留在站内审批边界。Phase 2 功能收口，页面视觉、真机订阅与真实 MCP 客户端仍按手工清单验收。
 
+2026-10-12 P2-I9-A 遗留第一批：V38 新增 `task_list_group`、`task_activity` 和清单分组外键。分组保持一级、一个清单至多属于一个分组，系统收件箱不可归组；删除分组只解除归组。任务详情通过只读分页接口展示最近 12 个月活动，过期活动每日清理，永久清除任务时活动级联删除。独立“明天”视图按用户时区自然日计算。分组和活动首版为在线能力，不改变既有 local-first 同步协议。
+
 > 2026-09-30 前端接入补充：已登录在线用户在聊天首页外通过应用外壳中的悬浮 AI 面板复用同一 Agent 会话与 SSE；轻量面板负责查询和状态展示，需要补充/确认的写操作跳转完整会话处理。首页与悬浮面板输入框均采用有上限的自动增长，避免长文本遮挡工具栏或页面内容。
 
 | 阶段 | 状态 | 结论 |
 |---|---|---|
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
-| Phase 2 任务 | I8 完成，人工验收待办 | V30-V37、任务 local-first、重复/提醒、日历、效率工具、增强视图、数据导入导出、Agent/MCP 与公网 ICS 订阅已落地；E1 协作与 Phase 4 附件后置 |
+| Phase 2 任务 | I8 主线完成，I9 遗留补齐中 | V30-V38 已落地既有主线及 I9-A 清单分组、独立明天视图、任务活动日志；时间线/快捷键/批量等遗留后续分批，E1 协作与 Phase 4 附件后置 |
 | Phase 3A-D Agent/MCP | Phase 3A/3B/3D 核心闭环，Phase 3C-4 完成 | Web Agent、受控写入和 R4 审批已落地；MCP 已支持只读、PAT、OAuth 2.1 + PKCE、独立 prepare/commit scope、R2 单次提交和结果回放，R3/R4 commit 继续关闭 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
@@ -652,13 +654,14 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 - [x] `P2-I2` 任务核心 local-first：V31 用户级 oplog、push/pull、离线投影、操作压缩、冲突/拒绝与账号隔离
 - [x] `P2-I3` 任务组织与基础视图：V32/V33、清单/标签、父子任务、检查项、基础视图、垃圾桶和共享 local-first
 - [x] `P2-I4` 重复、提醒与任务站内信：V34、历史实例、ShedLock 投递去重、SSE/轮询和未读中心
-- [ ] 清单分组、自定义筛选器与增强排序/分组排在 P2-I7；前端继续复用现有 `components/ui`、Reka UI 与语义 token
-- [x] 重复任务保留每个已完成实例并生成下一实例；使用 `series_id + planned_due_at` 幂等；任务日志 task_activity、协作列、协作表和附件表仍延后到对应阶段
+- [x] 清单分组在 `P2-I9-A` 通过 V38 补齐；自定义筛选器已在 I7 落地，增强排序/分组仍按后续遗留批次推进
+- [x] 重复任务保留每个已完成实例并生成下一实例；使用 `series_id + planned_due_at` 幂等；任务活动日志在 I9-A 落地，协作列、协作表和附件表仍延后到对应阶段
 - [x] `P2-I5` 日历视图：FullCalendar 日/周/月 + 自研年视图；由 app 组装层聚合 task/worktime/ledger/holiday 的公开只读接口，单层失败独立降级；农历通过适配器计算
 - [x] 提醒：任务域首版使用 `task_reminder`、`task_reminder_fire`、`task_inbox_message` + ShedLock + SSE/轮询，不依赖 notification、Web Push、Redis 或 RabbitMQ；F3 后保持 API 语义迁移投递端
 - [x] `P2-I6` 番茄钟、习惯与倒数日：V35、单用户单进行中、刷新恢复、周期统计、习惯图层、习惯/打卡/倒数日 local-first，专注与工时口径隔离
 - [x] `P2-I7` 增强视图与数据能力：V36、看板/四象限/搜索/智能清单/统计、Excel/CSV/ICS 导入导出与真实滴答样本兼容
 - [x] `P2-I8` Agent、ICS 与最终收口：V37、任务设置、公网只读订阅、task/habit/focus 工具及 MCP scope；E1 协作和 Phase 4 附件后置
+- [x] `P2-I9-A` 遗留第一批：V38、一级清单分组、用户时区“明天”视图、最近 12 个月任务活动日志
 - [ ] 全局搜索 v1（MySQL 全文索引，任务+账本；附件名在 Phase 4 接入）；离线同步覆盖 task 域；桌面快捷键与移动端显式入口一致
 - **验收**：完整个人版范围全部完成；任务全流程离线可用；提醒准点送达（±1min）；日历四视图切换流畅；手机端无 hover-only 操作。前端页面只走非浏览器自动门禁与用户手工检查，不以 Playwright、截图或交互式浏览器代替人工验收。
 

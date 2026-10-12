@@ -10,7 +10,7 @@ test('task top navigation exposes all planned sections in product order', () => 
 
 test('task primary section stays active for nested task views', () => {
   const task = taskNavigation[0]
-  for (const path of ['/tasks/inbox', '/tasks/today', '/tasks/next7', '/tasks/all', '/tasks/completed', '/tasks/inbox-notify', '/tasks/trash', '/tasks/list/list-1', '/tasks/tag/tag-1']) {
+  for (const path of ['/tasks/inbox', '/tasks/today', '/tasks/tomorrow', '/tasks/next7', '/tasks/all', '/tasks/completed', '/tasks/inbox-notify', '/tasks/trash', '/tasks/list/list-1', '/tasks/tag/tag-1']) {
     assert.equal(navigationItemIsActive({ path, query: {} }, task), true, path)
   }
   for (const path of ['/tasks/habits', '/tasks/calendar', '/tasks/focus', '/tasks/countdowns', '/tasks/board', '/tasks/quadrant', '/tasks/search', '/tasks/stats', '/tasks/settings']) {

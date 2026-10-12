@@ -8,8 +8,8 @@
       <aside id="task-navigation" class="task-sidebar" :class="{ open: navigationOpen }" aria-label="任务导航">
         <header class="task-sidebar-head"><strong>任务菜单</strong><button type="button" aria-label="关闭任务菜单" @click="closeNavigation"><X :size="18" /></button></header>
         <nav><RouterLink v-for="item in builtins" :key="item.to" :to="item.to" @click="closeNavigation"><component :is="item.icon" :size="16" />{{ item.label }}</RouterLink></nav>
-        <div class="side-heading"><span>清单</span><button type="button" aria-label="新建清单" title="新建清单" @click="newList"><Plus :size="15" /></button></div>
-        <nav><span v-for="list in store.lists" :key="list.publicId" class="side-item"><RouterLink :to="list.systemKey === 'INBOX' ? '/tasks/inbox' : `/tasks/list/${list.publicId}`" @click="closeNavigation"><ListTodo :size="16" />{{ list.name }}</RouterLink><span v-if="!list.systemKey" class="side-actions"><button type="button" title="编辑清单" :aria-label="`编辑清单${list.name}`" @click="editList(list)"><Pencil :size="13" /></button><button type="button" title="删除清单" :aria-label="`删除清单${list.name}`" @click="deleteList(list)"><Trash2 :size="13" /></button></span></span></nav>
+        <div class="side-heading"><span>清单</span><span><button type="button" aria-label="新建清单" title="新建清单" @click="newList"><Plus :size="15" /></button><button type="button" aria-label="新建清单分组" title="新建清单分组" @click="newGroup"><FolderPlus :size="15" /></button></span></div>
+        <nav><span v-for="list in ungroupedLists" :key="list.publicId" class="side-item"><RouterLink :to="list.systemKey === 'INBOX' ? '/tasks/inbox' : `/tasks/list/${list.publicId}`" @click="closeNavigation"><ListTodo :size="16" />{{ list.name }}</RouterLink><span v-if="!list.systemKey" class="side-actions"><button type="button" title="编辑清单" :aria-label="`编辑清单${list.name}`" @click="editList(list)"><Pencil :size="13" /></button><button type="button" title="删除清单" :aria-label="`删除清单${list.name}`" @click="deleteList(list)"><Trash2 :size="13" /></button></span></span><template v-for="group in store.listGroups" :key="group.publicId"><span class="group-row"><button class="group-heading" type="button" @click="toggleGroup(group.publicId)"><ChevronRight :size="14" :class="{ expanded: expandedGroups.has(group.publicId) }" />{{ group.name }}<span>{{ groupedLists(group.publicId).length }}</span></button><span class="side-actions"><button type="button" title="编辑分组" @click="editGroup(group)"><Pencil :size="13" /></button><button type="button" title="删除分组" @click="deleteGroup(group)"><Trash2 :size="13" /></button></span></span><template v-if="expandedGroups.has(group.publicId)"><span v-for="list in groupedLists(group.publicId)" :key="list.publicId" class="side-item nested"><RouterLink :to="`/tasks/list/${list.publicId}`" @click="closeNavigation"><ListTodo :size="16" />{{ list.name }}</RouterLink><span class="side-actions"><button type="button" title="移出分组" @click="assignGroup(list, null)"><Unlink :size="13" /></button><button type="button" title="编辑清单" @click="editList(list)"><Pencil :size="13" /></button></span></span></template></template></nav>
         <div class="side-heading"><span>标签</span><button type="button" aria-label="新建标签" title="新建标签" @click="newTag"><Plus :size="15" /></button></div>
         <nav><span v-for="tag in store.tags" :key="tag.publicId" class="side-item"><RouterLink :to="`/tasks/tag/${tag.publicId}`" @click="closeNavigation"><Tag :size="15" />{{ tag.name }}</RouterLink><span class="side-actions"><button type="button" title="编辑标签" :aria-label="`编辑标签${tag.name}`" @click="editTag(tag)"><Pencil :size="13" /></button><button type="button" title="删除标签" :aria-label="`删除标签${tag.name}`" @click="deleteTag(tag)"><Trash2 :size="13" /></button></span></span></nav>
       </aside>
@@ -29,18 +29,19 @@
         <section v-if="visibleCompleted.length" class="task-group completed"><h2>已完成 <span>{{ visibleCompleted.length }}</span></h2><ul class="task-list"><li v-for="task in visibleCompleted" :key="task.publicId" class="task-row"><button class="task-check checked" type="button" :aria-label="`重新打开${task.title}`" @click="reopen(task)"><CheckCircle2 :size="21" /></button><button class="task-content" type="button" @click="openEdit(task)"><strong>{{ task.title }}</strong></button><Button variant="icon" size="sm" :aria-label="`删除${task.title}`" title="删除" @click="remove(task)"><Trash2 :size="15" /></Button></li></ul></section>
       </div></template>
 
-      <Drawer v-model:open="editorOpen" :title="editing ? '编辑任务' : '新建任务'"><form id="task-editor" class="task-form" @submit.prevent="save"><label>标题<Input v-model="form.title" placeholder="要完成什么？" /></label><label>描述<textarea v-model="form.description" class="ui-textarea" placeholder="补充必要信息"></textarea></label><div class="task-form-grid"><label>清单<select v-model="form.listId"><option v-for="list in store.lists.filter(item => !item.archived)" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select></label><label>父任务<select v-model="form.parentId"><option value="">无</option><option v-for="task in parentOptions" :key="task.publicId" :value="task.publicId">{{ task.title }}</option></select></label></div><div class="task-form-grid"><label>优先级<select v-model="form.priority"><option value="NONE">无</option><option value="LOW">低</option><option value="MEDIUM">中</option><option value="HIGH">高</option></select></label><label>截止时间<Input v-model="form.dueLocal" type="datetime-local" /></label></div><div class="task-form-grid"><label>重复<select v-model="form.recurrence"><option value="">不重复</option><option value="FREQ=DAILY">每天</option><option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">每个工作日</option><option value="FREQ=WEEKLY">每周</option><option value="FREQ=MONTHLY">每月</option><option value="FREQ=YEARLY">每年</option><option value="CUSTOM">自定义</option></select></label><label v-if="form.recurrence">循环基准<select v-model="form.recurrenceAnchor"><option value="DUE_DATE">按到期日期</option><option value="COMPLETION_DATE">按完成日期</option></select></label></div><label v-if="form.recurrence === 'CUSTOM'">RRULE<Input v-model="form.customRrule" placeholder="FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,FR" /></label><fieldset class="task-reminder-editor"><legend>提醒</legend><label class="task-inline-check"><input v-model="form.reminderEnabled" type="checkbox" /> 启用站内提醒</label><div v-if="form.reminderEnabled" class="task-form-grid"><label>方式<select v-model="form.reminderKind"><option value="RELATIVE">相对截止时间</option><option value="ABSOLUTE">指定时间</option></select></label><label v-if="form.reminderKind === 'RELATIVE'">提前<select v-model.number="form.reminderOffset"><option :value="0">准时</option><option :value="5">5 分钟</option><option :value="15">15 分钟</option><option :value="30">30 分钟</option><option :value="60">1 小时</option><option :value="1440">1 天</option></select></label><label v-else>提醒时间<Input v-model="form.remindLocal" type="datetime-local" /></label></div></fieldset><fieldset v-if="store.tags.length" class="task-tags"><legend>标签</legend><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="form.tagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label></fieldset><label>检查项<textarea v-model="form.checklistText" class="ui-textarea checklist-input" placeholder="每行一个检查项"></textarea></label><p v-if="editorError" class="task-form-error" role="alert">{{ editorError }}</p></form><template #footer><Button v-if="editing" class="task-delete" variant="danger" :disabled="store.saving" @click="remove(editing)"><Trash2 :size="15" />删除</Button><Button type="submit" form="task-editor" :disabled="store.saving || !form.title.trim()"><Save :size="15" />保存</Button></template></Drawer>
+      <Drawer v-model:open="editorOpen" :title="editing ? '编辑任务' : '新建任务'"><form id="task-editor" class="task-form" @submit.prevent="save"><label>标题<Input v-model="form.title" placeholder="要完成什么？" /></label><label>描述<textarea v-model="form.description" class="ui-textarea" placeholder="补充必要信息"></textarea></label><div class="task-form-grid"><label>清单<select v-model="form.listId"><option v-for="list in store.lists.filter(item => !item.archived)" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select></label><label>父任务<select v-model="form.parentId"><option value="">无</option><option v-for="task in parentOptions" :key="task.publicId" :value="task.publicId">{{ task.title }}</option></select></label></div><div class="task-form-grid"><label>优先级<select v-model="form.priority"><option value="NONE">无</option><option value="LOW">低</option><option value="MEDIUM">中</option><option value="HIGH">高</option></select></label><label>截止时间<Input v-model="form.dueLocal" type="datetime-local" /></label></div><div class="task-form-grid"><label>重复<select v-model="form.recurrence"><option value="">不重复</option><option value="FREQ=DAILY">每天</option><option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">每个工作日</option><option value="FREQ=WEEKLY">每周</option><option value="FREQ=MONTHLY">每月</option><option value="FREQ=YEARLY">每年</option><option value="CUSTOM">自定义</option></select></label><label v-if="form.recurrence">循环基准<select v-model="form.recurrenceAnchor"><option value="DUE_DATE">按到期日期</option><option value="COMPLETION_DATE">按完成日期</option></select></label></div><label v-if="form.recurrence === 'CUSTOM'">RRULE<Input v-model="form.customRrule" placeholder="FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,FR" /></label><fieldset class="task-reminder-editor"><legend>提醒</legend><label class="task-inline-check"><input v-model="form.reminderEnabled" type="checkbox" /> 启用站内提醒</label><div v-if="form.reminderEnabled" class="task-form-grid"><label>方式<select v-model="form.reminderKind"><option value="RELATIVE">相对截止时间</option><option value="ABSOLUTE">指定时间</option></select></label><label v-if="form.reminderKind === 'RELATIVE'">提前<select v-model.number="form.reminderOffset"><option :value="0">准时</option><option :value="5">5 分钟</option><option :value="15">15 分钟</option><option :value="30">30 分钟</option><option :value="60">1 小时</option><option :value="1440">1 天</option></select></label><label v-else>提醒时间<Input v-model="form.remindLocal" type="datetime-local" /></label></div></fieldset><fieldset v-if="store.tags.length" class="task-tags"><legend>标签</legend><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="form.tagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label></fieldset><label>检查项<textarea v-model="form.checklistText" class="ui-textarea checklist-input" placeholder="每行一个检查项"></textarea></label><p v-if="editorError" class="task-form-error" role="alert">{{ editorError }}</p></form><section v-if="editing" class="task-activity"><h3>活动记录</h3><p v-if="activityLoading">加载中…</p><p v-else-if="!activities.length">暂无活动记录</p><ol v-else><li v-for="item in activities" :key="item.publicId"><strong>{{ item.summary }}</strong><time>{{ formatTime(item.createdAt) }}</time></li></ol></section><template #footer><Button v-if="editing" class="task-delete" variant="danger" :disabled="store.saving" @click="remove(editing)"><Trash2 :size="15" />删除</Button><Button type="submit" form="task-editor" :disabled="store.saving || !form.title.trim()"><Save :size="15" />保存</Button></template></Drawer>
     </main>
-    <Drawer v-model:open="organizationOpen" :title="`${organizationItem ? '编辑' : '新建'}${organizationType === 'list' ? '清单' : '标签'}`">
+    <Drawer v-model:open="organizationOpen" :title="`${organizationItem ? '编辑' : '新建'}${organizationType === 'list' ? '清单' : organizationType === 'group' ? '清单分组' : '标签'}`">
       <form id="organization-editor" class="task-form" @submit.prevent="saveOrganization">
         <label>名称<Input v-model="organizationForm.name" /></label>
-        <label>颜色<Input v-model="organizationForm.color" type="color" /></label>
+        <label v-if="organizationType !== 'group'">颜色<Input v-model="organizationForm.color" type="color" /></label>
         <label>排序位置<Input v-model="organizationForm.sortOrder" type="number" min="0" /></label>
         <template v-if="organizationType === 'list'">
           <label>图标<Input v-model="organizationForm.icon" placeholder="可留空" /></label>
+          <label>清单分组<select v-model="organizationForm.groupId"><option value="">未分组</option><option v-for="group in store.listGroups" :key="group.publicId" :value="group.publicId">{{ group.name }}</option></select></label>
           <label><span><input v-model="organizationForm.archived" type="checkbox" /> 归档清单</span></label>
         </template>
-        <label v-else>父标签<select v-model="organizationForm.parentId"><option value="">无</option><option v-for="tag in store.tags.filter(item => !item.parentId && item.publicId !== organizationItem?.publicId)" :key="tag.publicId" :value="tag.publicId">{{ tag.name }}</option></select></label>
+        <label v-else-if="organizationType === 'tag'">父标签<select v-model="organizationForm.parentId"><option value="">无</option><option v-for="tag in store.tags.filter(item => !item.parentId && item.publicId !== organizationItem?.publicId)" :key="tag.publicId" :value="tag.publicId">{{ tag.name }}</option></select></label>
         <p v-if="organizationError" class="task-form-error" role="alert">{{ organizationError }}</p>
       </form>
       <template #footer><Button type="submit" form="organization-editor" :disabled="!organizationForm.name.trim()">保存</Button></template>
@@ -51,12 +52,12 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { CalendarClock, CheckCircle2, Circle, Inbox, ListTodo, Menu, Pencil, Plus, RotateCcw, Save, Tag, Trash2, WifiOff, X } from 'lucide-vue-next'
+import { CalendarClock, CheckCircle2, ChevronRight, Circle, FolderPlus, Inbox, ListTodo, Menu, Pencil, Plus, RotateCcw, Save, Tag, Trash2, Unlink, WifiOff, X } from 'lucide-vue-next'
 import Button from '../components/ui/Button.vue'; import Drawer from '../components/ui/Drawer.vue'; import Input from '../components/ui/Input.vue'
 import { useAppStore } from '../stores/app.js'; import { useTasksStore } from '../stores/tasks.js'
-import { apiCreateTaskReminder, apiDeleteTaskReminder, apiListTaskReminders, apiUpdateTaskReminder } from '../../packages/api-client/src/index.js'
+import { apiCreateTaskReminder, apiDeleteTaskReminder, apiListTaskActivity, apiListTaskReminders, apiUpdateTaskReminder } from '../../packages/api-client/src/index.js'
 
-const route = useRoute(); const store = useTasksStore(); const appStore = useAppStore(); const editorOpen = ref(false); const editing = ref(null); const editorError = ref(''); const sortBy = ref('default'); const navigationOpen = ref(false)
+const route = useRoute(); const store = useTasksStore(); const appStore = useAppStore(); const editorOpen = ref(false); const editing = ref(null); const editorError = ref(''); const sortBy = ref('default'); const navigationOpen = ref(false); const expandedGroups = ref(new Set()); const activities = ref([]); const activityLoading = ref(false)
 const compactNavigation = ref(false)
 let compactNavigationQuery
 const form = reactive({ title: '', description: '', priority: 'NONE', dueLocal: '', listId: '', parentId: '', tagIds: [], checklistText: '', recurrence: '', customRrule: '', recurrenceAnchor: 'DUE_DATE', reminderEnabled: false, reminderKind: 'RELATIVE', reminderOffset: 30, remindLocal: '', reminder: null })
@@ -64,10 +65,10 @@ const organizationOpen = ref(false)
 const organizationItem = ref(null)
 const organizationType = ref('list')
 const organizationError = ref('')
-const organizationForm = reactive({ name: '', color: '#2563eb', icon: '', sortOrder: 0, archived: false, parentId: '' })
-const builtins = [{ to: '/tasks/inbox', label: '收件箱', icon: Inbox }, { to: '/tasks/today', label: '今天', icon: CalendarClock }, { to: '/tasks/next7', label: '最近 7 天', icon: CalendarClock }, { to: '/tasks/all', label: '全部', icon: ListTodo }, { to: '/tasks/completed', label: '已完成', icon: CheckCircle2 }, { to: '/tasks/trash', label: '垃圾桶', icon: Trash2 }]
+const organizationForm = reactive({ name: '', color: '#2563eb', icon: '', sortOrder: 0, archived: false, parentId: '', groupId: '' })
+const builtins = [{ to: '/tasks/inbox', label: '收件箱', icon: Inbox }, { to: '/tasks/today', label: '今天', icon: CalendarClock }, { to: '/tasks/tomorrow', label: '明天', icon: CalendarClock }, { to: '/tasks/next7', label: '最近 7 天', icon: CalendarClock }, { to: '/tasks/all', label: '全部', icon: ListTodo }, { to: '/tasks/completed', label: '已完成', icon: CheckCircle2 }, { to: '/tasks/trash', label: '垃圾桶', icon: Trash2 }]
 const viewKey = computed(() => route.path.split('/')[2] || 'today')
-const viewTitle = computed(() => route.name === 'tasks-list' ? listName(route.params.publicId) : route.name === 'tasks-tag' ? `#${tagName(route.params.publicId)}` : ({ inbox: '收件箱', today: '今天', next7: '最近 7 天', all: '全部任务', completed: '已完成', trash: '垃圾桶' })[viewKey.value] || '任务')
+const viewTitle = computed(() => route.name === 'tasks-list' ? listName(route.params.publicId) : route.name === 'tasks-tag' ? `#${tagName(route.params.publicId)}` : ({ inbox: '收件箱', today: '今天', tomorrow: '明天', next7: '最近 7 天', all: '全部任务', completed: '已完成', trash: '垃圾桶' })[viewKey.value] || '任务')
 const visibleTasks = computed(() => {
   const deletedListIds = new Set(store.deletedLists.map(item => item.publicId))
   if (viewKey.value === 'trash') return store.trashedTasks.filter(item => !deletedListIds.has(item.listId))
@@ -75,11 +76,11 @@ const visibleTasks = computed(() => {
   if (route.name === 'tasks-list') values = values.filter(item => item.listId === route.params.publicId)
   else if (route.name === 'tasks-tag') values = values.filter(item => item.tagIds?.includes(route.params.publicId))
   else if (viewKey.value === 'inbox') values = values.filter(item => item.listId === store.inbox?.publicId)
-  else if (viewKey.value === 'today' || viewKey.value === 'next7') {
+  else if (viewKey.value === 'today' || viewKey.value === 'tomorrow' || viewKey.value === 'next7') {
     const archivedIds = new Set(store.lists.filter(item => item.archived).map(item => item.publicId))
-    values = values.filter(item => !archivedIds.has(item.listId) && item.status !== 'COMPLETED' && item.dueAt &&
-      new Date(item.dueAt) < addDays(startOfToday(), viewKey.value === 'today' ? 1 : 8) &&
-      (viewKey.value === 'today' || new Date(item.dueAt) >= startOfToday()))
+    const start = viewKey.value === 'tomorrow' ? addDays(startOfToday(), 1) : startOfToday()
+    const end = viewKey.value === 'today' ? addDays(startOfToday(), 1) : viewKey.value === 'tomorrow' ? addDays(startOfToday(), 2) : addDays(startOfToday(), 8)
+    values = values.filter(item => !archivedIds.has(item.listId) && item.status !== 'COMPLETED' && item.dueAt && new Date(item.dueAt) < end && new Date(item.dueAt) >= start)
   } else if (viewKey.value === 'completed') values = values.filter(item => item.status === 'COMPLETED')
   if (sortBy.value === 'title') values.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
   if (sortBy.value === 'due') values.sort((a, b) => (a.dueAt ? Date.parse(a.dueAt) : Infinity) - (b.dueAt ? Date.parse(b.dueAt) : Infinity))
@@ -100,7 +101,10 @@ const parentOptions = computed(() => store.openTasks.filter(item => {
   return depth < 2
 }))
 const emptyLabel = computed(() => viewKey.value === 'today' ? '今天没有安排' : viewKey.value === 'completed' ? '还没有已完成任务' : '这里还没有任务')
-function resetForm(task = null) { const known = ['', 'FREQ=DAILY', 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', 'FREQ=WEEKLY', 'FREQ=MONTHLY', 'FREQ=YEARLY']; const recurrence = known.includes(task?.rrule || '') ? task?.rrule || '' : 'CUSTOM'; Object.assign(form, { title: task?.title || '', description: task?.description || '', priority: task?.priority || 'NONE', dueLocal: task?.dueAt ? toLocalInput(task.dueAt) : '', listId: task?.listId || currentListId(), parentId: task?.parentId || '', tagIds: [...(task?.tagIds || [])], checklistText: (task?.checklist || []).map(item => `${item.completed ? '[x] ' : ''}${item.title}`).join('\n'), recurrence, customRrule: recurrence === 'CUSTOM' ? task.rrule : '', recurrenceAnchor: task?.recurrenceAnchor || 'DUE_DATE', reminderEnabled: false, reminderKind: 'RELATIVE', reminderOffset: 30, remindLocal: '', reminder: null }); editorError.value = '' }
+const ungroupedLists = computed(() => store.lists.filter(item => !item.groupId))
+function groupedLists(groupId) { return store.lists.filter(item => item.groupId === groupId) }
+function toggleGroup(id) { const next = new Set(expandedGroups.value); next.has(id) ? next.delete(id) : next.add(id); expandedGroups.value = next; localStorage.setItem(`task-groups:${store.accountScope}`, JSON.stringify([...next])) }
+function resetForm(task = null) { const known = ['', 'FREQ=DAILY', 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', 'FREQ=WEEKLY', 'FREQ=MONTHLY', 'FREQ=YEARLY']; const recurrence = known.includes(task?.rrule || '') ? task?.rrule || '' : 'CUSTOM'; activities.value = []; Object.assign(form, { title: task?.title || '', description: task?.description || '', priority: task?.priority || 'NONE', dueLocal: task?.dueAt ? toLocalInput(task.dueAt) : '', listId: task?.listId || currentListId(), parentId: task?.parentId || '', tagIds: [...(task?.tagIds || [])], checklistText: (task?.checklist || []).map(item => `${item.completed ? '[x] ' : ''}${item.title}`).join('\n'), recurrence, customRrule: recurrence === 'CUSTOM' ? task.rrule : '', recurrenceAnchor: task?.recurrenceAnchor || 'DUE_DATE', reminderEnabled: false, reminderKind: 'RELATIVE', reminderOffset: 30, remindLocal: '', reminder: null }); editorError.value = '' }
 function closeNavigation() { navigationOpen.value = false }
 function updateCompactNavigation(event) { compactNavigation.value = event.matches; if (!event.matches) closeNavigation() }
 function currentListId() { return route.name === 'tasks-list' ? String(route.params.publicId) : store.inbox?.publicId || '' }
@@ -116,19 +120,26 @@ function editOrganization(type, item = null) {
   organizationError.value = ''
   Object.assign(organizationForm, { name: item?.name || '', color: item?.color || '#2563eb', icon: item?.icon || '',
     sortOrder: item?.sortOrder ?? (type === 'list' ? store.lists.length : store.tags.length),
-    archived: Boolean(item?.archived), parentId: item?.parentId || '' })
+    archived: Boolean(item?.archived), parentId: item?.parentId || '', groupId: item?.groupId || '' })
   organizationOpen.value = true
 }
 function newList() { editOrganization('list') }
+function newGroup() { editOrganization('group') }
 function newTag() { editOrganization('tag') }
 function editList(item) { editOrganization('list', item) }
+function editGroup(item) { editOrganization('group', item) }
 function editTag(item) { editOrganization('tag', item) }
 async function saveOrganization() {
   try {
     const value = { ...organizationForm, name: organizationForm.name.trim(), sortOrder: Number(organizationForm.sortOrder) }
-    if (organizationType.value === 'list') {
-      if (organizationItem.value) await store.updateList(organizationItem.value, value)
-      else await store.createList(value)
+    if (organizationType.value === 'group') {
+      if (organizationItem.value) await store.updateListGroup(organizationItem.value, value)
+      else await store.createListGroup(value)
+    } else if (organizationType.value === 'list') {
+      if (organizationItem.value) {
+        await store.updateList(organizationItem.value, value)
+        if ((organizationItem.value.groupId || '') !== value.groupId) await store.assignListGroup(organizationItem.value, value.groupId)
+      } else await store.createList(value)
     } else {
       if (organizationItem.value) await store.updateTag(organizationItem.value, value)
       else await store.createTag(value)
@@ -136,6 +147,9 @@ async function saveOrganization() {
     organizationOpen.value = false
   } catch (error) { organizationError.value = detail(error, '保存失败') }
 }
+async function assignGroup(list, groupId) { try { await store.assignListGroup(list, groupId) } catch (error) { store.error = detail(error, '清单分组保存失败') } }
+async function deleteGroup(group) { if (!window.confirm(`删除分组“${group.name}”？组内清单将变为未分组。`)) return; try { await store.deleteListGroup(group) } catch (error) { store.error = detail(error, '删除清单分组失败') } }
+async function loadActivity(task) { if (!store.online) return; activityLoading.value = true; try { activities.value = (await apiListTaskActivity(task.publicId, { size: 20 }))?.items || [] } catch (error) { editorError.value = detail(error, '活动记录加载失败') } finally { activityLoading.value = false } }
 async function resolveConflict(strategy) { await store.resolveConflict(store.conflicts[0].id, strategy) }
 async function deleteList(list) { if (!window.confirm(`删除清单“${list.name}”并将其任务移入回收站？`)) return; try { await store.deleteList(list) } catch (error) { store.error = detail(error, '删除清单失败') } }
 async function deleteTag(tag) { if (!window.confirm(`删除标签“${tag.name}”？任务本身不会删除。`)) return; try { await store.deleteTag(tag) } catch (error) { store.error = detail(error, '删除标签失败') } }
@@ -143,6 +157,8 @@ function listName(id) { return store.lists.find(item => item.publicId === id)?.n
 function onEscape(event) { if (event.key === 'Escape') closeNavigation() }
 watch(navigationOpen, open => document.body.classList.toggle('task-navigation-open', open))
 watch(() => route.fullPath, closeNavigation)
+watch(() => store.accountScope, scope => { try { expandedGroups.value = new Set(JSON.parse(localStorage.getItem(`task-groups:${scope}`) || '[]')) } catch { expandedGroups.value = new Set() } }, { immediate: true })
+watch(editorOpen, open => { if (open && editing.value) loadActivity(editing.value) })
 onMounted(() => {
   store.init().catch(() => {})
   compactNavigationQuery = window.matchMedia('(max-width: 1024px)')
@@ -202,6 +218,7 @@ onBeforeUnmount(() => {
   background:transparent;
   color:var(--muted);
   padding:4px}
+.side-heading>span:last-child,.group-row,.group-heading{display:flex;align-items:center}.group-row{min-width:0}.group-heading{min-width:0;flex:1;gap:6px;border:0;background:transparent;color:var(--muted);padding:7px 8px;text-align:left}.group-heading>span{margin-left:auto}.group-heading svg{transition:transform .15s}.group-heading svg.expanded{transform:rotate(90deg)}.side-item.nested{padding-left:12px}.task-activity{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}.task-activity h3{margin:0 0 10px;font-size:.85rem}.task-activity ol{display:grid;gap:9px;margin:0;padding:0;list-style:none}.task-activity li{display:grid;grid-template-columns:1fr auto;gap:10px;color:var(--ink2);font-size:.75rem}.task-activity time{color:var(--muted);font-weight:400}
 .tasks-page {
   min-width:0}
 .tasks-head {

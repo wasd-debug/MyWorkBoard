@@ -10,12 +10,32 @@ public final class TaskModels {
     }
 
     @Schema(name = "TaskList")
-    public record TaskList(String publicId, String name, String color, String icon, String systemKey,
+    public record TaskList(String publicId, String groupId, String name, String color, String icon, String systemKey,
                            int sortOrder, boolean archived, long revision) {
     }
 
     @Schema(name = "TaskListCommand")
     public record TaskListCommand(String name, String color, String icon, Integer sortOrder, Boolean archived) {
+    }
+
+    @Schema(name = "TaskListGroup")
+    public record ListGroup(String publicId, String name, int sortOrder, long revision) {
+    }
+
+    @Schema(name = "TaskListGroupCommand")
+    public record ListGroupCommand(String name, Integer sortOrder) {
+    }
+
+    @Schema(name = "TaskListGroupAssignment")
+    public record ListGroupAssignment(String groupId) {
+    }
+
+    @Schema(name = "TaskActivity")
+    public record Activity(String publicId, String eventType, String summary, String detailJson, String createdAt) {
+    }
+
+    @Schema(name = "TaskActivityPage")
+    public record ActivityPage(List<Activity> items, int page, int size, long total) {
     }
 
     @Schema(name = "TaskTag")

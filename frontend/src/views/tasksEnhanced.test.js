@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises'
 const view = await readFile(new URL('./TasksEnhancedView.vue', import.meta.url), 'utf8')
 const settingsView = await readFile(new URL('./TaskSettingsView.vue', import.meta.url), 'utf8')
 const dataPanel = await readFile(new URL('../components/tasks/TaskDataPanel.vue', import.meta.url), 'utf8')
+const inboxView = await readFile(new URL('./TasksInboxView.vue', import.meta.url), 'utf8')
 const router = await readFile(new URL('../router/index.js', import.meta.url), 'utf8')
 const client = await readFile(new URL('../../packages/api-client/src/index.js', import.meta.url), 'utf8')
 
@@ -35,4 +36,12 @@ test('search highlights matches and scopes recent history by account', () => {
   assert.match(view, /h\('mark'/)
   assert.match(view, /task_recent_searches:\$\{appStore\.accountScope/)
   assert.match(view, /最近搜索/)
+})
+
+test('task legacy batch exposes tomorrow groups and activity timeline', () => {
+  assert.match(router, /path: '\/tasks\/tomorrow'/)
+  assert.match(inboxView, /新建清单分组/)
+  assert.match(inboxView, /task-groups:\$\{store\.accountScope\}/)
+  assert.match(inboxView, /活动记录/)
+  assert.match(client, /apiListTaskActivity/)
 })

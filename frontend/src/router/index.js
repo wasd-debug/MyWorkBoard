@@ -13,6 +13,7 @@ const routes = [
   { path: '/tasks', redirect: '/tasks/today' },
   { path: '/tasks/inbox', name: 'tasks-inbox', component: () => import('../views/TasksInboxView.vue'), meta: { title: '任务收件箱' } },
   { path: '/tasks/today', name: 'tasks-today', component: () => import('../views/TasksInboxView.vue'), meta: { title: '今天' } },
+  { path: '/tasks/tomorrow', name: 'tasks-tomorrow', component: () => import('../views/TasksInboxView.vue'), meta: { title: '明天' } },
   { path: '/tasks/next7', name: 'tasks-next7', component: () => import('../views/TasksInboxView.vue'), meta: { title: '最近 7 天' } },
   { path: '/tasks/calendar', name: 'tasks-calendar', component: () => import('../views/TasksCalendarView.vue'), meta: { title: '任务日历' } },
   { path: '/tasks/board', name: 'tasks-board', component: () => import('../views/TasksEnhancedView.vue'), meta: { title: '任务看板' } },

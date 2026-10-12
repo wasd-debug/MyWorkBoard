@@ -21,6 +21,29 @@ import static org.mockito.Mockito.when;
 
 class TaskOrganizationIntegrationTest extends MySqlIntegrationTestSupport {
     @Test
+    void groupsListsShowsTomorrowAndRecordsActivity() {
+        long userId = createUser();
+        TaskService service = service(userId);
+        var group = service.createListGroup(new TaskModels.ListGroupCommand("工作", 0));
+        var list = service.createList(new TaskModels.TaskListCommand("项目", "#2563eb", "folder", 1, false), "list-group-create");
+        var grouped = service.assignListGroup(list.publicId(), group.publicId(), String.valueOf(list.revision()));
+        assertEquals(group.publicId(), grouped.groupId());
+
+        var tomorrow = java.time.LocalDate.now(java.time.ZoneId.systemDefault()).plusDays(1)
+                .atTime(12, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toString();
+        var task = service.create(new TaskModels.TaskCommand(list.publicId(), "明日任务", "", "NONE", null,
+                tomorrow, false, java.time.ZoneId.systemDefault().getId(), null), "tomorrow-create");
+        assertEquals(1, service.listTasks(null, null, "TOMORROW", null, 0, 20).total());
+        service.update(task.publicId(), new TaskModels.TaskCommand(list.publicId(), "明日任务已编辑", "", "HIGH",
+                null, tomorrow, false, java.time.ZoneId.systemDefault().getId(), null), String.valueOf(task.revision()));
+        assertTrue(service.activity(task.publicId(), 0, 20).items().stream().anyMatch(item -> "CREATED".equals(item.eventType())));
+        assertTrue(service.activity(task.publicId(), 0, 20).items().stream()
+                .anyMatch(item -> "UPDATED".equals(item.eventType()) && item.detailJson().contains("priority")));
+
+        service.deleteListGroup(group.publicId(), String.valueOf(group.revision()));
+        assertEquals(null, service.listLists().stream().filter(item -> item.publicId().equals(list.publicId())).findFirst().orElseThrow().groupId());
+    }
+    @Test
     void managesListsTagsSubtasksChecklistAndTrash() {
         TaskService service = service(createUser());
         var inbox = service.listLists().get(0);

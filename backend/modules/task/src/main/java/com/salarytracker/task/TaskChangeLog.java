@@ -28,4 +28,12 @@ class TaskChangeLog {
             throw new IllegalStateException("任务同步数据序列化失败", exception);
         }
     }
+
+    String json(Object value) {
+        try {
+            return mapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("任务活动数据序列化失败", exception);
+        }
+    }
 }

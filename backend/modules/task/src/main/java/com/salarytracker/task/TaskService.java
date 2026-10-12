@@ -14,6 +14,10 @@ import com.salarytracker.task.TaskModels.TaskTag;
 import com.salarytracker.task.TaskModels.TaskTagCommand;
 import com.salarytracker.task.TaskModels.CalendarItem;
 import com.salarytracker.task.TaskModels.RescheduleCommand;
+import com.salarytracker.task.TaskModels.ListGroup;
+import com.salarytracker.task.TaskModels.ListGroupCommand;
+import com.salarytracker.task.TaskModels.Activity;
+import com.salarytracker.task.TaskModels.ActivityPage;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -27,8 +31,11 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -53,18 +60,89 @@ public class TaskService {
     public List<TaskList> listLists() {
         long userId = currentUser.id();
         ensureDefaults(userId);
-        return jdbcTemplate.query("SELECT public_id, name, color, icon, system_key, sort_order, archived, revision FROM task_list " +
-                        "WHERE user_id = ? AND deleted = FALSE ORDER BY sort_order, id",
-                (result, rowNum) -> new TaskList(result.getString("public_id"), result.getString("name"),
+        return jdbcTemplate.query("SELECT l.public_id,(SELECT g.public_id FROM task_list_group g WHERE g.id=l.group_id) group_public_id," +
+                        "l.name,l.color,l.icon,l.system_key,l.sort_order,l.archived,l.revision FROM task_list l " +
+                        "WHERE l.user_id = ? AND l.deleted = FALSE ORDER BY l.sort_order, l.id",
+                (result, rowNum) -> new TaskList(result.getString("public_id"), result.getString("group_public_id"), result.getString("name"),
                         result.getString("color"), result.getString("icon"), result.getString("system_key"),
                         result.getInt("sort_order"), result.getBoolean("archived"), result.getLong("revision")),
                 userId);
     }
 
     public List<TaskList> listDeletedLists() {
-        return jdbcTemplate.query("SELECT public_id, name, color, icon, system_key, sort_order, archived, revision FROM task_list " +
-                        "WHERE user_id = ? AND deleted = TRUE ORDER BY deleted_at DESC, id DESC",
+        return jdbcTemplate.query("SELECT l.public_id,(SELECT g.public_id FROM task_list_group g WHERE g.id=l.group_id) group_public_id," +
+                        "l.name,l.color,l.icon,l.system_key,l.sort_order,l.archived,l.revision FROM task_list l " +
+                        "WHERE l.user_id = ? AND l.deleted = TRUE ORDER BY l.deleted_at DESC, l.id DESC",
                 (result, rowNum) -> taskList(result), currentUser.id());
+    }
+
+    public List<ListGroup> listGroups() {
+        return jdbcTemplate.query("SELECT public_id,name,sort_order,revision FROM task_list_group WHERE user_id=? ORDER BY sort_order,id",
+                (result, rowNum) -> listGroup(result), currentUser.id());
+    }
+
+    @Transactional
+    public ListGroup createListGroup(ListGroupCommand command) {
+        long userId = currentUser.id();
+        String name = requiredText(command == null ? null : command.name(), "name", 100);
+        ensureUniqueListGroupName(userId, name, null);
+        String publicId = UUID.randomUUID().toString();
+        int order = command.sortOrder() == null ? nextOrder("task_list_group", userId) : command.sortOrder();
+        jdbcTemplate.update("INSERT INTO task_list_group(public_id,user_id,name,sort_order) VALUES(?,?,?,?)",
+                publicId, userId, name, order);
+        return listGroupForUser(userId, publicId);
+    }
+
+    @Transactional
+    public ListGroup updateListGroup(String publicId, ListGroupCommand command, String ifMatch) {
+        long userId = currentUser.id();
+        ListGroup before = listGroupForUser(userId, publicId);
+        long expected = requiredRevision(ifMatch);
+        if (before.revision() != expected) throw new ConflictException("清单分组版本已变化", before.revision());
+        String name = command == null || command.name() == null ? before.name() : requiredText(command.name(), "name", 100);
+        ensureUniqueListGroupName(userId, name, publicId);
+        int changed = jdbcTemplate.update("UPDATE task_list_group SET name=?,sort_order=?,revision=revision+1 " +
+                        "WHERE public_id=? AND user_id=? AND revision=?", name,
+                command == null || command.sortOrder() == null ? before.sortOrder() : command.sortOrder(),
+                validUuid(publicId, "publicId"), userId, expected);
+        if (changed == 0) throw new ConflictException("清单分组版本已变化", before.revision());
+        return listGroupForUser(userId, publicId);
+    }
+
+    @Transactional
+    public void deleteListGroup(String publicId, String ifMatch) {
+        long userId = currentUser.id();
+        ListGroup before = listGroupForUser(userId, publicId);
+        long expected = requiredRevision(ifMatch);
+        if (before.revision() != expected) throw new ConflictException("清单分组版本已变化", before.revision());
+        Long id = jdbcTemplate.queryForObject("SELECT id FROM task_list_group WHERE public_id=? AND user_id=?", Long.class,
+                validUuid(publicId, "publicId"), userId);
+        jdbcTemplate.update("UPDATE task_list SET group_id=NULL,revision=revision+1 WHERE user_id=? AND group_id=?", userId, id);
+        int deleted = jdbcTemplate.update("DELETE FROM task_list_group WHERE id=? AND user_id=? AND revision=?", id, userId, expected);
+        if (deleted == 0) throw new ConflictException("清单分组版本已变化", before.revision());
+    }
+
+    @Transactional
+    public TaskList assignListGroup(String listPublicId, String groupPublicId, String ifMatch) {
+        long userId = currentUser.id();
+        TaskList before = listForUser(userId, listPublicId, false);
+        long expected = requiredRevision(ifMatch);
+        if (before.revision() != expected) throw new ConflictException("清单版本已变化", before.revision());
+        if (before.systemKey() != null && groupPublicId != null && !groupPublicId.isBlank()) {
+            throw new ConflictException("系统收件箱不能加入分组", before.revision());
+        }
+        Long groupId = null;
+        if (groupPublicId != null && !groupPublicId.isBlank()) {
+            ListGroup group = listGroupForUser(userId, groupPublicId);
+            groupId = jdbcTemplate.queryForObject("SELECT id FROM task_list_group WHERE public_id=? AND user_id=?", Long.class,
+                    group.publicId(), userId);
+        }
+        int changed = jdbcTemplate.update("UPDATE task_list SET group_id=?,revision=revision+1 WHERE public_id=? AND user_id=? AND revision=?",
+                groupId, validUuid(listPublicId, "publicId"), userId, expected);
+        if (changed == 0) throw new ConflictException("清单版本已变化", before.revision());
+        TaskList assigned = listForUser(userId, listPublicId, false);
+        changeLog.append(userId, UUID.randomUUID().toString(), "task-list", listPublicId, "UPSERT", syncEntity(assigned, false));
+        return assigned;
     }
 
     @Transactional
@@ -101,6 +179,14 @@ public class TaskService {
         String normalizedView = view == null ? "" : view.trim().toUpperCase(Locale.ROOT);
         switch (normalizedView) {
             case "TODAY" -> where.append(" AND l.archived=FALSE AND t.status='OPEN' AND t.due_at < DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY)");
+            case "TOMORROW" -> {
+                ZoneId zone = userZone(userId);
+                java.time.LocalDate tomorrowDate = java.time.LocalDate.now(zone).plusDays(1);
+                Instant tomorrow = tomorrowDate.atStartOfDay(zone).toInstant();
+                where.append(" AND l.archived=FALSE AND t.status='OPEN' AND t.due_at >= ? AND t.due_at < ?");
+                args.add(Timestamp.from(tomorrow));
+                args.add(Timestamp.from(tomorrowDate.plusDays(1).atStartOfDay(zone).toInstant()));
+            }
             case "NEXT7" -> where.append(" AND l.archived=FALSE AND t.status='OPEN' AND t.due_at >= CURRENT_DATE AND t.due_at < DATE_ADD(CURRENT_DATE, INTERVAL 8 DAY)");
             case "INBOX" -> where.append(" AND l.system_key='INBOX'");
             case "ALL", "TRASH", "" -> { }
@@ -384,6 +470,7 @@ public class TaskService {
         }
         TaskItem restored = taskForUser(userId, publicId);
         changeLog.append(userId, UUID.randomUUID().toString(), publicId, "UPSERT", syncEntity(restored, false));
+        appendActivity(userId, publicId, "RESTORED", "恢复了任务", null);
         return restored;
     }
 
@@ -410,6 +497,25 @@ public class TaskService {
 
     public TaskItem get(String publicId) {
         return taskForUser(currentUser.id(), publicId);
+    }
+
+    public ActivityPage activity(String publicId, int page, int size) {
+        long userId = currentUser.id();
+        taskForUserIncludingDeleted(userId, publicId);
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        long total = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM task_activity a JOIN task t ON t.id=a.task_id " +
+                "WHERE t.public_id=? AND a.user_id=? AND a.created_at>=TIMESTAMPADD(MONTH,-12,CURRENT_TIMESTAMP(3))",
+                Long.class, validUuid(publicId, "publicId"), userId);
+        List<Activity> items = jdbcTemplate.query("SELECT a.public_id,a.event_type,a.summary,a.detail_json,a.created_at " +
+                        "FROM task_activity a JOIN task t ON t.id=a.task_id WHERE t.public_id=? AND a.user_id=? " +
+                        "AND a.created_at>=TIMESTAMPADD(MONTH,-12,CURRENT_TIMESTAMP(3)) " +
+                        "ORDER BY a.created_at DESC,a.id DESC LIMIT ? OFFSET ?",
+                (result, rowNum) -> new Activity(result.getString("public_id"), result.getString("event_type"),
+                        result.getString("summary"), result.getString("detail_json"),
+                        result.getTimestamp("created_at").toInstant().toString()),
+                validUuid(publicId, "publicId"), userId, safeSize, safePage * safeSize);
+        return new ActivityPage(items, safePage, safeSize, total);
     }
 
     @Transactional
@@ -464,6 +570,7 @@ public class TaskService {
                 "SELECT series_id,planned_due_at,id FROM task WHERE public_id=?", publicId);
         TaskItem created = taskForUser(userId, publicId);
         changeLog.append(userId, opKey, publicId, "UPSERT", syncEntity(created, false));
+        appendActivity(userId, publicId, "CREATED", "创建了任务", null);
         return created;
     }
 
@@ -539,6 +646,12 @@ public class TaskService {
         }
         TaskItem changed = taskForUser(userId, publicId);
         changeLog.append(userId, opId, publicId, "UPSERT", syncEntity(changed, false));
+        if (!before.status().equals(changed.status())) {
+            appendActivity(userId, publicId, "COMPLETED".equals(changed.status()) ? "COMPLETED" : "REOPENED",
+                    "COMPLETED".equals(changed.status()) ? "完成了任务" : "重新打开了任务", null);
+        } else {
+            appendActivity(userId, publicId, "UPDATED", updateSummary(before, changed), updateDetail(before, changed));
+        }
         return changed;
     }
 
@@ -598,6 +711,7 @@ public class TaskService {
                 "WHERE t.user_id=? AND t.deleted=TRUE AND r.cancelled_at IS NULL AND r.sent_at IS NULL", userId);
         DeletedResource deleted = new DeletedResource(publicId, expected + 1, true);
         changeLog.append(userId, opId, publicId, "DELETE", syncEntity(taskForUser(userId, publicId, true), true));
+        appendActivity(userId, publicId, "DELETED", "删除了任务", null);
         return deleted;
     }
 
@@ -674,6 +788,8 @@ public class TaskService {
         }
         TaskItem changed = taskForUser(userId, publicId);
         changeLog.append(userId, opId, publicId, "UPSERT", syncEntity(changed, false));
+        appendActivity(userId, publicId, "COMPLETED".equals(status) ? "COMPLETED" : "REOPENED",
+                "COMPLETED".equals(status) ? "完成了任务" : "重新打开了任务", null);
         return changed;
     }
 
@@ -720,6 +836,13 @@ public class TaskService {
                         "AND t.recurrence_anchor='DUE_DATE' AND t.planned_due_at<=CURRENT_TIMESTAMP(3)",
                 (result, rowNum) -> new ScheduledRecurrence(result.getLong("user_id"), task(result)));
         for (ScheduledRecurrence recurrence : due) generateNextInstance(recurrence.userId(), recurrence.task(), Instant.now());
+    }
+
+    @Scheduled(cron = "0 20 3 * * *")
+    @SchedulerLock(name = "taskActivityRetention", lockAtMostFor = "PT5M", lockAtLeastFor = "PT1S")
+    @Transactional
+    public void purgeExpiredActivity() {
+        jdbcTemplate.update("DELETE FROM task_activity WHERE created_at<TIMESTAMPADD(MONTH,-12,CURRENT_TIMESTAMP(3))");
     }
 
     TaskItem currentForSync(String publicId) {
@@ -863,8 +986,9 @@ public class TaskService {
     }
 
     private TaskList listForUser(long userId, String publicId, boolean deleted) {
-        List<TaskList> rows = jdbcTemplate.query("SELECT public_id,name,color,icon,system_key,sort_order,archived,revision " +
-                        "FROM task_list WHERE public_id=? AND user_id=? AND deleted=?",
+        List<TaskList> rows = jdbcTemplate.query("SELECT l.public_id,(SELECT g.public_id FROM task_list_group g WHERE g.id=l.group_id) group_public_id," +
+                        "l.name,l.color,l.icon,l.system_key,l.sort_order,l.archived,l.revision " +
+                        "FROM task_list l WHERE l.public_id=? AND l.user_id=? AND l.deleted=?",
                 (result, rowNum) -> taskList(result),
                 validUuid(publicId, "publicId"), userId, deleted);
         if (rows.isEmpty()) throw new NotFoundException("任务清单不存在");
@@ -872,9 +996,85 @@ public class TaskService {
     }
 
     private TaskList taskList(ResultSet result) throws SQLException {
-        return new TaskList(result.getString("public_id"), result.getString("name"), result.getString("color"),
+        return new TaskList(result.getString("public_id"), result.getString("group_public_id"), result.getString("name"), result.getString("color"),
                 result.getString("icon"), result.getString("system_key"), result.getInt("sort_order"),
                 result.getBoolean("archived"), result.getLong("revision"));
+    }
+
+    private ListGroup listGroupForUser(long userId, String publicId) {
+        List<ListGroup> rows = jdbcTemplate.query("SELECT public_id,name,sort_order,revision FROM task_list_group " +
+                        "WHERE public_id=? AND user_id=?", (result, rowNum) -> listGroup(result),
+                validUuid(publicId, "publicId"), userId);
+        if (rows.isEmpty()) throw new NotFoundException("清单分组不存在");
+        return rows.get(0);
+    }
+
+    private ListGroup listGroup(ResultSet result) throws SQLException {
+        return new ListGroup(result.getString("public_id"), result.getString("name"), result.getInt("sort_order"),
+                result.getLong("revision"));
+    }
+
+    private void ensureUniqueListGroupName(long userId, String name, String publicId) {
+        long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM task_list_group WHERE user_id=? AND name=? " +
+                "AND (? IS NULL OR public_id<>?)", Long.class, userId, name, publicId, publicId);
+        if (count > 0) throw new ConflictException("清单分组名称已存在", 0);
+    }
+
+    private TaskItem taskForUserIncludingDeleted(long userId, String publicId) {
+        List<TaskItem> rows = jdbcTemplate.query("SELECT " + TASK_COLUMNS +
+                        " FROM task t JOIN task_list l ON l.id=t.list_id WHERE t.public_id=? AND t.user_id=?",
+                (result, rowNum) -> task(result), validUuid(publicId, "publicId"), userId);
+        if (rows.isEmpty()) throw new NotFoundException("任务不存在");
+        return rows.get(0);
+    }
+
+    void appendActivity(long userId, String taskPublicId, String eventType, String summary, String detailJson) {
+        jdbcTemplate.update("INSERT INTO task_activity(public_id,user_id,task_id,event_type,summary,detail_json) " +
+                        "SELECT ?,user_id,id,?,?,? FROM task WHERE public_id=? AND user_id=?",
+                UUID.randomUUID().toString(), eventType, summary, detailJson, taskPublicId, userId);
+    }
+
+    private String updateSummary(TaskItem before, TaskItem changed) {
+        List<String> fields = new ArrayList<>();
+        if (!before.title().equals(changed.title())) fields.add("标题");
+        if (!before.description().equals(changed.description())) fields.add("描述");
+        if (!before.listId().equals(changed.listId())) fields.add("清单");
+        if (!before.priority().equals(changed.priority())) fields.add("优先级");
+        if (!java.util.Objects.equals(before.startAt(), changed.startAt()) || !java.util.Objects.equals(before.dueAt(), changed.dueAt())) fields.add("日期");
+        if (!java.util.Objects.equals(before.parentId(), changed.parentId())) fields.add("父任务");
+        if (!before.tagIds().equals(changed.tagIds())) fields.add("标签");
+        if (!before.checklist().equals(changed.checklist())) fields.add("检查项");
+        if (!java.util.Objects.equals(before.rrule(), changed.rrule())) fields.add("重复规则");
+        return fields.isEmpty() ? "更新了任务" : "更新了" + String.join("、", fields);
+    }
+
+    private String updateDetail(TaskItem before, TaskItem changed) {
+        Map<String, Object> changes = new LinkedHashMap<>();
+        addChange(changes, "title", before.title(), changed.title());
+        addChange(changes, "description", before.description(), changed.description());
+        addChange(changes, "listId", before.listId(), changed.listId());
+        addChange(changes, "priority", before.priority(), changed.priority());
+        addChange(changes, "startAt", before.startAt(), changed.startAt());
+        addChange(changes, "dueAt", before.dueAt(), changed.dueAt());
+        addChange(changes, "parentId", before.parentId(), changed.parentId());
+        addChange(changes, "tagIds", before.tagIds(), changed.tagIds());
+        addChange(changes, "checklist", before.checklist(), changed.checklist());
+        addChange(changes, "rrule", before.rrule(), changed.rrule());
+        return changes.isEmpty() ? null : changeLog.json(Map.of("changes", changes));
+    }
+
+    private void addChange(Map<String, Object> changes, String field, Object before, Object after) {
+        if (!Objects.equals(before, after)) changes.put(field, Map.of("before", before == null ? "" : before,
+                "after", after == null ? "" : after));
+    }
+
+    private ZoneId userZone(long userId) {
+        String timezone = jdbcTemplate.queryForObject("SELECT timezone FROM app_user WHERE id=?", String.class, userId);
+        try {
+            return ZoneId.of(timezone == null || timezone.isBlank() ? "Asia/Shanghai" : timezone);
+        } catch (Exception ignored) {
+            return ZoneId.of("Asia/Shanghai");
+        }
     }
 
     private TaskTag tagForUser(long userId, String publicId) {

@@ -12,6 +12,10 @@ import com.salarytracker.task.TaskModels.TaskPage;
 import com.salarytracker.task.TaskModels.TaskListCommand;
 import com.salarytracker.task.TaskModels.TaskTag;
 import com.salarytracker.task.TaskModels.TaskTagCommand;
+import com.salarytracker.task.TaskModels.ListGroup;
+import com.salarytracker.task.TaskModels.ListGroupCommand;
+import com.salarytracker.task.TaskModels.ListGroupAssignment;
+import com.salarytracker.task.TaskModels.ActivityPage;
 import com.salarytracker.task.TaskModels.SyncOperation;
 import com.salarytracker.task.TaskModels.SyncPullResponse;
 import com.salarytracker.task.TaskModels.SyncPushResponse;
@@ -53,6 +57,44 @@ public class TaskController {
     @Operation(operationId = "listTaskLists")
     public ApiResponse<List<TaskList>> lists() {
         return ApiResponse.ok(taskService.listLists());
+    }
+
+    @GetMapping("/list-groups")
+    @PreAuthorize("hasAuthority('task:read')")
+    @Operation(operationId = "listTaskListGroups")
+    public ApiResponse<List<ListGroup>> listGroups() { return ApiResponse.ok(taskService.listGroups()); }
+
+    @PostMapping(value = "/list-groups", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "createTaskListGroup")
+    public ApiResponse<ListGroup> createListGroup(@RequestBody ListGroupCommand body) {
+        return ApiResponse.ok(taskService.createListGroup(body));
+    }
+
+    @PutMapping(value = "/list-groups/{publicId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "updateTaskListGroup")
+    public ApiResponse<ListGroup> updateListGroup(@PathVariable String publicId, @RequestBody ListGroupCommand body,
+                                                   @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(taskService.updateListGroup(publicId, body, ifMatch));
+    }
+
+    @DeleteMapping("/list-groups/{publicId}")
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "deleteTaskListGroup")
+    public ApiResponse<Void> deleteListGroup(@PathVariable String publicId,
+                                              @RequestHeader("If-Match") String ifMatch) {
+        taskService.deleteListGroup(publicId, ifMatch);
+        return ApiResponse.ok(null);
+    }
+
+    @PutMapping(value = "/lists/{publicId}/group", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "assignTaskListGroup")
+    public ApiResponse<TaskList> assignListGroup(@PathVariable String publicId,
+                                                  @RequestBody ListGroupAssignment body,
+                                                  @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(taskService.assignListGroup(publicId, body == null ? null : body.groupId(), ifMatch));
     }
 
     @GetMapping("/lists/trash")
@@ -134,6 +176,15 @@ public class TaskController {
                                       @RequestParam(defaultValue = "0") int page,
                                       @RequestParam(defaultValue = "50") int size) {
         return ApiResponse.ok(taskService.listTasks(listId, status, view, tagId, page, size));
+    }
+
+    @GetMapping("/{publicId}/activity")
+    @PreAuthorize("hasAuthority('task:read')")
+    @Operation(operationId = "listTaskActivity")
+    public ApiResponse<ActivityPage> activity(@PathVariable String publicId,
+                                               @RequestParam(defaultValue = "0") int page,
+                                               @RequestParam(defaultValue = "20") int size) {
+        return ApiResponse.ok(taskService.activity(publicId, page, size));
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)

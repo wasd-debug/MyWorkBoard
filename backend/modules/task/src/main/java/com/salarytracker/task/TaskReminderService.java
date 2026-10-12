@@ -145,6 +145,8 @@ public class TaskReminderService {
                 messageId, ref.userId(), ref.title(), "任务提醒", ref.taskId(), "/tasks/all?task=" + ref.taskPublicId(), dedupe);
         jdbc.update(ref.daily() ? "UPDATE task_reminder SET sent_at=CURRENT_TIMESTAMP(3),remind_at=TIMESTAMPADD(DAY,1,remind_at),revision=revision+1 WHERE id=?"
                 : "UPDATE task_reminder SET sent_at=CURRENT_TIMESTAMP(3),revision=revision+1 WHERE id=?", ref.id());
+        jdbc.update("INSERT INTO task_activity(public_id,user_id,task_id,event_type,summary) VALUES(?,?,?,?,?)",
+                UUID.randomUUID().toString(), ref.userId(), ref.taskId(), "REMINDER_FIRED", "触发了任务提醒");
         List<TaskModels.InboxMessage> message = jdbc.query("SELECT m.public_id,m.category,m.type,m.title,m.body,m.level,t.public_id task_public_id," +
                 "m.deep_link,m.read_at,m.created_at FROM task_inbox_message m LEFT JOIN task t ON t.id=m.task_id " +
                 "WHERE m.user_id=? AND m.dedupe_key=?", (row, number) -> message(row), ref.userId(), dedupe);

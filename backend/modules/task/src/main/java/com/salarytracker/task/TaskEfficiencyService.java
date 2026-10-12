@@ -411,6 +411,9 @@ public class TaskEfficiencyService {
     private void applyFocusCompletion(long userId, String publicId, Long taskId, int actual) {
         if (taskId != null && actual > 0) {
             jdbc.update("UPDATE task SET focus_minutes=focus_minutes+?,revision=revision+1 WHERE id=? AND user_id=?", actual, taskId, userId);
+            jdbc.update("INSERT INTO task_activity(public_id,user_id,task_id,event_type,summary,detail_json) VALUES(?,?,?,?,?,?)",
+                    UUID.randomUUID().toString(), userId, taskId, "FOCUS_LINKED", "关联完成了专注",
+                    "{\"focusSessionId\":\"" + publicId + "\",\"minutes\":" + actual + "}");
             String taskPublicId = jdbc.queryForObject("SELECT public_id FROM task WHERE id=? AND user_id=?", String.class, taskId, userId);
             changeLog.append(userId, UUID.randomUUID().toString(), taskPublicId, "UPSERT",
                     TaskService.syncEntity(tasks.currentForSync(taskPublicId), false));

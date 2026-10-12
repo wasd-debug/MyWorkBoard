@@ -16,6 +16,7 @@
 
 export interface TaskList {
     'publicId'?: string;
+    'groupId'?: string;
     'name'?: string;
     'color'?: string;
     'icon'?: string;
