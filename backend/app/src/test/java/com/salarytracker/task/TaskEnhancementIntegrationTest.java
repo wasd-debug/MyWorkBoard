@@ -77,16 +77,26 @@ class TaskEnhancementIntegrationTest extends MySqlIntegrationTestSupport {
 
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         EasyExcel.write(output)
-                .head(List.of(List.of("标题"), List.of("清单"), List.of("到期日期"), List.of("优先级")))
-                .sheet("工作任务")
-                .doWrite(List.of(List.of("Excel 导入任务", "工作", "2026年10月12日", "高")));
+                .head(List.of(List.of("任务ID"), List.of("类型"), List.of("标题"), List.of("清单ID"),
+                        List.of("清单名称"), List.of("状态"), List.of("优先级"), List.of("开始时间"),
+                        List.of("截止时间"), List.of("标签"), List.of("进度"), List.of("创建时间"),
+                        List.of("修改时间"), List.of("完成时间"), List.of("备注内容")))
+                .sheet("任务")
+                .doWrite(List.of(List.of("source-1", "任务", "Excel 导入任务", "list-1", "工作",
+                        "已完成", "高", "2026-10-12 08:00:00", "2026-10-12 18:30:00", "发布",
+                        100, "2026-10-01 09:00:00", "2026-10-12 19:00:00",
+                        "2026-10-12 19:00:00", "真实导出结构备注")));
         var file = new MockMultipartFile("file", "tasks.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", output.toByteArray());
         var preview = service.enhancements.preview(file);
         assertEquals(1, preview.valid());
         assertEquals(0, preview.errors());
-        assertEquals("工作任务", preview.rows().get(0).sheet());
+        assertEquals("任务", preview.rows().get(0).sheet());
+        assertEquals("工作", preview.rows().get(0).listName());
+        assertEquals("真实导出结构备注", preview.rows().get(0).description());
+        assertEquals("COMPLETED", preview.rows().get(0).status());
         assertEquals("HIGH", preview.rows().get(0).priority());
+        assertTrue(preview.rows().get(0).dueAt() != null && !preview.rows().get(0).dueAt().isBlank());
     }
 
     private Services services(long userId) {
