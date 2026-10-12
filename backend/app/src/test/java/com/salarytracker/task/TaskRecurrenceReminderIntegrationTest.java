@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -42,6 +43,9 @@ class TaskRecurrenceReminderIntegrationTest extends MySqlIntegrationTestSupport 
         assertTrue(reminders.list(task.publicId()).isEmpty());
         assertEquals(1, reminders.list(next.publicId()).size());
         assertEquals(reminder.offsetMinutes(), reminders.list(next.publicId()).get(0).offsetMinutes());
+        var reopenConflict = assertThrows(com.salarytracker.platform.ConflictException.class,
+                () -> tasks.reopen(task.publicId(), String.valueOf(completed.revision())));
+        assertTrue(reopenConflict.getMessage().contains("下一实例已生成"));
 
         assertEquals(2, tasks.listTasks(null, null, "ALL", null, 0, 20).total());
     }

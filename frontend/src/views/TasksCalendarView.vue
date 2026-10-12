@@ -75,6 +75,7 @@ const aggregateMode = computed(() => route.path === '/calendar')
 const calendarRef = ref(null); const loading = ref(false); const saving = ref(false); const error = ref(''); const editorError = ref('')
 const editorOpen = ref(false); const selectedTask = ref(null); const view = ref(window.innerWidth <= 1024 ? 'day' : 'month')
 const rangeSize = ref(window.innerWidth <= 1024 ? 3 : 6); const anchor = ref(new Date())
+let restoringView = false
 const response = ref({ tasks: [], worktime: [], ledger: [], holidays: [], habits: [], lunar: [], layers: {} })
 const layers = reactive({ worktime: true, ledger: true, holiday: true, habit: true }); const lunarEnabled = ref(true)
 const taskForm = reactive({ title: '', priority: 'NONE', startAt: '', dueAt: '', allDay: false })
@@ -88,7 +89,22 @@ function pad(value) { return String(value).padStart(2, '0') }
 function dateOnly(value) { return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}` }
 function localInput(value) { if (!value) return ''; const date = new Date(value); return `${dateOnly(date)}T${pad(date.getHours())}:${pad(date.getMinutes())}` }
 function instant(value) { return value ? new Date(value).toISOString() : '' }
-function readPreferences() { try { const stored = JSON.parse(localStorage.getItem(preferenceKey.value) || '{}'); if (views.some(item => item.key === stored.view)) view.value = stored.view; if ([2, 3, 4, 5, 6, 7].includes(stored.rangeSize)) rangeSize.value = stored.rangeSize; Object.assign(layers, stored.layers || {}); if (typeof stored.lunar === 'boolean') lunarEnabled.value = stored.lunar } catch { /* use defaults */ } }
+function readPreferences() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(preferenceKey.value) || '{}')
+    if (views.some(item => item.key === stored.view)) view.value = stored.view
+    const allowed = view.value === 'week' ? [3, 5, 7] : view.value === 'month' ? [2, 4, 6] : []
+    let normalized = false
+    if (allowed.includes(stored.rangeSize)) rangeSize.value = stored.rangeSize
+    else if (allowed.length && stored.rangeSize != null) {
+      rangeSize.value = allowed.includes(rangeSize.value) ? rangeSize.value : allowed[allowed.length - 1]
+      normalized = true
+    }
+    Object.assign(layers, stored.layers || {})
+    if (typeof stored.lunar === 'boolean') lunarEnabled.value = stored.lunar
+    if (normalized) savePreferences()
+  } catch { /* use defaults */ }
+}
 function savePreferences() { localStorage.setItem(preferenceKey.value, JSON.stringify({ view: view.value, rangeSize: rangeSize.value, layers: { ...layers }, lunar: lunarEnabled.value })) }
 function range() { const current = anchor.value; if (view.value === 'year') return { from: `${current.getFullYear()}-01-01`, to: `${current.getFullYear() + 1}-01-01` }; const api = calendarRef.value?.getApi(); if (api) return { from: dateOnly(api.view.activeStart), to: dateOnly(api.view.activeEnd) }; const from = new Date(current.getFullYear(), current.getMonth(), 1); return { from: dateOnly(from), to: dateOnly(new Date(current.getFullYear(), current.getMonth() + 1, 1)) } }
 async function load() { loading.value = true; error.value = ''; try { const selected = aggregateMode.value ? Object.entries(layers).filter(([, enabled]) => enabled).map(([key]) => key).join(',') : ''; response.value = await apiGetTaskCalendar({ ...range(), layers: selected, lunar: lunarEnabled.value ? 1 : 0 }) } catch (cause) { error.value = cause?.response?.data?.detail || cause?.message || '日历加载失败' } finally { loading.value = false } }
@@ -97,7 +113,7 @@ function layerFailed(key) { return layers[key] && response.value.layers?.[key]?.
 function eventSource() { const events = response.value.tasks.map(task => ({ id: task.publicId, title: task.title, start: task.startAt || task.dueAt, end: task.dueAt && task.startAt ? task.dueAt : undefined, allDay: task.allDay, editable: task.status !== 'COMPLETED', classNames: [`priority-${String(task.priority).toLowerCase()}`], extendedProps: { type: 'task', task } })); if (!aggregateMode.value) return events.filter(item => item.start); for (const item of response.value.worktime || []) events.push({ title: `${item.start}–${item.end || '未打卡'}${item.overtimeMinutes > 0 ? ` · 加班${Math.round(item.overtimeMinutes / 60 * 10) / 10}h` : ''}`, start: `${item.date}T${item.start || '00:00'}`, end: item.end ? `${item.date}T${item.end}` : undefined, editable: false, classNames: ['overlay-worktime'], extendedProps: { type: 'worktime', date: item.date } }); for (const item of response.value.ledger || []) events.push({ title: `收 ${item.income} / 支 ${item.expense}`, start: item.date, allDay: true, editable: false, classNames: ['overlay-ledger'], extendedProps: { type: 'ledger', date: item.date } }); for (const item of response.value.holidays || []) events.push({ title: `${item.off ? '休' : '班'} · ${item.name}`, start: item.date, allDay: true, editable: false, classNames: ['overlay-holiday'], extendedProps: { type: 'holiday', date: item.date } }); for (const item of response.value.habits || []) events.push({ title: `习惯 ${item.completed}/${item.total}`, start: item.date, allDay: true, editable: false, classNames: ['overlay-habit'], extendedProps: { type: 'habit', date: item.date } }); return events.filter(item => item.start) }
 const lunarMap = computed(() => new Map((response.value.lunar || []).map(item => [item.date, item])))
 const rangeOptions = computed(() => view.value === 'week' ? [3, 5, 7] : [2, 4, 6])
-const calendarOptions = computed(() => ({ plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin], initialView: calendarView(view.value), headerToolbar: false, locale: zhCnLocale, firstDay: 1, height: 'auto', editable: window.innerWidth > 1024, eventResizableFromStart: true, fixedWeekCount: rangeSize.value === 6, showNonCurrentDates: true, views: { timeGridRange: { type: 'timeGrid', duration: { days: rangeSize.value }, dateIncrement: { days: rangeSize.value } }, dayGridRange: { type: 'dayGrid', duration: { weeks: 2 }, dateIncrement: { weeks: 2 } } }, dayMaxEvents: 3, nowIndicator: true, events: eventSource(), datesSet(info) { anchor.value = info.view.currentStart; if (!loading.value) load() }, dayCellContent(info) { const lunar = lunarMap.value.get(dateOnly(info.date)); return { html: `<span>${info.dayNumberText}</span>${lunar ? `<small>${lunar.festival || lunar.solarTerm || lunar.lunarDate}</small>` : ''}` } }, eventDrop: persistEventChange, eventResize: persistEventChange, eventClick: handleEventClick }))
+const calendarOptions = computed(() => ({ plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin], initialView: calendarView(view.value), headerToolbar: false, locale: zhCnLocale, firstDay: 1, height: 'auto', editable: window.innerWidth > 1024, eventResizableFromStart: true, fixedWeekCount: rangeSize.value === 6, showNonCurrentDates: true, views: { timeGridRange: { type: 'timeGrid', duration: { days: rangeSize.value }, dateIncrement: { days: rangeSize.value } }, dayGridRange: { type: 'dayGrid', duration: { weeks: 2 }, dateIncrement: { weeks: 2 } } }, dayMaxEvents: 3, nowIndicator: true, events: eventSource(), datesSet(info) { if (!restoringView) anchor.value = info.view.currentStart; if (!loading.value) load() }, dayCellContent(info) { const lunar = lunarMap.value.get(dateOnly(info.date)); return { html: `<span>${info.dayNumberText}</span>${lunar ? `<small>${lunar.festival || lunar.solarTerm || lunar.lunarDate}</small>` : ''}` } }, eventDrop: persistEventChange, eventResize: persistEventChange, eventClick: handleEventClick }))
 function calendarView(value) { return value === 'day' ? 'timeGridDay' : value === 'week' ? 'timeGridRange' : rangeSize.value >= 4 ? 'dayGridMonth' : 'dayGridRange' }
 async function restorePreferencesAndView() {
   readPreferences()
@@ -105,8 +121,12 @@ async function restorePreferencesAndView() {
   if (view.value === 'year') return load()
   const api = calendarRef.value?.getApi()
   const restoredView = calendarView(view.value)
-  if (api && api.view.type !== restoredView) api.changeView(restoredView, anchor.value)
-  else await load()
+  if (api && api.view.type !== restoredView) {
+    restoringView = true
+    api.changeView(restoredView, anchor.value)
+    restoringView = false
+    await load()
+  } else await load()
 }
 async function setView(next) { view.value = next; savePreferences(); if (next !== 'year') await nextTick(() => { calendarRef.value?.getApi().changeView(calendarView(next)); load() }); else await load() }
 async function setRangeSize(size) { rangeSize.value = size; savePreferences(); await nextTick(); calendarRef.value?.getApi().changeView(calendarView(view.value)); await load() }

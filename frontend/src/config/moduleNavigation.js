@@ -18,11 +18,16 @@ export const ledgerNavigation = [
 ]
 
 export const taskNavigation = [
-  { key: 'task', to: '/tasks/today', label: '任务', activePrefix: '/tasks', activeExclude: ['/tasks/habits', '/tasks/calendar', '/tasks/focus', '/tasks/countdowns'] },
+  { key: 'task', to: '/tasks/today', label: '任务', activePrefix: '/tasks', activeExclude: ['/tasks/habits', '/tasks/calendar', '/tasks/focus', '/tasks/countdowns', '/tasks/board', '/tasks/quadrant', '/tasks/search', '/tasks/stats', '/tasks/settings'] },
+  { key: 'focus', to: '/tasks/focus', label: '专注' },
   { key: 'habits', to: '/tasks/habits', label: '习惯' },
   { key: 'calendar', to: '/tasks/calendar', label: '日历' },
-  { key: 'focus', to: '/tasks/focus', label: '专注' },
-  { key: 'countdowns', to: '/tasks/countdowns', label: '倒数日' }
+  { key: 'countdowns', to: '/tasks/countdowns', label: '倒数日' },
+  { key: 'board', to: '/tasks/board', label: '看板' },
+  { key: 'quadrant', to: '/tasks/quadrant', label: '四象限' },
+  { key: 'search', to: '/tasks/search', label: '搜索与智能清单' },
+  { key: 'stats', to: '/tasks/stats', label: '统计与回顾' },
+  { key: 'settings', to: '/tasks/settings', label: '设置' }
 ]
 
 export function navigationItemIsActive(route, item) {

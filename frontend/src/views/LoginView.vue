@@ -13,7 +13,7 @@
         <h1>{{ registering ? '创建你的工作台' : '欢迎回来' }}</h1>
         <p>{{ registering ? '建立个人账户，开始整理你的生活与工作。' : '登录后继续使用你的个人工作台。' }}</p>
         <div class="auth-features" aria-label="工作台功能">
-          <span>账本</span><span>任务</span><span>知识库</span><span>工时</span>
+          <span>账本</span><span>任务</span><span>日历</span><span>工时</span>
         </div>
       </div>
       <form class="auth-form" @submit.prevent="submit">

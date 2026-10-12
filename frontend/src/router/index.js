@@ -19,7 +19,7 @@ const routes = [
   { path: '/tasks/quadrant', name: 'tasks-quadrant', component: () => import('../views/TasksEnhancedView.vue'), meta: { title: '四象限' } },
   { path: '/tasks/search', name: 'tasks-search', component: () => import('../views/TasksEnhancedView.vue'), meta: { title: '任务搜索' } },
   { path: '/tasks/stats', name: 'tasks-stats', component: () => import('../views/TasksEnhancedView.vue'), meta: { title: '任务统计' } },
-  { path: '/tasks/data', name: 'tasks-data', component: () => import('../views/TasksEnhancedView.vue'), meta: { title: '任务数据' } },
+  { path: '/tasks/data', redirect: { path: '/tasks/settings', hash: '#data' } },
   { path: '/tasks/settings', name: 'tasks-settings', component: () => import('../views/TaskSettingsView.vue'), meta: { title: '任务设置' } },
   { path: '/tasks/filter/:publicId', name: 'tasks-filter', component: () => import('../views/TasksEnhancedView.vue'), meta: { title: '智能清单' } },
   { path: '/tasks/all', name: 'tasks-all', component: () => import('../views/TasksInboxView.vue'), meta: { title: '全部任务' } },

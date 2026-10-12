@@ -3,11 +3,13 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const view = await readFile(new URL('./TasksEnhancedView.vue', import.meta.url), 'utf8')
+const settingsView = await readFile(new URL('./TaskSettingsView.vue', import.meta.url), 'utf8')
+const dataPanel = await readFile(new URL('../components/tasks/TaskDataPanel.vue', import.meta.url), 'utf8')
 const router = await readFile(new URL('../router/index.js', import.meta.url), 'utf8')
 const client = await readFile(new URL('../../packages/api-client/src/index.js', import.meta.url), 'utf8')
 
 test('task enhanced workspace exposes all I7 routes', () => {
-  for (const path of ['/tasks/board', '/tasks/quadrant', '/tasks/search', '/tasks/stats', '/tasks/data', '/tasks/filter/:publicId']) {
+  for (const path of ['/tasks/board', '/tasks/quadrant', '/tasks/search', '/tasks/stats', '/tasks/filter/:publicId']) {
     assert.match(router, new RegExp(path.replace(/[/:]/g, match => `\\${match}`)))
   }
 })
@@ -17,8 +19,10 @@ test('task import remains preview then explicit commit', () => {
   assert.match(client, /\/api\/v1\/tasks\/import\/preview/)
   assert.match(client, /apiCommitTaskImport/)
   assert.match(client, /\/api\/v1\/tasks\/import\/commit/)
-  assert.match(view, /预览阶段不会写入任务/)
-  assert.match(view, /确认导入/)
+  assert.match(settingsView, /TaskDataPanel/)
+  assert.match(dataPanel, /预览阶段不会写入任务/)
+  assert.match(dataPanel, /确认导入/)
+  assert.match(router, /path: '\/tasks\/data', redirect: \{ path: '\/tasks\/settings', hash: '#data' \}/)
 })
 
 test('mobile board has explicit move control and statistics explain focus basis', () => {

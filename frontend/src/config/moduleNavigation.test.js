@@ -3,9 +3,9 @@ import test from 'node:test'
 
 import { navigationItemIsActive, taskNavigation } from './moduleNavigation.js'
 
-test('task top navigation exposes only the five primary sections', () => {
-  assert.deepEqual(taskNavigation.map(item => item.label), ['任务', '习惯', '日历', '专注', '倒数日'])
-  assert.deepEqual(taskNavigation.map(item => item.to), ['/tasks/today', '/tasks/habits', '/tasks/calendar', '/tasks/focus', '/tasks/countdowns'])
+test('task top navigation exposes all planned sections in product order', () => {
+  assert.deepEqual(taskNavigation.map(item => item.label), ['任务', '专注', '习惯', '日历', '倒数日', '看板', '四象限', '搜索与智能清单', '统计与回顾', '设置'])
+  assert.deepEqual(taskNavigation.map(item => item.to), ['/tasks/today', '/tasks/focus', '/tasks/habits', '/tasks/calendar', '/tasks/countdowns', '/tasks/board', '/tasks/quadrant', '/tasks/search', '/tasks/stats', '/tasks/settings'])
 })
 
 test('task primary section stays active for nested task views', () => {
@@ -13,7 +13,7 @@ test('task primary section stays active for nested task views', () => {
   for (const path of ['/tasks/inbox', '/tasks/today', '/tasks/next7', '/tasks/all', '/tasks/completed', '/tasks/inbox-notify', '/tasks/trash', '/tasks/list/list-1', '/tasks/tag/tag-1']) {
     assert.equal(navigationItemIsActive({ path, query: {} }, task), true, path)
   }
-  for (const path of ['/tasks/habits', '/tasks/calendar', '/tasks/focus', '/tasks/countdowns']) {
+  for (const path of ['/tasks/habits', '/tasks/calendar', '/tasks/focus', '/tasks/countdowns', '/tasks/board', '/tasks/quadrant', '/tasks/search', '/tasks/stats', '/tasks/settings']) {
     assert.equal(navigationItemIsActive({ path, query: {} }, task), false, path)
   }
 })

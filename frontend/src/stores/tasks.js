@@ -235,7 +235,12 @@ export const useTasksStore = defineStore('tasks', {
       finally { this.saving = false }
     },
     async complete(item) { return this.saveLocal({ ...item, status: 'COMPLETED', completedAt: new Date().toISOString() }) },
-    async reopen(item) { return this.saveLocal({ ...item, status: 'OPEN', completedAt: null }) },
+    async reopen(item) {
+      if (item.rrule && item.seriesId && this.tasks.some(value => value.seriesId === item.seriesId && value.seriesSequence > (item.seriesSequence || 0) && value.status === 'OPEN' && !value.deleted)) {
+        throw new Error('周期任务的下一实例已生成，无法重开当前实例')
+      }
+      return this.saveLocal({ ...item, status: 'OPEN', completedAt: null })
+    },
     async remove(item) {
       const descendants = []
       const queue = [item.publicId]

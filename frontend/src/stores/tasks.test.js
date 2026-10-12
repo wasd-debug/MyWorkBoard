@@ -64,6 +64,16 @@ test('task getters retain deleted rows for the trash view', () => {
   assert.deepEqual(store.trashedTasks.map(item => item.publicId), ['trash'])
 })
 
+test('completed recurring task cannot reopen after its next instance exists', async () => {
+  setActivePinia(createPinia())
+  const store = useTasksStore()
+  store.tasks = [
+    { publicId: 'current', status: 'COMPLETED', rrule: 'FREQ=DAILY', seriesId: 'series', seriesSequence: 1 },
+    { publicId: 'next', status: 'OPEN', rrule: 'FREQ=DAILY', seriesId: 'series', seriesSequence: 2 }
+  ]
+  await assert.rejects(store.reopen(store.tasks[0]), /下一实例已生成/)
+})
+
 test('offline lists and tags use distinct projections and oplog entries', async () => {
   offline()
   setActivePinia(createPinia())

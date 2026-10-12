@@ -493,6 +493,9 @@ public class TaskService {
         ValidatedTask values = validate(command, before);
         String normalizedStatus = status == null ? before.status()
                 : enumValue(status, before.status(), List.of("OPEN", "COMPLETED"), "status");
+        if ("COMPLETED".equals(before.status()) && "OPEN".equals(normalizedStatus)) {
+            ensureRecurringTaskCanReopen(userId, before);
+        }
         String rrule = command.rrule() == null ? before.rrule() : TaskRecurrence.validate(command.rrule());
         String anchor = rrule == null ? null : enumValue(command.recurrenceAnchor(),
                 before.recurrenceAnchor() == null ? "DUE_DATE" : before.recurrenceAnchor(),
@@ -546,7 +549,20 @@ public class TaskService {
 
     @Transactional
     public TaskItem reopen(String publicId, String ifMatch) {
+        TaskItem current = taskForUser(currentUser.id(), publicId);
+        ensureRecurringTaskCanReopen(currentUser.id(), current);
         return changeStatus(publicId, ifMatch, "OPEN", UUID.randomUUID().toString());
+    }
+
+    private void ensureRecurringTaskCanReopen(long userId, TaskItem current) {
+        if (current.rrule() != null && current.seriesId() != null && current.seriesSequence() != null) {
+            Integer successors = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM task WHERE user_id=? AND series_id=? " +
+                            "AND series_sequence>? AND status='OPEN' AND deleted=FALSE",
+                    Integer.class, userId, current.seriesId(), current.seriesSequence());
+            if (successors != null && successors > 0) {
+                throw new ConflictException("周期任务的下一实例已生成，无法重开当前实例", current.revision());
+            }
+        }
     }
 
     @Transactional

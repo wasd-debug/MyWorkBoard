@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -50,6 +51,24 @@ class TaskSyncIntegrationTest extends MySqlIntegrationTestSupport {
         assertEquals(2L, result.serverRevision());
         assertEquals("服务端更新", result.serverEntity().title());
         assertTrue(result.conflictFields().contains("title"));
+    }
+
+    @Test
+    void rejectsReopeningCompletedRecurrenceThroughSyncWhenSuccessorExists() {
+        Fixture fixture = fixture(createUser("sync-recurrence-"));
+        var recurring = fixture.tasks.create(new TaskModels.TaskCommand(null, "每日复盘", "", "NONE", null,
+                Instant.now().plusSeconds(3600).toString(), false, "UTC", null, null, null, null,
+                "FREQ=DAILY;COUNT=3", "DUE_DATE"), "sync-recurrence-create");
+        var completed = fixture.tasks.complete(recurring.publicId(), String.valueOf(recurring.revision()));
+
+        var result = fixture.sync.push(List.of(operation("sync-recurrence-reopen", recurring.publicId(),
+                SyncAction.UPSERT, completed.revision(),
+                payload(recurring.publicId(), recurring.title(), "OPEN", completed.revision())))).results().get(0);
+
+        assertEquals(SyncStatus.CONFLICT, result.status());
+        assertTrue(result.message().contains("下一实例已生成"));
+        assertEquals("COMPLETED", fixture.tasks.get(recurring.publicId()).status());
+        assertEquals(2, fixture.tasks.listTasks(null, null, "ALL", null, 0, 20).total());
     }
 
     @Test
