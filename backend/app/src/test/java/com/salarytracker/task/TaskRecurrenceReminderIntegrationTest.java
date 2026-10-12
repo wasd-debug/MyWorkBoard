@@ -7,6 +7,7 @@ import com.salarytracker.task.TaskModels.ReminderCommand;
 import com.salarytracker.task.TaskModels.TaskCommand;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -24,7 +25,7 @@ class TaskRecurrenceReminderIntegrationTest extends MySqlIntegrationTestSupport 
                 new ObjectMapper().findAndRegisterModules()));
         TaskReminderService reminders = new TaskReminderService(jdbc, current, new TaskInboxStream());
         var task = tasks.create(new TaskCommand(null, "每日复盘", "", "NONE", null,
-                "2026-10-10T09:00:00Z", false, "UTC", null, null, null, null,
+                Instant.now().minusSeconds(60).toString(), false, "UTC", null, null, null, null,
                 "FREQ=DAILY;COUNT=3", "DUE_DATE"), "repeat-create");
         var reminder = reminders.create(task.publicId(), new ReminderCommand("RELATIVE", 30, null, "IN_APP", false));
 

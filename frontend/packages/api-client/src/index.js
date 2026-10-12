@@ -218,6 +218,25 @@ export const apiCreateTaskTag = async payload => data(await api.post('/api/v1/ta
 export const apiRestoreTask = async (publicId, currentRevision) => data(await api.post(`/api/v1/tasks/${publicId}/restore`, null, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiRestoreTaskList = async (publicId, currentRevision) => data(await api.post(`/api/v1/tasks/lists/${publicId}/restore`, null, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiPurgeTask = async publicId => data(await api.delete(`/api/v1/tasks/trash/${publicId}`, { params: { confirmation: `DELETE:${publicId}` } }))
+export const apiListTaskFilters = async () => data(await api.get('/api/v1/tasks/filters'))
+export const apiCreateTaskFilter = async payload => data(await api.post('/api/v1/tasks/filters', payload))
+export const apiUpdateTaskFilter = async (id, payload, currentRevision) => data(await api.put(`/api/v1/tasks/filters/${id}`, payload, { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiDeleteTaskFilter = async (id, currentRevision) => data(await api.delete(`/api/v1/tasks/filters/${id}`, { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiListTaskFilterTasks = async (id, params = {}) => data(await api.get(`/api/v1/tasks/filters/${id}/tasks`, { params }))
+export const apiGetTaskBoard = async (dimension = 'list') => data(await api.get('/api/v1/tasks/board', { params: { dimension } }))
+export const apiGetTaskQuadrant = async () => data(await api.get('/api/v1/tasks/quadrant'))
+export const apiSearchTasks = async q => data(await api.get('/api/v1/tasks/search', { params: { q } }))
+export const apiGetTaskStats = async params => data(await api.get('/api/v1/tasks/stats', { params }))
+export const apiParseTaskQuickAdd = async text => data(await api.post('/api/v1/tasks/parse', { text }))
+export async function apiPreviewTaskImport(file, onUploadProgress) {
+  const form = new FormData(); form.append('file', file)
+  return data(await api.post('/api/v1/tasks/import/preview', form, { timeout: 900_000,
+    onUploadProgress: event => onUploadProgress?.(event.total ? Math.round(event.loaded / event.total * 100) : 0) }))
+}
+export const apiCommitTaskImport = async (previewId, skipDuplicates = true) => data(await api.post('/api/v1/tasks/import/commit', { previewId, skipDuplicates }, { timeout: 600_000 }))
+export async function apiDownloadTaskExport(format = 'xlsx', includeCompleted = true) {
+  return (await api.post('/api/v1/tasks/export', { format, includeCompleted }, { responseType: 'blob', timeout: 600_000 })).data
+}
 
 export const apiListLedgerTransactions = async (bookId, params = {}) => data(await ledger.listLedgerTransactions({ bookId, ...params }))
 export const apiListRecentLedgerTransactions = async (bookId, limit = 10) => data(await ledger.listRecentLedgerTransactions({ bookId, limit }))

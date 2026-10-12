@@ -1,5 +1,11 @@
 # 部署说明
 
+## 2026-10-12 P2-I7 本地服务刷新
+
+- 本轮新增 V36 智能清单、导入预览批次与全文索引，并交付任务增强视图和 Excel/CSV/ICS 导入导出；仅刷新本地 `salary-backend`、`salary-frontend`，未推送或部署生产。
+- 本地 Compose 使用 `--no-deps --force-recreate backend frontend` 重建应用容器，MySQL 容器和数据卷未重建；健康接口通过，Flyway 已迁移至 v36。前端 OpenAPI 快照与生成客户端来自刷新后的实际运行应用。
+- 自动验证覆盖预览零写入、确认单次消费、用户隔离、迁移回放和公式注入防护；页面拖动、响应式、主题以及真实 Excel 台账仍按《前端手工检查清单》人工验收。
+
 ## 2026-10-10 移动端任务抽屉点击穿透修复
 
 - 前端应用提交：`91af661`，已推送至远程 `main`；发布目录为 `/home/ubuntu/salary-tracker/releases/91af661`，提交归档 SHA-256 为 `a040ca18c40188a193f27e2137ce835b2b7ab1a8bfc364c3df77769ba51f0c65`。服务器从该归档构建 `amd64` 镜像 `salary-frontend:91af661`，实际运行镜像 ID 为 `sha256:cf4ab1b1afa9b0b46c28bd42a045de2d13fb04560a77c62761c265fd448a3678`。
