@@ -219,8 +219,9 @@ public class McpExternalActionService {
     }
 
     private void requireCommitScope(McpPersonalTokenService.AuthenticatedToken token, String toolName) {
-        String required = toolName.startsWith("ledger.")
-                ? McpPersonalTokenService.LEDGER_COMMIT : McpPersonalTokenService.WORKTIME_COMMIT;
+        String required = toolName.startsWith("ledger.") ? McpPersonalTokenService.LEDGER_COMMIT
+                : toolName.startsWith("worktime.") ? McpPersonalTokenService.WORKTIME_COMMIT
+                : McpPersonalTokenService.TASK_COMMIT;
         if (!token.scopes().contains(required)) throw new SecurityException("Token 缺少工具所需 commit scope");
     }
 

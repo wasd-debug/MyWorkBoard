@@ -16,6 +16,9 @@ import static com.salarytracker.ai.mcp.McpPersonalTokenService.LEDGER_PREPARE;
 import static com.salarytracker.ai.mcp.McpPersonalTokenService.LEDGER_READ;
 import static com.salarytracker.ai.mcp.McpPersonalTokenService.WORKTIME_PREPARE;
 import static com.salarytracker.ai.mcp.McpPersonalTokenService.WORKTIME_READ;
+import static com.salarytracker.ai.mcp.McpPersonalTokenService.TASK_COMMIT;
+import static com.salarytracker.ai.mcp.McpPersonalTokenService.TASK_PREPARE;
+import static com.salarytracker.ai.mcp.McpPersonalTokenService.TASK_READ;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -82,5 +85,15 @@ class McpToolVisibilityTest {
         assertFalse(McpServerConfiguration.visible("ledger.account.create.commit", scopes));
         assertFalse(McpServerConfiguration.visible("ledger.recycle.purge.commit", scopes));
         assertFalse(McpServerConfiguration.visible("worktime.record.create.commit", scopes));
+    }
+
+    @Test
+    void taskToolsFollowTaskScopesAndNeverAdvertiseDomainCommit() {
+        assertTrue(McpServerConfiguration.visible("task.list.query", Set.of(TASK_READ)));
+        assertTrue(McpServerConfiguration.visible("habit.checkin.query", Set.of(TASK_READ)));
+        assertTrue(McpServerConfiguration.visible("focus.stats.query", Set.of(TASK_READ)));
+        assertFalse(McpServerConfiguration.visible("task.create.prepare", Set.of(TASK_READ)));
+        assertTrue(McpServerConfiguration.visible("task.create.prepare", Set.of(TASK_READ, TASK_PREPARE)));
+        assertFalse(McpServerConfiguration.visible("task.create.commit", Set.of(TASK_READ, TASK_PREPARE, TASK_COMMIT)));
     }
 }

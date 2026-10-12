@@ -70,6 +70,8 @@ import type { TaskReminderCommand } from '../models/index.ts';
 // @ts-ignore
 import type { TaskRescheduleCommand } from '../models/index.ts';
 // @ts-ignore
+import type { TaskSettingsCommand } from '../models/index.ts';
+// @ts-ignore
 import type { TaskSyncOperation } from '../models/index.ts';
 // @ts-ignore
 import type { TaskTagCommand } from '../models/index.ts';
@@ -1304,6 +1306,46 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
         },
         /**
          *
+         * @param {string} ifMatch
+         * @param {TaskSettingsCommand} taskSettingsCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateTaskSettings: async (ifMatch: string, taskSettingsCommand: TaskSettingsCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'ifMatch' is not null or undefined
+            assertParamExists('updateTaskSettings', 'ifMatch', ifMatch)
+            // verify required parameter 'taskSettingsCommand' is not null or undefined
+            assertParamExists('updateTaskSettings', 'taskSettingsCommand', taskSettingsCommand)
+            const localVarPath = `/api/v1/tasks/settings`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'PUT', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            if (ifMatch != null) {
+                localVarHeaderParameter['If-Match'] = String(ifMatch);
+            }
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(taskSettingsCommand, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {TaskTagCommand} taskTagCommand
@@ -1767,6 +1809,19 @@ export const TasksApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {string} ifMatch
+         * @param {TaskSettingsCommand} taskSettingsCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async updateTaskSettings(ifMatch: string, taskSettingsCommand: TaskSettingsCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskSettings>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.updateTaskSettings(ifMatch, taskSettingsCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.updateTaskSettings']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {TaskTagCommand} taskTagCommand
@@ -2071,6 +2126,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         },
         /**
          *
+         * @param {TasksApiUpdateTaskSettingsRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateTaskSettings(requestParameters: TasksApiUpdateTaskSettingsRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskSettings> {
+            return localVarFp.updateTaskSettings(requestParameters.ifMatch, requestParameters.taskSettingsCommand, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {TasksApiUpdateTaskTagRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -2320,6 +2384,15 @@ export interface TasksApiUpdateTaskReminderRequest {
     readonly ifMatch: number
 
     readonly taskReminderCommand: TaskReminderCommand
+}
+
+/**
+ * Request parameters for updateTaskSettings operation in TasksApi.
+ */
+export interface TasksApiUpdateTaskSettingsRequest {
+    readonly ifMatch: string
+
+    readonly taskSettingsCommand: TaskSettingsCommand
 }
 
 /**
@@ -2648,6 +2721,16 @@ export class TasksApi extends BaseAPI {
      */
     public updateTaskReminder(requestParameters: TasksApiUpdateTaskReminderRequest, options?: RawAxiosRequestConfig) {
         return TasksApiFp(this.configuration).updateTaskReminder(requestParameters.publicId, requestParameters.reminderId, requestParameters.ifMatch, requestParameters.taskReminderCommand, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {TasksApiUpdateTaskSettingsRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public updateTaskSettings(requestParameters: TasksApiUpdateTaskSettingsRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).updateTaskSettings(requestParameters.ifMatch, requestParameters.taskSettingsCommand, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

@@ -13,7 +13,7 @@
 
 2026-10-12 任务导航收口：任务模块顶部二级导航固定为“任务、习惯、日历、专注、倒数日”五项；收件箱、时间范围、全部、完成、垃圾桶及清单/标签管理收进任务页侧栏，提醒只保留应用顶栏右侧的统一入口。1024px 及以下侧栏与遮罩通过 Teleport 挂载到 `body` 顶层，避免路由过渡层叠上下文造成点击穿透；遮罩、关闭按钮、Esc 和路由切换均会收起，桌面侧栏保持常驻。无接口、数据或迁移变更，移动端视觉与交互仍待人工验收。
 
-2026-10-12 P2-I7 增强与数据能力：V36 新增 `task_filter`、`task_import_batch` 与任务标题/描述全文索引。看板、四象限、搜索、智能清单和统计为用户隔离的只读聚合，卡片变更继续进入既有 local-first/revision 链；Excel/CSV/ICS 导入只持久化 24 小时结构化预览，原文件不落盘，确认在事务内单次消费。CSV/Excel 导出对公式前缀转义，ICS 文件导入导出不等于公网订阅；公网 token feed、任务 Agent/MCP 和最终设置仍属 I8。
+2026-10-12 P2-I8 最终收口：V37 扩展任务默认提醒、日历叠加、通知/免打扰与 ICS 描述开关，并新增只存 SHA-256 哈希的 `task_feed_token`。公网 ICS feed 使用 256-bit token、no-store、单实例 IP+token 限流与 Nginx 路径日志关闭，轮换/撤销立即失效。task/habit/focus Domain Tool 接入 Agent/MCP；MCP 新增 task read/prepare/commit scope，但不暴露领域 `.commit`，外部写入仍统一经 `agent.action.commit`，R3 留在站内审批边界。Phase 2 功能收口，页面视觉、真机订阅与真实 MCP 客户端仍按手工清单验收。
 
 > 2026-09-30 前端接入补充：已登录在线用户在聊天首页外通过应用外壳中的悬浮 AI 面板复用同一 Agent 会话与 SSE；轻量面板负责查询和状态展示，需要补充/确认的写操作跳转完整会话处理。首页与悬浮面板输入框均采用有上限的自动增长，避免长文本遮挡工具栏或页面内容。
 
@@ -21,7 +21,7 @@
 |---|---|---|
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
-| Phase 2 任务 | I7 完成 | V30-V36、任务 local-first、重复/提醒、日历、效率工具、增强视图、智能清单、搜索、统计及文件导入导出已落地；I8 Agent/MCP、ICS 订阅和最终收口待实施 |
+| Phase 2 任务 | I8 完成，人工验收待办 | V30-V37、任务 local-first、重复/提醒、日历、效率工具、增强视图、数据导入导出、Agent/MCP 与公网 ICS 订阅已落地；E1 协作与 Phase 4 附件后置 |
 | Phase 3A-D Agent/MCP | Phase 3A/3B/3D 核心闭环，Phase 3C-4 完成 | Web Agent、受控写入和 R4 审批已落地；MCP 已支持只读、PAT、OAuth 2.1 + PKCE、独立 prepare/commit scope、R2 单次提交和结果回放，R3/R4 commit 继续关闭 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
@@ -397,7 +397,7 @@ recurring       (id, user_id, name, rule_json, next_run_at, amount, category_id,
 
 ### 6.5 任务域（task）
 
-当前实现（P2-I6）：V30-V34 建立任务核心、同步、组织、重复与提醒；V35 增加 `focus_setting`、`focus_session`、`habit`、`habit_checkin`、`countdown` 及任务累计专注分钟。习惯、打卡和倒数日共享用户级 IndexedDB/oplog、revision 冲突与 pull 投影；实时专注的开始/结束要求在线，由数据库唯一键保证单用户仅一个 RUNNING 会话，页面刷新按服务端时间恢复。专注完成只累加任务专注分钟并写领域事件，不写 `work_record`，不参与加班、时薪或工资计算。全局日历增加习惯图层；app 组装层仍只经公开只读投影聚合跨域数据。
+当前实现（P2-I8）：V30-V37 覆盖任务核心、同步、组织、重复与提醒、效率工具、增强数据能力、设置及 ICS token。习惯、打卡和倒数日共享用户级 IndexedDB/oplog、revision 冲突与 pull 投影；实时专注由数据库保证单用户仅一个 RUNNING 会话且不写工时。全局日历只经公开只读投影聚合跨域数据。Agent/MCP 通过 Domain Tool Registry 接入 task/habit/focus，只读与 prepare scope 分离，外部不暴露领域 commit。
 
 ```sql
 task_list       (id, user_id, name, color, sort, kind, archived)
@@ -657,6 +657,8 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 - [x] `P2-I5` 日历视图：FullCalendar 日/周/月 + 自研年视图；由 app 组装层聚合 task/worktime/ledger/holiday 的公开只读接口，单层失败独立降级；农历通过适配器计算
 - [x] 提醒：任务域首版使用 `task_reminder`、`task_reminder_fire`、`task_inbox_message` + ShedLock + SSE/轮询，不依赖 notification、Web Push、Redis 或 RabbitMQ；F3 后保持 API 语义迁移投递端
 - [x] `P2-I6` 番茄钟、习惯与倒数日：V35、单用户单进行中、刷新恢复、周期统计、习惯图层、习惯/打卡/倒数日 local-first，专注与工时口径隔离
+- [x] `P2-I7` 增强视图与数据能力：V36、看板/四象限/搜索/智能清单/统计、Excel/CSV/ICS 导入导出与真实滴答样本兼容
+- [x] `P2-I8` Agent、ICS 与最终收口：V37、任务设置、公网只读订阅、task/habit/focus 工具及 MCP scope；E1 协作和 Phase 4 附件后置
 - [ ] 全局搜索 v1（MySQL 全文索引，任务+账本；附件名在 Phase 4 接入）；离线同步覆盖 task 域；桌面快捷键与移动端显式入口一致
 - **验收**：完整个人版范围全部完成；任务全流程离线可用；提醒准点送达（±1min）；日历四视图切换流畅；手机端无 hover-only 操作。前端页面只走非浏览器自动门禁与用户手工检查，不以 Playwright、截图或交互式浏览器代替人工验收。
 

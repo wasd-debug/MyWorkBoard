@@ -78,7 +78,7 @@
 
 ### Phase 2-6
 
-- **Phase 2 任务管理：P2-I7 已完成。** V36 新增用户隔离的智能清单、24 小时导入预览批次和任务全文索引；看板支持按清单/状态/优先级/标签聚合，四象限按重要/紧急划分，移动端提供显式移动入口。搜索覆盖任务、清单、标签，快速添加解析常见中文日期、优先级、标签、清单与重复词。统计展示创建、完成、逾期、时延、专注及维度分布，并明确专注不计入工时。Excel/CSV/ICS 导入在确认前零写入，确认只消费一次；CSV/Excel/ICS 导出不保存临时文件并防公式注入。页面行为待用户按手工清单验收。
+- **Phase 2 任务管理：P2-I8 已完成，功能收口。** V30-V37 已覆盖 local-first 任务、组织/视图、重复提醒、日历、效率工具、增强查询和数据导入导出。I8 补齐任务设置和公网 ICS 订阅：256-bit token 只存哈希，可轮换/撤销，默认不输出描述并带相对提醒。task/habit/focus Domain Tool 已接入 Agent/MCP，新增 task read/prepare/commit scope，MCP 不暴露领域 commit，R3 保留站内审批边界。E1 多人协作与 Phase 4 附件后置；页面视觉、真机订阅和真实 MCP 客户端行为待用户按手工清单验收。
 - **Phase 3A-D Agent/MCP：Phase 3A/3B Web 核心闭环完成，Phase 3C-5 已完成服务端收口。** 会话、队列、SSE、模型连接、Usage 与 Trace 已落地；首页支持 DeepSeek 深度思考开关及默认收起的思考块。MCP 通过 `/mcp` 暴露按 scope 裁剪的 read/prepare/action 工具，并在独立 commit scope 下允许 R2 新增工时和新增流水；PAT 与 OAuth 2.1 + PKCE 均可认证，设置页具备诊断、客户端断开和协议事件，R3/R4 commit 继续关闭。
 - **Phase 4 文件/RAG：未启动。** 尚无 MinIO/NAS 文件域、Tika、Qdrant 和知识库。
 - **Phase 5 跨域洞察：未启动。** 只有 `domain_event` 预留表，无事件发布/消费、`report_fact`、`report_snapshot` 或洞察页面。
@@ -165,7 +165,7 @@
 2. 确认 MoneyWiz 与外部账单源范围。
 3. 将恢复脚本纳入季度生产运维并持续留存发布/回滚记录。
 4. 继续 [工作台的 Agent 改造计划](工作台的Agent改造计划.md)：按 [前端手工检查清单](前端手工检查清单.md) 使用 MCP Inspector、Codex 和 WorkBuddy 完成真实 OAuth 连接与兼容记录；R3/R4 commit 继续关闭。连接方法见 [MCP 连接指南](MCP连接指南.md)。
-5. 按 [Phase 2 增量执行计划](superpowers/plans/2026-10-09-phase2-increment-plan.md) 启动 P2-I8 Agent/MCP、ICS 订阅、设置与最终收口；任务写入继续复用既有 revision、local-first 和站内审批边界。
+5. Phase 2 已完成 I1-I8 功能收口；下一步按手工清单完成真机、多视口、真实日历订阅与真实 MCP 客户端验收，再单独规划 E1 协作或 Phase 4 附件。
 6. 按 [后续特性路线图](后续特性路线图.md) 的 F0 先冻结设置归属、事件信封、邀请/任务状态机与 NAS 接入决策，再分别启动 F1 设置/资料和 F2 异步基础设施；站内信与音乐不得绕过这些前置门禁。
 
 ## 文档约定

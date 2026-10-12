@@ -17,7 +17,19 @@
 export interface TaskSettings {
     'defaultListId'?: string;
     'defaultView'?: string;
+    'defaultReminderMinutes'?: number;
     'weekStart'?: number;
+    'showLunar'?: boolean;
+    'overlayWorktime'?: boolean;
+    'overlayLedger'?: boolean;
+    'overlayHoliday'?: boolean;
+    'overlayHabit'?: boolean;
+    'notificationReminders'?: boolean;
+    'notificationOverdue'?: boolean;
+    'dailySummaryTime'?: string;
+    'quietStart'?: string;
+    'quietEnd'?: string;
+    'feedIncludeDescription'?: boolean;
     'timezone'?: string;
     'revision'?: number;
 }

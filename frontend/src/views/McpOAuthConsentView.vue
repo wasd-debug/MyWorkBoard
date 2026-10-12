@@ -43,7 +43,7 @@ const commandRequest = computed(() => ({ responseType: request.value.response_ty
   codeChallenge: request.value.code_challenge, codeChallengeMethod: request.value.code_challenge_method,
   resource: request.value.resource }))
 const callbackOrigin = computed(() => { try { return new URL(preview.value?.redirectUri || '').origin } catch { return preview.value?.redirectUri || '' } })
-const labels = { 'mcp:ledger:read': '查询账本', 'mcp:ledger:prepare': '准备账本操作', 'mcp:ledger:commit': '提交低风险账本操作', 'mcp:worktime:read': '查询工时', 'mcp:worktime:prepare': '准备工时操作', 'mcp:worktime:commit': '提交低风险工时操作' }
+const labels = { 'mcp:ledger:read': '查询账本', 'mcp:ledger:prepare': '准备账本操作', 'mcp:ledger:commit': '提交低风险账本操作', 'mcp:worktime:read': '查询工时', 'mcp:worktime:prepare': '准备工时操作', 'mcp:worktime:commit': '提交低风险工时操作', 'mcp:task:read': '查询任务', 'mcp:task:prepare': '准备任务操作', 'mcp:task:commit': '提交低风险任务操作' }
 function scopeLabel(value) { return labels[value] || value }
 function scopeDescription(value) { return value.endsWith(':read') ? '只读取当前数据' : value.endsWith(':prepare') ? '生成预览和站内确认，不直接写入' : '仅提交已经在本站批准的 R2 操作' }
 async function load() { loading.value = true; try { preview.value = await apiPreviewMcpOAuthAuthorization(request.value); selectedBookIds.value = [...(preview.value.selectedBookIds || [])] } catch (e) { error.value = e?.response?.data?.detail || '授权请求无效或已过期' } finally { loading.value = false } }

@@ -52,6 +52,9 @@ public class McpServerConfiguration {
     private static final String CLIENT_CONTEXT_KEY = "salary.mcp.client";
     private static final String LEDGER_PREFIX = "ledger.";
     private static final String WORKTIME_PREFIX = "worktime.";
+    private static final String TASK_PREFIX = "task.";
+    private static final String HABIT_PREFIX = "habit.";
+    private static final String FOCUS_PREFIX = "focus.";
     private final List<McpSyncServer> servers = new ArrayList<>();
 
     @Bean
@@ -64,10 +67,12 @@ public class McpServerConfiguration {
             @Value("${app.mcp.oauth-enabled:false}") boolean oauthEnabled) {
         Map<String, HttpServletStreamableServerTransportProvider> providers = new LinkedHashMap<>();
         List<String> enabledScopes = new ArrayList<>(List.of(
-                McpPersonalTokenService.LEDGER_READ, McpPersonalTokenService.WORKTIME_READ));
+                McpPersonalTokenService.LEDGER_READ, McpPersonalTokenService.WORKTIME_READ,
+                McpPersonalTokenService.TASK_READ));
         if (writeEnabled) enabledScopes.addAll(List.of(
                 McpPersonalTokenService.LEDGER_PREPARE, McpPersonalTokenService.WORKTIME_PREPARE,
-                McpPersonalTokenService.LEDGER_COMMIT, McpPersonalTokenService.WORKTIME_COMMIT));
+                McpPersonalTokenService.TASK_PREPARE, McpPersonalTokenService.LEDGER_COMMIT,
+                McpPersonalTokenService.WORKTIME_COMMIT, McpPersonalTokenService.TASK_COMMIT));
         int combinations = 1 << enabledScopes.size();
         for (int mask = 0; mask < combinations; mask++) {
             Set<String> scopes = new java.util.LinkedHashSet<>();
@@ -272,7 +277,9 @@ public class McpServerConfiguration {
         return name.startsWith(LEDGER_PREFIX) && scopes.contains(prepare
                 ? McpPersonalTokenService.LEDGER_PREPARE : McpPersonalTokenService.LEDGER_READ)
                 || name.startsWith(WORKTIME_PREFIX) && scopes.contains(prepare
-                ? McpPersonalTokenService.WORKTIME_PREPARE : McpPersonalTokenService.WORKTIME_READ);
+                ? McpPersonalTokenService.WORKTIME_PREPARE : McpPersonalTokenService.WORKTIME_READ)
+                || (name.startsWith(TASK_PREFIX) || name.startsWith(HABIT_PREFIX) || name.startsWith(FOCUS_PREFIX))
+                && scopes.contains(prepare ? McpPersonalTokenService.TASK_PREPARE : McpPersonalTokenService.TASK_READ);
     }
 
     private List<McpServerFeatures.SyncToolSpecification> actionSpecifications(
@@ -396,12 +403,14 @@ public class McpServerConfiguration {
 
     private static boolean hasPrepareScope(Set<String> scopes) {
         return scopes.contains(McpPersonalTokenService.LEDGER_PREPARE)
-                || scopes.contains(McpPersonalTokenService.WORKTIME_PREPARE);
+                || scopes.contains(McpPersonalTokenService.WORKTIME_PREPARE)
+                || scopes.contains(McpPersonalTokenService.TASK_PREPARE);
     }
 
     private static boolean hasCommitScope(Set<String> scopes) {
         return scopes.contains(McpPersonalTokenService.LEDGER_COMMIT)
-                || scopes.contains(McpPersonalTokenService.WORKTIME_COMMIT);
+                || scopes.contains(McpPersonalTokenService.WORKTIME_COMMIT)
+                || scopes.contains(McpPersonalTokenService.TASK_COMMIT);
     }
 
     private static boolean hasActionScope(Set<String> scopes) {
@@ -486,6 +495,8 @@ public class McpServerConfiguration {
                     effectiveScopes.remove(McpPersonalTokenService.WORKTIME_PREPARE);
                     effectiveScopes.remove(McpPersonalTokenService.LEDGER_COMMIT);
                     effectiveScopes.remove(McpPersonalTokenService.WORKTIME_COMMIT);
+                    effectiveScopes.remove(McpPersonalTokenService.TASK_PREPARE);
+                    effectiveScopes.remove(McpPersonalTokenService.TASK_COMMIT);
                 }
                 String key = scopeKey(effectiveScopes);
                 httpRequest.setAttribute(BASE_URL_CONTEXT_KEY, baseUrl(httpRequest));

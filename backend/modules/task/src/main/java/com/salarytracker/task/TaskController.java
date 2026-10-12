@@ -4,6 +4,7 @@ import com.salarytracker.platform.ApiResponse;
 import com.salarytracker.platform.Audit;
 import com.salarytracker.task.TaskModels.DeletedResource;
 import com.salarytracker.task.TaskModels.Settings;
+import com.salarytracker.task.TaskModels.SettingsCommand;
 import com.salarytracker.task.TaskModels.TaskCommand;
 import com.salarytracker.task.TaskModels.TaskItem;
 import com.salarytracker.task.TaskModels.TaskList;
@@ -219,6 +220,14 @@ public class TaskController {
     @Operation(operationId = "getTaskSettings")
     public ApiResponse<Settings> settings() {
         return ApiResponse.ok(taskService.settings());
+    }
+
+    @PutMapping(value = "/settings", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "updateTaskSettings")
+    public ApiResponse<Settings> updateSettings(@RequestBody SettingsCommand body,
+                                                @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(taskService.updateSettings(body, ifMatch));
     }
 
     @PostMapping(value = "/sync/push", consumes = MediaType.APPLICATION_JSON_VALUE)

@@ -74,6 +74,12 @@ public class TaskService {
 
     @Transactional
     public TaskPage listTasks(String listId, String status, String view, String tagId, int page, int size) {
+        return listTasks(listId, status, view, tagId, null, null, null, page, size);
+    }
+
+    @Transactional
+    public TaskPage listTasks(String listId, String status, String view, String tagId, String priority,
+                              Instant dueFrom, Instant dueTo, int page, int size) {
         long userId = currentUser.id();
         ensureDefaults(userId);
         int safePage = Math.max(page, 0);
@@ -106,6 +112,21 @@ public class TaskService {
                     "WHERE ttl.task_id=t.id AND tag.public_id=? AND tag.user_id=? AND tag.deleted=FALSE)");
             args.add(validUuid(tagId, "tagId"));
             args.add(userId);
+        }
+        if (priority != null && !priority.isBlank()) {
+            where.append(" AND t.priority = ?");
+            args.add(enumValue(priority, null, List.of("NONE", "LOW", "MEDIUM", "HIGH"), "priority"));
+        }
+        if (dueFrom != null || dueTo != null) {
+            if (dueFrom == null || dueTo == null || !dueTo.isAfter(dueFrom)) {
+                throw new IllegalArgumentException("到期日期范围无效");
+            }
+            if (dueTo.isAfter(dueFrom.plusSeconds(370L * 24 * 60 * 60))) {
+                throw new IllegalArgumentException("到期日期范围不能超过 370 天");
+            }
+            where.append(" AND t.due_at >= ? AND t.due_at < ?");
+            args.add(Timestamp.from(dueFrom));
+            args.add(Timestamp.from(dueTo));
         }
         long total = jdbcTemplate.queryForObject("SELECT COUNT(*)" + where, Long.class, args.toArray());
         List<Object> pageArgs = new ArrayList<>(args);
@@ -568,10 +589,56 @@ public class TaskService {
     public Settings settings() {
         long userId = currentUser.id();
         ensureDefaults(userId);
-        return jdbcTemplate.queryForObject("SELECT l.public_id, s.default_view, s.week_start, s.timezone, s.revision " +
+        return jdbcTemplate.queryForObject("SELECT l.public_id, s.*,TIME_FORMAT(s.daily_summary_time,'%H:%i') summary_time," +
+                        "TIME_FORMAT(s.quiet_start,'%H:%i') quiet_start_text,TIME_FORMAT(s.quiet_end,'%H:%i') quiet_end_text " +
                         "FROM task_setting s JOIN task_list l ON l.id = s.default_list_id WHERE s.user_id = ?",
                 (result, rowNum) -> new Settings(result.getString("public_id"), result.getString("default_view"),
-                        result.getInt("week_start"), result.getString("timezone"), result.getLong("revision")), userId);
+                        (Integer) result.getObject("default_reminder_minutes"), result.getInt("week_start"),
+                        result.getBoolean("show_lunar"), result.getBoolean("overlay_worktime"),
+                        result.getBoolean("overlay_ledger"), result.getBoolean("overlay_holiday"),
+                        result.getBoolean("overlay_habit"), result.getBoolean("notification_reminders"),
+                        result.getBoolean("notification_overdue"), result.getString("summary_time"),
+                        result.getString("quiet_start_text"), result.getString("quiet_end_text"),
+                        result.getBoolean("feed_include_description"), result.getString("timezone"),
+                        result.getLong("revision")), userId);
+    }
+
+    @Transactional
+    public Settings updateSettings(TaskModels.SettingsCommand command, String ifMatch) {
+        if (command == null) throw new IllegalArgumentException("任务设置不能为空");
+        Settings before = settings();
+        long expected = requiredRevision(ifMatch);
+        if (before.revision() != expected) throw new ConflictException("任务设置版本已变化", before.revision());
+        long listId = resolveListId(currentUser.id(), command.defaultListId() == null ? before.defaultListId() : command.defaultListId());
+        String view = enumValue(command.defaultView(), before.defaultView(), List.of("INBOX", "TODAY", "CALENDAR", "BOARD"), "defaultView");
+        Integer reminder = command.defaultReminderMinutes() == null ? before.defaultReminderMinutes() : command.defaultReminderMinutes();
+        if (reminder != null && (reminder < 0 || reminder > 10080)) throw new IllegalArgumentException("默认提醒必须在 0-10080 分钟");
+        int weekStart = command.weekStart() == null ? before.weekStart() : command.weekStart();
+        if (weekStart != 0 && weekStart != 1) throw new IllegalArgumentException("一周起始日只能是周日或周一");
+        String timezone = command.timezone() == null ? before.timezone() : requiredText(command.timezone(), "timezone", 64);
+        try { ZoneId.of(timezone); } catch (Exception exception) { throw new IllegalArgumentException("timezone 无效"); }
+        String summary = time(command.dailySummaryTime(), before.dailySummaryTime(), "每日摘要时间");
+        String quietStart = time(command.quietStart(), before.quietStart(), "免打扰开始时间");
+        String quietEnd = time(command.quietEnd(), before.quietEnd(), "免打扰结束时间");
+        int changed = jdbcTemplate.update("UPDATE task_setting SET default_list_id=?,default_view=?,default_reminder_minutes=?,week_start=?," +
+                        "show_lunar=?,overlay_worktime=?,overlay_ledger=?,overlay_holiday=?,overlay_habit=?,notification_reminders=?," +
+                        "notification_overdue=?,daily_summary_time=?,quiet_start=?,quiet_end=?,feed_include_description=?,timezone=?,revision=revision+1 " +
+                        "WHERE user_id=? AND revision=?", listId, view, reminder, weekStart,
+                value(command.showLunar(), before.showLunar()), value(command.overlayWorktime(), before.overlayWorktime()),
+                value(command.overlayLedger(), before.overlayLedger()), value(command.overlayHoliday(), before.overlayHoliday()),
+                value(command.overlayHabit(), before.overlayHabit()), value(command.notificationReminders(), before.notificationReminders()),
+                value(command.notificationOverdue(), before.notificationOverdue()), summary, quietStart, quietEnd,
+                value(command.feedIncludeDescription(), before.feedIncludeDescription()), timezone, currentUser.id(), expected);
+        if (changed != 1) throw new ConflictException("任务设置版本已变化", before.revision());
+        return settings();
+    }
+
+    private boolean value(Boolean requested, boolean fallback) { return requested == null ? fallback : requested; }
+    private String time(String requested, String fallback, String label) {
+        String value = requested == null ? fallback : requested.trim();
+        if (value == null || value.isBlank()) return null;
+        try { return java.time.LocalTime.parse(value).toString(); }
+        catch (Exception exception) { throw new IllegalArgumentException(label + "格式应为 HH:mm"); }
     }
 
     private TaskItem changeStatus(String publicId, String ifMatch, String status, String opId) {

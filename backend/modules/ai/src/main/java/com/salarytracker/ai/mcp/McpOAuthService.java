@@ -30,7 +30,9 @@ public class McpOAuthService {
     public static final Set<String> SUPPORTED_SCOPES = Set.of(
             McpPersonalTokenService.LEDGER_READ, McpPersonalTokenService.LEDGER_PREPARE,
             McpPersonalTokenService.LEDGER_COMMIT, McpPersonalTokenService.WORKTIME_READ,
-            McpPersonalTokenService.WORKTIME_PREPARE, McpPersonalTokenService.WORKTIME_COMMIT);
+            McpPersonalTokenService.WORKTIME_PREPARE, McpPersonalTokenService.WORKTIME_COMMIT,
+            McpPersonalTokenService.TASK_READ, McpPersonalTokenService.TASK_PREPARE,
+            McpPersonalTokenService.TASK_COMMIT);
     private static final long ACCESS_TTL_SECONDS = 3600;
     private static final long REFRESH_TTL_DAYS = 30;
     private final JdbcTemplate jdbc;

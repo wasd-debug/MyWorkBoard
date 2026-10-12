@@ -32,8 +32,12 @@ public class McpPersonalTokenService {
     public static final String WORKTIME_PREPARE = "mcp:worktime:prepare";
     public static final String LEDGER_COMMIT = "mcp:ledger:commit";
     public static final String WORKTIME_COMMIT = "mcp:worktime:commit";
+    public static final String TASK_READ = "mcp:task:read";
+    public static final String TASK_PREPARE = "mcp:task:prepare";
+    public static final String TASK_COMMIT = "mcp:task:commit";
     private static final Set<String> ALLOWED_SCOPES = Set.of(
-            LEDGER_READ, WORKTIME_READ, LEDGER_PREPARE, WORKTIME_PREPARE, LEDGER_COMMIT, WORKTIME_COMMIT);
+            LEDGER_READ, WORKTIME_READ, TASK_READ, LEDGER_PREPARE, WORKTIME_PREPARE, TASK_PREPARE,
+            LEDGER_COMMIT, WORKTIME_COMMIT, TASK_COMMIT);
     private static final Set<String> TEMPLATES = Set.of("READ_ONLY", "PREPARE", "COMMIT", "FULL_WORKSPACE");
     private static final Set<String> HIGH_RISK_POLICIES = Set.of("APPROVAL_ONLY", "DISABLED");
 
@@ -179,10 +183,11 @@ public class McpPersonalTokenService {
     }
 
     Set<String> normalizeScopes(String template, Set<String> requested) {
-        if ("READ_ONLY".equals(template)) return Set.of(LEDGER_READ, WORKTIME_READ);
-        if ("PREPARE".equals(template)) return Set.of(LEDGER_READ, WORKTIME_READ, LEDGER_PREPARE, WORKTIME_PREPARE);
+        if ("READ_ONLY".equals(template)) return Set.of(LEDGER_READ, WORKTIME_READ, TASK_READ);
+        if ("PREPARE".equals(template)) return Set.of(LEDGER_READ, WORKTIME_READ, TASK_READ, LEDGER_PREPARE, WORKTIME_PREPARE, TASK_PREPARE);
         if ("COMMIT".equals(template) || "FULL_WORKSPACE".equals(template)) return Set.of(
-                LEDGER_READ, WORKTIME_READ, LEDGER_PREPARE, WORKTIME_PREPARE, LEDGER_COMMIT, WORKTIME_COMMIT);
+                LEDGER_READ, WORKTIME_READ, TASK_READ, LEDGER_PREPARE, WORKTIME_PREPARE, TASK_PREPARE,
+                LEDGER_COMMIT, WORKTIME_COMMIT, TASK_COMMIT);
         return normalizeScopes(requested);
     }
 
@@ -196,6 +201,9 @@ public class McpPersonalTokenService {
         if (scopes.contains(WORKTIME_COMMIT) && !scopes.contains(WORKTIME_PREPARE)) {
             throw new IllegalArgumentException("工时 commit scope 必须与工时 prepare scope 同时授予");
         }
+        if (scopes.contains(TASK_COMMIT) && !scopes.contains(TASK_PREPARE)) {
+            throw new IllegalArgumentException("任务 commit scope 必须与任务 prepare scope 同时授予");
+        }
         return Set.copyOf(scopes);
     }
 
@@ -206,8 +214,8 @@ public class McpPersonalTokenService {
     }
 
     private String inferTemplate(Set<String> scopes) {
-        if (scopes.contains(LEDGER_COMMIT) || scopes.contains(WORKTIME_COMMIT)) return "COMMIT";
-        if (scopes.contains(LEDGER_PREPARE) || scopes.contains(WORKTIME_PREPARE)) return "PREPARE";
+        if (scopes.contains(LEDGER_COMMIT) || scopes.contains(WORKTIME_COMMIT) || scopes.contains(TASK_COMMIT)) return "COMMIT";
+        if (scopes.contains(LEDGER_PREPARE) || scopes.contains(WORKTIME_PREPARE) || scopes.contains(TASK_PREPARE)) return "PREPARE";
         return "READ_ONLY";
     }
 

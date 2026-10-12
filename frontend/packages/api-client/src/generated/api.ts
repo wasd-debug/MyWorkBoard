@@ -32,5 +32,6 @@ export * from './api/mcppersonal-tokens-api.ts';
 export * from './api/operations-api.ts';
 export * from './api/task-efficiency-api.ts';
 export * from './api/task-enhancements-api.ts';
+export * from './api/task-feed-api.ts';
 export * from './api/tasks-api.ts';
 export * from './api/worktime-api.ts';

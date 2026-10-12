@@ -89,7 +89,29 @@ public final class TaskModels {
     }
 
     @Schema(name = "TaskSettings")
-    public record Settings(String defaultListId, String defaultView, int weekStart, String timezone, long revision) {
+    public record Settings(String defaultListId, String defaultView, Integer defaultReminderMinutes,
+                           int weekStart, boolean showLunar, boolean overlayWorktime, boolean overlayLedger,
+                           boolean overlayHoliday, boolean overlayHabit, boolean notificationReminders,
+                           boolean notificationOverdue, String dailySummaryTime, String quietStart, String quietEnd,
+                           boolean feedIncludeDescription, String timezone, long revision) {
+        public Settings(String defaultListId, String defaultView, int weekStart, String timezone, long revision) {
+            this(defaultListId, defaultView, null, weekStart, true, true, true, true, true,
+                    true, true, null, null, null, false, timezone, revision);
+        }
+    }
+
+    @Schema(name = "TaskSettingsCommand")
+    public record SettingsCommand(String defaultListId, String defaultView, Integer defaultReminderMinutes,
+                                  Integer weekStart, Boolean showLunar, Boolean overlayWorktime,
+                                  Boolean overlayLedger, Boolean overlayHoliday, Boolean overlayHabit,
+                                  Boolean notificationReminders, Boolean notificationOverdue,
+                                  String dailySummaryTime, String quietStart, String quietEnd,
+                                  Boolean feedIncludeDescription, String timezone) {
+    }
+
+    @Schema(name = "TaskFeedToken")
+    public record FeedToken(boolean active, String tokenHint, String feedUrl, String createdAt,
+                            String lastAccessedAt) {
     }
 
     @Schema(name = "TaskReminder")

@@ -146,17 +146,20 @@
           <legend>只读权限</legend>
           <label><input v-model="mcpForm.scopes" type="checkbox" value="mcp:ledger:read" />账本查询</label>
           <label><input v-model="mcpForm.scopes" type="checkbox" value="mcp:worktime:read" />工时查询</label>
+          <label><input v-model="mcpForm.scopes" type="checkbox" value="mcp:task:read" />任务查询</label>
         </fieldset>
         <fieldset>
           <legend>写入准备权限</legend>
           <label><input v-model="mcpForm.scopes" type="checkbox" value="mcp:ledger:prepare" />准备账本流水操作</label>
           <label><input v-model="mcpForm.scopes" type="checkbox" value="mcp:worktime:prepare" />准备工时操作</label>
+          <label><input v-model="mcpForm.scopes" type="checkbox" value="mcp:task:prepare" />准备任务操作</label>
           <small>prepare 只生成预览和站内确认链接。</small>
         </fieldset>
         <fieldset>
           <legend>低风险提交权限</legend>
           <label><input v-model="mcpForm.scopes" type="checkbox" value="mcp:ledger:commit" :disabled="!mcpForm.scopes.includes('mcp:ledger:prepare')" />提交已批准的 R2 账本操作</label>
           <label><input v-model="mcpForm.scopes" type="checkbox" value="mcp:worktime:commit" :disabled="!mcpForm.scopes.includes('mcp:worktime:prepare')" />提交已批准的 R2 工时操作</label>
+          <label><input v-model="mcpForm.scopes" type="checkbox" value="mcp:task:commit" :disabled="!mcpForm.scopes.includes('mcp:task:prepare')" />提交已批准的 R2 任务操作</label>
           <small>必须与对应 prepare scope 同时授予；修改、删除和其他 R3/R4 操作仍禁止 MCP commit。</small>
         </fieldset>
         <fieldset v-if="mcpForm.scopes.includes('mcp:ledger:read') || mcpForm.scopes.includes('mcp:ledger:prepare') || mcpForm.scopes.includes('mcp:ledger:commit')">
@@ -277,17 +280,18 @@ let operationsRequest = 0, callsRequest = 0, traceRequest = 0, mcpTokenRequest =
 const operationsQuery = ref({ preset: 'TODAY', granularity: 'AUTO', from: CALC.dateKey(new Date()), to: CALC.dateKey(new Date()) })
 const budgetForm = ref({ currency: 'CNY', dailyLimit: null, monthlyLimit: null, singleRequestLimit: null, tokenLimit: null, enforcementMode: 'WARN', revision: null })
 const defaultMcpExpiry = () => { const date = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); date.setSeconds(0, 0); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16) }
-const mcpForm = ref({ name: '本地 Agent', permissionTemplate: 'READ_ONLY', highRiskPolicy: 'APPROVAL_ONLY', rateLimitPerMinute: 120, scopes: ['mcp:ledger:read', 'mcp:worktime:read'], bookIds: [], expiresAt: defaultMcpExpiry() })
+const mcpForm = ref({ name: '本地 Agent', permissionTemplate: 'READ_ONLY', highRiskPolicy: 'APPROVAL_ONLY', rateLimitPerMinute: 120, scopes: ['mcp:ledger:read', 'mcp:worktime:read', 'mcp:task:read'], bookIds: [], expiresAt: defaultMcpExpiry() })
 const mcpEndpoint = computed(() => `${window.location.origin}/mcp`)
 watch(() => [...mcpForm.value.scopes], (scopes) => {
   const next = scopes.filter(scope => scope !== 'mcp:ledger:commit' || scopes.includes('mcp:ledger:prepare'))
     .filter(scope => scope !== 'mcp:worktime:commit' || scopes.includes('mcp:worktime:prepare'))
+    .filter(scope => scope !== 'mcp:task:commit' || scopes.includes('mcp:task:prepare'))
   if (next.length !== scopes.length) mcpForm.value.scopes = next
 })
 watch(() => mcpForm.value.permissionTemplate, template => {
-  const read = ['mcp:ledger:read', 'mcp:worktime:read']
-  const prepare = [...read, 'mcp:ledger:prepare', 'mcp:worktime:prepare']
-  mcpForm.value.scopes = template === 'READ_ONLY' ? read : template === 'PREPARE' ? prepare : [...prepare, 'mcp:ledger:commit', 'mcp:worktime:commit']
+  const read = ['mcp:ledger:read', 'mcp:worktime:read', 'mcp:task:read']
+  const prepare = [...read, 'mcp:ledger:prepare', 'mcp:worktime:prepare', 'mcp:task:prepare']
+  mcpForm.value.scopes = template === 'READ_ONLY' ? read : template === 'PREPARE' ? prepare : [...prepare, 'mcp:ledger:commit', 'mcp:worktime:commit', 'mcp:task:commit']
 })
 const blankModel = () => ({ displayName: '', providerType: 'DEEPSEEK', baseUrl: 'https://api.deepseek.com/chat/completions', modelName: 'deepseek-chat', apiKey: '', timeoutMs: 60000, pricing: { currency: 'CNY', pricingMode: 'FLAT', inputPerMillion: 0, outputPerMillion: 0, cacheHitPerMillion: 0, cacheMissPerMillion: 0, reasoningPerMillion: 0, offPeakInputPerMillion: 0, offPeakOutputPerMillion: 0, offPeakCacheHitPerMillion: 0, offPeakCacheMissPerMillion: 0, offPeakReasoningPerMillion: 0 } })
 const modelForm = ref(blankModel())
@@ -374,7 +378,7 @@ function formatNumber(value) { return new Intl.NumberFormat('zh-CN').format(Numb
 function formatDuration(value) { if (value == null) return '—'; const ms = Number(value || 0); return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s` }
 function formatMoney(value, currency = 'CNY') { if (value == null) return '—'; return `${currency} ${Number(value).toFixed(4)}` }
 function formatBudgetProgress(value) { return value == null ? '未设置预算' : `已使用 ${Number(value).toFixed(1)}%` }
-function mcpScopeLabel(value) { return ({ 'mcp:ledger:read': '账本查询', 'mcp:worktime:read': '工时查询', 'mcp:ledger:prepare': '账本准备', 'mcp:worktime:prepare': '工时准备', 'mcp:ledger:commit': '账本低风险提交', 'mcp:worktime:commit': '工时低风险提交' })[value] || value }
+function mcpScopeLabel(value) { return ({ 'mcp:ledger:read': '账本查询', 'mcp:worktime:read': '工时查询', 'mcp:task:read': '任务查询', 'mcp:ledger:prepare': '账本准备', 'mcp:worktime:prepare': '工时准备', 'mcp:task:prepare': '任务准备', 'mcp:ledger:commit': '账本低风险提交', 'mcp:worktime:commit': '工时低风险提交', 'mcp:task:commit': '任务低风险提交' })[value] || value }
 function mcpTemplateLabel(value) { return ({ READ_ONLY: '只读', PREPARE: '可准备', COMMIT: '可提交', FULL_WORKSPACE: '完整工作台' })[value] || value }
 function mcpEventLabel(value) { return ({ 'client.register': '客户端注册', 'authorization.approved': '授权通过', 'authorization.denied': '授权拒绝', 'code.exchanged': '授权码交换', 'token.refreshed': 'Token 刷新', 'token.revoked': 'Token 撤销', 'grant.revoked': '授权撤销', 'client.disconnected': '客户端断开', 'mcp.request': 'MCP 请求' })[value] || value }
 async function logout() {

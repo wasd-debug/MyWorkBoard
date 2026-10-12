@@ -31,5 +31,10 @@
             <artifactId>salary-tracker-ledger</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.salarytracker</groupId>
+            <artifactId>salary-tracker-task</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 </project>

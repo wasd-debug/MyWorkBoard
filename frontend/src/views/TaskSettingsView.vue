@@ -1,0 +1,29 @@
+<template>
+  <main class="task-settings-page">
+    <header><p class="label">TASKS / SETTINGS</p><h1>任务设置</h1><p>默认行为、日历叠加、通知与只读订阅。</p></header>
+    <p v-if="error" class="settings-error" role="alert">{{ error }}</p><p v-if="notice" class="settings-notice" role="status">{{ notice }}</p>
+    <section class="settings-card"><h2>默认</h2><div class="settings-grid"><label>默认清单<select v-model="form.defaultListId"><option v-for="list in lists" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select></label><label>默认视图<select v-model="form.defaultView"><option value="INBOX">收件箱</option><option value="TODAY">今天</option><option value="CALENDAR">日历</option><option value="BOARD">看板</option></select></label><label>默认提醒<select v-model="form.defaultReminderMinutes"><option :value="null">不提醒</option><option :value="0">准时</option><option :value="30">提前 30 分钟</option><option :value="1440">提前 1 天</option></select></label><label>一周起始<select v-model.number="form.weekStart"><option :value="1">周一</option><option :value="0">周日</option></select></label><label>时区<input v-model.trim="form.timezone" autocomplete="off" placeholder="Asia/Shanghai"></label></div></section>
+    <section class="settings-card"><h2>日历</h2><div class="checks"><label><input v-model="form.showLunar" type="checkbox">显示农历</label><label><input v-model="form.overlayWorktime" type="checkbox">工时叠加</label><label><input v-model="form.overlayLedger" type="checkbox">流水叠加</label><label><input v-model="form.overlayHoliday" type="checkbox">节假日</label><label><input v-model="form.overlayHabit" type="checkbox">习惯</label></div></section>
+    <section class="settings-card"><h2>通知</h2><div class="checks"><label><input v-model="form.notificationReminders" type="checkbox">任务提醒</label><label><input v-model="form.notificationOverdue" type="checkbox">逾期提醒</label></div><div class="settings-grid"><label>每日摘要<input v-model="form.dailySummaryTime" type="time"></label><label>免打扰开始<input v-model="form.quietStart" type="time"></label><label>免打扰结束<input v-model="form.quietEnd" type="time"></label></div></section>
+    <section class="settings-card"><h2>ICS 订阅</h2><label class="checks"><span><input v-model="form.feedIncludeDescription" type="checkbox">在订阅中包含任务描述（默认关闭）</span></label><div class="feed-row"><code>{{ feed.feedUrl || (feed.active ? `有效订阅 · ${feed.tokenHint}` : '尚未生成订阅地址') }}</code><Button v-if="feed.feedUrl" size="sm" variant="ghost" @click="copyFeed">复制</Button><Button v-if="!feed.active" size="sm" @click="createFeed">生成</Button><Button v-else size="sm" variant="ghost" @click="rotateFeed">轮换</Button><Button v-if="feed.active" size="sm" variant="danger" @click="revokeFeed">撤销</Button></div><small>地址只在生成或轮换时完整显示；服务端只保存哈希。轮换和撤销后旧地址立即失效。</small></section>
+    <div class="settings-actions"><Button :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存设置' }}</Button></div>
+  </main>
+</template>
+
+<script setup>
+import { onMounted, reactive, ref } from 'vue'; import Button from '../components/ui/Button.vue'
+import { apiCreateTaskFeedToken, apiGetTaskFeedToken, apiGetTaskSettings, apiListTaskLists, apiRevokeTaskFeedToken, apiRotateTaskFeedToken, apiUpdateTaskSettings } from '../../packages/api-client/src/index.js'
+const lists=ref([]),feed=reactive({active:false,tokenHint:null,feedUrl:null}),saving=ref(false),error=ref(''),notice=ref('');const form=reactive({})
+function detail(e){return e?.response?.data?.detail||e?.message||'操作失败'}
+async function load(){try{const [settings,taskLists,token]=await Promise.all([apiGetTaskSettings(),apiListTaskLists(),apiGetTaskFeedToken()]);Object.assign(form,settings);lists.value=taskLists||[];Object.assign(feed,token)}catch(e){error.value=detail(e)}}
+async function save(){saving.value=true;error.value='';try{const next=await apiUpdateTaskSettings(form,form.revision);Object.assign(form,next);notice.value='任务设置已保存'}catch(e){error.value=detail(e)}finally{saving.value=false}}
+async function createFeed(){try{Object.assign(feed,await apiCreateTaskFeedToken())}catch(e){error.value=detail(e)}}
+async function rotateFeed(){if(!window.confirm('轮换后旧订阅地址会立即失效，继续吗？'))return;try{Object.assign(feed,await apiRotateTaskFeedToken())}catch(e){error.value=detail(e)}}
+async function revokeFeed(){if(!window.confirm('撤销后所有日历客户端将无法继续同步，继续吗？'))return;try{Object.assign(feed,await apiRevokeTaskFeedToken())}catch(e){error.value=detail(e)}}
+async function copyFeed(){await navigator.clipboard.writeText(feed.feedUrl);notice.value='订阅地址已复制'}
+onMounted(load)
+</script>
+
+<style scoped>
+.task-settings-page{max-width:980px;margin:0 auto;padding:34px 28px 100px}.task-settings-page header h1{margin:5px 0}.task-settings-page header p:last-child{color:var(--muted)}.settings-card{margin-top:16px;padding:20px;border:1px solid var(--line);background:var(--panel)}.settings-card h2{margin:0 0 16px;font-size:1rem}.settings-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.settings-grid label{display:grid;gap:6px;color:var(--muted);font-size:.78rem}.settings-grid select,.settings-grid input{min-height:38px;border:1px solid var(--line2);background:var(--card);color:var(--ink);padding:6px 8px}.checks{display:flex;flex-wrap:wrap;gap:16px}.checks label,.checks span{display:flex;align-items:center;gap:7px}.feed-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.feed-row code{flex:1;min-width:240px;padding:10px;background:var(--panel2);overflow-wrap:anywhere}.settings-card small{display:block;margin-top:10px;color:var(--muted)}.settings-actions{display:flex;justify-content:flex-end;margin-top:18px}.settings-error,.settings-notice{padding:10px 12px;border-left:3px solid var(--down);background:color-mix(in srgb,var(--down) 8%,transparent)}.settings-notice{border-color:var(--accent);background:var(--accent-soft)}@media(max-width:700px){.task-settings-page{padding:22px 14px 100px}.settings-grid{grid-template-columns:1fr 1fr}.feed-row>*{width:100%}}
+</style>
