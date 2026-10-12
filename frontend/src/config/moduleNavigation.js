@@ -18,9 +18,10 @@ export const ledgerNavigation = [
 ]
 
 export const taskNavigation = [
-  { key: 'task', to: '/tasks/today', label: '任务', activePrefix: '/tasks', activeExclude: ['/tasks/habits', '/tasks/calendar', '/tasks/countdowns'] },
+  { key: 'task', to: '/tasks/today', label: '任务', activePrefix: '/tasks', activeExclude: ['/tasks/habits', '/tasks/calendar', '/tasks/focus', '/tasks/countdowns'] },
   { key: 'habits', to: '/tasks/habits', label: '习惯' },
   { key: 'calendar', to: '/tasks/calendar', label: '日历' },
+  { key: 'focus', to: '/tasks/focus', label: '专注' },
   { key: 'countdowns', to: '/tasks/countdowns', label: '倒数日' }
 ]
 

@@ -67,7 +67,7 @@ const itemIcons = {
   punch: Timer, records: Calendar, stats: DataAnalysis,
   overview: Grid, transactions: Tickets, accounts: Wallet, reports: DataAnalysis,
   scheduled: Timer, manage: Management, members: User, recycle: Delete, audit: Document,
-  task: List, habits: Management, calendar: Calendar, countdowns: Timer
+  task: List, habits: Management, calendar: Calendar, focus: Timer, countdowns: Timer
 }
 
 const moduleKey = computed(() => route.path === '/calendar' ? 'calendar' : route.path.startsWith('/ledger') ? 'ledger' : route.path.startsWith('/tasks') ? 'tasks' : route.path === '/settings' ? 'settings' : 'worktime')

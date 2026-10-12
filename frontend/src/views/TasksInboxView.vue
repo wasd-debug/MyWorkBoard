@@ -51,7 +51,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Bell, CalendarClock, CheckCircle2, Circle, Inbox, ListTodo, Menu, Pencil, Plus, RotateCcw, Save, Tag, Timer, Trash2, WifiOff, X } from 'lucide-vue-next'
+import { CalendarClock, CheckCircle2, Circle, Inbox, ListTodo, Menu, Pencil, Plus, RotateCcw, Save, Tag, Trash2, WifiOff, X } from 'lucide-vue-next'
 import Button from '../components/ui/Button.vue'; import Drawer from '../components/ui/Drawer.vue'; import Input from '../components/ui/Input.vue'
 import { useAppStore } from '../stores/app.js'; import { useTasksStore } from '../stores/tasks.js'
 import { apiCreateTaskReminder, apiDeleteTaskReminder, apiListTaskReminders, apiUpdateTaskReminder } from '../../packages/api-client/src/index.js'
@@ -65,7 +65,7 @@ const organizationItem = ref(null)
 const organizationType = ref('list')
 const organizationError = ref('')
 const organizationForm = reactive({ name: '', color: '#2563eb', icon: '', sortOrder: 0, archived: false, parentId: '' })
-const builtins = [{ to: '/tasks/inbox', label: '收件箱', icon: Inbox }, { to: '/tasks/today', label: '今天', icon: CalendarClock }, { to: '/tasks/next7', label: '最近 7 天', icon: CalendarClock }, { to: '/tasks/focus', label: '专注', icon: Timer }, { to: '/tasks/all', label: '全部', icon: ListTodo }, { to: '/tasks/completed', label: '已完成', icon: CheckCircle2 }, { to: '/tasks/inbox-notify', label: '提醒', icon: Bell }, { to: '/tasks/trash', label: '垃圾桶', icon: Trash2 }]
+const builtins = [{ to: '/tasks/inbox', label: '收件箱', icon: Inbox }, { to: '/tasks/today', label: '今天', icon: CalendarClock }, { to: '/tasks/next7', label: '最近 7 天', icon: CalendarClock }, { to: '/tasks/all', label: '全部', icon: ListTodo }, { to: '/tasks/completed', label: '已完成', icon: CheckCircle2 }, { to: '/tasks/trash', label: '垃圾桶', icon: Trash2 }]
 const viewKey = computed(() => route.path.split('/')[2] || 'today')
 const viewTitle = computed(() => route.name === 'tasks-list' ? listName(route.params.publicId) : route.name === 'tasks-tag' ? `#${tagName(route.params.publicId)}` : ({ inbox: '收件箱', today: '今天', next7: '最近 7 天', all: '全部任务', completed: '已完成', trash: '垃圾桶' })[viewKey.value] || '任务')
 const visibleTasks = computed(() => {
