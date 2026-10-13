@@ -51,7 +51,7 @@ export const useTasksStore = defineStore('tasks', {
     ready: false, loading: false, saving: false, syncing: false,
     online: typeof navigator === 'undefined' ? true : navigator.onLine,
     accountScope: '', listGroups: [], lists: [], deletedLists: [], tags: [], tasks: [], habits: [], habitCheckins: [], countdowns: [],
-    total: 0, conflicts: [], rejected: [], pending: 0, error: ''
+    total: 0, conflicts: [], rejected: [], pending: 0, error: '', undoStack: []
   }),
   getters: {
     inbox: state => state.lists.find(item => item.systemKey === 'INBOX') || state.lists[0],
@@ -222,6 +222,7 @@ export const useTasksStore = defineStore('tasks', {
     async update(item, payload) {
       this.saving = true
       try {
+        this.undoStack.push({ item: { ...item }, label: '编辑任务' })
         if (payload.listId && payload.listId !== item.listId) {
           const queue = [item.publicId]
           for (let index = 0; index < queue.length; index += 1) {
@@ -236,12 +237,19 @@ export const useTasksStore = defineStore('tasks', {
       }
       finally { this.saving = false }
     },
-    async complete(item) { return this.saveLocal({ ...item, status: 'COMPLETED', completedAt: new Date().toISOString() }) },
+    async complete(item) { this.undoStack.push({ item: { ...item }, label: '完成任务' }); return this.saveLocal({ ...item, status: 'COMPLETED', completedAt: new Date().toISOString() }) },
     async reopen(item) {
+      this.undoStack.push({ item: { ...item }, label: '重新打开任务' })
       if (item.rrule && item.seriesId && this.tasks.some(value => value.seriesId === item.seriesId && value.seriesSequence > (item.seriesSequence || 0) && value.status === 'OPEN' && !value.deleted)) {
         throw new Error('周期任务的下一实例已生成，无法重开当前实例')
       }
       return this.saveLocal({ ...item, status: 'OPEN', completedAt: null })
+    },
+    async undoLast() {
+      const entry = this.undoStack.pop()
+      if (!entry) return false
+      await this.saveLocal(entry.item)
+      return true
     },
     async remove(item) {
       const descendants = []

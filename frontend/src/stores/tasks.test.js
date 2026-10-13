@@ -64,6 +64,19 @@ test('task getters retain deleted rows for the trash view', () => {
   assert.deepEqual(store.trashedTasks.map(item => item.publicId), ['trash'])
 })
 
+test('task edit can be undone through the local-first projection', async () => {
+  offline()
+  setActivePinia(createPinia())
+  const store = useTasksStore()
+  await store.switchUser({ id: 'task-undo' })
+  await store.init()
+  const created = await store.create({ title: '撤销前' })
+  await store.update(created, { title: '撤销后' })
+  assert.equal(store.tasks[0].title, '撤销后')
+  assert.equal(await store.undoLast(), true)
+  assert.equal(store.tasks[0].title, '撤销前')
+})
+
 test('completed recurring task cannot reopen after its next instance exists', async () => {
   setActivePinia(createPinia())
   const store = useTasksStore()

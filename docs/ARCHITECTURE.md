@@ -23,7 +23,7 @@
 |---|---|---|
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
-| Phase 2 任务 | I8 主线完成，I9 遗留补齐中 | V30-V38 已落地既有主线、I9-A 清单分组/明天视图/活动日志及 I9-B 原子批量操作与手动排序；时间线/快捷键等遗留后续分批，E1 协作与 Phase 4 附件后置 |
+| Phase 2 任务 | 个人版功能实现完成 | V30-V38 与 I9-A/B/C 已落地主线、清单分组/明天/活动、批量/排序、时间线/甘特、快捷键/撤销及增强查询收口；E1 协作、Phase 4 附件和人工真机/外部客户端验收后置 |
 | Phase 3A-D Agent/MCP | Phase 3A/3B/3D 核心闭环，Phase 3C-4 完成 | Web Agent、受控写入和 R4 审批已落地；MCP 已支持只读、PAT、OAuth 2.1 + PKCE、独立 prepare/commit scope、R2 单次提交和结果回放，R3/R4 commit 继续关闭 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |
@@ -654,7 +654,7 @@ report_snapshot (id, user_id, period,     -- daily|weekly|monthly|yearly
 - [x] `P2-I2` 任务核心 local-first：V31 用户级 oplog、push/pull、离线投影、操作压缩、冲突/拒绝与账号隔离
 - [x] `P2-I3` 任务组织与基础视图：V32/V33、清单/标签、父子任务、检查项、基础视图、垃圾桶和共享 local-first
 - [x] `P2-I4` 重复、提醒与任务站内信：V34、历史实例、ShedLock 投递去重、SSE/轮询和未读中心
-- [x] 清单分组在 `P2-I9-A` 通过 V38 补齐；自定义筛选器已在 I7 落地，增强排序/分组仍按后续遗留批次推进
+- [x] 清单分组在 `P2-I9-A` 通过 V38 补齐；自定义筛选器、增强搜索、时间线与排序在 I7/I9-C 收口
 - [x] 重复任务保留每个已完成实例并生成下一实例；使用 `series_id + planned_due_at` 幂等；任务活动日志在 I9-A 落地，协作列、协作表和附件表仍延后到对应阶段
 - [x] `P2-I5` 日历视图：FullCalendar 日/周/月 + 自研年视图；由 app 组装层聚合 task/worktime/ledger/holiday 的公开只读接口，单层失败独立降级；农历通过适配器计算
 - [x] 提醒：任务域首版使用 `task_reminder`、`task_reminder_fire`、`task_inbox_message` + ShedLock + SSE/轮询，不依赖 notification、Web Push、Redis 或 RabbitMQ；F3 后保持 API 语义迁移投递端

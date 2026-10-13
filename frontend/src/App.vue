@@ -43,6 +43,7 @@ import { useAppStore } from './stores/app'
 import { useWorktimeStore } from './stores/worktime.js'
 import { useTaskInboxStore } from './stores/taskInbox.js'
 import { useTaskFocusStore } from './stores/taskFocus.js'
+import { useTasksStore } from './stores/tasks.js'
 import BottomNav from './components/BottomNav.vue'
 import FloatingAgentAssistant from './components/FloatingAgentAssistant.vue'
 import LoadingOverlay from './components/ledger/LoadingOverlay.vue'
@@ -54,6 +55,7 @@ const store = useAppStore()
 const worktimeStore = useWorktimeStore()
 const taskInbox = useTaskInboxStore()
 const focus = useTaskFocusStore()
+const tasks = useTasksStore()
 const route = useRoute()
 const isHome = computed(() => route.path === '/')
 const navigationLoading = ref(false)
@@ -66,6 +68,12 @@ const isExternalFlow = computed(() => route.path === '/oauth/consent' || route.p
 const moduleLabel = computed(() => route.path === '/calendar' ? '日历' : isLedger.value ? '账本' : isTasks.value ? '任务' : route.path.startsWith('/approvals') ? '审批中心' : route.path === '/settings' ? '设置' : isExternalFlow.value ? '外部授权' : '工时')
 const moduleNav = computed(() => route.path === '/calendar' ? [] : isLedger.value ? ledgerNavigation : isTasks.value ? taskNavigation : route.path === '/settings' || route.path.startsWith('/approvals') || isExternalFlow.value ? [] : worktimeNavigation)
 function isNavActive(item) { return navigationItemIsActive(route, item) }
+function onGlobalKeydown(event) {
+  if (!route.path.startsWith('/tasks') || event.defaultPrevented || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target?.tagName)) return
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); tasks.undoLast().catch(() => {}) }
+  else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); router.push('/tasks/search') }
+  else if (!event.metaKey && !event.ctrlKey && event.key.toLowerCase() === 'n') { event.preventDefault(); window.dispatchEvent(new CustomEvent('task-new-request')) }
+}
 function clearNavigationTimers() { window.clearTimeout(navigationFinishTimer); window.clearTimeout(navigationSafetyTimer) }
 function finishNavigationLoading(delay = 0) { clearNavigationTimers(); if (delay) navigationFinishTimer = window.setTimeout(() => { navigationLoading.value = false }, delay); else navigationLoading.value = false }
 function startNavigationLoading() { clearNavigationTimers(); navigationLoading.value = true; navigationSafetyTimer = window.setTimeout(() => { navigationLoading.value = false }, 5000) }
@@ -75,11 +83,11 @@ const removeErrorGuard = router.onError(() => finishNavigationLoading())
 const basis = computed(() => worktimeStore.settings.basis)
 const showBasis = computed(() => ['/punch', '/records', '/stats'].includes(route.path))
 async function setBasis(value) { if (worktimeStore.settings.basis !== value) await worktimeStore.saveSettings({ basis: value }) }
-onMounted(async () => { await store.init(); if (store.authUser && !store.offlineSession) { await Promise.all([taskInbox.refresh(), focus.refresh()]); taskInbox.connect() } })
+onMounted(async () => { window.addEventListener('keydown', onGlobalKeydown); await store.init(); if (store.authUser && !store.offlineSession) { await Promise.all([taskInbox.refresh(), focus.refresh()]); taskInbox.connect() } })
 watch(() => [store.authUser?.id, store.offlineSession], ([userId, offline]) => {
   if (userId && !offline) { taskInbox.refresh(); focus.refresh(); taskInbox.connect() } else { taskInbox.disconnect(); focus.reset() }
 })
-onBeforeUnmount(() => { taskInbox.disconnect(); finishNavigationLoading(); removeBeforeGuard(); removeAfterGuard(); removeErrorGuard() })
+onBeforeUnmount(() => { window.removeEventListener('keydown', onGlobalKeydown); taskInbox.disconnect(); finishNavigationLoading(); removeBeforeGuard(); removeAfterGuard(); removeErrorGuard() })
 </script>
 
 <style scoped>

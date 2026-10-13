@@ -9,10 +9,22 @@ const inboxView = await readFile(new URL('./TasksInboxView.vue', import.meta.url
 const router = await readFile(new URL('../router/index.js', import.meta.url), 'utf8')
 const client = await readFile(new URL('../../packages/api-client/src/index.js', import.meta.url), 'utf8')
 
-test('task enhanced workspace exposes all I7 routes', () => {
-  for (const path of ['/tasks/board', '/tasks/quadrant', '/tasks/search', '/tasks/stats', '/tasks/filter/:publicId']) {
+test('task enhanced workspace exposes all I7 and timeline routes', () => {
+  for (const path of ['/tasks/board', '/tasks/quadrant', '/tasks/search', '/tasks/stats', '/tasks/filter/:publicId', '/tasks/timeline']) {
     assert.match(router, new RegExp(path.replace(/[/:]/g, match => `\\${match}`)))
   }
+})
+
+test('task timeline and keyboard shortcuts complete the third residual batch', async () => {
+  const timeline = await readFile(new URL('./TasksTimelineView.vue', import.meta.url), 'utf8')
+  const app = await readFile(new URL('../App.vue', import.meta.url), 'utf8')
+  const store = await readFile(new URL('../stores/tasks.js', import.meta.url), 'utf8')
+  assert.match(timeline, /时间线 \/ 甘特/)
+  assert.match(timeline, /timeline-bar/)
+  assert.match(app, /event\.key\.toLowerCase\(\) === 'k'/)
+  assert.match(app, /event\.key\.toLowerCase\(\) === 'z'/)
+  assert.match(app, /event\.key\.toLowerCase\(\) === 'n'/)
+  assert.match(store, /async undoLast\(\)/)
 })
 
 test('task import remains preview then explicit commit', () => {
