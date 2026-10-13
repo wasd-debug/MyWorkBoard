@@ -501,6 +501,6 @@ onBeforeUnmount(() => {
 .task-navigation-fade-leave-to {
   opacity:0}
 
-.task-core-time-fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.task-core-time-fields label{display:grid;gap:4px;font-size:12px;color:var(--muted)}.task-core-time-fields .task-inline-check{display:flex;align-items:center;gap:5px;align-self:end}@media(max-width:700px){.task-core-time-fields{grid-template-columns:1fr 1fr}}
+.task-core-time-fields{position:fixed;z-index:1200;right:28px;bottom:82px;width:min(720px,calc(100vw - 56px));display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface);box-shadow:0 12px 30px rgba(15,23,42,.16)}.task-core-time-fields label{display:grid;gap:4px;font-size:12px;color:var(--muted)}.task-core-time-fields .task-inline-check{display:flex;align-items:center;gap:5px;align-self:end}@media(max-width:700px){.task-core-time-fields{right:12px;bottom:76px;width:calc(100vw - 24px);grid-template-columns:1fr 1fr}}
 
 </style>

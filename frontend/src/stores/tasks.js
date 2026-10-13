@@ -26,7 +26,7 @@ let syncTimer
 let activeSyncPromise
 
 function clearState(store) {
-  Object.assign(store, { ready: false, loading: false, syncing: false, listGroups: [], lists: [], deletedLists: [], tags: [], tasks: [], total: 0,
+  Object.assign(store, { ready: false, loading: false, syncing: false, listGroups: [], lists: [], deletedLists: [], tags: [], tasks: [], total: 0, undoStack: [],
     habits: [], habitCheckins: [], countdowns: [], conflicts: [], rejected: [], pending: 0, error: '' })
 }
 
