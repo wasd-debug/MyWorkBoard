@@ -418,6 +418,14 @@ unset VERIFY_DB_PASSWORD
 
 生产环境请使用高强度数据库密码和管理员初始密码，不要把 `deploy/.env` 提交到版本库。
 
+## 2026-10-13 任务批量操作与手动排序生产发布
+
+- 应用提交：`2fc62c0`，服务器发布归档 SHA-256 为 `05357a7e2245bac17dd1c409d07080b7ebe5d565d6ab1cd1f49ece421023c835`；构建并切换 amd64 镜像 `salary-backend:2fc62c0` 与 `salary-frontend:2fc62c0`。
+- 发布前完成 `backups/salary-before-2fc62c0-20261013-082341.sql.gz`，非空且 `gzip -t` 通过；旧镜像保留为 `salary-backend:pre-2fc62c0` 和 `salary-frontend:pre-2fc62c0`。MySQL 容器和数据卷未重建。
+- 仅执行 `up -d --no-deps --force-recreate backend frontend`。线上 `GET /api/health`、首页和 `/v3/api-docs` 返回 200，未认证任务接口返回 401；OpenAPI 含批量接口和排序接口。
+- Flyway 保持 V38（`task groups activity`）；核心数据检查为 `app_user=3`、`task=0`、`task_list=1`、`ledger_transaction=16583`。后端日志确认 `Started SalaryTrackerApplication`，近 10 分钟未发现 ERROR、应用启动失败或 Flyway 失败。
+- 本轮包含最多 200 项的批量完成/删除/移动/改期/标签/优先级/提醒、revision 全量预校验、清单内手动排序和置顶替代入口。页面视觉和移动端交互仍待按手工检查清单验收。
+
 ## HTTP/IP 部署排障记录
 
 本次移动端“服务器拒绝服务”实际不是 80 端口不可达，而是旧生产 Compose 将 `COOKIE_SECURE` 固定为 `true`。站点通过 `http://服务器IP` 访问时，移动端会忽略带 `Secure` 属性的 refresh cookie，日志表现为 `/api/v1/auth/refresh` 连续返回 `401`，刷新后看起来像服务不可用。
