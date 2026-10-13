@@ -83,3 +83,15 @@ test('task inbox uses a ticktick-style three-pane workspace shell', () => {
   assert.match(inboxView, /@click="navigationOpen = true"/)
   assert.match(inboxView, /class="task-navigation-backdrop"/)
 })
+
+test('task sidebar sections reorder independently and task rows open the detail pane', () => {
+  assert.match(inboxView, /collapsedSections\.lists/)
+  assert.match(inboxView, /collapsedSections\.tags/)
+  assert.match(inboxView, /collapsedSections\.filters/)
+  assert.match(inboxView, /dropOrganization\('tag', tag\)/)
+  assert.match(inboxView, /dropOrganization\('filter', filter\)/)
+  assert.match(inboxView, /apiUpdateTaskFilter/)
+  assert.match(inboxView, /selectTaskDetail\(task\)/)
+  assert.match(inboxView, /class="task-detail"/)
+  assert.match(router, /path: '\/tasks\/filter\/:publicId'[\s\S]*TasksInboxView/)
+})
