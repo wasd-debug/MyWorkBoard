@@ -16,6 +16,7 @@
     </Teleport>
 
     <main class="tasks-page">
+      <div v-if="editorOpen" class="task-core-time-fields" aria-label="任务时间字段"><label>开始时间<Input v-model="form.startLocal" type="datetime-local" /></label><label>截止时间<Input v-model="form.dueLocal" type="datetime-local" /></label><label>持续分钟数<Input v-model.number="form.durationMinutes" type="number" min="0" step="5" /></label><label class="task-inline-check"><input v-model="form.allDay" type="checkbox" />全天任务</label></div>
       <header class="tasks-head"><div><p class="label">TASKS</p><h1>{{ viewTitle }}</h1><p class="tasks-summary">{{ visibleOpen.length }} 项待完成 · {{ visibleCompleted.length }} 项已完成</p></div><Button v-if="viewKey !== 'trash'" @click="openCreate"><Plus :size="16" />新建任务</Button></header>
       <div v-if="viewKey !== 'trash'" class="task-toolbar"><label class="task-sort">排序<select v-model="sortBy"><option value="default">手动</option><option value="due">截止时间</option><option value="priority">优先级</option><option value="title">标题</option></select></label><Button size="sm" variant="ghost" @click="toggleBatch">{{ batchMode ? '退出多选' : '多选模式' }}</Button></div>
       <div v-if="!store.online || appStore.offlineSession || store.pending" class="tasks-warning" role="status"><WifiOff v-if="!store.online || appStore.offlineSession" :size="18" /><span v-if="!store.online || appStore.offlineSession">当前离线，变更已保存在本机。</span><span v-else>{{ store.pending }} 项变更等待同步。</span></div>
@@ -499,5 +500,7 @@ onBeforeUnmount(() => {
 .task-navigation-fade-enter-from,
 .task-navigation-fade-leave-to {
   opacity:0}
+
+.task-core-time-fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.task-core-time-fields label{display:grid;gap:4px;font-size:12px;color:var(--muted)}.task-core-time-fields .task-inline-check{display:flex;align-items:center;gap:5px;align-self:end}@media(max-width:700px){.task-core-time-fields{grid-template-columns:1fr 1fr}}
 
 </style>
