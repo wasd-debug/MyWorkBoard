@@ -62,13 +62,13 @@ public final class TaskModels {
                            String parentId, List<String> tagIds, List<ChecklistItem> checklist,
                            int completedSubtasks, int totalSubtasks, boolean deleted, String deletedAt,
                            String rrule, String recurrenceAnchor, String seriesId, Integer seriesSequence,
-                           String plannedDueAt, int focusMinutes) {
+                           String plannedDueAt, int sortOrder, int focusMinutes) {
         public TaskItem(String publicId, String listId, String title, String description, String status,
                         String priority, String startAt, String dueAt, boolean allDay, String timezone,
                         Integer durationMinutes, String source, String completedAt, long revision) {
             this(publicId, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
                     durationMinutes, source, completedAt, revision, null, List.of(), List.of(), 0, 0, false, null,
-                    null, null, null, null, null, 0);
+                    null, null, null, null, null, 0, 0);
         }
     }
 
@@ -90,7 +90,14 @@ public final class TaskModels {
     public record TaskCommand(String listId, String title, String description, String priority,
                               String startAt, String dueAt, Boolean allDay, String timezone,
                               Integer durationMinutes, String parentId, List<String> tagIds,
-                              List<ChecklistCommand> checklist, String rrule, String recurrenceAnchor) {
+                              List<ChecklistCommand> checklist, String rrule, String recurrenceAnchor,
+                              Integer sortOrder) {
+        public TaskCommand(String listId, String title, String description, String priority, String startAt,
+                           String dueAt, Boolean allDay, String timezone, Integer durationMinutes, String parentId,
+                           List<String> tagIds, List<ChecklistCommand> checklist, String rrule, String recurrenceAnchor) {
+            this(listId, title, description, priority, startAt, dueAt, allDay, timezone, durationMinutes,
+                    parentId, tagIds, checklist, rrule, recurrenceAnchor, null);
+        }
         public TaskCommand(String listId, String title, String description, String priority, String startAt,
                            String dueAt, Boolean allDay, String timezone, Integer durationMinutes, String parentId,
                            List<String> tagIds, List<ChecklistCommand> checklist) {
@@ -102,6 +109,23 @@ public final class TaskModels {
             this(listId, title, description, priority, startAt, dueAt, allDay, timezone, durationMinutes,
                     null, null, null, null, null);
         }
+    }
+
+    @Schema(name = "TaskBatchTarget")
+    public record BatchTarget(String publicId, long revision) {
+    }
+
+    @Schema(name = "TaskBatchCommand")
+    public record BatchCommand(List<BatchTarget> targets, String action, String listId, String dueAt,
+                               List<String> tagIds, String priority, ReminderCommand reminder) {
+    }
+
+    @Schema(name = "TaskBatchResult")
+    public record BatchResult(int affected, List<TaskItem> items) {
+    }
+
+    @Schema(name = "TaskSortCommand")
+    public record SortCommand(Integer sortOrder) {
     }
 
     @Schema(name = "TaskDeletedResource")

@@ -224,6 +224,8 @@ export const apiUpdateTaskListGroup = async (id, payload, currentRevision) => da
 export const apiDeleteTaskListGroup = async (id, currentRevision) => data(await api.delete(`/api/v1/tasks/list-groups/${id}`, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiAssignTaskListGroup = async (id, groupId, currentRevision) => data(await api.put(`/api/v1/tasks/lists/${id}/group`, { groupId }, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiListTaskActivity = async (id, params = {}) => data(await api.get(`/api/v1/tasks/${id}/activity`, { params }))
+export const apiBatchTasks = async payload => data(await api.post('/api/v1/tasks/batch', payload))
+export const apiSortTask = async (id, sortOrder, currentRevision) => data(await api.post(`/api/v1/tasks/${id}/sort`, { sortOrder }, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiCreateTaskList = async payload => data(await api.post('/api/v1/tasks/lists', payload, { headers: { 'Idempotency-Key': crypto.randomUUID() } }))
 export const apiCreateTaskTag = async payload => data(await api.post('/api/v1/tasks/tags', payload))
 export const apiRestoreTask = async (publicId, currentRevision) => data(await api.post(`/api/v1/tasks/${publicId}/restore`, null, { headers: { 'If-Match': revision(currentRevision) } }))

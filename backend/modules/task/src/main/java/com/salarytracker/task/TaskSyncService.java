@@ -122,7 +122,7 @@ public class TaskSyncService {
             TaskCommand command = new TaskCommand(payload.listId(), payload.title(), payload.description(),
                     payload.priority(), payload.startAt(), payload.dueAt(), payload.allDay(), payload.timezone(),
                     payload.durationMinutes(), payload.parentId(), payload.tagIds(), payload.checklist(), payload.rrule(),
-                    payload.recurrenceAnchor());
+                    payload.recurrenceAnchor(), payload.sortOrder());
             TaskItem saved = current == null
                     ? tasks.createForSync(command, payload.status(), opId, entityId)
                     : tasks.updateForSync(entityId, command, payload.status(), baseRevision, opId);

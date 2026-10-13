@@ -38,6 +38,8 @@ import type { ApiResponseLong } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskActivityPage } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseTaskBatchResult } from '../models/index.ts';
+// @ts-ignore
 import type { ApiResponseTaskCalendarResponse } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskDeletedResource } from '../models/index.ts';
@@ -68,6 +70,8 @@ import type { ApiResponseVoid } from '../models/index.ts';
 // @ts-ignore
 import type { SseEmitter } from '../models/index.ts';
 // @ts-ignore
+import type { TaskBatchCommand } from '../models/index.ts';
+// @ts-ignore
 import type { TaskCommand } from '../models/index.ts';
 // @ts-ignore
 import type { TaskInboxReadCommand } from '../models/index.ts';
@@ -83,6 +87,8 @@ import type { TaskReminderCommand } from '../models/index.ts';
 import type { TaskRescheduleCommand } from '../models/index.ts';
 // @ts-ignore
 import type { TaskSettingsCommand } from '../models/index.ts';
+// @ts-ignore
+import type { TaskSortCommand } from '../models/index.ts';
 // @ts-ignore
 import type { TaskSyncOperation } from '../models/index.ts';
 // @ts-ignore
@@ -130,6 +136,40 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
             localVarRequestOptions.data = serializeDataIfNeeded(taskListGroupAssignment, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {TaskBatchCommand} taskBatchCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        batchTasks: async (taskBatchCommand: TaskBatchCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'taskBatchCommand' is not null or undefined
+            assertParamExists('batchTasks', 'taskBatchCommand', taskBatchCommand)
+            const localVarPath = `/api/v1/tasks/batch`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(taskBatchCommand, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -1340,6 +1380,50 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
         },
         /**
          *
+         * @param {string} publicId
+         * @param {string} ifMatch
+         * @param {TaskSortCommand} taskSortCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        sortTask: async (publicId: string, ifMatch: string, taskSortCommand: TaskSortCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('sortTask', 'publicId', publicId)
+            // verify required parameter 'ifMatch' is not null or undefined
+            assertParamExists('sortTask', 'ifMatch', ifMatch)
+            // verify required parameter 'taskSortCommand' is not null or undefined
+            assertParamExists('sortTask', 'taskSortCommand', taskSortCommand)
+            const localVarPath = `/api/v1/tasks/{publicId}/sort`
+                .replace('{publicId}', encodeURIComponent(String(publicId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            if (ifMatch != null) {
+                localVarHeaderParameter['If-Match'] = String(ifMatch);
+            }
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(taskSortCommand, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -1654,6 +1738,18 @@ export const TasksApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.assignTaskListGroup(publicId, ifMatch, taskListGroupAssignment, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['TasksApi.assignTaskListGroup']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {TaskBatchCommand} taskBatchCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async batchTasks(taskBatchCommand: TaskBatchCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskBatchResult>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.batchTasks(taskBatchCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.batchTasks']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -2064,6 +2160,20 @@ export const TasksApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {string} publicId
+         * @param {string} ifMatch
+         * @param {TaskSortCommand} taskSortCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async sortTask(publicId: string, ifMatch: string, taskSortCommand: TaskSortCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskItem>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.sortTask(publicId, ifMatch, taskSortCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.sortTask']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -2174,6 +2284,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
          */
         assignTaskListGroup(requestParameters: TasksApiAssignTaskListGroupRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskList> {
             return localVarFp.assignTaskListGroup(requestParameters.publicId, requestParameters.ifMatch, requestParameters.taskListGroupAssignment, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {TasksApiBatchTasksRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        batchTasks(requestParameters: TasksApiBatchTasksRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskBatchResult> {
+            return localVarFp.batchTasks(requestParameters.taskBatchCommand, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -2458,6 +2577,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         },
         /**
          *
+         * @param {TasksApiSortTaskRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        sortTask(requestParameters: TasksApiSortTaskRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskItem> {
+            return localVarFp.sortTask(requestParameters.publicId, requestParameters.ifMatch, requestParameters.taskSortCommand, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -2530,6 +2658,13 @@ export interface TasksApiAssignTaskListGroupRequest {
     readonly ifMatch: string
 
     readonly taskListGroupAssignment: TaskListGroupAssignment
+}
+
+/**
+ * Request parameters for batchTasks operation in TasksApi.
+ */
+export interface TasksApiBatchTasksRequest {
+    readonly taskBatchCommand: TaskBatchCommand
 }
 
 /**
@@ -2766,6 +2901,17 @@ export interface TasksApiRestoreTaskListRequest {
 }
 
 /**
+ * Request parameters for sortTask operation in TasksApi.
+ */
+export interface TasksApiSortTaskRequest {
+    readonly publicId: string
+
+    readonly ifMatch: string
+
+    readonly taskSortCommand: TaskSortCommand
+}
+
+/**
  * Request parameters for updateTask operation in TasksApi.
  */
 export interface TasksApiUpdateTaskRequest {
@@ -2843,6 +2989,16 @@ export class TasksApi extends BaseAPI {
      */
     public assignTaskListGroup(requestParameters: TasksApiAssignTaskListGroupRequest, options?: RawAxiosRequestConfig) {
         return TasksApiFp(this.configuration).assignTaskListGroup(requestParameters.publicId, requestParameters.ifMatch, requestParameters.taskListGroupAssignment, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {TasksApiBatchTasksRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public batchTasks(requestParameters: TasksApiBatchTasksRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).batchTasks(requestParameters.taskBatchCommand, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -3156,6 +3312,16 @@ export class TasksApi extends BaseAPI {
      */
     public restoreTaskList(requestParameters: TasksApiRestoreTaskListRequest, options?: RawAxiosRequestConfig) {
         return TasksApiFp(this.configuration).restoreTaskList(requestParameters.publicId, requestParameters.ifMatch, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {TasksApiSortTaskRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public sortTask(requestParameters: TasksApiSortTaskRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).sortTask(requestParameters.publicId, requestParameters.ifMatch, requestParameters.taskSortCommand, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

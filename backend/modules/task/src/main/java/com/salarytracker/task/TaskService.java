@@ -18,6 +18,10 @@ import com.salarytracker.task.TaskModels.ListGroup;
 import com.salarytracker.task.TaskModels.ListGroupCommand;
 import com.salarytracker.task.TaskModels.Activity;
 import com.salarytracker.task.TaskModels.ActivityPage;
+import com.salarytracker.task.TaskModels.BatchCommand;
+import com.salarytracker.task.TaskModels.BatchResult;
+import com.salarytracker.task.TaskModels.BatchTarget;
+import com.salarytracker.task.TaskModels.SortCommand;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -43,7 +47,7 @@ public class TaskService {
     private static final String TASK_COLUMNS = "t.public_id,t.user_id, l.public_id list_public_id, t.title, t.description, " +
             "t.status, t.priority, t.start_at, t.due_at, t.all_day, t.timezone, t.duration_minutes, " +
             "t.source, t.completed_at, t.revision, t.deleted, t.deleted_at, " +
-            "t.focus_minutes, " +
+            "t.sort_order,t.focus_minutes, " +
             "(SELECT p.public_id FROM task p WHERE p.id = t.parent_id) parent_public_id, " +
             "t.rrule,t.recurrence_anchor,t.series_id,t.series_sequence,t.planned_due_at";
     private final JdbcTemplate jdbcTemplate;
@@ -219,7 +223,7 @@ public class TaskService {
         pageArgs.add(safeSize);
         pageArgs.add(safePage * safeSize);
         List<TaskItem> items = jdbcTemplate.query("SELECT " + TASK_COLUMNS + where +
-                        " ORDER BY t.status = 'COMPLETED', t.created_at DESC, t.id DESC LIMIT ? OFFSET ?",
+                        " ORDER BY t.status = 'COMPLETED', t.sort_order, t.created_at, t.id LIMIT ? OFFSET ?",
                 (result, rowNum) -> task(result), pageArgs.toArray());
         return new TaskPage(items, safePage, safeSize, total);
     }
@@ -246,7 +250,8 @@ public class TaskService {
                 command.startAt(), command.dueAt(), command.allDay() == null ? current.allDay() : command.allDay(),
                 current.timezone(), command.durationMinutes(), current.parentId(), current.tagIds(),
                 current.checklist().stream().map(item -> new TaskModels.ChecklistCommand(item.publicId(), item.title(),
-                        item.completed(), item.sortOrder())).toList(), current.rrule(), current.recurrenceAnchor());
+                        item.completed(), item.sortOrder())).toList(), current.rrule(), current.recurrenceAnchor(),
+                current.sortOrder());
         return update(publicId, update, ifMatch);
     }
 
@@ -550,12 +555,15 @@ public class TaskService {
         if (rrule != null && values.dueAt() == null) throw new IllegalArgumentException("重复任务必须设置到期时间");
         String seriesId = rrule == null ? null : UUID.randomUUID().toString();
         try {
+            int sortOrder = command.sortOrder() == null ? jdbcTemplate.queryForObject(
+                    "SELECT COALESCE(MAX(sort_order),-1)+1 FROM task WHERE user_id=? AND list_id=? AND deleted=FALSE", Integer.class, userId, listDatabaseId)
+                    : Math.max(0, command.sortOrder());
             jdbcTemplate.update("INSERT INTO task (public_id, user_id, list_id, parent_id, title, description, status, priority, " +
-                            "start_at, due_at, all_day, timezone, duration_minutes,series_id,series_sequence,planned_due_at,rrule,recurrence_anchor,source, completed_at, created_by, client_op_key) " +
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'WEB', ?, ?, ?)",
+                            "start_at, due_at, all_day, timezone, duration_minutes,sort_order,series_id,series_sequence,planned_due_at,rrule,recurrence_anchor,source, completed_at, created_by, client_op_key) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'WEB', ?, ?, ?)",
                     publicId, userId, listDatabaseId, parentDatabaseId, values.title(), values.description(), normalizedStatus, values.priority(),
                     timestamp(values.startAt()), timestamp(values.dueAt()), values.allDay(), values.timezone(),
-                    values.durationMinutes(), seriesId, seriesId == null ? null : 1, timestamp(values.dueAt()), rrule, anchor,
+                    values.durationMinutes(), sortOrder, seriesId, seriesId == null ? null : 1, timestamp(values.dueAt()), rrule, anchor,
                     "COMPLETED".equals(normalizedStatus) ? Timestamp.from(Instant.now()) : null,
                     userId, opKey);
         } catch (DuplicateKeyException exception) {
@@ -611,10 +619,11 @@ public class TaskService {
         String seriesId = rrule == null ? null : before.seriesId() == null ? UUID.randomUUID().toString() : before.seriesId();
         Integer sequence = rrule == null ? null : before.seriesSequence() == null ? 1 : before.seriesSequence();
         int updated = jdbcTemplate.update("UPDATE task SET list_id = ?, parent_id = ?, title = ?, description = ?, status = ?, priority = ?, " +
-                        "start_at = ?, due_at = ?, all_day = ?, timezone = ?, duration_minutes = ?,rrule=?,recurrence_anchor=?,series_id=?,series_sequence=?,planned_due_at=?, completed_at = ?, revision = revision + 1 " +
+                        "start_at = ?, due_at = ?, all_day = ?, timezone = ?, duration_minutes = ?,sort_order=?,rrule=?,recurrence_anchor=?,series_id=?,series_sequence=?,planned_due_at=?, completed_at = ?, revision = revision + 1 " +
                         "WHERE public_id = ? AND user_id = ? AND deleted = FALSE AND revision = ?",
                 listDatabaseId, parentDatabaseId, values.title(), values.description(), normalizedStatus, values.priority(), timestamp(values.startAt()),
-                timestamp(values.dueAt()), values.allDay(), values.timezone(), values.durationMinutes(), rrule, anchor, seriesId, sequence,
+                timestamp(values.dueAt()), values.allDay(), values.timezone(), values.durationMinutes(),
+                command.sortOrder() == null ? before.sortOrder() : Math.max(0, command.sortOrder()), rrule, anchor, seriesId, sequence,
                 rrule == null ? null : timestamp(values.dueAt()),
                 "COMPLETED".equals(normalizedStatus) ? timestamp(before.completedAt() == null
                         ? Instant.now() : Instant.parse(before.completedAt())) : null,
@@ -665,6 +674,81 @@ public class TaskService {
         TaskItem current = taskForUser(currentUser.id(), publicId);
         ensureRecurringTaskCanReopen(currentUser.id(), current);
         return changeStatus(publicId, ifMatch, "OPEN", UUID.randomUUID().toString());
+    }
+
+    @Transactional
+    public BatchResult batch(BatchCommand command) {
+        if (command == null || command.targets() == null || command.targets().isEmpty()) throw new IllegalArgumentException("批量操作至少选择一项");
+        if (command.targets().size() > 200) throw new IllegalArgumentException("批量操作最多支持 200 项");
+        String action = enumValue(command.action(), null, List.of("COMPLETE", "DELETE", "MOVE", "PRIORITY", "RESCHEDULE", "TAGS", "REMINDER"), "action");
+        long userId = currentUser.id();
+        for (BatchTarget target : command.targets()) {
+            TaskItem current = taskForUser(userId, target.publicId());
+            if (current.revision() != target.revision()) throw new ConflictException("任务版本已变化", current.revision());
+        }
+        List<TaskItem> changed = new ArrayList<>();
+        for (BatchTarget target : command.targets()) {
+            TaskItem before = taskForUser(userId, target.publicId());
+            if (before.revision() != target.revision()) throw new ConflictException("任务版本已变化", before.revision());
+            if ("COMPLETE".equals(action)) changeStatus(target.publicId(), String.valueOf(target.revision()), "COMPLETED", UUID.randomUUID().toString());
+            else if ("DELETE".equals(action)) delete(target.publicId(), String.valueOf(target.revision()), UUID.randomUUID().toString());
+            else if ("REMINDER".equals(action)) {
+                if (command.reminder() == null) throw new IllegalArgumentException("提醒内容不能为空");
+                String kind = enumValue(command.reminder().kind(), null, List.of("RELATIVE", "ABSOLUTE"), "reminder.kind");
+                Integer offset = command.reminder().offsetMinutes();
+                Instant remindAt;
+                if ("RELATIVE".equals(kind)) {
+                    if (offset == null || offset < 0 || offset > 10080 || before.dueAt() == null) throw new IllegalArgumentException("相对提醒需要有效截止时间和 0-10080 分钟偏移");
+                    remindAt = Instant.parse(before.dueAt()).minusSeconds(offset * 60L);
+                } else {
+                    if (command.reminder().remindAt() == null || command.reminder().remindAt().isBlank()) throw new IllegalArgumentException("绝对提醒时间不能为空");
+                    remindAt = Instant.parse(command.reminder().remindAt());
+                }
+                jdbcTemplate.update("INSERT INTO task_reminder(public_id,user_id,task_id,kind,offset_minutes,remind_at,channel,daily_until_done) " +
+                                "SELECT UUID(),user_id,id,?,?,?,?,? FROM task WHERE public_id=? AND user_id=? AND deleted=FALSE",
+                        kind, offset, Timestamp.from(remindAt), "IN_APP", Boolean.TRUE.equals(command.reminder().dailyUntilDone()), target.publicId(), userId);
+            } else {
+                String listId = "MOVE".equals(action) ? command.listId() : before.listId();
+                if ("MOVE".equals(action) && (listId == null || listId.isBlank())) throw new IllegalArgumentException("移动操作必须指定清单");
+                Long listDbId = resolveListId(userId, listId);
+                String priority = "PRIORITY".equals(action) ? enumValue(command.priority(), null, List.of("NONE", "LOW", "MEDIUM", "HIGH"), "priority") : before.priority();
+                String dueAt = "RESCHEDULE".equals(action) ? command.dueAt() : before.dueAt();
+                int updated = jdbcTemplate.update("UPDATE task SET list_id=?,priority=?,due_at=?,revision=revision+1 WHERE public_id=? AND user_id=? AND deleted=FALSE AND revision=?",
+                        listDbId, priority, dueAt == null || dueAt.isBlank() ? null : Timestamp.from(Instant.parse(dueAt)), target.publicId(), userId, target.revision());
+                ensureUpdated(updated, userId, target.publicId());
+                if ("TAGS".equals(action)) {
+                    List<String> tags = new ArrayList<>(before.tagIds());
+                    if (command.tagIds() != null) command.tagIds().stream().filter(tag -> !tags.contains(tag)).forEach(tags::add);
+                    replaceTagsAndChecklist(userId, target.publicId(), tags, before.checklist().stream().map(i -> new TaskModels.ChecklistCommand(i.publicId(), i.title(), i.completed(), i.sortOrder())).toList());
+                }
+                TaskItem item = taskForUser(userId, target.publicId());
+                changeLog.append(userId, UUID.randomUUID().toString(), target.publicId(), "UPSERT", syncEntity(item, false));
+            }
+            changed.add(taskForUser(userId, target.publicId(), "DELETE".equals(action)));
+        }
+        return new BatchResult(changed.size(), changed);
+    }
+
+    @Transactional
+    public TaskItem sort(String publicId, SortCommand command, String ifMatch) {
+        long userId = currentUser.id();
+        TaskItem before = taskForUser(userId, publicId);
+        long expected = requiredRevision(ifMatch);
+        if (before.revision() != expected) throw new ConflictException("任务版本已变化", before.revision());
+        List<String> ordered = jdbcTemplate.query("SELECT public_id FROM task WHERE user_id=? AND list_id=(SELECT list_id FROM task WHERE public_id=? AND user_id=?) " +
+                        "AND deleted=FALSE AND status=? AND public_id<>? ORDER BY sort_order,created_at,id",
+                (row, number) -> row.getString(1), userId, publicId, userId, before.status(), publicId);
+        int order = Math.min(command == null || command.sortOrder() == null ? before.sortOrder() : Math.max(0, command.sortOrder()), ordered.size());
+        ordered.add(order, publicId);
+        for (int index = 0; index < ordered.size(); index++) {
+            String id = ordered.get(index);
+            int changed = jdbcTemplate.update("UPDATE task SET sort_order=?,revision=revision+1 WHERE public_id=? AND user_id=? AND deleted=FALSE", index, id, userId);
+            if (changed != 1) throw new ConflictException("任务排序失败", expected);
+            TaskItem changedItem = taskForUser(userId, id);
+            changeLog.append(userId, UUID.randomUUID().toString(), id, "UPSERT", syncEntity(changedItem, false));
+        }
+        TaskItem item = taskForUser(userId, publicId);
+        return item;
     }
 
     private void ensureRecurringTaskCanReopen(long userId, TaskItem current) {
@@ -862,7 +946,7 @@ public class TaskService {
         return new TaskModels.SyncEntity(item.publicId(), item.listId(), item.title(), item.description(), item.status(),
                 item.priority(), item.startAt(), item.dueAt(), item.allDay(), item.timezone(), item.durationMinutes(),
                 item.source(), item.completedAt(), item.revision(), deleted, item.parentId(), item.tagIds(),
-                item.checklist(), item.deletedAt(), null, null, null, null, null, null, item.rrule(),
+                item.checklist(), item.deletedAt(), null, null, null, null, item.sortOrder(), null, item.rrule(),
                 item.recurrenceAnchor(), item.seriesId(), item.seriesSequence(), item.plannedDueAt(), item.focusMinutes(), null);
     }
 
@@ -1141,7 +1225,7 @@ public class TaskService {
                 result.getBoolean("deleted"), instant(result.getTimestamp("deleted_at")), result.getString("rrule"),
                 result.getString("recurrence_anchor"), result.getString("series_id"),
                 (Integer) result.getObject("series_sequence"), instant(result.getTimestamp("planned_due_at")),
-                result.getInt("focus_minutes"));
+                result.getInt("sort_order"), result.getInt("focus_minutes"));
     }
 
     private ValidatedTask validate(TaskCommand command, TaskItem before) {

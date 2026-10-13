@@ -21,6 +21,31 @@ import static org.mockito.Mockito.when;
 
 class TaskOrganizationIntegrationTest extends MySqlIntegrationTestSupport {
     @Test
+    void batchesAtomicallyAndPersistsManualSort() {
+        TaskService service = service(createUser());
+        var targetList = service.createList(new TaskListCommand("批量目标", null, null, 1, false), "batch-list");
+        var first = service.create(new TaskCommand(null, "第一项", null, null, null, null, null, null, null), "batch-first");
+        var second = service.create(new TaskCommand(null, "第二项", null, null, null, null, null, null, null), "batch-second");
+        var moved = service.batch(new TaskModels.BatchCommand(List.of(
+                new TaskModels.BatchTarget(first.publicId(), first.revision()),
+                new TaskModels.BatchTarget(second.publicId(), second.revision())), "MOVE", targetList.publicId(),
+                null, null, null, null));
+        assertEquals(2, moved.affected());
+        assertTrue(moved.items().stream().allMatch(item -> targetList.publicId().equals(item.listId())));
+
+        var sorted = service.sort(second.publicId(), new TaskModels.SortCommand(0),
+                String.valueOf(service.get(second.publicId()).revision()));
+        assertEquals(0, sorted.sortOrder());
+        assertEquals(second.publicId(), service.listTasks(targetList.publicId(), null, "ALL", null, 0, 20).items().get(0).publicId());
+
+        long firstRevision = service.get(first.publicId()).revision();
+        assertThrows(ConflictException.class, () -> service.batch(new TaskModels.BatchCommand(List.of(
+                new TaskModels.BatchTarget(first.publicId(), firstRevision),
+                new TaskModels.BatchTarget(second.publicId(), 1)), "COMPLETE", null, null, null, null, null)));
+        assertEquals("OPEN", service.get(first.publicId()).status());
+    }
+
+    @Test
     void groupsListsShowsTomorrowAndRecordsActivity() {
         long userId = createUser();
         TaskService service = service(userId);

@@ -3,7 +3,7 @@ import { createTaskSyncEngine } from '../../packages/sync-engine/src/index.js'
 import { apiListDeletedTaskLists, apiListTaskLists, apiListTaskTags, apiListTasks, apiPullTaskSync,
   apiGetHabitStats, apiListCountdowns, apiListHabits, apiPurgeTask, apiPushTaskSync, apiRestoreTask,
   apiRestoreTaskList, apiListTaskListGroups, apiCreateTaskListGroup, apiUpdateTaskListGroup,
-  apiDeleteTaskListGroup, apiAssignTaskListGroup } from '../../packages/api-client/src/index.js'
+  apiDeleteTaskListGroup, apiAssignTaskListGroup, apiBatchTasks, apiSortTask } from '../../packages/api-client/src/index.js'
 import { accountScopeFor, taskDatabaseName } from '../utils/accountScope.js'
 import { createClientId } from '../utils/clientId.js'
 
@@ -300,6 +300,22 @@ export const useTasksStore = defineStore('tasks', {
       const current = this.lists.find(value => value.publicId === item.publicId) || item
       await apiAssignTaskListGroup(item.publicId, groupId || null, current.revision)
       await this.refreshServer()
+    },
+    async batchTasks(items, action, values = {}) {
+      if (!this.online) throw new Error('批量操作需要联网执行')
+      await this.syncNow()
+      const current = items.map(item => this.tasks.find(value => value.publicId === item.publicId) || item)
+      const result = await apiBatchTasks({ targets: current.map(item => ({ publicId: item.publicId, revision: item.revision })), action, ...values })
+      await this.refreshServer()
+      return result
+    },
+    async sortTask(item, sortOrder) {
+      if (!this.online) throw new Error('手动排序需要联网执行')
+      await this.syncNow()
+      const current = this.tasks.find(value => value.publicId === item.publicId) || item
+      const result = await apiSortTask(current.publicId, sortOrder, current.revision)
+      await this.refreshServer()
+      return result
     },
     async purge(item) {
       if (!this.online) throw new Error('永久清除需要联网执行')

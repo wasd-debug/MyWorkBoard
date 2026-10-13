@@ -32,4 +32,5 @@ export interface TaskCommand {
     'checklist'?: Array<TaskChecklistCommand>;
     'rrule'?: string;
     'recurrenceAnchor'?: string;
+    'sortOrder'?: number;
 }

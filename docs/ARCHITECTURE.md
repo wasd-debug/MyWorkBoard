@@ -23,7 +23,7 @@
 |---|---|---|
 | Phase 0 地基 | 工程与自动化发布门禁完成 | Flyway、JWT、唯一 v1 API、record/enum DTO、OpenAPI 生成客户端、工时资源前端、物理模块、视觉/无障碍和恢复自动化已落地；真机结果单独留档 |
 | Phase 1 账本 | local-first 主链与自动化发布门禁完成 | 六类离线资源统一走 sync-engine，断网/重连/冲突/拒绝、真实工作簿、WebKit、多视口和 axe E2E 已通过 |
-| Phase 2 任务 | I8 主线完成，I9 遗留补齐中 | V30-V38 已落地既有主线及 I9-A 清单分组、独立明天视图、任务活动日志；时间线/快捷键/批量等遗留后续分批，E1 协作与 Phase 4 附件后置 |
+| Phase 2 任务 | I8 主线完成，I9 遗留补齐中 | V30-V38 已落地既有主线、I9-A 清单分组/明天视图/活动日志及 I9-B 原子批量操作与手动排序；时间线/快捷键等遗留后续分批，E1 协作与 Phase 4 附件后置 |
 | Phase 3A-D Agent/MCP | Phase 3A/3B/3D 核心闭环，Phase 3C-4 完成 | Web Agent、受控写入和 R4 审批已落地；MCP 已支持只读、PAT、OAuth 2.1 + PKCE、独立 prepare/commit scope、R2 单次提交和结果回放，R3/R4 commit 继续关闭 |
 | Phase 4 文件/RAG | 未启动 | 无文件域、MinIO/NAS、Tika、Qdrant 和知识库 |
 | Phase 5 洞察 | 未启动 | 只有 `domain_event` 预留表，无事件链路和报表快照 |

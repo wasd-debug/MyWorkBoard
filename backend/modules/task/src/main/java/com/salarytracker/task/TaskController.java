@@ -20,6 +20,9 @@ import com.salarytracker.task.TaskModels.SyncOperation;
 import com.salarytracker.task.TaskModels.SyncPullResponse;
 import com.salarytracker.task.TaskModels.SyncPushResponse;
 import com.salarytracker.task.TaskModels.RescheduleCommand;
+import com.salarytracker.task.TaskModels.BatchCommand;
+import com.salarytracker.task.TaskModels.BatchResult;
+import com.salarytracker.task.TaskModels.SortCommand;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
@@ -176,6 +179,23 @@ public class TaskController {
                                       @RequestParam(defaultValue = "0") int page,
                                       @RequestParam(defaultValue = "50") int size) {
         return ApiResponse.ok(taskService.listTasks(listId, status, view, tagId, page, size));
+    }
+
+    @PostMapping(value = "/batch", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Audit(module = "task", action = "task.batch", targetType = "task")
+    @Operation(operationId = "batchTasks")
+    public ApiResponse<BatchResult> batch(@RequestBody BatchCommand body) {
+        return ApiResponse.ok(taskService.batch(body));
+    }
+
+    @PostMapping(value = "/{publicId}/sort", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Audit(module = "task", action = "task.sort", targetType = "task")
+    @Operation(operationId = "sortTask")
+    public ApiResponse<TaskItem> sort(@PathVariable String publicId, @RequestBody SortCommand body,
+                                      @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(taskService.sort(publicId, body, ifMatch));
     }
 
     @GetMapping("/{publicId}/activity")
