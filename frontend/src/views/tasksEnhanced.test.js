@@ -84,6 +84,9 @@ test('task inbox uses a ticktick-style three-pane workspace shell', () => {
   assert.match(inboxView, /class="task-navigation-backdrop"/)
   assert.match(inboxView, /task-sidebar-collapsed:\$\{store\.accountScope\}/)
   assert.match(inboxView, /sidebar-collapsed/)
+  assert.match(inboxView, /显示详细/)
+  assert.match(inboxView, /显示检查事项/)
+  assert.match(inboxView, /task-list-view:\$\{store\.accountScope\}/)
 })
 
 test('task sidebar sections reorder independently and task rows open the detail pane', () => {
