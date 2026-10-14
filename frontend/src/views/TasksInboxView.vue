@@ -1,5 +1,5 @@
 <template>
-  <section class="task-workspace">
+  <section class="task-workspace" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
     <Teleport to="body" :disabled="!compactNavigation">
       <Transition name="task-navigation-fade">
         <button v-if="navigationOpen" class="task-navigation-backdrop" type="button" aria-label="关闭任务菜单" @click="closeNavigation"></button>
@@ -16,7 +16,7 @@
 
     <main class="tasks-page">
       <div v-if="editorOpen" class="task-core-time-fields" aria-label="任务时间字段"><label>开始时间<Input v-model="form.startLocal" type="datetime-local" /></label><label>截止时间<Input v-model="form.dueLocal" type="datetime-local" /></label><label>持续分钟数<Input v-model.number="form.durationMinutes" type="number" min="0" step="5" /></label><label class="task-inline-check"><input v-model="form.allDay" type="checkbox" />全天任务</label></div>
-      <header class="tasks-head"><div class="tasks-title"><button class="task-collapse-button" type="button" aria-label="打开任务菜单" title="打开任务菜单" @click="navigationOpen = true"><Menu :size="19" /></button><div><p class="label">TASKS</p><h1>{{ viewTitle }}</h1><p class="tasks-summary">{{ visibleOpen.length }} 项待完成 · {{ visibleCompleted.length }} 项已完成</p></div></div><div class="tasks-head-actions"><button class="task-head-icon" type="button" aria-label="排序方式" title="排序方式" @click="sortBy = sortBy === 'default' ? 'due' : 'default'"><ListTodo :size="17" /></button><Button v-if="viewKey !== 'trash'" @click="openCreate"><Plus :size="16" />新建任务</Button></div></header>
+      <header class="tasks-head"><div class="tasks-title"><button class="task-collapse-button" type="button" :aria-label="compactNavigation ? '打开任务菜单' : (sidebarCollapsed ? '展开任务导航' : '折叠任务导航')" :title="compactNavigation ? '打开任务菜单' : (sidebarCollapsed ? '展开任务导航' : '折叠任务导航')" @click="toggleSidebar"><Menu :size="19" /></button><div><p class="label">TASKS</p><h1>{{ viewTitle }}</h1><p class="tasks-summary">{{ visibleOpen.length }} 项待完成 · {{ visibleCompleted.length }} 项已完成</p></div></div><div class="tasks-head-actions"><button class="task-head-icon" type="button" aria-label="排序方式" title="排序方式" @click="sortBy = sortBy === 'default' ? 'due' : 'default'"><ListTodo :size="17" /></button><Button v-if="viewKey !== 'trash'" @click="openCreate"><Plus :size="16" />新建任务</Button></div></header>
       <div v-if="viewKey !== 'trash'" class="task-quick-add"><Plus :size="17" /><button type="button" @click="openCreate">添加任务至“{{ viewTitle }}”</button><kbd>N</kbd></div>
       <div v-if="viewKey !== 'trash'" class="task-toolbar"><label class="task-sort">排序<select v-model="sortBy"><option value="default">手动</option><option value="due">截止时间</option><option value="priority">优先级</option><option value="title">标题</option></select></label><Button size="sm" variant="ghost" @click="toggleBatch">{{ batchMode ? '退出多选' : '多选模式' }}</Button></div>
       <div v-if="!store.online || appStore.offlineSession || store.pending" class="tasks-warning" role="status"><WifiOff v-if="!store.online || appStore.offlineSession" :size="18" /><span v-if="!store.online || appStore.offlineSession">当前离线，变更已保存在本机。</span><span v-else>{{ store.pending }} 项变更等待同步。</span></div>
@@ -61,7 +61,7 @@ import Button from '../components/ui/Button.vue'; import Drawer from '../compone
 import { useAppStore } from '../stores/app.js'; import { useTasksStore } from '../stores/tasks.js'
 import { apiCreateTaskReminder, apiDeleteTaskReminder, apiListTaskActivity, apiListTaskFilters, apiListTaskFilterTasks, apiListTaskReminders, apiUpdateTaskFilter, apiUpdateTaskReminder } from '../../packages/api-client/src/index.js'
 
-const route = useRoute(); const store = useTasksStore(); const appStore = useAppStore(); const editorOpen = ref(false); const editing = ref(null); const editorError = ref(''); const sortBy = ref('default'); const navigationOpen = ref(false); const expandedGroups = ref(new Set()); const activities = ref([]); const activityLoading = ref(false)
+const route = useRoute(); const store = useTasksStore(); const appStore = useAppStore(); const editorOpen = ref(false); const editing = ref(null); const editorError = ref(''); const sortBy = ref('default'); const navigationOpen = ref(false); const sidebarCollapsed = ref(false); const expandedGroups = ref(new Set()); const activities = ref([]); const activityLoading = ref(false)
 const batchMode = ref(false); const selectedIds = ref(new Set()); const batchListId = ref(''); const batchPriority = ref('NONE'); const batchDueLocal = ref(''); const batchTagId = ref(''); const batchReminderOffset = ref(30); const draggedTask = ref(null)
 const selectedTask = ref(null); const filters = ref([]); const filteredTasks = ref([]); const draggedOrganization = ref(null)
 const compactNavigation = ref(false)
@@ -156,6 +156,9 @@ function filterPayload(item, sortOrder) { return { name: item.name, listIds: ite
 async function loadFilters() { if (!store.online) { filters.value = []; filteredTasks.value = []; return }; try { filters.value = (await apiListTaskFilters()).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)); if (route.name === 'tasks-filter') filteredTasks.value = (await apiListTaskFilterTasks(route.params.publicId, { size: 200 }))?.items || [] } catch (error) { store.error = detail(error, '筛选器加载失败') } }
 function resetForm(task = null) { const known = ['', 'FREQ=DAILY', 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', 'FREQ=WEEKLY', 'FREQ=MONTHLY', 'FREQ=YEARLY']; const recurrence = known.includes(task?.rrule || '') ? task?.rrule || '' : 'CUSTOM'; activities.value = []; Object.assign(form, { title: task?.title || '', description: task?.description || '', priority: task?.priority || 'NONE', startLocal: task?.startAt ? toLocalInput(task.startAt) : '', dueLocal: task?.dueAt ? toLocalInput(task.dueAt) : '', durationMinutes: task?.durationMinutes || 0, allDay: Boolean(task?.allDay), listId: task?.listId || currentListId(), parentId: task?.parentId || '', tagIds: [...(task?.tagIds || [])], checklistText: (task?.checklist || []).map(item => `${item.completed ? '[x] ' : ''}${item.title}`).join('\n'), recurrence, customRrule: recurrence === 'CUSTOM' ? task.rrule : '', recurrenceAnchor: task?.recurrenceAnchor || 'DUE_DATE', reminderEnabled: false, reminderKind: 'RELATIVE', reminderOffset: 30, remindLocal: '', reminder: null }); editorError.value = '' }
 function closeNavigation() { navigationOpen.value = false }
+function sidebarStateKey() { return `task-sidebar-collapsed:${store.accountScope}` }
+function restoreSidebarState() { sidebarCollapsed.value = localStorage.getItem(sidebarStateKey()) === 'true' }
+function toggleSidebar() { if (compactNavigation.value) navigationOpen.value = true; else { sidebarCollapsed.value = !sidebarCollapsed.value; localStorage.setItem(sidebarStateKey(), String(sidebarCollapsed.value)) } }
 function updateCompactNavigation(event) { compactNavigation.value = event.matches; if (!event.matches) closeNavigation() }
 function currentListId() { return route.name === 'tasks-list' ? String(route.params.publicId) : store.inbox?.publicId || '' }
 function openCreate() { editing.value = null; resetForm(); editorOpen.value = true } async function openEdit(task) { editing.value = task; resetForm(task); editorOpen.value = true; if (store.online) { try { const reminders = await apiListTaskReminders(task.publicId); const reminder = reminders?.[0]; if (reminder) Object.assign(form, { reminderEnabled: true, reminderKind: reminder.kind, reminderOffset: reminder.offsetMinutes ?? 30, remindLocal: reminder.remindAt ? toLocalInput(reminder.remindAt) : '', reminder }) } catch (error) { editorError.value = detail(error, '提醒加载失败') } } }
@@ -215,7 +218,7 @@ function listName(id) { return store.lists.find(item => item.publicId === id)?.n
 function onEscape(event) { if (event.key === 'Escape') closeNavigation() }
 watch(navigationOpen, open => document.body.classList.toggle('task-navigation-open', open))
 watch(() => route.fullPath, () => { closeNavigation(); selectedTask.value = null; loadFilters() })
-watch(() => store.accountScope, scope => { try { expandedGroups.value = new Set(JSON.parse(localStorage.getItem(`task-groups:${scope}`) || '[]')) } catch { expandedGroups.value = new Set() }; restoreSectionState(); loadFilters() }, { immediate: true })
+watch(() => store.accountScope, scope => { try { expandedGroups.value = new Set(JSON.parse(localStorage.getItem(`task-groups:${scope}`) || '[]')) } catch { expandedGroups.value = new Set() }; restoreSectionState(); restoreSidebarState(); loadFilters() }, { immediate: true })
 watch(() => store.tasks, () => { if (selectedTask.value) selectedTask.value = store.tasks.find(item => item.publicId === selectedTask.value.publicId) || null })
 watch(editorOpen, open => { if (open && editing.value) loadActivity(editing.value) })
 function onNewRequest() { openCreate() }
@@ -240,7 +243,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .task-workspace {
   display:grid;
-  grid-template-columns:240px minmax(480px,760px) minmax(240px,1fr);
+  grid-template-columns:240px minmax(370px,1fr) minmax(320px,36%);
   min-height:calc(100vh - 72px);
   margin:-36px -40px -104px;
   background:var(--card)}
@@ -250,9 +253,11 @@ onBeforeUnmount(() => {
   overflow-y:auto;
   background:color-mix(in srgb,var(--card) 96%,var(--paper))}
 .task-sidebar-head,
-.task-navigation-trigger,
 .task-navigation-backdrop {
   display:none}
+.task-workspace.sidebar-collapsed{grid-template-columns:48px minmax(370px,1fr) minmax(320px,36%)}
+.task-workspace.sidebar-collapsed .task-sidebar{padding-left:4px;padding-right:4px;overflow:hidden}
+.task-workspace.sidebar-collapsed .task-sidebar>*{visibility:hidden}
 .task-sidebar nav {
   display:grid;
   gap:3px}
@@ -307,7 +312,6 @@ onBeforeUnmount(() => {
   padding-bottom:14px}
 .tasks-title,.tasks-head-actions{display:flex;align-items:center;gap:10px}
 .task-collapse-button,.task-head-icon{display:grid;place-items:center;width:34px;height:34px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--ink2)}
-.task-collapse-button{display:none}
 .task-head-icon:hover{background:var(--paper);color:var(--ink)}
 .tasks-head-actions .ui-button{min-height:34px}
 .tasks-head h1 {
@@ -467,7 +471,7 @@ onBeforeUnmount(() => {
 .task-detail-title{display:flex;align-items:flex-start;gap:8px;padding:26px 24px 20px;border-bottom:1px solid var(--line)}.task-detail-title>div{min-width:0}.task-detail-title h2{margin:2px 0 10px;font-size:1.25rem;line-height:1.35;overflow-wrap:anywhere}.task-detail-title p{margin:0;color:var(--ink2);font-size:.82rem;line-height:1.7;white-space:pre-wrap}.task-detail-title .detail-placeholder{color:var(--muted)}
 .task-detail dl{margin:0;padding:10px 24px;border-bottom:1px solid var(--line)}.task-detail dl>div{display:grid;grid-template-columns:70px minmax(0,1fr);gap:10px;padding:9px 0;font-size:.78rem}.task-detail dt{color:var(--muted)}.task-detail dd{margin:0;overflow-wrap:anywhere}
 .detail-checklist,.detail-activity{padding:18px 24px;border-bottom:1px solid var(--line)}.detail-checklist h3,.detail-activity h3{margin:0 0 12px;font-size:.82rem}.detail-checklist h3 span{color:var(--muted);font-weight:500}.detail-checklist p{display:flex;align-items:center;gap:8px;margin:0;padding:9px 0;border-bottom:1px solid var(--line);font-size:.78rem}.detail-checklist p.done{color:var(--muted);text-decoration:line-through}.detail-activity{margin:0}.task-detail>footer{display:flex;justify-content:flex-end;padding:18px 24px}
-@media(max-width:1380px){.task-workspace{grid-template-columns:230px minmax(480px,1fr)}.task-detail-pane{display:none}.task-detail-pane.active{position:fixed;z-index:45;top:72px;right:0;bottom:0;display:block;width:min(420px,42vw);border-left:1px solid var(--line);box-shadow:-18px 0 42px rgba(15,23,42,.12)}.tasks-page{border-right:0}}
+@media(max-width:1279px){.task-workspace{grid-template-columns:230px minmax(370px,1fr)}.task-detail-pane{display:none}.task-detail-pane.active{position:fixed;z-index:45;top:72px;right:0;bottom:0;display:block;width:min(420px,42vw);border-left:1px solid var(--line);box-shadow:-18px 0 42px rgba(15,23,42,.12)}.tasks-page{border-right:0}.task-workspace.sidebar-collapsed{grid-template-columns:48px minmax(370px,1fr)}}
 @media(max-width:1024px) {
   .task-workspace {
   display:block;
@@ -582,7 +586,7 @@ onBeforeUnmount(() => {
 }
 
 @media(max-width:767px){.task-workspace{margin:-36px -24px -104px}.tasks-page{padding:18px 16px 110px}.task-navigation-trigger{display:none}.tasks-head{align-items:flex-start}.tasks-head-actions{gap:2px}.tasks-head-actions .ui-button{font-size:0;width:36px;padding:0}.tasks-head-actions .ui-button svg{margin:0}.tasks-summary{max-width:150px}.task-toolbar{margin-top:10px}.task-row{min-height:58px}}
-@media(max-width:1024px){.task-detail-pane.active{top:0;z-index:1002;width:min(92vw,440px);max-width:none}}
+@media(max-width:1024px){.task-workspace.sidebar-collapsed{display:block}.task-detail-pane.active{top:0;z-index:1002;width:min(92vw,440px);max-width:none}}
 
 .task-navigation-fade-enter-active,
 .task-navigation-fade-leave-active {

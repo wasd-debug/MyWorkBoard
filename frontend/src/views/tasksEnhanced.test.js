@@ -76,12 +76,14 @@ test('task list supports atomic batch controls and manual ordering', () => {
 })
 
 test('task inbox uses a ticktick-style three-pane workspace shell', () => {
-  assert.match(inboxView, /grid-template-columns:240px minmax\(480px,760px\) minmax\(240px,1fr\)/)
+  assert.match(inboxView, /grid-template-columns:240px minmax\(370px,1fr\) minmax\(320px,36%\)/)
   assert.match(inboxView, /class="task-detail-pane"/)
   assert.match(inboxView, /添加任务至“\{\{ viewTitle \}\}”/)
   assert.match(inboxView, /class="side-count"/)
-  assert.match(inboxView, /@click="navigationOpen = true"/)
+  assert.match(inboxView, /@click="toggleSidebar"/)
   assert.match(inboxView, /class="task-navigation-backdrop"/)
+  assert.match(inboxView, /task-sidebar-collapsed:\$\{store\.accountScope\}/)
+  assert.match(inboxView, /sidebar-collapsed/)
 })
 
 test('task sidebar sections reorder independently and task rows open the detail pane', () => {
