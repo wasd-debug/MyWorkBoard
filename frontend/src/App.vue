@@ -4,7 +4,8 @@
   <div v-if="store.ready" class="app-shell" :class="{ 'is-home': isHome }">
     <LoginView v-if="store.authRequired" />
     <template v-else>
-      <header class="workspace-topbar">
+      <TaskModuleRail v-if="isTasks" />
+      <header class="workspace-topbar" :class="{ 'task-domain-topbar': isTasks }">
         <router-link class="workspace-brand" to="/" aria-label="返回个人工作台"><span class="workspace-brand-mark"><House aria-hidden="true" /></span><b>个人工作台</b></router-link>
         <template v-if="!isHome">
           <span class="workspace-nav-divider" aria-hidden="true"></span>
@@ -46,6 +47,7 @@ import { useTaskFocusStore } from './stores/taskFocus.js'
 import { useTasksStore } from './stores/tasks.js'
 import BottomNav from './components/BottomNav.vue'
 import FloatingAgentAssistant from './components/FloatingAgentAssistant.vue'
+import TaskModuleRail from './components/tasks/TaskModuleRail.vue'
 import LoadingOverlay from './components/ledger/LoadingOverlay.vue'
 import ToastViewport from './components/ui/ToastViewport.vue'
 import LoginView from './views/LoginView.vue'

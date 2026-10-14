@@ -1265,6 +1265,15 @@ body { background:var(--paper); color:var(--ink); }
   position:sticky; z-index:40; top:0; height:88px; display:flex; align-items:center; gap:18px;
   padding:0 60px; border-bottom:1px solid var(--line); background:color-mix(in srgb,var(--card) 95%,transparent); backdrop-filter:blur(18px);
 }
+@media (min-width:768px) {
+  .workspace-topbar.task-domain-topbar { display:none; }
+  .workspace-topbar.task-domain-topbar + .app-main { min-height:100vh; margin-left:58px !important; }
+  .workspace-topbar.task-domain-topbar + .app-main .page-content { min-height:100vh; padding-top:0; padding-right:0; padding-bottom:0; padding-left:0; }
+  .workspace-topbar.task-domain-topbar + .app-main .task-workspace { min-height:100vh; margin:0; }
+  .workspace-topbar.task-domain-topbar + .app-main .efficiency-page,
+  .workspace-topbar.task-domain-topbar + .app-main .calendar-page,
+  .workspace-topbar.task-domain-topbar + .app-main .enhanced-page { padding-top:34px; padding-right:32px; padding-left:32px; }
+}
 .workspace-brand { display:flex; align-items:center; gap:12px; flex:0 0 auto; color:var(--ink); font-size:21px; letter-spacing:0; white-space:nowrap; }
 .workspace-brand-mark { width:34px; height:34px; display:grid; place-items:center; border-radius:10px; background:var(--yellow); color:#1d1d21; }
 .workspace-brand-mark svg { width:19px; height:19px; stroke-width:2.1; }

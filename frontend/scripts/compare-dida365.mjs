@@ -14,10 +14,10 @@ const context = await browser.newContext({ viewport: { width: 1453, height: 885 
 const page = await context.newPage()
 await page.goto('http://127.0.0.1:5173/tasks/today')
 if (await page.getByRole('heading', { name: '欢迎回来' }).count()) {
-  await page.getByLabel('用户名').fill(username)
-  await page.getByLabel('密码').fill(password)
+  await page.locator('.auth-form input').nth(0).fill(username)
+  await page.locator('.auth-form input').nth(1).fill(password)
   await page.getByRole('button', { name: '进入工作台' }).click()
-  await page.waitForURL(/\/tasks\/today/)
+  await page.locator('.task-module-rail, .workspace-topbar').first().waitFor({ state: 'attached', timeout: 15000 })
 }
 
 const routes = [
