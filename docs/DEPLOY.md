@@ -1,5 +1,13 @@
 # 部署说明
 
+## 2026-10-14 任务页特性收口生产发布
+
+- 应用提交：`bf012ec`，已推送至远程 `main`；发布归档 `/home/ubuntu/salary-tracker/releases/bf012ec2f80b517c94476f95e5713a04f6f41289`，归档 SHA-256 为 `81d5d987c26e51890d1cc7051f65f349ff8d55bf6cbb4218ea4c64525d3a5f85`。
+- 发布前数据库备份位于 `/home/ubuntu/salary-tracker/backups/salary-before-bf012ec-<timestamp>.sql.gz`，非空且通过 `gzip -t`；旧应用镜像保留为 `salary-backend:pre-bf012ec`、`salary-frontend:pre-bf012ec`，旧 Compose 配置保留为 `docker-compose.prod.yml.bak.bf012ec`。
+- 服务器从精确提交归档构建 `linux/amd64` 镜像并仅执行 `--no-deps --force-recreate backend frontend`；实际运行镜像为 `salary-backend:bf012ec`（`sha256:4838d95a6ffe6c954d99b9a4f97b33f911eae90d6c22465d490f39a8fcad9d1f`）和 `salary-frontend:bf012ec`（`sha256:4cee193f8566ed680b787bea5101c11cf49fe5f93963e1605b84b69e795a7059`）。
+- Flyway 成功校验 40 个迁移，schema 当前为 v38 且无新增迁移；MySQL 容器和数据卷未重建。`/api/health`、首页、`/tasks/today`、`/tasks/calendar`、`/tasks/habits`、`/tasks/countdowns` 均返回 HTTP 200。
+- 浏览器视觉、响应式、主题及登录后真实交互仍按《前端手工检查清单》由用户人工验收；本次未将服务器 HTTP 检查当作前端人工验收。
+
 ## 2026-10-12 P2-I7 本地服务刷新
 
 - 本轮新增 V36 智能清单、导入预览批次与全文索引，并交付任务增强视图和 Excel/CSV/ICS 导入导出；仅刷新本地 `salary-backend`、`salary-frontend`，未推送或部署生产。
