@@ -100,3 +100,13 @@ test('task sidebar sections reorder independently and task rows open the detail 
   assert.match(inboxView, /class="task-detail"/)
   assert.match(router, /path: '\/tasks\/filter\/:publicId'[\s\S]*TasksInboxView/)
 })
+
+test('task domain exposes a ticktick-style desktop module rail', async () => {
+  const rail = await readFile(new URL('../components/tasks/TaskModuleRail.vue', import.meta.url), 'utf8')
+  const app = await readFile(new URL('../App.vue', import.meta.url), 'utf8')
+  const theme = await readFile(new URL('../styles/theme.css', import.meta.url), 'utf8')
+  for (const path of ['/tasks/today', '/tasks/calendar', '/tasks/focus', '/tasks/habits', '/tasks/countdowns', '/tasks/search', '/tasks/settings']) assert.match(rail, new RegExp(path.replaceAll('/', '\\/')))
+  assert.match(app, /<TaskModuleRail v-if="isTasks"/)
+  assert.match(theme, /workspace-topbar\.task-domain-topbar \{ display:none; \}/)
+  assert.match(theme, /margin-left:58px/)
+})
