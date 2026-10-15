@@ -24,6 +24,7 @@ const routes = [
   { path: '/tasks/data', redirect: { path: '/tasks/settings', hash: '#data' } },
   { path: '/tasks/settings', name: 'tasks-settings', component: () => import('../views/TaskSettingsView.vue'), meta: { title: '任务设置' } },
   { path: '/tasks/filter/:publicId', name: 'tasks-filter', component: () => import('../views/TasksInboxView.vue'), meta: { title: '智能清单' } },
+  { path: '/tasks/shortcut/:shortcut', name: 'tasks-shortcut', component: () => import('../views/TasksInboxView.vue'), meta: { title: '任务快捷视图' } },
   { path: '/tasks/all', name: 'tasks-all', component: () => import('../views/TasksInboxView.vue'), meta: { title: '全部任务' } },
   { path: '/tasks/completed', name: 'tasks-completed', component: () => import('../views/TasksInboxView.vue'), meta: { title: '已完成任务' } },
   { path: '/tasks/inbox-notify', name: 'tasks-notifications', component: () => import('../views/TaskNotificationsView.vue'), meta: { title: '任务提醒' } },
