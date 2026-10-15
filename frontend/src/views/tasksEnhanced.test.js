@@ -98,6 +98,16 @@ test('task inbox uses a ticktick-style three-pane workspace shell', () => {
   assert.match(inboxView, /逾期/)
 })
 
+test('task inbox mirrors ticktick shortcut navigation and mixed efficiency groups', () => {
+  assert.match(router, /path: '\/tasks\/shortcut\/:shortcut'/)
+  for (const label of ['指派给我', '摘要', '归档', '本周', '下周', '无日期任务', '无标签']) assert.match(inboxView, new RegExp(label))
+  assert.match(inboxView, /task-week-nav/)
+  assert.match(inboxView, /todayCountdowns/)
+  assert.match(inboxView, /todayHabits/)
+  assert.match(inboxView, /toggleHabit/)
+  assert.match(inboxView, /copyTaskLink/)
+})
+
 test('task calendar edits tasks in a page panel instead of a drawer', () => {
   assert.match(calendarView, /class="calendar-task-editor"/)
   assert.doesNotMatch(calendarView, /<Drawer|ui\/Drawer/)
