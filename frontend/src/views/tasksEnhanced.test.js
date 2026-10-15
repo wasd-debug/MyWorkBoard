@@ -108,6 +108,14 @@ test('task inbox mirrors ticktick shortcut navigation and mixed efficiency group
   assert.match(inboxView, /copyTaskLink/)
 })
 
+test('task rows open the persistent detail editor for direct task edits', () => {
+  assert.match(inboxView, /async function selectTaskDetail\(task\) \{ await openEdit\(task\) \}/)
+  assert.match(inboxView, /task-editor/)
+  assert.match(inboxView, /描述<textarea v-model="form.description"/)
+  assert.match(inboxView, /检查项<textarea v-model="form.checklistText"/)
+  assert.match(inboxView, /提醒/)
+})
+
 test('task calendar edits tasks in a page panel instead of a drawer', () => {
   assert.match(calendarView, /class="calendar-task-editor"/)
   assert.doesNotMatch(calendarView, /<Drawer|ui\/Drawer/)
