@@ -42,7 +42,8 @@
       <button v-if="aggregateMode" type="button" role="menuitem" @click="createForDate('focus')"><Timer />新增专注</button>
     </div>
 
-    <Drawer v-model:open="editorOpen" :title="selectedTask ? '编辑任务' : '新建任务'">
+    <section v-if="editorOpen" class="calendar-task-editor" aria-label="任务编辑">
+      <header><strong>{{ selectedTask ? '编辑任务' : '新建任务' }}</strong><button type="button" aria-label="关闭任务编辑" @click="editorOpen = false"><X :size="17" /></button></header>
       <form id="calendar-task-editor" class="calendar-task-form" @submit.prevent="saveTask">
         <label>标题<Input v-model="taskForm.title" placeholder="要完成什么？" /></label>
         <div class="calendar-form-grid"><label>优先级<select v-model="taskForm.priority"><option value="NONE">无</option><option value="LOW">低</option><option value="MEDIUM">中</option><option value="HIGH">高</option></select></label><label>全天任务<span class="calendar-check"><input v-model="taskForm.allDay" type="checkbox">全天</span></label></div>
@@ -50,8 +51,8 @@
         <label>截止时间<Input v-model="taskForm.dueAt" type="datetime-local" /></label>
         <p v-if="editorError" class="calendar-error">{{ editorError }}</p>
       </form>
-      <template #footer><Button v-if="selectedTask" variant="danger" :disabled="saving" @click="deleteTask"><Trash2 />删除</Button><Button type="submit" form="calendar-task-editor" :disabled="saving || !taskForm.title.trim()"><Save />{{ saving ? '保存中…' : '保存' }}</Button></template>
-    </Drawer>
+      <footer><Button v-if="selectedTask" variant="danger" :disabled="saving" type="button" @click="deleteTask"><Trash2 />删除</Button><Button type="submit" form="calendar-task-editor" :disabled="saving || !taskForm.title.trim()"><Save />{{ saving ? '保存中…' : '保存' }}</Button></footer>
+    </section>
   </section>
 </template>
 
@@ -66,7 +67,6 @@ import zhCnLocale from '@fullcalendar/core/locales/zh-cn'
 import { ChevronLeft, ChevronRight, Clock3, ListPlus, MoreHorizontal, ReceiptText, Save, Timer, Trash2, X } from 'lucide-vue-next'
 import { apiGetTaskCalendar } from '../../packages/api-client/src/index.js'
 import Button from '../components/ui/Button.vue'
-import Drawer from '../components/ui/Drawer.vue'
 import Input from '../components/ui/Input.vue'
 import { message } from '../services/message.js'
 import { useTasksStore } from '../stores/tasks.js'
@@ -193,4 +193,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleEscape))
 .full-calendar-wrap :deep(.overlay-habit){background:#6a5680;cursor:default}
 .calendar-toolbar{position:relative}.calendar-more-wrap{position:relative;margin-left:auto}.calendar-more-button{display:grid;place-items:center;width:36px;height:36px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink)}.calendar-more-button:hover{background:var(--accent-soft);color:var(--accent)}.calendar-more-menu{position:absolute;z-index:30;top:42px;right:0;display:grid;min-width:150px;padding:6px;border:1px solid var(--line);border-radius:8px;background:var(--card);box-shadow:0 12px 28px #0002}.calendar-more-menu button{padding:9px 10px;border:0;background:transparent;color:var(--ink);text-align:left}.calendar-more-menu button:hover{background:var(--accent-soft);color:var(--accent)}.calendar-filter-sidebar{float:left;width:220px;min-height:620px;margin-right:20px;padding:10px 12px;border-right:1px solid var(--line);color:var(--ink)}.mini-calendar-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:.82rem}.mini-calendar-head button{display:inline-grid;place-items:center;width:26px;height:26px;border:0;background:transparent;color:var(--muted)}.mini-calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:18px;text-align:center;font-size:.68rem}.mini-calendar-grid>span{padding:4px 0;color:var(--muted)}.mini-calendar-grid>button{height:25px;border:0;border-radius:50%;background:transparent;color:var(--ink);font-size:.68rem}.mini-calendar-grid>button.muted{color:var(--muted);opacity:.5}.mini-calendar-grid>button.today{background:var(--accent);color:#fff}.calendar-source-row{display:flex;align-items:center;gap:7px;min-height:32px;font-size:.78rem}.calendar-source-row input{accent-color:var(--accent)}.source-heading{margin:14px 0 4px;color:var(--muted);font-size:.7rem;font-weight:700}.full-calendar-wrap{margin-left:240px}
 @media(max-width:1023px){.calendar-more-wrap{position:absolute;right:0;top:12px}.calendar-filter-sidebar{float:none;width:auto;min-height:0;margin:0 0 14px;padding:10px 0;border-right:0;border-bottom:1px solid var(--line)}.full-calendar-wrap{margin-left:0}}
+.calendar-task-editor{position:fixed;z-index:60;top:84px;right:32px;width:min(430px,calc(100vw - 32px));max-height:calc(100vh - 120px);overflow:auto;border:1px solid var(--line2);background:var(--card);box-shadow:0 18px 48px rgba(15,23,42,.2)}.calendar-task-editor>header{display:flex;align-items:center;justify-content:space-between;min-height:52px;padding:0 16px;border-bottom:1px solid var(--line);color:var(--ink)}.calendar-task-editor>header button{display:grid;place-items:center;width:34px;height:34px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--muted)}.calendar-task-editor .calendar-task-form{padding:18px}.calendar-task-editor>footer{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid var(--line)}
+@media(max-width:600px){.calendar-task-editor{top:16px;right:16px;width:calc(100vw - 32px);max-height:calc(100vh - 32px)}}
 </style>

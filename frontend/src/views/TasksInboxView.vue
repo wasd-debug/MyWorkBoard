@@ -1,9 +1,5 @@
 <template>
   <section class="task-workspace" :class="{ 'sidebar-collapsed': sidebarCollapsed }" :style="{ '--task-detail-width': `${detailWidth}px` }">
-    <Teleport to="body" :disabled="!compactNavigation">
-      <Transition name="task-navigation-fade">
-        <button v-if="navigationOpen" class="task-navigation-backdrop" type="button" aria-label="关闭任务菜单" @click="closeNavigation"></button>
-      </Transition>
       <aside id="task-navigation" class="task-sidebar" :class="{ open: navigationOpen }" aria-label="任务导航">
         <header class="task-sidebar-head"><strong>任务菜单</strong><button type="button" aria-label="关闭任务菜单" @click="closeNavigation"><X :size="18" /></button></header>
         <nav class="task-sidebar-primary"><RouterLink v-for="item in builtins" :key="item.to" :to="item.to" @click="closeNavigation"><component :is="item.icon" :size="16" /><span>{{ item.label }}</span><small v-if="navCount(item) !== null" class="side-count">{{ navCount(item) }}</small></RouterLink></nav>
@@ -12,10 +8,8 @@
         <section class="side-section" :class="{ collapsed: collapsedSections.tags }"><div class="side-heading"><button class="side-section-toggle" type="button" :aria-expanded="!collapsedSections.tags" @click="toggleSection('tags')"><ChevronRight :size="14" :class="{ expanded: !collapsedSections.tags }" /><span>标签</span></button><button type="button" aria-label="新建标签" title="新建标签" @click="newTag"><Plus :size="15" /></button></div><nav v-show="!collapsedSections.tags" @dragover.prevent><span v-for="tag in store.tags" :key="tag.publicId" class="side-item" draggable="true" @dragstart="startOrganizationDrag('tag', tag)" @drop="dropOrganization('tag', tag)"><RouterLink :to="`/tasks/tag/${tag.publicId}`" @click="closeNavigation"><Tag :size="15" />{{ tag.name }}</RouterLink><span class="side-actions"><button type="button" title="编辑标签" :aria-label="`编辑标签${tag.name}`" @click="editTag(tag)"><Pencil :size="13" /></button><button type="button" title="删除标签" :aria-label="`删除标签${tag.name}`" @click="deleteTag(tag)"><Trash2 :size="13" /></button></span></span></nav></section>
         <section class="side-section" :class="{ collapsed: collapsedSections.filters }"><div class="side-heading"><button class="side-section-toggle" type="button" :aria-expanded="!collapsedSections.filters" @click="toggleSection('filters')"><ChevronRight :size="14" :class="{ expanded: !collapsedSections.filters }" /><span>筛选器</span></button><RouterLink class="side-add-link" to="/tasks/search">管理</RouterLink></div><nav v-show="!collapsedSections.filters" @dragover.prevent><span v-for="filter in filters" :key="filter.publicId" class="side-item" draggable="true" @dragstart="startOrganizationDrag('filter', filter)" @drop="dropOrganization('filter', filter)"><RouterLink :to="`/tasks/filter/${filter.publicId}`" @click="closeNavigation"><ListTodo :size="15" />{{ filter.name }}</RouterLink></span><span v-if="!filters.length" class="side-empty">暂无筛选器</span></nav></section>
       </aside>
-    </Teleport>
 
     <main class="tasks-page">
-      <div v-if="editorOpen" class="task-core-time-fields" aria-label="任务时间字段"><label>开始时间<Input v-model="form.startLocal" type="datetime-local" /></label><label>截止时间<Input v-model="form.dueLocal" type="datetime-local" /></label><label>持续分钟数<Input v-model.number="form.durationMinutes" type="number" min="0" step="5" /></label><label class="task-inline-check"><input v-model="form.allDay" type="checkbox" />全天任务</label></div>
       <header class="tasks-head"><div class="tasks-title"><button class="task-collapse-button" type="button" :aria-label="compactNavigation ? '打开任务菜单' : (sidebarCollapsed ? '展开任务导航' : '折叠任务导航')" :title="compactNavigation ? '打开任务菜单' : (sidebarCollapsed ? '展开任务导航' : '折叠任务导航')" @click="toggleSidebar"><Menu :size="19" /></button><div><p class="label">TASKS</p><h1>{{ viewTitle }}</h1><p class="tasks-summary">{{ visibleOpen.length }} 项待完成 · {{ visibleCompleted.length }} 项已完成</p></div></div><div class="tasks-head-actions"><button class="task-head-icon" type="button" aria-label="排序方式" title="排序方式" @click="sortMenuOpen = !sortMenuOpen"><ListTodo :size="17" /></button><button class="task-head-icon" type="button" aria-label="更多任务列表设置" title="更多任务列表设置" @click="moreMenuOpen = !moreMenuOpen"><MoreHorizontal :size="17" /></button><Button v-if="viewKey !== 'trash'" @click="openCreate"><Plus :size="16" />新建任务</Button></div></header>
       <div v-if="sortMenuOpen" class="task-head-menu" role="menu"><strong>排序</strong><button v-for="item in sortOptions" :key="item.value" type="button" :class="{ active: sortBy === item.value }" @click="sortBy = item.value; sortMenuOpen = false">{{ item.label }}</button></div>
       <div v-if="moreMenuOpen" class="task-head-menu task-more-menu" role="menu"><strong>视图</strong><button type="button" @click="showDetails = !showDetails">{{ showDetails ? '隐藏详细' : '显示详细' }}<Check v-if="showDetails" :size="14" /></button><button type="button" @click="showChecklist = !showChecklist">{{ showChecklist ? '隐藏检查事项' : '显示检查事项' }}<Check v-if="showChecklist" :size="14" /></button><button type="button" @click="moreMenuOpen = false; window.print()">打印</button></div>
@@ -33,11 +27,10 @@
 
       <div v-if="batchMode && selectedTasks.length" class="task-batch-bar" role="toolbar" aria-label="批量操作"><strong>已选 {{ selectedTasks.length }} 项</strong><Button size="sm" @click="runBatch('COMPLETE')">完成</Button><select v-model="batchListId" aria-label="移动到清单"><option value="">移动到…</option><option v-for="list in store.lists.filter(item => !item.archived)" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select><Button size="sm" :disabled="!batchListId" @click="runBatch('MOVE', { listId: batchListId })">移动</Button><select v-model="batchPriority" aria-label="设置优先级"><option value="NONE">无优先级</option><option value="LOW">低</option><option value="MEDIUM">中</option><option value="HIGH">高</option></select><Button size="sm" @click="runBatch('PRIORITY', { priority: batchPriority })">优先级</Button><Input v-model="batchDueLocal" aria-label="批量改期" type="datetime-local" /><Button size="sm" :disabled="!batchDueLocal" @click="runBatch('RESCHEDULE', { dueAt: new Date(batchDueLocal).toISOString() })">改期</Button><select v-model="batchTagId" aria-label="批量添加标签"><option value="">添加标签…</option><option v-for="tag in store.tags" :key="tag.publicId" :value="tag.publicId">{{ tag.name }}</option></select><Button size="sm" :disabled="!batchTagId" @click="runBatch('TAGS', { tagIds: [batchTagId] })">加标签</Button><select v-model.number="batchReminderOffset" aria-label="批量设置提醒"><option :value="0">准时提醒</option><option :value="30">提前 30 分钟</option><option :value="60">提前 1 小时</option><option :value="1440">提前 1 天</option></select><Button size="sm" @click="runBatch('REMINDER', { reminder: { kind: 'RELATIVE', offsetMinutes: batchReminderOffset, channel: 'IN_APP', dailyUntilDone: false } })">提醒</Button><Button size="sm" variant="danger" @click="runBatch('DELETE')">删除</Button><button type="button" aria-label="退出多选" @click="toggleBatch"><X :size="18" /></button></div>
 
-      <Drawer v-model:open="editorOpen" :title="editing ? '编辑任务' : '新建任务'"><form id="task-editor" class="task-form" @submit.prevent="save"><label>标题<Input v-model="form.title" placeholder="要完成什么？" /></label><label>描述<textarea v-model="form.description" class="ui-textarea" placeholder="补充必要信息"></textarea></label><div class="task-form-grid"><label>清单<select v-model="form.listId"><option v-for="list in store.lists.filter(item => !item.archived)" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select></label><label>父任务<select v-model="form.parentId"><option value="">无</option><option v-for="task in parentOptions" :key="task.publicId" :value="task.publicId">{{ task.title }}</option></select></label></div><div class="task-form-grid"><label>优先级<select v-model="form.priority"><option value="NONE">无</option><option value="LOW">低</option><option value="MEDIUM">中</option><option value="HIGH">高</option></select></label><label>截止时间<Input v-model="form.dueLocal" type="datetime-local" /></label></div><div class="task-form-grid"><label>重复<select v-model="form.recurrence"><option value="">不重复</option><option value="FREQ=DAILY">每天</option><option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">每个工作日</option><option value="FREQ=WEEKLY">每周</option><option value="FREQ=MONTHLY">每月</option><option value="FREQ=YEARLY">每年</option><option value="CUSTOM">自定义</option></select></label><label v-if="form.recurrence">循环基准<select v-model="form.recurrenceAnchor"><option value="DUE_DATE">按到期日期</option><option value="COMPLETION_DATE">按完成日期</option></select></label></div><label v-if="form.recurrence === 'CUSTOM'">RRULE<Input v-model="form.customRrule" placeholder="FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,FR" /></label><fieldset class="task-reminder-editor"><legend>提醒</legend><label class="task-inline-check"><input v-model="form.reminderEnabled" type="checkbox" /> 启用站内提醒</label><div v-if="form.reminderEnabled" class="task-form-grid"><label>方式<select v-model="form.reminderKind"><option value="RELATIVE">相对截止时间</option><option value="ABSOLUTE">指定时间</option></select></label><label v-if="form.reminderKind === 'RELATIVE'">提前<select v-model.number="form.reminderOffset"><option :value="0">准时</option><option :value="5">5 分钟</option><option :value="15">15 分钟</option><option :value="30">30 分钟</option><option :value="60">1 小时</option><option :value="1440">1 天</option></select></label><label v-else>提醒时间<Input v-model="form.remindLocal" type="datetime-local" /></label></div></fieldset><fieldset v-if="store.tags.length" class="task-tags"><legend>标签</legend><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="form.tagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label></fieldset><label>检查项<textarea v-model="form.checklistText" class="ui-textarea checklist-input" placeholder="每行一个检查项"></textarea></label><p v-if="editorError" class="task-form-error" role="alert">{{ editorError }}</p></form><section v-if="editing" class="task-activity"><h3>活动记录</h3><p v-if="activityLoading">加载中…</p><p v-else-if="!activities.length">暂无活动记录</p><ol v-else><li v-for="item in activities" :key="item.publicId"><strong>{{ item.summary }}</strong><time>{{ formatTime(item.createdAt) }}</time></li></ol></section><template #footer><Button v-if="editing" class="task-delete" variant="danger" :disabled="store.saving" @click="remove(editing)"><Trash2 :size="15" />删除</Button><Button type="submit" form="task-editor" :disabled="store.saving || !form.title.trim()"><Save :size="15" />保存</Button></template></Drawer>
     </main>
     <div class="task-detail-divider" role="separator" aria-orientation="vertical" tabindex="0" aria-label="调整详情宽度" @pointerdown="startDetailResize" @dblclick="resetDetailWidth" @keydown="resizeDetailByKey"></div>
-    <aside class="task-detail-pane" :class="{ active: selectedTask }" aria-label="任务详情"><div v-if="selectedTask" class="task-detail"><header><span>{{ listName(selectedTask.listId) }}</span><div><button type="button" aria-label="编辑任务" title="编辑任务" @click="openEdit(selectedTask)"><Pencil :size="16" /></button><button type="button" aria-label="关闭任务详情" title="关闭任务详情" @click="selectedTask = null"><X :size="17" /></button></div></header><section class="task-detail-title"><button class="task-check" type="button" :aria-label="selectedTask.status === 'COMPLETED' ? `重新打开${selectedTask.title}` : `完成${selectedTask.title}`" @click="selectedTask.status === 'COMPLETED' ? reopen(selectedTask) : complete(selectedTask)"><CheckCircle2 v-if="selectedTask.status === 'COMPLETED'" :size="22" /><Circle v-else :size="22" /></button><div><h2>{{ selectedTask.title }}</h2><p v-if="selectedTask.description">{{ selectedTask.description }}</p><p v-else class="detail-placeholder">暂无描述</p></div></section><dl><div><dt>清单</dt><dd>{{ listName(selectedTask.listId) }}</dd></div><div><dt>日期</dt><dd>{{ selectedTask.dueAt ? formatTime(selectedTask.dueAt) : '无日期' }}</dd></div><div><dt>优先级</dt><dd>{{ priorityLabel(selectedTask.priority) || '无' }}</dd></div><div v-if="selectedTask.rrule"><dt>重复</dt><dd>{{ selectedTask.rrule }}</dd></div></dl><section v-if="selectedTask.checklist?.length" class="detail-checklist"><h3>检查项 <span>{{ selectedTask.checklist.filter(item => item.completed).length }}/{{ selectedTask.checklist.length }}</span></h3><p v-for="item in selectedTask.checklist" :key="item.publicId || item.title" :class="{ done: item.completed }"><CheckCircle2 v-if="item.completed" :size="16" /><Circle v-else :size="16" />{{ item.title }}</p></section><section class="task-activity detail-activity"><h3>活动记录</h3><p v-if="activityLoading">加载中…</p><p v-else-if="!activities.length">{{ store.online ? '暂无活动记录' : '离线时无法加载活动记录' }}</p><ol v-else><li v-for="item in activities" :key="item.publicId"><strong>{{ item.summary }}</strong><time>{{ formatTime(item.createdAt) }}</time></li></ol></section><footer><Button variant="danger" size="sm" @click="remove(selectedTask)"><Trash2 :size="15" />删除任务</Button></footer></div><div v-else class="task-detail-empty"><span class="task-detail-spark" aria-hidden="true">✦</span><strong>选择一个任务</strong><p>任务详情、检查项和活动记录会显示在这里</p></div></aside>
-    <Drawer v-model:open="organizationOpen" :title="`${organizationItem ? '编辑' : '新建'}${organizationType === 'list' ? '清单' : organizationType === 'group' ? '清单分组' : '标签'}`">
+    <aside class="task-detail-pane" :class="{ active: selectedTask || editorOpen }" aria-label="任务详情"><div v-if="editorOpen" class="task-detail task-editor-pane"><header><span>{{ editing ? '编辑任务' : '新建任务' }}</span><button type="button" aria-label="关闭任务编辑" title="关闭任务编辑" @click="editorOpen = false"><X :size="17" /></button></header><form id="task-editor" class="task-form" @submit.prevent="save"><label>标题<Input v-model="form.title" placeholder="要完成什么？" autofocus /></label><label>描述<textarea v-model="form.description" class="ui-textarea" placeholder="补充必要信息"></textarea></label><div class="task-form-grid"><label>清单<select v-model="form.listId"><option v-for="list in store.lists.filter(item => !item.archived)" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select></label><label>父任务<select v-model="form.parentId"><option value="">无</option><option v-for="task in parentOptions" :key="task.publicId" :value="task.publicId">{{ task.title }}</option></select></label></div><div class="task-form-grid"><label>开始时间<Input v-model="form.startLocal" type="datetime-local" /></label><label>截止时间<Input v-model="form.dueLocal" type="datetime-local" /></label></div><div class="task-form-grid"><label>优先级<select v-model="form.priority"><option value="NONE">无</option><option value="LOW">低</option><option value="MEDIUM">中</option><option value="HIGH">高</option></select></label><label>持续分钟数<Input v-model.number="form.durationMinutes" type="number" min="0" step="5" /></label></div><label class="task-inline-check"><input v-model="form.allDay" type="checkbox" />全天任务</label><div class="task-form-grid"><label>重复<select v-model="form.recurrence"><option value="">不重复</option><option value="FREQ=DAILY">每天</option><option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">每个工作日</option><option value="FREQ=WEEKLY">每周</option><option value="FREQ=MONTHLY">每月</option><option value="FREQ=YEARLY">每年</option><option value="CUSTOM">自定义</option></select></label><label v-if="form.recurrence">循环基准<select v-model="form.recurrenceAnchor"><option value="DUE_DATE">按到期日期</option><option value="COMPLETION_DATE">按完成日期</option></select></label></div><label v-if="form.recurrence === 'CUSTOM'">RRULE<Input v-model="form.customRrule" placeholder="FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,FR" /></label><fieldset class="task-reminder-editor"><legend>提醒</legend><label class="task-inline-check"><input v-model="form.reminderEnabled" type="checkbox" /> 启用站内提醒</label><div v-if="form.reminderEnabled" class="task-form-grid"><label>方式<select v-model="form.reminderKind"><option value="RELATIVE">相对截止时间</option><option value="ABSOLUTE">指定时间</option></select></label><label v-if="form.reminderKind === 'RELATIVE'">提前<select v-model.number="form.reminderOffset"><option :value="0">准时</option><option :value="5">5 分钟</option><option :value="15">15 分钟</option><option :value="30">30 分钟</option><option :value="60">1 小时</option><option :value="1440">1 天</option></select></label><label v-else>提醒时间<Input v-model="form.remindLocal" type="datetime-local" /></label></div></fieldset><fieldset v-if="store.tags.length" class="task-tags"><legend>标签</legend><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="form.tagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label></fieldset><label>检查项<textarea v-model="form.checklistText" class="ui-textarea checklist-input" placeholder="每行一个检查项"></textarea></label><p v-if="editorError" class="task-form-error" role="alert">{{ editorError }}</p><div class="task-inline-actions"><Button v-if="editing" class="task-delete" variant="danger" :disabled="store.saving" type="button" @click="remove(editing)"><Trash2 :size="15" />删除</Button><Button type="submit" :disabled="store.saving || !form.title.trim()"><Save :size="15" />{{ store.saving ? '保存中…' : '保存' }}</Button></div></form><section v-if="editing" class="task-activity"><h3>活动记录</h3><p v-if="activityLoading">加载中…</p><p v-else-if="!activities.length">暂无活动记录</p><ol v-else><li v-for="item in activities" :key="item.publicId"><strong>{{ item.summary }}</strong><time>{{ formatTime(item.createdAt) }}</time></li></ol></section></div><div v-else-if="selectedTask" class="task-detail"><header><span>{{ listName(selectedTask.listId) }}</span><div><button type="button" aria-label="编辑任务" title="编辑任务" @click="openEdit(selectedTask)"><Pencil :size="16" /></button><button type="button" aria-label="关闭任务详情" title="关闭任务详情" @click="selectedTask = null"><X :size="17" /></button></div></header><section class="task-detail-title"><button class="task-check" type="button" :aria-label="selectedTask.status === 'COMPLETED' ? `重新打开${selectedTask.title}` : `完成${selectedTask.title}`" @click="selectedTask.status === 'COMPLETED' ? reopen(selectedTask) : complete(selectedTask)"><CheckCircle2 v-if="selectedTask.status === 'COMPLETED'" :size="22" /><Circle v-else :size="22" /></button><div><h2>{{ selectedTask.title }}</h2><p v-if="selectedTask.description">{{ selectedTask.description }}</p><p v-else class="detail-placeholder">暂无描述</p></div></section><dl><div><dt>清单</dt><dd>{{ listName(selectedTask.listId) }}</dd></div><div><dt>日期</dt><dd>{{ selectedTask.dueAt ? formatTime(selectedTask.dueAt) : '无日期' }}</dd></div><div><dt>优先级</dt><dd>{{ priorityLabel(selectedTask.priority) || '无' }}</dd></div><div v-if="selectedTask.rrule"><dt>重复</dt><dd>{{ selectedTask.rrule }}</dd></div></dl><section v-if="selectedTask.checklist?.length" class="detail-checklist"><h3>检查项 <span>{{ selectedTask.checklist.filter(item => item.completed).length }}/{{ selectedTask.checklist.length }}</span></h3><p v-for="item in selectedTask.checklist" :key="item.publicId || item.title" :class="{ done: item.completed }" @click="toggleChecklistItem(item)"><CheckCircle2 v-if="item.completed" :size="16" /><Circle v-else :size="16" />{{ item.title }}</p></section><section class="task-activity detail-activity"><h3>活动记录</h3><p v-if="activityLoading">加载中…</p><p v-else-if="!activities.length">{{ store.online ? '暂无活动记录' : '离线时无法加载活动记录' }}</p><ol v-else><li v-for="item in activities" :key="item.publicId"><strong>{{ item.summary }}</strong><time>{{ formatTime(item.createdAt) }}</time></li></ol></section><footer><Button variant="danger" size="sm" @click="remove(selectedTask)"><Trash2 :size="15" />删除任务</Button></footer></div><div v-else class="task-detail-empty"><span class="task-detail-spark" aria-hidden="true">✦</span><strong>选择一个任务</strong><p>选择任务后在这里查看或编辑，不再打开侧滑面板</p></div></aside>
+    <Dialog v-model:open="organizationOpen" :title="`${organizationItem ? '编辑' : '新建'}${organizationType === 'list' ? '清单' : organizationType === 'group' ? '清单分组' : '标签'}`">
       <form id="organization-editor" class="task-form" @submit.prevent="saveOrganization">
         <label>名称<Input v-model="organizationForm.name" /></label>
         <label v-if="organizationType !== 'group'">颜色<Input v-model="organizationForm.color" type="color" /></label>
@@ -51,7 +44,7 @@
         <p v-if="organizationError" class="task-form-error" role="alert">{{ organizationError }}</p>
       </form>
       <template #footer><Button type="submit" form="organization-editor" :disabled="!organizationForm.name.trim()">保存</Button></template>
-    </Drawer>
+    </Dialog>
   </section>
 </template>
 
@@ -59,7 +52,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { CalendarClock, Check, CheckCircle2, ChevronRight, Circle, FolderPlus, Inbox, ListTodo, Menu, MoreHorizontal, Pencil, Plus, RotateCcw, Save, Tag, Trash2, Unlink, WifiOff, X } from 'lucide-vue-next'
-import Button from '../components/ui/Button.vue'; import Drawer from '../components/ui/Drawer.vue'; import Input from '../components/ui/Input.vue'
+import Button from '../components/ui/Button.vue'; import Dialog from '../components/ui/Dialog.vue'; import Input from '../components/ui/Input.vue'
 import { useAppStore } from '../stores/app.js'; import { useTasksStore } from '../stores/tasks.js'
 import { apiCreateTaskReminder, apiDeleteTaskReminder, apiListTaskActivity, apiListTaskFilters, apiListTaskFilterTasks, apiListTaskReminders, apiUpdateTaskFilter, apiUpdateTaskReminder } from '../../packages/api-client/src/index.js'
 
@@ -172,10 +165,10 @@ function restoreSidebarState() { sidebarCollapsed.value = localStorage.getItem(s
 function viewStateKey() { return `task-list-view:${store.accountScope}` }
 function restoreViewState() { try { const state = JSON.parse(localStorage.getItem(viewStateKey()) || '{}'); showDetails.value = state.showDetails !== false; showChecklist.value = state.showChecklist !== false } catch { showDetails.value = true; showChecklist.value = true } }
 function saveViewState() { localStorage.setItem(viewStateKey(), JSON.stringify({ showDetails: showDetails.value, showChecklist: showChecklist.value })) }
-function toggleSidebar() { if (compactNavigation.value) navigationOpen.value = true; else { sidebarCollapsed.value = !sidebarCollapsed.value; localStorage.setItem(sidebarStateKey(), String(sidebarCollapsed.value)) } }
-function updateCompactNavigation(event) { compactNavigation.value = event.matches; if (!event.matches) closeNavigation() }
+function toggleSidebar() { if (compactNavigation.value) navigationOpen.value = !navigationOpen.value; else { sidebarCollapsed.value = !sidebarCollapsed.value; localStorage.setItem(sidebarStateKey(), String(sidebarCollapsed.value)) } }
+function updateCompactNavigation(event) { compactNavigation.value = event.matches; closeNavigation() }
 function currentListId() { return route.name === 'tasks-list' ? String(route.params.publicId) : store.inbox?.publicId || '' }
-function openCreate() { editing.value = null; resetForm(); editorOpen.value = true }
+function openCreate() { selectedTask.value = null; editing.value = null; resetForm(); editorOpen.value = true }
 function toggleTaskMenu(id) { taskMenuId.value = taskMenuId.value === id ? '' : id }
 async function setTaskDue(task, days) { taskMenuId.value = ''; const due = addDays(startOfToday(), days); due.setHours(18, 0, 0, 0); try { await store.update(task, { dueAt: due.toISOString() }) } catch (error) { store.error = detail(error, '安排日期失败') } }
 async function setTaskPriority(task, priority) { taskMenuId.value = ''; try { await store.update(task, { priority }) } catch (error) { store.error = detail(error, '设置优先级失败') } }
@@ -191,7 +184,7 @@ function stopDetailResize() { if (!detailResizeState) return; persistDetailWidth
 function resetDetailWidth() { detailWidth.value = 460; persistDetailWidth() }
 function resizeDetailByKey(event) { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); detailWidth.value = Math.min(560, Math.max(320, detailWidth.value + (event.key === 'ArrowLeft' ? 16 : -16) * (event.shiftKey ? 3 : 1))); persistDetailWidth() }
 async function submitQuickAdd() { const title = quickTitle.value.trim(); if (!title) return; try { const task = await store.create({ title, description: '', priority: 'NONE', listId: currentListId(), tagIds: [], checklist: [], startAt: '', dueAt: '', durationMinutes: 0, allDay: false, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai', rrule: '', recurrenceAnchor: '' }); closeQuickAdd(); selectedTask.value = store.tasks.find(item => item.publicId === task.publicId) || task } catch (error) { store.error = detail(error, '快速添加失败') } }
-async function openEdit(task) { editing.value = task; resetForm(task); editorOpen.value = true; if (store.online) { try { const reminders = await apiListTaskReminders(task.publicId); const reminder = reminders?.[0]; if (reminder) Object.assign(form, { reminderEnabled: true, reminderKind: reminder.kind, reminderOffset: reminder.offsetMinutes ?? 30, remindLocal: reminder.remindAt ? toLocalInput(reminder.remindAt) : '', reminder }) } catch (error) { editorError.value = detail(error, '提醒加载失败') } } }
+async function openEdit(task) { selectedTask.value = task; editing.value = task; resetForm(task); editorOpen.value = true; if (store.online) { try { const reminders = await apiListTaskReminders(task.publicId); const reminder = reminders?.[0]; if (reminder) Object.assign(form, { reminderEnabled: true, reminderKind: reminder.kind, reminderOffset: reminder.offsetMinutes ?? 30, remindLocal: reminder.remindAt ? toLocalInput(reminder.remindAt) : '', reminder }) } catch (error) { editorError.value = detail(error, '提醒加载失败') } } }
 async function selectTaskDetail(task) { selectedTask.value = task; activities.value = []; await loadActivity(task) }
 async function toggleChecklistItem(item) {
   if (!selectedTask.value || checklistSaving.value) return
@@ -268,7 +261,6 @@ async function deleteList(list) { if (!window.confirm(`删除清单“${list.nam
 async function deleteTag(tag) { if (!window.confirm(`删除标签“${tag.name}”？任务本身不会删除。`)) return; try { await store.deleteTag(tag) } catch (error) { store.error = detail(error, '删除标签失败') } }
 function listName(id) { return store.lists.find(item => item.publicId === id)?.name || '收件箱' } function tagName(id) { return store.tags.find(item => item.publicId === id)?.name || '标签' } function priorityLabel(value) { return ({ LOW: '低', MEDIUM: '中', HIGH: '高' })[value] || '' } function formatTime(value) { return value ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '' } function toLocalInput(value) { const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16) } function detail(error, fallback) { return error?.response?.data?.detail || error?.message || fallback } function issueTitle(issue) { return issue?.operation?.payload?.title || issue?.operation?.entityId || '未知任务' } function startOfToday() { const value = new Date(); value.setHours(0, 0, 0, 0); return value } function addDays(value, days) { const result = new Date(value); result.setDate(result.getDate() + days); return result }
 function onEscape(event) { if (event.key === 'Escape') { closeNavigation(); if (quickAddOpen.value) closeQuickAdd() } if (event.key.toLowerCase() === 'n' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target?.tagName) && viewKey.value !== 'trash') { event.preventDefault(); openQuickAdd() } }
-watch(navigationOpen, open => document.body.classList.toggle('task-navigation-open', open))
 watch(() => route.fullPath, () => { closeNavigation(); selectedTask.value = null; loadFilters() })
 watch(() => store.accountScope, scope => { try { expandedGroups.value = new Set(JSON.parse(localStorage.getItem(`task-groups:${scope}`) || '[]')) } catch { expandedGroups.value = new Set() }; restoreSectionState(); restoreSidebarState(); restoreViewState(); loadFilters() }, { immediate: true })
 watch([showDetails, showChecklist], saveViewState)
@@ -290,7 +282,6 @@ onBeforeUnmount(() => {
   stopDetailResize()
   document.removeEventListener('click', handleChecklistClick)
   window.removeEventListener('task-new-request', onNewRequest)
-  document.body.classList.remove('task-navigation-open')
   if (compactNavigationQuery?.removeEventListener) compactNavigationQuery.removeEventListener('change', updateCompactNavigation)
   else compactNavigationQuery?.removeListener?.(updateCompactNavigation)
   window.removeEventListener('keydown', onEscape)
@@ -309,9 +300,7 @@ onBeforeUnmount(() => {
   padding:24px 14px 40px;
   overflow-y:auto;
   background:color-mix(in srgb,var(--card) 96%,var(--paper))}
-.task-sidebar-head,
-.task-navigation-backdrop {
-  display:none}
+.task-sidebar-head { display:none }
 .task-workspace.sidebar-collapsed{grid-template-columns:48px minmax(370px,1fr) 8px minmax(320px,var(--task-detail-width,460px))}
 .task-detail-divider{position:relative;z-index:3;cursor:ew-resize;background:transparent}.task-detail-divider::after{content:'';position:absolute;top:0;bottom:0;left:3px;width:1px;background:var(--line)}.task-detail-divider:hover::after,.task-detail-divider:focus-visible::after{width:3px;background:var(--accent)}
 .task-workspace.sidebar-collapsed .task-sidebar{padding-left:4px;padding-right:4px;overflow:hidden}
@@ -533,51 +522,24 @@ onBeforeUnmount(() => {
 .task-detail-title{display:flex;align-items:flex-start;gap:8px;padding:26px 24px 20px;border-bottom:1px solid var(--line)}.task-detail-title>div{min-width:0}.task-detail-title h2{margin:2px 0 10px;font-size:1.25rem;line-height:1.35;overflow-wrap:anywhere}.task-detail-title p{margin:0;color:var(--ink2);font-size:.82rem;line-height:1.7;white-space:pre-wrap}.task-detail-title .detail-placeholder{color:var(--muted)}
 .task-detail dl{margin:0;padding:10px 24px;border-bottom:1px solid var(--line)}.task-detail dl>div{display:grid;grid-template-columns:70px minmax(0,1fr);gap:10px;padding:9px 0;font-size:.78rem}.task-detail dt{color:var(--muted)}.task-detail dd{margin:0;overflow-wrap:anywhere}
 .detail-checklist,.detail-activity{padding:18px 24px;border-bottom:1px solid var(--line)}.detail-checklist h3,.detail-activity h3{margin:0 0 12px;font-size:.82rem}.detail-checklist h3 span{color:var(--muted);font-weight:500}.detail-checklist p{display:flex;align-items:center;gap:8px;margin:0;padding:9px 0;border-bottom:1px solid var(--line);font-size:.78rem;cursor:pointer}.detail-checklist p:hover{color:var(--accent);background:var(--accent-soft)}.detail-checklist p.done{color:var(--muted);text-decoration:line-through}.detail-activity{margin:0}.task-detail>footer{display:flex;justify-content:flex-end;padding:18px 24px}
-@media(max-width:1279px){.task-workspace{grid-template-columns:230px minmax(370px,1fr)}.task-detail-divider{display:none}.task-detail-pane{display:none}.task-detail-pane.active{position:fixed;z-index:45;top:72px;right:0;bottom:0;display:block;width:min(420px,42vw);border-left:1px solid var(--line);box-shadow:-18px 0 42px rgba(15,23,42,.12)}.tasks-page{border-right:0}.task-workspace.sidebar-collapsed{grid-template-columns:48px minmax(370px,1fr)}}
+@media(max-width:1279px){.task-workspace{grid-template-columns:230px minmax(370px,1fr)}.task-detail-divider{display:none}.task-detail-pane{display:none}.task-detail-pane.active{position:relative;display:block;grid-column:2;width:auto;border-top:1px solid var(--line)}.tasks-page{border-right:0}.task-workspace.sidebar-collapsed{grid-template-columns:48px minmax(370px,1fr)}}
 @media(max-width:1024px) {
   .task-workspace {
   display:block;
   min-height:0;
   margin:-36px -40px -104px;
   padding:20px 16px 96px}
-.task-navigation-trigger {
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  margin-bottom:18px;
-  padding:9px 12px;
-  border:1px solid var(--line);
-  border-radius:8px;
-  background:var(--card);
-  color:var(--ink);
-  font-weight:700}
 .task-collapse-button{display:grid}
-.task-navigation-backdrop {
-  position:fixed;
-  z-index:1000;
-  inset:0;
-  display:block;
-  width:100%;
-  height:100%;
-  padding:0;
-  border:0;
-  background:rgba(15,23,42,.38)}
 .task-sidebar {
-  position:fixed;
-  z-index:1001;
-  top:0;
-  bottom:0;
-  left:0;
-  width:min(84vw,320px);
-  overflow-y:auto;
+  display:none;
+  width:auto;
+  max-height:min(55vh,480px);
+  overflow:auto;
   border-right:1px solid var(--line);
-  padding:18px 16px calc(32px + env(safe-area-inset-bottom));
-  background:var(--card);
-  box-shadow:18px 0 44px rgba(15,23,42,.2);
-  transform:translateX(-105%);
-  transition:transform .2s ease}
-.task-sidebar.open {
-  transform:translateX(0)}
+  padding:14px 12px;
+  margin-bottom:14px;
+  background:var(--card)}
+.task-sidebar.open { display:block }
 .task-sidebar-head {
   display:flex;
   align-items:center;
@@ -585,6 +547,7 @@ onBeforeUnmount(() => {
   margin-bottom:12px;
   padding:0 2px 12px;
   border-bottom:1px solid var(--line)}
+.task-sidebar-head{display:flex}
 .task-sidebar-head button {
   display:grid;
   width:36px;
@@ -595,8 +558,6 @@ onBeforeUnmount(() => {
   border-radius:8px;
   background:transparent;
   color:var(--ink)}
-.task-sidebar:not(.open) {
-  pointer-events:none}
 .tasks-head h1 {
   font-size:1.75rem}
 .task-form-grid {
@@ -643,20 +604,11 @@ onBeforeUnmount(() => {
   flex-wrap:wrap}
 .task-workspace {
   padding-bottom:calc(96px + env(safe-area-inset-bottom))}
-:global(body.task-navigation-open) {
-  overflow:hidden}
 }
 
-@media(max-width:767px){.task-workspace{margin:-36px -24px -104px}.tasks-page{padding:18px 16px 110px}.task-navigation-trigger{display:none}.tasks-head{align-items:flex-start}.tasks-head-actions{gap:2px}.tasks-head-actions .ui-button{font-size:0;width:36px;padding:0}.tasks-head-actions .ui-button svg{margin:0}.tasks-summary{max-width:150px}.task-toolbar{margin-top:10px}.task-row{min-height:58px}}
-@media(max-width:1024px){.task-workspace.sidebar-collapsed{display:block}.task-detail-pane.active{top:0;z-index:1002;width:min(92vw,440px);max-width:none}}
-
-.task-navigation-fade-enter-active,
-.task-navigation-fade-leave-active {
-  transition:opacity .2s ease}
-.task-navigation-fade-enter-from,
-.task-navigation-fade-leave-to {
-  opacity:0}
-
-.task-core-time-fields{position:fixed;z-index:1200;right:28px;bottom:82px;width:min(720px,calc(100vw - 56px));display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface);box-shadow:0 12px 30px rgba(15,23,42,.16)}.task-core-time-fields label{display:grid;gap:4px;font-size:12px;color:var(--muted)}.task-core-time-fields .task-inline-check{display:flex;align-items:center;gap:5px;align-self:end}@media(max-width:700px){.task-core-time-fields{right:12px;bottom:76px;width:calc(100vw - 24px);grid-template-columns:1fr 1fr}}
+@media(max-width:767px){.task-workspace{margin:-36px -24px -104px}.tasks-page{padding:18px 16px 110px}.tasks-head{align-items:flex-start}.tasks-head-actions{gap:2px}.tasks-head-actions .ui-button{font-size:0;width:36px;padding:0}.tasks-head-actions .ui-button svg{margin:0}.tasks-summary{max-width:150px}.task-toolbar{margin-top:10px}.task-row{min-height:58px}}
+@media(max-width:1024px){.task-workspace.sidebar-collapsed{display:block}.task-detail-pane.active{position:relative;z-index:auto;width:auto;max-width:none;margin-top:14px;border:1px solid var(--line);box-shadow:none}.task-detail-pane:not(.active){display:none}}
+@media(max-width:1024px){.task-workspace.sidebar-collapsed .task-sidebar{padding:14px 12px;overflow:auto}.task-workspace.sidebar-collapsed .task-sidebar>*{visibility:visible}}
+.task-editor-pane .task-form{padding:20px 24px}.task-editor-pane .task-activity{margin:0 24px 20px}.task-inline-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding-top:12px;border-top:1px solid var(--line)}.task-inline-actions .task-delete{margin-right:auto}
 
 </style>

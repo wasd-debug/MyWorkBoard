@@ -6,6 +6,7 @@ const view = await readFile(new URL('./TasksEnhancedView.vue', import.meta.url),
 const settingsView = await readFile(new URL('./TaskSettingsView.vue', import.meta.url), 'utf8')
 const dataPanel = await readFile(new URL('../components/tasks/TaskDataPanel.vue', import.meta.url), 'utf8')
 const inboxView = await readFile(new URL('./TasksInboxView.vue', import.meta.url), 'utf8')
+const calendarView = await readFile(new URL('./TasksCalendarView.vue', import.meta.url), 'utf8')
 const router = await readFile(new URL('../router/index.js', import.meta.url), 'utf8')
 const client = await readFile(new URL('../../packages/api-client/src/index.js', import.meta.url), 'utf8')
 
@@ -81,7 +82,11 @@ test('task inbox uses a ticktick-style three-pane workspace shell', () => {
   assert.match(inboxView, /添加任务至“\{\{ viewTitle \}\}”/)
   assert.match(inboxView, /class="side-count"/)
   assert.match(inboxView, /@click="toggleSidebar"/)
-  assert.match(inboxView, /class="task-navigation-backdrop"/)
+  assert.doesNotMatch(inboxView, /task-navigation-backdrop|task-navigation-open/)
+  assert.match(inboxView, /class="task-detail task-editor-pane"/)
+  assert.match(inboxView, /Dialog v-model:open="organizationOpen"/)
+  assert.doesNotMatch(inboxView, /<Drawer|ui\/Drawer/)
+  assert.match(inboxView, /function openCreate\(\) \{ selectedTask\.value = null/)
   assert.match(inboxView, /task-sidebar-collapsed:\$\{store\.accountScope\}/)
   assert.match(inboxView, /sidebar-collapsed/)
   assert.match(inboxView, /显示详细/)
@@ -91,6 +96,11 @@ test('task inbox uses a ticktick-style three-pane workspace shell', () => {
   assert.match(inboxView, /class="task-row-more"/)
   assert.match(inboxView, /class="task-row-menu"/)
   assert.match(inboxView, /逾期/)
+})
+
+test('task calendar edits tasks in a page panel instead of a drawer', () => {
+  assert.match(calendarView, /class="calendar-task-editor"/)
+  assert.doesNotMatch(calendarView, /<Drawer|ui\/Drawer/)
 })
 
 test('task sidebar sections reorder independently and task rows open the detail pane', () => {
