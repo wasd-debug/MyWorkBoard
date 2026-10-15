@@ -16,6 +16,10 @@ import com.salarytracker.task.TaskModels.ListGroup;
 import com.salarytracker.task.TaskModels.ListGroupCommand;
 import com.salarytracker.task.TaskModels.ListGroupAssignment;
 import com.salarytracker.task.TaskModels.ActivityPage;
+import com.salarytracker.task.TaskModels.Comment;
+import com.salarytracker.task.TaskModels.CommentCommand;
+import com.salarytracker.task.TaskModels.CommentPage;
+import com.salarytracker.task.TaskModels.Attachment;
 import com.salarytracker.task.TaskModels.SyncOperation;
 import com.salarytracker.task.TaskModels.SyncPullResponse;
 import com.salarytracker.task.TaskModels.SyncPushResponse;
@@ -26,6 +30,10 @@ import com.salarytracker.task.TaskModels.SortCommand;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.core.io.Resource;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,7 +44,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
@@ -48,11 +58,16 @@ public class TaskController {
     private final TaskService taskService;
     private final TaskSyncService taskSyncService;
     private final TaskReminderService reminderService;
+    private final TaskCommentService commentService;
+    private final TaskAttachmentService attachmentService;
 
-    public TaskController(TaskService taskService, TaskSyncService taskSyncService, TaskReminderService reminderService) {
+    public TaskController(TaskService taskService, TaskSyncService taskSyncService, TaskReminderService reminderService,
+                          TaskCommentService commentService, TaskAttachmentService attachmentService) {
         this.taskService = taskService;
         this.taskSyncService = taskSyncService;
         this.reminderService = reminderService;
+        this.commentService = commentService;
+        this.attachmentService = attachmentService;
     }
 
     @GetMapping("/lists")
@@ -205,6 +220,84 @@ public class TaskController {
                                                @RequestParam(defaultValue = "0") int page,
                                                @RequestParam(defaultValue = "20") int size) {
         return ApiResponse.ok(taskService.activity(publicId, page, size));
+    }
+
+    @GetMapping("/{publicId}/comments")
+    @PreAuthorize("hasAuthority('task:read')")
+    @Operation(operationId = "listTaskComments")
+    public ApiResponse<CommentPage> comments(@PathVariable String publicId,
+                                              @RequestParam(defaultValue = "0") int page,
+                                              @RequestParam(defaultValue = "50") int size) {
+        return ApiResponse.ok(commentService.list(publicId, page, size));
+    }
+
+    @PostMapping(value = "/{publicId}/comments", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Audit(module = "task", action = "task.comment.create", targetType = "task")
+    @Operation(operationId = "createTaskComment")
+    public ApiResponse<Comment> createComment(@PathVariable String publicId, @RequestBody CommentCommand body,
+                                                @RequestHeader("Idempotency-Key") String idempotencyKey) {
+        return ApiResponse.ok(commentService.create(publicId, body, idempotencyKey));
+    }
+
+    @PutMapping(value = "/{publicId}/comments/{commentId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Audit(module = "task", action = "task.comment.update", targetType = "task")
+    @Operation(operationId = "updateTaskComment")
+    public ApiResponse<Comment> updateComment(@PathVariable String publicId, @PathVariable String commentId,
+                                                @RequestBody CommentCommand body,
+                                                @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(commentService.update(publicId, commentId, body, ifMatch));
+    }
+
+    @DeleteMapping("/{publicId}/comments/{commentId}")
+    @PreAuthorize("hasAuthority('task:write')")
+    @Audit(module = "task", action = "task.comment.delete", targetType = "task")
+    @Operation(operationId = "deleteTaskComment")
+    public ApiResponse<Boolean> deleteComment(@PathVariable String publicId, @PathVariable String commentId,
+                                               @RequestHeader("If-Match") String ifMatch) {
+        commentService.delete(publicId, commentId, ifMatch);
+        return ApiResponse.ok(true);
+    }
+
+    @GetMapping("/{publicId}/attachments")
+    @PreAuthorize("hasAuthority('task:read')")
+    @Operation(operationId = "listTaskAttachments")
+    public ApiResponse<List<Attachment>> attachments(@PathVariable String publicId) {
+        return ApiResponse.ok(attachmentService.list(publicId));
+    }
+
+    @PostMapping(value = "/{publicId}/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Audit(module = "task", action = "task.attachment.create", targetType = "task")
+    @Operation(operationId = "uploadTaskAttachment")
+    public ApiResponse<Attachment> uploadAttachment(@PathVariable String publicId,
+                                                      @RequestPart("file") MultipartFile file,
+                                                      @RequestHeader("Idempotency-Key") String idempotencyKey) {
+        return ApiResponse.ok(attachmentService.upload(publicId, file, idempotencyKey));
+    }
+
+    @GetMapping("/{publicId}/attachments/{attachmentId}/content")
+    @PreAuthorize("hasAuthority('task:read')")
+    @Operation(operationId = "downloadTaskAttachment")
+    public ResponseEntity<Resource> downloadAttachment(@PathVariable String publicId, @PathVariable String attachmentId) {
+        TaskAttachmentService.Download download = attachmentService.download(publicId, attachmentId);
+        Attachment metadata = download.metadata();
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(metadata.mimeType()))
+                .contentLength(metadata.sizeBytes())
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                        .filename(metadata.fileName(), java.nio.charset.StandardCharsets.UTF_8).build().toString())
+                .body(download.resource());
+    }
+
+    @DeleteMapping("/{publicId}/attachments/{attachmentId}")
+    @PreAuthorize("hasAuthority('task:write')")
+    @Audit(module = "task", action = "task.attachment.delete", targetType = "task")
+    @Operation(operationId = "deleteTaskAttachment")
+    public ApiResponse<Boolean> deleteAttachment(@PathVariable String publicId, @PathVariable String attachmentId,
+                                                   @RequestHeader("If-Match") String ifMatch) {
+        attachmentService.delete(publicId, attachmentId, ifMatch);
+        return ApiResponse.ok(true);
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)

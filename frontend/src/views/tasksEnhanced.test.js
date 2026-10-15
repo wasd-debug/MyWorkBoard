@@ -111,9 +111,15 @@ test('task inbox mirrors ticktick shortcut navigation and mixed efficiency group
 test('task rows open the persistent detail editor for direct task edits', () => {
   assert.match(inboxView, /async function selectTaskDetail\(task\) \{ await openEdit\(task\) \}/)
   assert.match(inboxView, /task-editor/)
-  assert.match(inboxView, /描述<textarea v-model="form.description"/)
+  assert.match(inboxView, /TaskRichTextEditor v-model="form.description"/)
   assert.match(inboxView, /检查项<textarea v-model="form.checklistText"/)
   assert.match(inboxView, /提醒/)
+})
+
+test('task detail exposes contract-backed Markdown comments and attachments', () => {
+  assert.match(inboxView, /TaskRichTextEditor/)
+  for (const token of ['apiListTaskComments', 'apiCreateTaskComment', 'apiUpdateTaskComment', 'apiDeleteTaskComment', 'apiListTaskAttachments', 'apiUploadTaskAttachment', 'apiDeleteTaskAttachment']) assert.match(inboxView, new RegExp(token))
+  assert.match(inboxView, /retryAttachment/)
 })
 
 test('task calendar edits tasks in a page panel instead of a drawer', () => {

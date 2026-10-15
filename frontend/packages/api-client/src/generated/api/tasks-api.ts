@@ -26,6 +26,8 @@ import type { ApiProblem } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseBoolean } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseListTaskAttachment } from '../models/index.ts';
+// @ts-ignore
 import type { ApiResponseListTaskList } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseListTaskListGroup } from '../models/index.ts';
@@ -38,9 +40,15 @@ import type { ApiResponseLong } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskActivityPage } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseTaskAttachment } from '../models/index.ts';
+// @ts-ignore
 import type { ApiResponseTaskBatchResult } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskCalendarResponse } from '../models/index.ts';
+// @ts-ignore
+import type { ApiResponseTaskComment } from '../models/index.ts';
+// @ts-ignore
+import type { ApiResponseTaskCommentPage } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskDeletedResource } from '../models/index.ts';
 // @ts-ignore
@@ -73,6 +81,8 @@ import type { SseEmitter } from '../models/index.ts';
 import type { TaskBatchCommand } from '../models/index.ts';
 // @ts-ignore
 import type { TaskCommand } from '../models/index.ts';
+// @ts-ignore
+import type { TaskCommentCommand } from '../models/index.ts';
 // @ts-ignore
 import type { TaskInboxReadCommand } from '../models/index.ts';
 // @ts-ignore
@@ -286,6 +296,50 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
         },
         /**
          *
+         * @param {string} publicId
+         * @param {string} idempotencyKey
+         * @param {TaskCommentCommand} taskCommentCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createTaskComment: async (publicId: string, idempotencyKey: string, taskCommentCommand: TaskCommentCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('createTaskComment', 'publicId', publicId)
+            // verify required parameter 'idempotencyKey' is not null or undefined
+            assertParamExists('createTaskComment', 'idempotencyKey', idempotencyKey)
+            // verify required parameter 'taskCommentCommand' is not null or undefined
+            assertParamExists('createTaskComment', 'taskCommentCommand', taskCommentCommand)
+            const localVarPath = `/api/v1/tasks/{publicId}/comments`
+                .replace('{publicId}', encodeURIComponent(String(publicId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            if (idempotencyKey != null) {
+                localVarHeaderParameter['Idempotency-Key'] = String(idempotencyKey);
+            }
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(taskCommentCommand, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {string} idempotencyKey
          * @param {TaskListCommand} taskListCommand
          * @param {*} [options] Override http request option.
@@ -472,6 +526,92 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
         /**
          *
          * @param {string} publicId
+         * @param {string} attachmentId
+         * @param {string} ifMatch
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteTaskAttachment: async (publicId: string, attachmentId: string, ifMatch: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('deleteTaskAttachment', 'publicId', publicId)
+            // verify required parameter 'attachmentId' is not null or undefined
+            assertParamExists('deleteTaskAttachment', 'attachmentId', attachmentId)
+            // verify required parameter 'ifMatch' is not null or undefined
+            assertParamExists('deleteTaskAttachment', 'ifMatch', ifMatch)
+            const localVarPath = `/api/v1/tasks/{publicId}/attachments/{attachmentId}`
+                .replace('{publicId}', encodeURIComponent(String(publicId)))
+                .replace('{attachmentId}', encodeURIComponent(String(attachmentId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'DELETE', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            if (ifMatch != null) {
+                localVarHeaderParameter['If-Match'] = String(ifMatch);
+            }
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} publicId
+         * @param {string} commentId
+         * @param {string} ifMatch
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteTaskComment: async (publicId: string, commentId: string, ifMatch: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('deleteTaskComment', 'publicId', publicId)
+            // verify required parameter 'commentId' is not null or undefined
+            assertParamExists('deleteTaskComment', 'commentId', commentId)
+            // verify required parameter 'ifMatch' is not null or undefined
+            assertParamExists('deleteTaskComment', 'ifMatch', ifMatch)
+            const localVarPath = `/api/v1/tasks/{publicId}/comments/{commentId}`
+                .replace('{publicId}', encodeURIComponent(String(publicId)))
+                .replace('{commentId}', encodeURIComponent(String(commentId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'DELETE', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            if (ifMatch != null) {
+                localVarHeaderParameter['If-Match'] = String(ifMatch);
+            }
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} publicId
          * @param {string} ifMatch
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -622,6 +762,43 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
             if (ifMatch != null) {
                 localVarHeaderParameter['If-Match'] = String(ifMatch);
             }
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} publicId
+         * @param {string} attachmentId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        downloadTaskAttachment: async (publicId: string, attachmentId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('downloadTaskAttachment', 'publicId', publicId)
+            // verify required parameter 'attachmentId' is not null or undefined
+            assertParamExists('downloadTaskAttachment', 'attachmentId', attachmentId)
+            const localVarPath = `/api/v1/tasks/{publicId}/attachments/{attachmentId}/content`
+                .replace('{publicId}', encodeURIComponent(String(publicId)))
+                .replace('{attachmentId}', encodeURIComponent(String(attachmentId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
@@ -816,6 +993,82 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
             // verify required parameter 'publicId' is not null or undefined
             assertParamExists('listTaskActivity', 'publicId', publicId)
             const localVarPath = `/api/v1/tasks/{publicId}/activity`
+                .replace('{publicId}', encodeURIComponent(String(publicId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (page !== undefined) {
+                localVarQueryParameter['page'] = page;
+            }
+
+            if (size !== undefined) {
+                localVarQueryParameter['size'] = size;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} publicId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listTaskAttachments: async (publicId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('listTaskAttachments', 'publicId', publicId)
+            const localVarPath = `/api/v1/tasks/{publicId}/attachments`
+                .replace('{publicId}', encodeURIComponent(String(publicId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} publicId
+         * @param {number} [page]
+         * @param {number} [size]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listTaskComments: async (publicId: string, page?: number, size?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('listTaskComments', 'publicId', publicId)
+            const localVarPath = `/api/v1/tasks/{publicId}/comments`
                 .replace('{publicId}', encodeURIComponent(String(publicId)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -1498,6 +1751,54 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
         /**
          *
          * @param {string} publicId
+         * @param {string} commentId
+         * @param {string} ifMatch
+         * @param {TaskCommentCommand} taskCommentCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateTaskComment: async (publicId: string, commentId: string, ifMatch: string, taskCommentCommand: TaskCommentCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('updateTaskComment', 'publicId', publicId)
+            // verify required parameter 'commentId' is not null or undefined
+            assertParamExists('updateTaskComment', 'commentId', commentId)
+            // verify required parameter 'ifMatch' is not null or undefined
+            assertParamExists('updateTaskComment', 'ifMatch', ifMatch)
+            // verify required parameter 'taskCommentCommand' is not null or undefined
+            assertParamExists('updateTaskComment', 'taskCommentCommand', taskCommentCommand)
+            const localVarPath = `/api/v1/tasks/{publicId}/comments/{commentId}`
+                .replace('{publicId}', encodeURIComponent(String(publicId)))
+                .replace('{commentId}', encodeURIComponent(String(commentId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'PUT', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            if (ifMatch != null) {
+                localVarHeaderParameter['If-Match'] = String(ifMatch);
+            }
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(taskCommentCommand, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} publicId
          * @param {string} ifMatch
          * @param {TaskListCommand} taskListCommand
          * @param {*} [options] Override http request option.
@@ -1717,6 +2018,55 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
                 options: localVarRequestOptions,
             };
         },
+        /**
+         *
+         * @param {string} publicId
+         * @param {string} idempotencyKey
+         * @param {File} file
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        uploadTaskAttachment: async (publicId: string, idempotencyKey: string, file: File, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('uploadTaskAttachment', 'publicId', publicId)
+            // verify required parameter 'idempotencyKey' is not null or undefined
+            assertParamExists('uploadTaskAttachment', 'idempotencyKey', idempotencyKey)
+            // verify required parameter 'file' is not null or undefined
+            assertParamExists('uploadTaskAttachment', 'file', file)
+            const localVarPath = `/api/v1/tasks/{publicId}/attachments`
+                .replace('{publicId}', encodeURIComponent(String(publicId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            const localVarFormParams = new ((configuration && configuration.formDataCtor) || FormData)();
+
+
+            if (file !== undefined) {
+                localVarFormParams.append('file', file as any);
+            }
+            localVarHeaderParameter['Content-Type'] = 'multipart/form-data';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            if (idempotencyKey != null) {
+                localVarHeaderParameter['Idempotency-Key'] = String(idempotencyKey);
+            }
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = localVarFormParams;
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
     }
 };
 
@@ -1791,6 +2141,20 @@ export const TasksApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {string} publicId
+         * @param {string} idempotencyKey
+         * @param {TaskCommentCommand} taskCommentCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async createTaskComment(publicId: string, idempotencyKey: string, taskCommentCommand: TaskCommentCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskComment>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createTaskComment(publicId, idempotencyKey, taskCommentCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.createTaskComment']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {string} idempotencyKey
          * @param {TaskListCommand} taskListCommand
          * @param {*} [options] Override http request option.
@@ -1855,6 +2219,34 @@ export const TasksApiFp = function(configuration?: Configuration) {
         /**
          *
          * @param {string} publicId
+         * @param {string} attachmentId
+         * @param {string} ifMatch
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async deleteTaskAttachment(publicId: string, attachmentId: string, ifMatch: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseBoolean>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.deleteTaskAttachment(publicId, attachmentId, ifMatch, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.deleteTaskAttachment']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} publicId
+         * @param {string} commentId
+         * @param {string} ifMatch
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async deleteTaskComment(publicId: string, commentId: string, ifMatch: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseBoolean>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.deleteTaskComment(publicId, commentId, ifMatch, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.deleteTaskComment']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} publicId
          * @param {string} ifMatch
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -1903,6 +2295,19 @@ export const TasksApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.deleteTaskTag(publicId, ifMatch, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['TasksApi.deleteTaskTag']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} publicId
+         * @param {string} attachmentId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async downloadTaskAttachment(publicId: string, attachmentId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<File>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.downloadTaskAttachment(publicId, attachmentId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.downloadTaskAttachment']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -1977,6 +2382,32 @@ export const TasksApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.listTaskActivity(publicId, page, size, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['TasksApi.listTaskActivity']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} publicId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listTaskAttachments(publicId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseListTaskAttachment>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listTaskAttachments(publicId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.listTaskAttachments']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} publicId
+         * @param {number} [page]
+         * @param {number} [size]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listTaskComments(publicId: string, page?: number, size?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskCommentPage>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listTaskComments(publicId, page, size, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.listTaskComments']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -2200,6 +2631,21 @@ export const TasksApiFp = function(configuration?: Configuration) {
         /**
          *
          * @param {string} publicId
+         * @param {string} commentId
+         * @param {string} ifMatch
+         * @param {TaskCommentCommand} taskCommentCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async updateTaskComment(publicId: string, commentId: string, ifMatch: string, taskCommentCommand: TaskCommentCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskComment>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.updateTaskComment(publicId, commentId, ifMatch, taskCommentCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.updateTaskComment']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {string} publicId
          * @param {string} ifMatch
          * @param {TaskListCommand} taskListCommand
          * @param {*} [options] Override http request option.
@@ -2267,6 +2713,20 @@ export const TasksApiFp = function(configuration?: Configuration) {
             const localVarOperationServerBasePath = operationServerMap['TasksApi.updateTaskTag']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
+        /**
+         *
+         * @param {string} publicId
+         * @param {string} idempotencyKey
+         * @param {File} file
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async uploadTaskAttachment(publicId: string, idempotencyKey: string, file: File, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskAttachment>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.uploadTaskAttachment(publicId, idempotencyKey, file, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.uploadTaskAttachment']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
     }
 };
 
@@ -2322,6 +2782,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         },
         /**
          *
+         * @param {TasksApiCreateTaskCommentRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createTaskComment(requestParameters: TasksApiCreateTaskCommentRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskComment> {
+            return localVarFp.createTaskComment(requestParameters.publicId, requestParameters.idempotencyKey, requestParameters.taskCommentCommand, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {TasksApiCreateTaskListRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -2367,6 +2836,24 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         },
         /**
          *
+         * @param {TasksApiDeleteTaskAttachmentRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteTaskAttachment(requestParameters: TasksApiDeleteTaskAttachmentRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseBoolean> {
+            return localVarFp.deleteTaskAttachment(requestParameters.publicId, requestParameters.attachmentId, requestParameters.ifMatch, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {TasksApiDeleteTaskCommentRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteTaskComment(requestParameters: TasksApiDeleteTaskCommentRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseBoolean> {
+            return localVarFp.deleteTaskComment(requestParameters.publicId, requestParameters.commentId, requestParameters.ifMatch, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {TasksApiDeleteTaskListRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -2400,6 +2887,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
          */
         deleteTaskTag(requestParameters: TasksApiDeleteTaskTagRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskDeletedResource> {
             return localVarFp.deleteTaskTag(requestParameters.publicId, requestParameters.ifMatch, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {TasksApiDownloadTaskAttachmentRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        downloadTaskAttachment(requestParameters: TasksApiDownloadTaskAttachmentRequest, options?: RawAxiosRequestConfig): AxiosPromise<File> {
+            return localVarFp.downloadTaskAttachment(requestParameters.publicId, requestParameters.attachmentId, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -2451,6 +2947,24 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
          */
         listTaskActivity(requestParameters: TasksApiListTaskActivityRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskActivityPage> {
             return localVarFp.listTaskActivity(requestParameters.publicId, requestParameters.page, requestParameters.size, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {TasksApiListTaskAttachmentsRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listTaskAttachments(requestParameters: TasksApiListTaskAttachmentsRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseListTaskAttachment> {
+            return localVarFp.listTaskAttachments(requestParameters.publicId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {TasksApiListTaskCommentsRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listTaskComments(requestParameters: TasksApiListTaskCommentsRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskCommentPage> {
+            return localVarFp.listTaskComments(requestParameters.publicId, requestParameters.page, requestParameters.size, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -2603,6 +3117,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         },
         /**
          *
+         * @param {TasksApiUpdateTaskCommentRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateTaskComment(requestParameters: TasksApiUpdateTaskCommentRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskComment> {
+            return localVarFp.updateTaskComment(requestParameters.publicId, requestParameters.commentId, requestParameters.ifMatch, requestParameters.taskCommentCommand, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {TasksApiUpdateTaskListRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -2646,6 +3169,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         updateTaskTag(requestParameters: TasksApiUpdateTaskTagRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskTag> {
             return localVarFp.updateTaskTag(requestParameters.publicId, requestParameters.ifMatch, requestParameters.taskTagCommand, options).then((request) => request(axios, basePath));
         },
+        /**
+         *
+         * @param {TasksApiUploadTaskAttachmentRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        uploadTaskAttachment(requestParameters: TasksApiUploadTaskAttachmentRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskAttachment> {
+            return localVarFp.uploadTaskAttachment(requestParameters.publicId, requestParameters.idempotencyKey, requestParameters.file, options).then((request) => request(axios, basePath));
+        },
     };
 };
 
@@ -2683,6 +3215,17 @@ export interface TasksApiCreateTaskRequest {
     readonly idempotencyKey: string
 
     readonly taskCommand: TaskCommand
+}
+
+/**
+ * Request parameters for createTaskComment operation in TasksApi.
+ */
+export interface TasksApiCreateTaskCommentRequest {
+    readonly publicId: string
+
+    readonly idempotencyKey: string
+
+    readonly taskCommentCommand: TaskCommentCommand
 }
 
 /**
@@ -2727,6 +3270,28 @@ export interface TasksApiDeleteTaskRequest {
 }
 
 /**
+ * Request parameters for deleteTaskAttachment operation in TasksApi.
+ */
+export interface TasksApiDeleteTaskAttachmentRequest {
+    readonly publicId: string
+
+    readonly attachmentId: string
+
+    readonly ifMatch: string
+}
+
+/**
+ * Request parameters for deleteTaskComment operation in TasksApi.
+ */
+export interface TasksApiDeleteTaskCommentRequest {
+    readonly publicId: string
+
+    readonly commentId: string
+
+    readonly ifMatch: string
+}
+
+/**
  * Request parameters for deleteTaskList operation in TasksApi.
  */
 export interface TasksApiDeleteTaskListRequest {
@@ -2765,6 +3330,15 @@ export interface TasksApiDeleteTaskTagRequest {
 }
 
 /**
+ * Request parameters for downloadTaskAttachment operation in TasksApi.
+ */
+export interface TasksApiDownloadTaskAttachmentRequest {
+    readonly publicId: string
+
+    readonly attachmentId: string
+}
+
+/**
  * Request parameters for getTask operation in TasksApi.
  */
 export interface TasksApiGetTaskRequest {
@@ -2788,6 +3362,24 @@ export interface TasksApiGetTaskCalendarRequest {
  * Request parameters for listTaskActivity operation in TasksApi.
  */
 export interface TasksApiListTaskActivityRequest {
+    readonly publicId: string
+
+    readonly page?: number
+
+    readonly size?: number
+}
+
+/**
+ * Request parameters for listTaskAttachments operation in TasksApi.
+ */
+export interface TasksApiListTaskAttachmentsRequest {
+    readonly publicId: string
+}
+
+/**
+ * Request parameters for listTaskComments operation in TasksApi.
+ */
+export interface TasksApiListTaskCommentsRequest {
     readonly publicId: string
 
     readonly page?: number
@@ -2923,6 +3515,19 @@ export interface TasksApiUpdateTaskRequest {
 }
 
 /**
+ * Request parameters for updateTaskComment operation in TasksApi.
+ */
+export interface TasksApiUpdateTaskCommentRequest {
+    readonly publicId: string
+
+    readonly commentId: string
+
+    readonly ifMatch: string
+
+    readonly taskCommentCommand: TaskCommentCommand
+}
+
+/**
  * Request parameters for updateTaskList operation in TasksApi.
  */
 export interface TasksApiUpdateTaskListRequest {
@@ -2975,6 +3580,17 @@ export interface TasksApiUpdateTaskTagRequest {
     readonly ifMatch: string
 
     readonly taskTagCommand: TaskTagCommand
+}
+
+/**
+ * Request parameters for uploadTaskAttachment operation in TasksApi.
+ */
+export interface TasksApiUploadTaskAttachmentRequest {
+    readonly publicId: string
+
+    readonly idempotencyKey: string
+
+    readonly file: File
 }
 
 /**
@@ -3032,6 +3648,16 @@ export class TasksApi extends BaseAPI {
 
     /**
      *
+     * @param {TasksApiCreateTaskCommentRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public createTaskComment(requestParameters: TasksApiCreateTaskCommentRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).createTaskComment(requestParameters.publicId, requestParameters.idempotencyKey, requestParameters.taskCommentCommand, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
      * @param {TasksApiCreateTaskListRequest} requestParameters Request parameters.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -3082,6 +3708,26 @@ export class TasksApi extends BaseAPI {
 
     /**
      *
+     * @param {TasksApiDeleteTaskAttachmentRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public deleteTaskAttachment(requestParameters: TasksApiDeleteTaskAttachmentRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).deleteTaskAttachment(requestParameters.publicId, requestParameters.attachmentId, requestParameters.ifMatch, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {TasksApiDeleteTaskCommentRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public deleteTaskComment(requestParameters: TasksApiDeleteTaskCommentRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).deleteTaskComment(requestParameters.publicId, requestParameters.commentId, requestParameters.ifMatch, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
      * @param {TasksApiDeleteTaskListRequest} requestParameters Request parameters.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -3118,6 +3764,16 @@ export class TasksApi extends BaseAPI {
      */
     public deleteTaskTag(requestParameters: TasksApiDeleteTaskTagRequest, options?: RawAxiosRequestConfig) {
         return TasksApiFp(this.configuration).deleteTaskTag(requestParameters.publicId, requestParameters.ifMatch, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {TasksApiDownloadTaskAttachmentRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public downloadTaskAttachment(requestParameters: TasksApiDownloadTaskAttachmentRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).downloadTaskAttachment(requestParameters.publicId, requestParameters.attachmentId, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -3175,6 +3831,26 @@ export class TasksApi extends BaseAPI {
      */
     public listTaskActivity(requestParameters: TasksApiListTaskActivityRequest, options?: RawAxiosRequestConfig) {
         return TasksApiFp(this.configuration).listTaskActivity(requestParameters.publicId, requestParameters.page, requestParameters.size, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {TasksApiListTaskAttachmentsRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listTaskAttachments(requestParameters: TasksApiListTaskAttachmentsRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).listTaskAttachments(requestParameters.publicId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {TasksApiListTaskCommentsRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listTaskComments(requestParameters: TasksApiListTaskCommentsRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).listTaskComments(requestParameters.publicId, requestParameters.page, requestParameters.size, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -3345,6 +4021,16 @@ export class TasksApi extends BaseAPI {
 
     /**
      *
+     * @param {TasksApiUpdateTaskCommentRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public updateTaskComment(requestParameters: TasksApiUpdateTaskCommentRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).updateTaskComment(requestParameters.publicId, requestParameters.commentId, requestParameters.ifMatch, requestParameters.taskCommentCommand, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
      * @param {TasksApiUpdateTaskListRequest} requestParameters Request parameters.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -3391,5 +4077,15 @@ export class TasksApi extends BaseAPI {
      */
     public updateTaskTag(requestParameters: TasksApiUpdateTaskTagRequest, options?: RawAxiosRequestConfig) {
         return TasksApiFp(this.configuration).updateTaskTag(requestParameters.publicId, requestParameters.ifMatch, requestParameters.taskTagCommand, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {TasksApiUploadTaskAttachmentRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public uploadTaskAttachment(requestParameters: TasksApiUploadTaskAttachmentRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).uploadTaskAttachment(requestParameters.publicId, requestParameters.idempotencyKey, requestParameters.file, options).then((request) => request(this.axios, this.basePath));
     }
 }

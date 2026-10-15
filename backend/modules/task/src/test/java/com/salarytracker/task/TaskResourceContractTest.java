@@ -52,6 +52,12 @@ class TaskResourceContractTest {
     @MockBean
     private TaskReminderService taskReminderService;
 
+    @MockBean
+    private TaskCommentService taskCommentService;
+
+    @MockBean
+    private TaskAttachmentService taskAttachmentService;
+
     @Test
     void rejectsAnonymousReads() throws Exception {
         mockMvc.perform(get("/api/v1/tasks/lists")).andExpect(status().isUnauthorized());

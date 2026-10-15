@@ -224,6 +224,17 @@ export const apiUpdateTaskListGroup = async (id, payload, currentRevision) => da
 export const apiDeleteTaskListGroup = async (id, currentRevision) => data(await api.delete(`/api/v1/tasks/list-groups/${id}`, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiAssignTaskListGroup = async (id, groupId, currentRevision) => data(await api.put(`/api/v1/tasks/lists/${id}/group`, { groupId }, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiListTaskActivity = async (id, params = {}) => data(await api.get(`/api/v1/tasks/${id}/activity`, { params }))
+export const apiListTaskComments = async (id, params = {}) => data(await api.get(`/api/v1/tasks/${id}/comments`, { params }))
+export const apiCreateTaskComment = async (id, payload, idempotencyKey = crypto.randomUUID()) => data(await api.post(`/api/v1/tasks/${id}/comments`, payload, { headers: { 'Idempotency-Key': idempotencyKey } }))
+export const apiUpdateTaskComment = async (taskId, commentId, payload, currentRevision) => data(await api.put(`/api/v1/tasks/${taskId}/comments/${commentId}`, payload, { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiDeleteTaskComment = async (taskId, commentId, currentRevision) => data(await api.delete(`/api/v1/tasks/${taskId}/comments/${commentId}`, { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiListTaskAttachments = async id => data(await api.get(`/api/v1/tasks/${id}/attachments`))
+export async function apiUploadTaskAttachment(id, file, onUploadProgress, idempotencyKey = crypto.randomUUID()) {
+  const form = new FormData(); form.append('file', file)
+  return data(await api.post(`/api/v1/tasks/${id}/attachments`, form, { timeout: 900_000, headers: { 'Idempotency-Key': idempotencyKey }, onUploadProgress: event => onUploadProgress?.(event.total ? Math.round(event.loaded / event.total * 100) : 0) }))
+}
+export const apiDeleteTaskAttachment = async (taskId, attachmentId, currentRevision) => data(await api.delete(`/api/v1/tasks/${taskId}/attachments/${attachmentId}`, { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiDownloadTaskAttachment = async (taskId, attachmentId) => (await api.get(`/api/v1/tasks/${taskId}/attachments/${attachmentId}/content`, { responseType: 'blob', timeout: 900_000 })).data
 export const apiBatchTasks = async payload => data(await api.post('/api/v1/tasks/batch', payload))
 export const apiSortTask = async (id, sortOrder, currentRevision) => data(await api.post(`/api/v1/tasks/${id}/sort`, { sortOrder }, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiCreateTaskList = async payload => data(await api.post('/api/v1/tasks/lists', payload, { headers: { 'Idempotency-Key': crypto.randomUUID() } }))

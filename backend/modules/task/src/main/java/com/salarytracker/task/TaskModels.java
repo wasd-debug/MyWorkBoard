@@ -38,6 +38,30 @@ public final class TaskModels {
     public record ActivityPage(List<Activity> items, int page, int size, long total) {
     }
 
+    @Schema(name = "TaskComment")
+    public record Comment(String publicId, String taskId, String authorId, String authorName,
+                          String bodyMarkdown, String createdAt, String updatedAt, long revision,
+                          boolean deleted) {
+    }
+
+    @Schema(name = "TaskCommentCommand")
+    public record CommentCommand(String bodyMarkdown) {
+    }
+
+    @Schema(name = "TaskCommentPage")
+    public record CommentPage(List<Comment> items, int page, int size, long total) {
+    }
+
+    @Schema(name = "TaskAttachment")
+    public record Attachment(String publicId, String taskId, String fileName, String mimeType,
+                             long sizeBytes, String checksumSha256, String downloadUrl,
+                             String createdBy, String createdAt, long revision, boolean deleted) {
+    }
+
+    @Schema(name = "TaskAttachmentDelete")
+    public record AttachmentDelete(String publicId, long revision, boolean deleted) {
+    }
+
     @Schema(name = "TaskTag")
     public record TaskTag(String publicId, String parentId, String name, String color, int sortOrder,
                           long revision) {
