@@ -13,6 +13,7 @@
         <div class="card-actions"><Button size="small" variant="ghost" @click="openForm(habit)"><Pencil :size="15" />编辑</Button><Button size="small" variant="danger" @click="remove(habit)"><Trash2 :size="15" /></Button></div>
       </div>
       <div class="habit-stats"><span>30 天完成率 {{ stats[habit.publicId]?.completionRate30Days || 0 }}%</span><span>本月 {{ stats[habit.publicId]?.monthCompleted || 0 }}/{{ stats[habit.publicId]?.monthTarget || 0 }}</span></div>
+      <div class="habit-week" aria-label="最近 7 天打卡"><span v-for="day in recentDays" :key="day.date" class="habit-day"><small>{{ day.label }}</small><button type="button" :class="{ checked: isChecked(habit, day.date) }" :aria-label="`${habit.name} ${day.date}`" @click="checkin(habit, isChecked(habit, day.date) ? 'SKIP' : 'DONE', day.date)">{{ isChecked(habit, day.date) ? '✓' : '·' }}</button></span></div>
       <div class="habit-actions"><Button @click="checkin(habit, 'DONE')"><Check :size="16" />今日打卡</Button><Button variant="ghost" @click="checkin(habit, 'SKIP')">跳过今日</Button><Button variant="ghost" @click="openBackfill(habit)">补卡</Button></div>
     </section>
     <Dialog v-model:open="formOpen" :title="editing ? '编辑习惯' : '新建习惯'">
@@ -46,6 +47,7 @@ const backfillDate = ref(new Date().toISOString().slice(0, 10))
 const form = reactive({ name: '', icon: '✓', color: '#2f746f', frequency: 'DAILY', targetCount: 1, customDays: [], startDate: new Date().toISOString().slice(0, 10), archived: false, sortOrder: 0 })
 const weekdays = [{ v: 1, l: '一' }, { v: 2, l: '二' }, { v: 3, l: '三' }, { v: 4, l: '四' }, { v: 5, l: '五' }, { v: 6, l: '六' }, { v: 7, l: '日' }]
 const stats = computed(() => Object.fromEntries(habits.value.map(habit => [habit.publicId, localStats(habit)])))
+const recentDays = computed(() => Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setDate(date.getDate() - 6 + index); return { date: date.toISOString().slice(0, 10), label: new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(date).replace('周', '') } }))
 
 function frequencyLabel(item) { return { DAILY: '每天', WEEKLY_N: `每周 ${item.targetCount} 次`, MONTHLY_N: `每月 ${item.targetCount} 次`, CUSTOM: '自定义星期' }[item.frequency] || item.frequency }
 function openForm(item = null) { editing.value = item; Object.assign(form, item ? { ...item, customDays: [...(item.customDays || [])] } : { name: '', icon: '✓', color: '#2f746f', frequency: 'DAILY', targetCount: 1, customDays: [], startDate: new Date().toISOString().slice(0, 10), archived: false, sortOrder: habits.value.length }); formOpen.value = true }
@@ -55,6 +57,7 @@ function openBackfill(item) { backfillHabit.value = item; backfillDate.value = n
 async function submitBackfill() { backfillOpen.value = false; if (backfillHabit.value) await checkin(backfillHabit.value, 'DONE', backfillDate.value) }
 async function remove(item) { if (window.confirm(`删除习惯“${item.name}”？`)) await store.deleteHabit(item) }
 function localStats(habit) { const rows = store.habitCheckins.filter(item => item.habitId === habit.publicId && item.status === 'DONE'); const today = new Date().toISOString().slice(0, 10); const month = today.slice(0, 7); const completed = rows.filter(item => item.date.startsWith(month)).reduce((sum, item) => sum + item.count, 0); const last30 = new Date(); last30.setDate(last30.getDate() - 29); const recent = rows.filter(item => item.date >= last30.toISOString().slice(0, 10)).reduce((sum, item) => sum + item.count, 0); const target = habit.frequency === 'MONTHLY_N' ? habit.targetCount : habit.frequency === 'WEEKLY_N' ? habit.targetCount * 5 : habit.targetCount * 30; return { completionRate30Days: Math.min(100, Math.round(recent * 100 / Math.max(1, target))), monthCompleted: completed, monthTarget: habit.frequency === 'MONTHLY_N' ? habit.targetCount : habit.targetCount * new Date().getDate() } }
+function isChecked(habit, date) { return store.habitCheckins.some(item => item.habitId === habit.publicId && item.date === date && item.status === 'DONE') }
 onMounted(() => store.init({ waitForRemote: false }))
 </script>
 

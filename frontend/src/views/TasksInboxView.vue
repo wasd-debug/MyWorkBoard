@@ -65,7 +65,7 @@ import { apiCreateTaskReminder, apiDeleteTaskReminder, apiListTaskActivity, apiL
 
 const route = useRoute(); const store = useTasksStore(); const appStore = useAppStore(); const editorOpen = ref(false); const editing = ref(null); const editorError = ref(''); const sortBy = ref('default'); const sortMenuOpen = ref(false); const moreMenuOpen = ref(false); const showDetails = ref(true); const showChecklist = ref(true); const navigationOpen = ref(false); const sidebarCollapsed = ref(false); const expandedGroups = ref(new Set()); const activities = ref([]); const activityLoading = ref(false)
 const batchMode = ref(false); const selectedIds = ref(new Set()); const batchListId = ref(''); const batchPriority = ref('NONE'); const batchDueLocal = ref(''); const batchTagId = ref(''); const batchReminderOffset = ref(30); const draggedTask = ref(null)
-const selectedTask = ref(null); const filters = ref([]); const filteredTasks = ref([]); const draggedOrganization = ref(null)
+const selectedTask = ref(null); const checklistSaving = ref(''); const filters = ref([]); const filteredTasks = ref([]); const draggedOrganization = ref(null)
 const compactNavigation = ref(false)
 let compactNavigationQuery
 const form = reactive({ title: '', description: '', priority: 'NONE', startLocal: '', dueLocal: '', durationMinutes: 0, allDay: false, listId: '', parentId: '', tagIds: [], checklistText: '', recurrence: '', customRrule: '', recurrenceAnchor: 'DUE_DATE', reminderEnabled: false, reminderKind: 'RELATIVE', reminderOffset: 30, remindLocal: '', reminder: null })
@@ -169,6 +169,28 @@ function updateCompactNavigation(event) { compactNavigation.value = event.matche
 function currentListId() { return route.name === 'tasks-list' ? String(route.params.publicId) : store.inbox?.publicId || '' }
 function openCreate() { editing.value = null; resetForm(); editorOpen.value = true } async function openEdit(task) { editing.value = task; resetForm(task); editorOpen.value = true; if (store.online) { try { const reminders = await apiListTaskReminders(task.publicId); const reminder = reminders?.[0]; if (reminder) Object.assign(form, { reminderEnabled: true, reminderKind: reminder.kind, reminderOffset: reminder.offsetMinutes ?? 30, remindLocal: reminder.remindAt ? toLocalInput(reminder.remindAt) : '', reminder }) } catch (error) { editorError.value = detail(error, '提醒加载失败') } } }
 async function selectTaskDetail(task) { selectedTask.value = task; activities.value = []; await loadActivity(task) }
+async function toggleChecklistItem(item) {
+  if (!selectedTask.value || checklistSaving.value) return
+  const key = item.publicId || item.title
+  const previous = (selectedTask.value.checklist || []).map(entry => ({ ...entry }))
+  const checklist = (selectedTask.value.checklist || []).map(entry => entry === item || (entry.publicId && entry.publicId === item.publicId) ? { ...entry, completed: !entry.completed } : entry)
+  checklistSaving.value = key
+  selectedTask.value = { ...selectedTask.value, checklist }
+  try {
+    const saved = await store.update(selectedTask.value, { checklist })
+    selectedTask.value = store.tasks.find(entry => entry.publicId === saved.publicId) || saved
+  } catch (error) {
+    selectedTask.value = { ...selectedTask.value, checklist: previous }
+    store.error = detail(error, '更新检查项失败')
+  } finally { checklistSaving.value = '' }
+}
+function handleChecklistClick(event) {
+  const row = event.target.closest('.detail-checklist p')
+  if (!row || !selectedTask.value) return
+  const index = [...row.parentElement.querySelectorAll('p')].indexOf(row)
+  const item = selectedTask.value.checklist?.[index]
+  if (item) toggleChecklistItem(item)
+}
 function payload() { const rrule = form.recurrence === 'CUSTOM' ? form.customRrule.trim() : form.recurrence; return { listId: form.listId, parentId: form.parentId || '', tagIds: form.tagIds, checklist: form.checklistText.split('\n').map(line => line.trim()).filter(Boolean).map((line, index) => ({ publicId: editing.value?.checklist?.[index]?.publicId, title: line.replace(/^\[x\]\s*/i, ''), completed: /^\[x\]/i.test(line), sortOrder: index })), title: form.title.trim(), description: form.description.trim(), priority: form.priority, startAt: form.startLocal ? new Date(form.startLocal).toISOString() : '', dueAt: form.dueLocal ? new Date(form.dueLocal).toISOString() : '', durationMinutes: Number(form.durationMinutes) || 0, allDay: form.allDay, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai', rrule, recurrenceAnchor: rrule ? form.recurrenceAnchor : '' } }
 async function save() { editorError.value = ''; try { const saved = editing.value ? await store.update(editing.value, payload()) : await store.create(payload()); if (form.reminderEnabled || form.reminder) { if (!store.online) throw new Error('提醒需要联网保存'); await store.syncNow(); const serverTask = store.tasks.find(item => item.publicId === saved.publicId) || saved; const reminder = { kind: form.reminderKind, offsetMinutes: form.reminderKind === 'RELATIVE' ? form.reminderOffset : null, remindAt: form.reminderKind === 'ABSOLUTE' && form.remindLocal ? new Date(form.remindLocal).toISOString() : null, channel: 'IN_APP', dailyUntilDone: false }; if (form.reminderEnabled) form.reminder ? await apiUpdateTaskReminder(serverTask.publicId, form.reminder.publicId, reminder, form.reminder.revision) : await apiCreateTaskReminder(serverTask.publicId, reminder); else await apiDeleteTaskReminder(serverTask.publicId, form.reminder.publicId, form.reminder.revision) } selectedTask.value = store.tasks.find(item => item.publicId === saved.publicId) || saved; editorOpen.value = false } catch (error) { editorError.value = detail(error, '任务保存失败') } } async function complete(task) { try { await store.complete(task); selectedTask.value = store.tasks.find(item => item.publicId === task.publicId) || null } catch (error) { store.error = detail(error, '完成任务失败') } } async function reopen(task) { try { await store.reopen(task); selectedTask.value = store.tasks.find(item => item.publicId === task.publicId) || null } catch (error) { store.error = detail(error, '重新打开失败') } } async function remove(task) { if (!window.confirm(`删除任务“${task.title}”？`)) return; try { await store.remove(task); if (editing.value?.publicId === task.publicId) editorOpen.value = false; if (selectedTask.value?.publicId === task.publicId) selectedTask.value = null } catch (error) { editorError.value = detail(error, '删除任务失败') } } async function restore(task) { try { await store.restore(task) } catch (error) { store.error = detail(error, '恢复任务失败') } }
 async function purge(task) { if (window.prompt(`永久清除后无法恢复。请输入 DELETE:${task.publicId}`) !== `DELETE:${task.publicId}`) return; try { await store.purge(task) } catch (error) { store.error = detail(error, '永久清除失败') } }
@@ -230,6 +252,7 @@ watch(() => store.tasks, () => { if (selectedTask.value) selectedTask.value = st
 watch(editorOpen, open => { if (open && editing.value) loadActivity(editing.value) })
 function onNewRequest() { openCreate() }
 onMounted(() => {
+  document.addEventListener('click', handleChecklistClick)
   window.addEventListener('task-new-request', onNewRequest)
   store.init().then(loadFilters).catch(() => {})
   compactNavigationQuery = window.matchMedia('(max-width: 1024px)')
@@ -239,6 +262,7 @@ onMounted(() => {
   window.addEventListener('keydown', onEscape)
 })
 onBeforeUnmount(() => {
+  document.removeEventListener('click', handleChecklistClick)
   window.removeEventListener('task-new-request', onNewRequest)
   document.body.classList.remove('task-navigation-open')
   if (compactNavigationQuery?.removeEventListener) compactNavigationQuery.removeEventListener('change', updateCompactNavigation)
@@ -478,7 +502,7 @@ onBeforeUnmount(() => {
 .task-detail>header div{display:flex;gap:4px}.task-detail>header button{display:grid;width:34px;height:34px;place-items:center;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted)}.task-detail>header button:hover{background:var(--paper);color:var(--ink)}
 .task-detail-title{display:flex;align-items:flex-start;gap:8px;padding:26px 24px 20px;border-bottom:1px solid var(--line)}.task-detail-title>div{min-width:0}.task-detail-title h2{margin:2px 0 10px;font-size:1.25rem;line-height:1.35;overflow-wrap:anywhere}.task-detail-title p{margin:0;color:var(--ink2);font-size:.82rem;line-height:1.7;white-space:pre-wrap}.task-detail-title .detail-placeholder{color:var(--muted)}
 .task-detail dl{margin:0;padding:10px 24px;border-bottom:1px solid var(--line)}.task-detail dl>div{display:grid;grid-template-columns:70px minmax(0,1fr);gap:10px;padding:9px 0;font-size:.78rem}.task-detail dt{color:var(--muted)}.task-detail dd{margin:0;overflow-wrap:anywhere}
-.detail-checklist,.detail-activity{padding:18px 24px;border-bottom:1px solid var(--line)}.detail-checklist h3,.detail-activity h3{margin:0 0 12px;font-size:.82rem}.detail-checklist h3 span{color:var(--muted);font-weight:500}.detail-checklist p{display:flex;align-items:center;gap:8px;margin:0;padding:9px 0;border-bottom:1px solid var(--line);font-size:.78rem}.detail-checklist p.done{color:var(--muted);text-decoration:line-through}.detail-activity{margin:0}.task-detail>footer{display:flex;justify-content:flex-end;padding:18px 24px}
+.detail-checklist,.detail-activity{padding:18px 24px;border-bottom:1px solid var(--line)}.detail-checklist h3,.detail-activity h3{margin:0 0 12px;font-size:.82rem}.detail-checklist h3 span{color:var(--muted);font-weight:500}.detail-checklist p{display:flex;align-items:center;gap:8px;margin:0;padding:9px 0;border-bottom:1px solid var(--line);font-size:.78rem;cursor:pointer}.detail-checklist p:hover{color:var(--accent);background:var(--accent-soft)}.detail-checklist p.done{color:var(--muted);text-decoration:line-through}.detail-activity{margin:0}.task-detail>footer{display:flex;justify-content:flex-end;padding:18px 24px}
 @media(max-width:1279px){.task-workspace{grid-template-columns:230px minmax(370px,1fr)}.task-detail-pane{display:none}.task-detail-pane.active{position:fixed;z-index:45;top:72px;right:0;bottom:0;display:block;width:min(420px,42vw);border-left:1px solid var(--line);box-shadow:-18px 0 42px rgba(15,23,42,.12)}.tasks-page{border-right:0}.task-workspace.sidebar-collapsed{grid-template-columns:48px minmax(370px,1fr)}}
 @media(max-width:1024px) {
   .task-workspace {

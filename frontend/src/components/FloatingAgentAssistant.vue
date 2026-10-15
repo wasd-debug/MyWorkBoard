@@ -13,6 +13,7 @@
             <Sparkles />
             <b>随时问我</b>
             <p>查询账本、工时或报表。需要填写和确认的操作，可进入完整工作台继续。</p>
+            <div class="floating-agent-suggestions" aria-label="推荐问题"><button v-for="item in suggestions" :key="item" type="button" @click="prompt = item; submitPrompt()">{{ item }}</button></div>
           </div>
           <article v-for="item in messages" :key="item.id" :class="item.role">
             <div class="floating-agent-message" :class="{ failed: item.status === 'FAILED' }">
@@ -82,6 +83,7 @@ const sending = ref(false)
 const sessionId = ref('')
 const messages = ref([])
 const requiresFullView = ref(false)
+const suggestions = ['今天有哪些任务？', '创建一个任务', '总结一下今天', '规划今日安排']
 let controller = null
 
 const currentPageTitle = computed(() => route.meta?.title || '个人工作台')
