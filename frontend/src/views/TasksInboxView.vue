@@ -90,7 +90,7 @@ const visibleTasks = computed(() => {
     const archivedIds = new Set(store.lists.filter(item => item.archived).map(item => item.publicId))
     const start = viewKey.value === 'tomorrow' ? addDays(startOfToday(), 1) : startOfToday()
     const end = viewKey.value === 'today' ? addDays(startOfToday(), 1) : viewKey.value === 'tomorrow' ? addDays(startOfToday(), 2) : addDays(startOfToday(), 8)
-    values = values.filter(item => !archivedIds.has(item.listId) && item.status !== 'COMPLETED' && item.dueAt && new Date(item.dueAt) < end && (viewKey.value === 'today' || viewKey.value === 'next7' || new Date(item.dueAt) >= start))
+    values = values.filter(item => !archivedIds.has(item.listId) && item.status !== 'COMPLETED' && ((!item.dueAt && viewKey.value === 'today') || (item.dueAt && new Date(item.dueAt) < end && (viewKey.value === 'today' || viewKey.value === 'next7' || new Date(item.dueAt) >= start))))
   } else if (viewKey.value === 'completed') values = values.filter(item => item.status === 'COMPLETED')
   if (sortBy.value === 'default') values.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
   if (sortBy.value === 'title') values.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
