@@ -76,7 +76,7 @@ test('task list supports atomic batch controls and manual ordering', () => {
 })
 
 test('task inbox uses a ticktick-style three-pane workspace shell', () => {
-  assert.match(inboxView, /grid-template-columns:240px minmax\(370px,1fr\) minmax\(320px,36%\)/)
+  assert.match(inboxView, /grid-template-columns:240px minmax\(370px,1fr\) 8px minmax\(320px,var\(--task-detail-width,460px\)\)/)
   assert.match(inboxView, /class="task-detail-pane"/)
   assert.match(inboxView, /添加任务至“\{\{ viewTitle \}\}”/)
   assert.match(inboxView, /class="side-count"/)
@@ -87,6 +87,10 @@ test('task inbox uses a ticktick-style three-pane workspace shell', () => {
   assert.match(inboxView, /显示详细/)
   assert.match(inboxView, /显示检查事项/)
   assert.match(inboxView, /task-list-view:\$\{store\.accountScope\}/)
+  assert.match(inboxView, /class="task-detail-divider"/)
+  assert.match(inboxView, /class="task-row-more"/)
+  assert.match(inboxView, /class="task-row-menu"/)
+  assert.match(inboxView, /逾期/)
 })
 
 test('task sidebar sections reorder independently and task rows open the detail pane', () => {
