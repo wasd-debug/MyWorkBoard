@@ -6,6 +6,7 @@ const view = await readFile(new URL('./TasksEnhancedView.vue', import.meta.url),
 const settingsView = await readFile(new URL('./TaskSettingsView.vue', import.meta.url), 'utf8')
 const dataPanel = await readFile(new URL('../components/tasks/TaskDataPanel.vue', import.meta.url), 'utf8')
 const inboxView = await readFile(new URL('./TasksInboxView.vue', import.meta.url), 'utf8')
+const workspaceView = await readFile(new URL('./TaskWorkspaceView.vue', import.meta.url), 'utf8')
 const calendarView = await readFile(new URL('./TasksCalendarView.vue', import.meta.url), 'utf8')
 const router = await readFile(new URL('../router/index.js', import.meta.url), 'utf8')
 const client = await readFile(new URL('../../packages/api-client/src/index.js', import.meta.url), 'utf8')
@@ -98,6 +99,15 @@ test('task inbox uses a ticktick-style three-pane workspace shell', () => {
   assert.match(inboxView, /逾期/)
 })
 
+test('task list routes use the replacement workspace and preserve the task contract', () => {
+  for (const path of ['/tasks/inbox', '/tasks/today', '/tasks/tomorrow', '/tasks/next7', '/tasks/all', '/tasks/completed', '/tasks/trash', '/tasks/list/:publicId', '/tasks/tag/:publicId', '/tasks/filter/:publicId', '/tasks/shortcut/:shortcut']) {
+    const routePattern = new RegExp(`path: '${path.replace(/[/:]/g, match => `\\${match}`)}'[\\s\\S]*TaskWorkspaceView`)
+    assert.match(router, routePattern)
+  }
+  for (const token of ['clone-task-shell', 'TaskRichTextEditor', 'batchTasks', 'sortTask', 'clone-context-menu', 'store.createList']) assert.match(workspaceView, new RegExp(token.replace('.', '\\.' )))
+  assert.match(workspaceView, /route\.name === 'tasks-trash' \? task\.deleted/)
+})
+
 test('task inbox mirrors ticktick shortcut navigation and mixed efficiency groups', () => {
   assert.match(router, /path: '\/tasks\/shortcut\/:shortcut'/)
   for (const label of ['指派给我', '摘要', '归档', '本周', '下周', '无日期任务', '无标签']) assert.match(inboxView, new RegExp(label))
@@ -144,7 +154,7 @@ test('task sidebar sections reorder independently and task rows open the detail 
   assert.match(inboxView, /apiUpdateTaskFilter/)
   assert.match(inboxView, /selectTaskDetail\(task\)/)
   assert.match(inboxView, /class="task-detail"/)
-  assert.match(router, /path: '\/tasks\/filter\/:publicId'[\s\S]*TasksInboxView/)
+  assert.match(router, /path: '\/tasks\/filter\/:publicId'[\s\S]*TaskWorkspaceView/)
 })
 
 test('task domain exposes a ticktick-style desktop module rail', async () => {
