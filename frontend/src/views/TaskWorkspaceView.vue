@@ -316,10 +316,10 @@
           <button type="button" class="clone-detail-tool clone-detail-list-tool" aria-label="任务清单" @click="editorOpen ? null : openEdit(selectedTask)">
             <ListTodo :size="15" /><span>{{ listName(editorOpen ? draft.listId : selectedTask?.listId) }}</span>
           </button>
-          <button type="button" class="clone-detail-tool" aria-label="设置日期" @click.stop="datePopoverOpen = !datePopoverOpen">
+          <button type="button" class="clone-detail-tool" aria-label="设置日期" @click.stop="datePopoverOpen = !datePopoverOpen; repeatPopoverOpen = false; priorityPopoverOpen = false">
             <CalendarClock :size="15" /><span>{{ editorOpen && draft.dueAt ? formatDate(draft.dueAt) : selectedTask?.dueAt ? formatDate(selectedTask.dueAt) : '设置日期' }}</span>
           </button>
-          <button type="button" class="clone-detail-tool" aria-label="设置重复" @click.stop="repeatPopoverOpen = !repeatPopoverOpen">
+          <button type="button" class="clone-detail-tool" aria-label="设置重复" @click.stop="repeatPopoverOpen = !repeatPopoverOpen; datePopoverOpen = false; priorityPopoverOpen = false">
             <span class="clone-detail-repeat-icon">↻</span><span>{{ recurrenceLabel(editorOpen ? draft.rrule : selectedTask?.rrule) }}</span>
           </button>
           <div v-if="datePopoverOpen" class="clone-toolbar-popover clone-date-toolbar-popover" @click.stop>
@@ -338,8 +338,12 @@
           </div>
         </div>
         <div class="clone-detail-toolbar-actions">
-          <button type="button" class="clone-detail-priority-tool" :data-priority="editorOpen ? draft.priority : selectedTask?.priority" aria-label="设置优先级" @click="editorOpen ? null : openEdit(selectedTask)">⚑</button>
-          <button type="button" class="clone-detail-tool" aria-label="更多详情操作" @click="editorOpen ? null : openEdit(selectedTask)"><Ellipsis :size="17" /></button>
+          <button type="button" class="clone-detail-priority-tool" :data-priority="editorOpen ? draft.priority : selectedTask?.priority" aria-label="设置优先级" @click.stop="priorityPopoverOpen = !priorityPopoverOpen; datePopoverOpen = false; repeatPopoverOpen = false">⚑</button>
+          <div v-if="priorityPopoverOpen" class="clone-toolbar-popover clone-priority-toolbar-popover" @click.stop>
+            <strong>优先级</strong>
+            <button v-for="option in priorityOptions" :key="option.value" type="button" :class="{ active: (editorOpen ? draft.priority : selectedTask?.priority) === option.value }" @click="editorOpen ? (draft.priority = option.value) : setTaskPriority(option.value); priorityPopoverOpen = false">{{ option.label }}</button>
+          </div>
+          <button type="button" class="clone-detail-tool" aria-label="更多详情操作" @click.stop="openContext(editing || selectedTask, $event)"><Ellipsis :size="17" /></button>
           <button type="button" class="clone-detail-tool clone-detail-close" aria-label="关闭任务详情" @click="closeDetail"><X :size="17" /></button>
         </div>
       </header>
@@ -576,8 +580,8 @@
           </button>
           <h2>{{ selectedTask.title }}</h2>
         </div>
-        <p v-if="selectedTask.description" class="clone-detail-description">
-          {{ selectedTask.description }}
+        <p class="clone-detail-description" :class="{ placeholder: !selectedTask.description }">
+          {{ selectedTask.description || '输入内容或使用 / 快速插入' }}
         </p>
         <section v-if="selectedTask.checklist?.length" class="clone-checklist-read" aria-label="检查项">
           <header><strong>检查项</strong><span>{{ selectedTask.checklist.filter((item) => item.completed).length }}/{{ selectedTask.checklist.length }}</span></header>
@@ -757,6 +761,7 @@ const sidebarHidden = ref(false);
 const moreOpen = ref(false);
 const datePopoverOpen = ref(false);
 const repeatPopoverOpen = ref(false);
+const priorityPopoverOpen = ref(false);
 const batchMode = ref(false);
 const selectedIds = reactive(new Set());
 const collapsed = reactive({
@@ -833,6 +838,12 @@ const recurrenceOptions = [
   { value: "FREQ=MONTHLY", label: "每月" },
   { value: "FREQ=YEARLY", label: "每年" },
   { value: "CUSTOM", label: "自定义" },
+];
+const priorityOptions = [
+  { value: "NONE", label: "无优先级" },
+  { value: "LOW", label: "低优先级" },
+  { value: "MEDIUM", label: "中优先级" },
+  { value: "HIGH", label: "高优先级" },
 ];
 const title = computed(() =>
   route.name === "tasks-today"
@@ -1032,6 +1043,10 @@ async function setTaskRepeat(value) {
   if (!selectedTask.value) return;
   selectedTask.value = await store.update(selectedTask.value, { rrule: value, recurrenceAnchor: value ? "DUE_DATE" : "" });
 }
+async function setTaskPriority(value) {
+  if (!selectedTask.value) return;
+  selectedTask.value = await store.update(selectedTask.value, { priority: value });
+}
 function addChecklistItem() {
   draft.checklistItems.push({ id: `new-${Date.now()}-${draft.checklistItems.length}`, title: "", completed: false });
 }
@@ -1104,6 +1119,7 @@ async function openEdit(task) {
   editorOpen.value = true;
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
+  priorityPopoverOpen.value = false;
   void loadActivity(task);
   void loadCollaboration(task);
   if (store.online) {
@@ -1153,6 +1169,7 @@ function openCreate() {
   editorOpen.value = true;
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
+  priorityPopoverOpen.value = false;
 }
 function closeDetail() {
   selectedTask.value = null;
@@ -1161,6 +1178,7 @@ function closeDetail() {
   resetCollaboration();
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
+  priorityPopoverOpen.value = false;
 }
 function toLocal(value) {
   if (!value) return "";
@@ -2316,6 +2334,8 @@ const SidebarSection = {
   font-size: 13px;
   line-height: 1.7;
 }
+.clone-detail-description.placeholder { color: var(--muted); }
+.clone-priority-toolbar-popover { right: 12px; left: auto; min-width: 118px; }
 .clone-detail-read dl {
   margin: 0;
 }
