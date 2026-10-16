@@ -427,6 +427,18 @@ TasksWorkspace
 
 Docker 前端镜像重建尝试因 Docker Hub `node:22-alpine` 元数据请求 EOF 失败，未影响正在运行的后端/MySQL 容器；本轮不再依赖该前端容器进行验收。
 
+### P2-FE13 任务详情字段与站内提醒
+
+本增量继续沿用 `TaskWorkspaceView.vue` 第三栏编辑器，补齐任务详情数据契约中的父任务、标签、持续分钟数、全天标记、重复基准、自定义 RRULE 和站内提醒字段。编辑打开时在线加载任务提醒；保存任务后按现有提醒 API 创建、更新或删除提醒，离线启用提醒会明确提示需要联网，不伪造提醒已保存。
+
+详情表单仍使用当前 tasks store 的 local-first 任务保存链，任务主体字段离线可进入待同步队列；提醒属于在线资源，使用 `apiListTaskReminders`、`apiCreateTaskReminder`、`apiUpdateTaskReminder` 和 `apiDeleteTaskReminder`，不扩展 task sync payload。自定义重复规则保留原始 RRULE，循环基准单独提交为 `DUE_DATE` 或 `COMPLETION_DATE`。
+
+浏览器验收证据（Playwright Chromium fallback，因本机后端 `:8080` 未启动，使用离线 QA 用户和 `/api/v1/*` 路由 mock）：
+
+- 桌面 `1440x900`：打开 `/tasks/tomorrow`，点击“新建任务”，确认第三栏显示父任务、持续分钟数、全天任务、重复、循环基准、RRULE 和提醒控件；选择“自定义”后 RRULE 输入出现，勾选“启用站内提醒”后方式/提前控件出现。截图：`/tmp/task-detail-desktop-editor.png`、`/tmp/task-detail-desktop-reminder.png`。
+- 移动 `375x812`：同一路径打开新建任务并滚动第三栏表单，确认字段可见、页面 `scrollWidth === clientWidth`（375），无页面级横向溢出。截图：`/tmp/task-detail-mobile-editor.png`、`/tmp/task-detail-mobile-editor-scrolled.png`。
+- 页面身份、非空渲染、交互状态和截图均通过；控制台仅记录既有动态组件的 Vue runtime-template warning，无新增错误。在线真实提醒写入、权限和冲突仍待后端启动后的用户验收。
+
 ## 13. 验收标准
 
 ### 13.1 自动化门禁

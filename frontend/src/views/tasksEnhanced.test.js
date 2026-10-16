@@ -105,7 +105,8 @@ test('task list routes use the replacement workspace and preserve the task contr
     assert.match(router, routePattern)
   }
   for (const token of ['clone-task-shell', 'TaskRichTextEditor', 'batchTasks', 'sortTask', 'clone-context-menu', 'store.createList']) assert.match(workspaceView, new RegExp(token.replace('.', '\\.' )))
-  assert.match(workspaceView, /route\.name === 'tasks-trash' \? task\.deleted/)
+  assert.match(workspaceView, /route\.name === ["']tasks-trash["'][\s\S]*\? task\.deleted/)
+  for (const token of ['parentId', 'tagIds', 'durationMinutes', 'allDay', 'recurrenceAnchor', 'apiListTaskReminders', 'apiCreateTaskReminder', 'apiUpdateTaskReminder', 'apiDeleteTaskReminder', '提醒需要联网保存']) assert.match(workspaceView, new RegExp(token))
 })
 
 test('task inbox mirrors ticktick shortcut navigation and mixed efficiency groups', () => {

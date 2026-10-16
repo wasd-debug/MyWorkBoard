@@ -1,78 +1,1878 @@
 <template>
-  <section class="clone-task-shell" :class="{ 'sidebar-hidden': sidebarHidden, 'detail-open': Boolean(selectedTask) }">
+  <section
+    class="clone-task-shell"
+    :class="{
+      'sidebar-hidden': sidebarHidden,
+      'detail-open': Boolean(selectedTask),
+    }"
+  >
     <aside class="clone-task-sidebar" aria-label="任务导航">
-      <div class="clone-sidebar-head"><strong>任务</strong><button type="button" aria-label="折叠任务侧栏" @click="toggleSidebar"><PanelLeftClose :size="17" /></button></div>
+      <div class="clone-sidebar-head">
+        <strong>任务</strong
+        ><button type="button" aria-label="折叠任务侧栏" @click="toggleSidebar">
+          <PanelLeftClose :size="17" />
+        </button>
+      </div>
       <nav class="clone-primary-nav">
-        <RouterLink v-for="item in primaryViews" :key="item.key" :to="item.to" :class="{ active: isActive(item.to) }"><component :is="item.icon" :size="16" /><span>{{ item.label }}</span><small>{{ itemCount(item.key) }}</small></RouterLink>
+        <RouterLink
+          v-for="item in primaryViews"
+          :key="item.key"
+          :to="item.to"
+          :class="{ active: isActive(item.to) }"
+          ><component :is="item.icon" :size="16" /><span>{{ item.label }}</span
+          ><small>{{ itemCount(item.key) }}</small></RouterLink
+        >
       </nav>
-      <SidebarSection title="清单" :open="sections.lists" @toggle="toggleSection('lists')">
-        <template #actions><button class="sidebar-create" type="button" aria-label="新建清单" @click="createList"><Plus :size="14" /></button></template>
-        <RouterLink v-for="list in store.lists.filter(item => !item.archived)" :key="list.publicId" :to="list.systemKey === 'INBOX' ? '/tasks/inbox' : `/tasks/list/${list.publicId}`" class="clone-nav-item" :class="{ active: route.params.publicId === list.publicId }"><ListTodo :size="15" /><span>{{ list.name }}</span></RouterLink>
+      <SidebarSection
+        title="清单"
+        :open="sections.lists"
+        @toggle="toggleSection('lists')"
+      >
+        <template #actions
+          ><button
+            class="sidebar-create"
+            type="button"
+            aria-label="新建清单"
+            @click="createList"
+          >
+            <Plus :size="14" /></button
+        ></template>
+        <RouterLink
+          v-for="list in store.lists.filter((item) => !item.archived)"
+          :key="list.publicId"
+          :to="
+            list.systemKey === 'INBOX'
+              ? '/tasks/inbox'
+              : `/tasks/list/${list.publicId}`
+          "
+          class="clone-nav-item"
+          :class="{ active: route.params.publicId === list.publicId }"
+          ><ListTodo :size="15" /><span>{{ list.name }}</span></RouterLink
+        >
       </SidebarSection>
-      <SidebarSection title="筛选器" :open="sections.filters" @toggle="toggleSection('filters')">
-        <RouterLink v-for="item in shortcutViews" :key="item.to" :to="item.to" class="clone-nav-item"><ListFilter :size="15" /><span>{{ item.label }}</span></RouterLink>
-        <RouterLink v-for="filter in filters" :key="filter.publicId" :to="`/tasks/filter/${filter.publicId}`" class="clone-nav-item"><SlidersHorizontal :size="15" /><span>{{ filter.name }}</span></RouterLink>
-        <span v-if="!filters.length" class="clone-empty-item">暂无自定义筛选器</span>
+      <SidebarSection
+        title="筛选器"
+        :open="sections.filters"
+        @toggle="toggleSection('filters')"
+      >
+        <RouterLink
+          v-for="item in shortcutViews"
+          :key="item.to"
+          :to="item.to"
+          class="clone-nav-item"
+          ><ListFilter :size="15" /><span>{{ item.label }}</span></RouterLink
+        >
+        <RouterLink
+          v-for="filter in filters"
+          :key="filter.publicId"
+          :to="`/tasks/filter/${filter.publicId}`"
+          class="clone-nav-item"
+          ><SlidersHorizontal :size="15" /><span>{{
+            filter.name
+          }}</span></RouterLink
+        >
+        <span v-if="!filters.length" class="clone-empty-item"
+          >暂无自定义筛选器</span
+        >
       </SidebarSection>
-      <SidebarSection title="标签" :open="sections.tags" @toggle="toggleSection('tags')">
-        <RouterLink v-for="tag in store.tags" :key="tag.publicId" :to="`/tasks/tag/${tag.publicId}`" class="clone-nav-item"><Tag :size="15" /><span>#{{ tag.name }}</span></RouterLink>
+      <SidebarSection
+        title="标签"
+        :open="sections.tags"
+        @toggle="toggleSection('tags')"
+      >
+        <RouterLink
+          v-for="tag in store.tags"
+          :key="tag.publicId"
+          :to="`/tasks/tag/${tag.publicId}`"
+          class="clone-nav-item"
+          ><Tag :size="15" /><span>#{{ tag.name }}</span></RouterLink
+        >
         <span v-if="!store.tags.length" class="clone-empty-item">暂无标签</span>
       </SidebarSection>
-      <div class="clone-sidebar-footer"><RouterLink to="/tasks/completed"><CheckCircle2 :size="15" />已完成</RouterLink><RouterLink to="/tasks/trash"><Trash2 :size="15" />垃圾桶</RouterLink></div>
+      <div class="clone-sidebar-footer">
+        <RouterLink to="/tasks/completed"
+          ><CheckCircle2 :size="15" />已完成</RouterLink
+        ><RouterLink to="/tasks/trash"><Trash2 :size="15" />垃圾桶</RouterLink>
+      </div>
     </aside>
 
     <main class="clone-task-main">
       <header class="clone-task-header">
-        <div class="clone-title-block"><button type="button" class="clone-icon-button" aria-label="展开或折叠任务侧栏" @click="toggleSidebar"><PanelLeft :size="18" /></button><div><p>任务</p><h1>{{ title }}</h1><span>{{ openTasks.length }} 项待完成 · {{ completedTasks.length }} 项已完成</span></div></div>
-        <div class="clone-header-actions"><span class="clone-sync-state" aria-live="polite">{{ syncLabel }}</span><button type="button" class="clone-icon-button" aria-label="搜索任务" @click="router.push('/tasks/search')"><Search :size="17" /></button><button type="button" class="clone-icon-button" aria-label="更多视图操作" @click="moreOpen = !moreOpen"><Ellipsis :size="18" /></button><button type="button" class="clone-primary-button" @click="openCreate"><Plus :size="16" />新建任务</button></div>
+        <div class="clone-title-block">
+          <button
+            type="button"
+            class="clone-icon-button"
+            aria-label="展开或折叠任务侧栏"
+            @click="toggleSidebar"
+          >
+            <PanelLeft :size="18" />
+          </button>
+          <div>
+            <p>任务</p>
+            <h1>{{ title }}</h1>
+            <span
+              >{{ openTasks.length }} 项待完成 ·
+              {{ completedTasks.length }} 项已完成</span
+            >
+          </div>
+        </div>
+        <div class="clone-header-actions">
+          <span class="clone-sync-state" aria-live="polite">{{
+            syncLabel
+          }}</span
+          ><button
+            type="button"
+            class="clone-icon-button"
+            aria-label="搜索任务"
+            @click="router.push('/tasks/search')"
+          >
+            <Search :size="17" /></button
+          ><button
+            type="button"
+            class="clone-icon-button"
+            aria-label="更多视图操作"
+            @click="moreOpen = !moreOpen"
+          >
+            <Ellipsis :size="18" /></button
+          ><button
+            type="button"
+            class="clone-primary-button"
+            @click="openCreate"
+          >
+            <Plus :size="16" />新建任务
+          </button>
+        </div>
       </header>
-      <div v-if="moreOpen" class="clone-floating-menu" role="menu"><button type="button" @click="sort = sort === 'manual' ? 'due' : 'manual'; moreOpen = false">排序：{{ sort === 'manual' ? '手动' : '截止时间' }}</button><button type="button" @click="showDescription = !showDescription; moreOpen = false">{{ showDescription ? '隐藏详细' : '显示详细' }}</button><button type="button" @click="router.push('/tasks/board'); moreOpen = false">打开看板</button></div>
-      <div class="clone-quick-add"><Plus :size="17" /><form @submit.prevent="quickAdd"><input v-model="quickTitle" aria-label="快速添加任务标题" placeholder="添加任务至当前列表" /><button type="submit" :disabled="!quickTitle.trim()">添加</button><kbd>N</kbd></form></div>
-      <div v-if="store.error" class="clone-error" role="alert">{{ store.error }}</div>
-      <div v-if="store.pending || !store.online" class="clone-status" role="status"><WifiOff v-if="!store.online" :size="15" />{{ store.online ? `${store.pending} 项变更等待同步` : '当前离线，变更会在联网后同步' }}</div>
-      <div class="clone-list-toolbar"><button type="button" :class="{ active: batchMode }" @click="batchMode = !batchMode; selectedIds.clear()">{{ batchMode ? '退出多选' : '多选' }}</button><span>{{ visibleTasks.length }} 项任务</span></div>
-      <div v-if="!visibleTasks.length" class="clone-empty-state"><Inbox :size="28" /><strong>这里还没有任务</strong><span>使用上方输入框快速创建第一项任务</span></div>
-      <div v-else class="clone-task-groups">
-        <section v-for="group in groups" :key="group.key" class="clone-task-group"><button class="clone-group-heading" type="button" @click="collapsed[group.key] = !collapsed[group.key]"><ChevronDown :size="16" :class="{ rotated: collapsed[group.key] }" /><strong>{{ group.label }}</strong><span>{{ group.tasks.length }}</span></button><div v-show="!collapsed[group.key]" class="clone-task-rows"><article v-for="task in group.tasks" :key="task.publicId" class="clone-task-row" :class="{ selected: selectedTask?.publicId === task.publicId, checked: task.status === 'COMPLETED', multi: selectedIds.has(task.publicId) }" draggable="true" @dragstart="dragged = task" @dragover.prevent @drop="dropTask(task)" @contextmenu.prevent="openContext(task, $event)"><button v-if="batchMode" type="button" class="clone-select-box" :aria-label="`选择${task.title}`" @click="toggleSelected(task)"><Check v-if="selectedIds.has(task.publicId)" :size="13" /></button><button v-else type="button" class="clone-check" :aria-label="task.status === 'COMPLETED' ? `重新打开${task.title}` : `完成${task.title}`" @click="toggleComplete(task)"><Check v-if="task.status === 'COMPLETED'" :size="14" /></button><GripVertical class="clone-drag-handle" :size="15" /><button type="button" class="clone-task-content" @click="batchMode ? toggleSelected(task) : openDetail(task)"><strong>{{ task.title }}</strong><small v-if="showDescription && task.description">{{ task.description }}</small><span><span>{{ listName(task.listId) }}</span><span v-for="tagId in task.tagIds || []" :key="tagId">#{{ tagName(tagId) }}</span><span v-if="task.dueAt"><CalendarClock :size="13" />{{ formatDate(task.dueAt) }}</span><span v-if="task.totalSubtasks">{{ task.completedSubtasks }}/{{ task.totalSubtasks }} 子任务</span></span></button><em v-if="task.priority !== 'NONE'" :data-priority="task.priority">{{ priorityLabel(task.priority) }}</em><button v-if="!batchMode" type="button" class="clone-row-more" :aria-label="`更多操作：${task.title}`" @click.stop="openContext(task, $event)"><Ellipsis :size="17" /></button></article></div></section>
+      <div v-if="moreOpen" class="clone-floating-menu" role="menu">
+        <button
+          type="button"
+          @click="
+            sort = sort === 'manual' ? 'due' : 'manual';
+            moreOpen = false;
+          "
+        >
+          排序：{{ sort === "manual" ? "手动" : "截止时间" }}</button
+        ><button
+          type="button"
+          @click="
+            showDescription = !showDescription;
+            moreOpen = false;
+          "
+        >
+          {{ showDescription ? "隐藏详细" : "显示详细" }}</button
+        ><button
+          type="button"
+          @click="
+            router.push('/tasks/board');
+            moreOpen = false;
+          "
+        >
+          打开看板
+        </button>
       </div>
-      <div v-if="batchMode && selectedIds.size" class="clone-batch-bar"><strong>已选 {{ selectedIds.size }} 项</strong><button type="button" @click="batchComplete">完成</button><button type="button" class="danger" @click="batchDelete">删除</button><button type="button" @click="selectedIds.clear()">取消</button></div>
+      <div class="clone-quick-add">
+        <Plus :size="17" />
+        <form @submit.prevent="quickAdd">
+          <input
+            v-model="quickTitle"
+            aria-label="快速添加任务标题"
+            placeholder="添加任务至当前列表"
+          /><button type="submit" :disabled="!quickTitle.trim()">添加</button
+          ><kbd>N</kbd>
+        </form>
+      </div>
+      <div v-if="store.error" class="clone-error" role="alert">
+        {{ store.error }}
+      </div>
+      <div
+        v-if="store.pending || !store.online"
+        class="clone-status"
+        role="status"
+      >
+        <WifiOff v-if="!store.online" :size="15" />{{
+          store.online
+            ? `${store.pending} 项变更等待同步`
+            : "当前离线，变更会在联网后同步"
+        }}
+      </div>
+      <div class="clone-list-toolbar">
+        <button
+          type="button"
+          :class="{ active: batchMode }"
+          @click="
+            batchMode = !batchMode;
+            selectedIds.clear();
+          "
+        >
+          {{ batchMode ? "退出多选" : "多选" }}</button
+        ><span>{{ visibleTasks.length }} 项任务</span>
+      </div>
+      <div v-if="!visibleTasks.length" class="clone-empty-state">
+        <Inbox :size="28" /><strong>这里还没有任务</strong
+        ><span>使用上方输入框快速创建第一项任务</span>
+      </div>
+      <div v-else class="clone-task-groups">
+        <section
+          v-for="group in groups"
+          :key="group.key"
+          class="clone-task-group"
+        >
+          <button
+            class="clone-group-heading"
+            type="button"
+            @click="collapsed[group.key] = !collapsed[group.key]"
+          >
+            <ChevronDown
+              :size="16"
+              :class="{ rotated: collapsed[group.key] }"
+            /><strong>{{ group.label }}</strong
+            ><span>{{ group.tasks.length }}</span>
+          </button>
+          <div v-show="!collapsed[group.key]" class="clone-task-rows">
+            <article
+              v-for="task in group.tasks"
+              :key="task.publicId"
+              class="clone-task-row"
+              :class="{
+                selected: selectedTask?.publicId === task.publicId,
+                checked: task.status === 'COMPLETED',
+                multi: selectedIds.has(task.publicId),
+              }"
+              draggable="true"
+              @dragstart="dragged = task"
+              @dragover.prevent
+              @drop="dropTask(task)"
+              @contextmenu.prevent="openContext(task, $event)"
+            >
+              <button
+                v-if="batchMode"
+                type="button"
+                class="clone-select-box"
+                :aria-label="`选择${task.title}`"
+                @click="toggleSelected(task)"
+              >
+                <Check
+                  v-if="selectedIds.has(task.publicId)"
+                  :size="13"
+                /></button
+              ><button
+                v-else
+                type="button"
+                class="clone-check"
+                :aria-label="
+                  task.status === 'COMPLETED'
+                    ? `重新打开${task.title}`
+                    : `完成${task.title}`
+                "
+                @click="toggleComplete(task)"
+              >
+                <Check v-if="task.status === 'COMPLETED'" :size="14" /></button
+              ><GripVertical class="clone-drag-handle" :size="15" /><button
+                type="button"
+                class="clone-task-content"
+                @click="batchMode ? toggleSelected(task) : openDetail(task)"
+              >
+                <strong>{{ task.title }}</strong
+                ><small v-if="showDescription && task.description">{{
+                  task.description
+                }}</small
+                ><span
+                  ><span>{{ listName(task.listId) }}</span
+                  ><span v-for="tagId in task.tagIds || []" :key="tagId"
+                    >#{{ tagName(tagId) }}</span
+                  ><span v-if="task.dueAt"
+                    ><CalendarClock :size="13" />{{
+                      formatDate(task.dueAt)
+                    }}</span
+                  ><span v-if="task.totalSubtasks"
+                    >{{ task.completedSubtasks }}/{{
+                      task.totalSubtasks
+                    }}
+                    子任务</span
+                  ></span
+                ></button
+              ><em
+                v-if="task.priority !== 'NONE'"
+                :data-priority="task.priority"
+                >{{ priorityLabel(task.priority) }}</em
+              ><button
+                v-if="!batchMode"
+                type="button"
+                class="clone-row-more"
+                :aria-label="`更多操作：${task.title}`"
+                @click.stop="openContext(task, $event)"
+              >
+                <Ellipsis :size="17" />
+              </button>
+            </article>
+          </div>
+        </section>
+      </div>
+      <div v-if="batchMode && selectedIds.size" class="clone-batch-bar">
+        <strong>已选 {{ selectedIds.size }} 项</strong
+        ><button type="button" @click="batchComplete">完成</button
+        ><button type="button" class="danger" @click="batchDelete">删除</button
+        ><button type="button" @click="selectedIds.clear()">取消</button>
+      </div>
     </main>
 
-    <aside v-if="selectedTask || editorOpen" class="clone-detail-pane" aria-label="任务详情"><header><span>{{ editorOpen ? (editing ? '编辑任务' : '新建任务') : '任务详情' }}</span><button type="button" aria-label="关闭任务详情" @click="closeDetail"><X :size="17" /></button></header><form v-if="editorOpen" class="clone-detail-form" @submit.prevent="saveDetail"><label>标题<input v-model="draft.title" required autofocus /></label><label>描述<TaskRichTextEditor v-model="draft.description" label="任务描述" placeholder="补充任务描述" /></label><div class="clone-form-grid"><label>清单<select v-model="draft.listId"><option v-for="list in store.lists.filter(item => !item.archived)" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select></label><label>优先级<select v-model="draft.priority"><option value="NONE">无优先级</option><option value="LOW">低</option><option value="MEDIUM">中</option><option value="HIGH">高</option></select></label></div><div class="clone-form-grid"><label>开始时间<input v-model="draft.startAt" type="datetime-local" /></label><label>截止时间<input v-model="draft.dueAt" type="datetime-local" /></label></div><label>重复<select v-model="draft.rrule"><option value="">不重复</option><option value="FREQ=DAILY">每天</option><option value="FREQ=WEEKLY">每周</option><option value="FREQ=MONTHLY">每月</option><option value="FREQ=YEARLY">每年</option></select></label><label>检查项<textarea v-model="draft.checklistText" placeholder="每行一个检查项" /></label><div class="clone-detail-actions"><button type="button" class="danger" @click="deleteTask(editing || selectedTask)"><Trash2 :size="15" />删除</button><button type="submit" class="clone-primary-button">保存</button></div></form><div v-else class="clone-detail-read"><div class="clone-detail-title"><button type="button" class="clone-check" @click="toggleComplete(selectedTask)"><Check v-if="selectedTask.status === 'COMPLETED'" :size="14" /></button><h2>{{ selectedTask.title }}</h2></div><p v-if="selectedTask.description" class="clone-detail-description">{{ selectedTask.description }}</p><dl><div><dt>清单</dt><dd>{{ listName(selectedTask.listId) }}</dd></div><div><dt>日期</dt><dd>{{ selectedTask.dueAt ? formatDate(selectedTask.dueAt) : '无日期' }}</dd></div><div><dt>优先级</dt><dd>{{ priorityLabel(selectedTask.priority) }}</dd></div><div v-if="selectedTask.rrule"><dt>重复</dt><dd>{{ selectedTask.rrule }}</dd></div></dl><button type="button" class="clone-primary-button full" @click="openEdit(selectedTask)"><Pencil :size="15" />编辑任务</button></div></aside>
+    <aside
+      v-if="selectedTask || editorOpen"
+      class="clone-detail-pane"
+      aria-label="任务详情"
+    >
+      <header>
+        <span>{{
+          editorOpen ? (editing ? "编辑任务" : "新建任务") : "任务详情"
+        }}</span
+        ><button type="button" aria-label="关闭任务详情" @click="closeDetail">
+          <X :size="17" />
+        </button>
+      </header>
+      <form
+        v-if="editorOpen"
+        class="clone-detail-form"
+        @submit.prevent="saveDetail"
+      >
+        <label>标题<input v-model="draft.title" required autofocus /></label
+        ><label
+          >描述<TaskRichTextEditor
+            v-model="draft.description"
+            label="任务描述"
+            placeholder="补充任务描述"
+        /></label>
+        <div class="clone-form-grid">
+          <label
+            >清单<select v-model="draft.listId">
+              <option
+                v-for="list in store.lists.filter((item) => !item.archived)"
+                :key="list.publicId"
+                :value="list.publicId"
+              >
+                {{ list.name }}
+              </option>
+            </select></label
+          ><label
+            >父任务<select v-model="draft.parentId">
+              <option value="">无</option>
+              <option
+                v-for="task in parentOptions"
+                :key="task.publicId"
+                :value="task.publicId"
+              >
+                {{ task.title }}
+              </option>
+            </select></label
+          >
+        </div>
+        <div class="clone-form-grid">
+          <label
+            >优先级<select v-model="draft.priority">
+              <option value="NONE">无优先级</option>
+              <option value="LOW">低</option>
+              <option value="MEDIUM">中</option>
+              <option value="HIGH">高</option>
+            </select></label
+          ><label
+            >持续分钟数<input
+              v-model.number="draft.durationMinutes"
+              type="number"
+              min="0"
+              step="5"
+          /></label>
+        </div>
+        <div class="clone-form-grid">
+          <label
+            >开始时间<input
+              v-model="draft.startAt"
+              type="datetime-local" /></label
+          ><label
+            >截止时间<input v-model="draft.dueAt" type="datetime-local"
+          /></label>
+        </div>
+        <label class="clone-inline-check"
+          ><input v-model="draft.allDay" type="checkbox" />全天任务</label
+        >
+        <div class="clone-form-grid">
+          <label
+            >重复<select v-model="draft.rrule">
+              <option value="">不重复</option>
+              <option value="FREQ=DAILY">每天</option>
+              <option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">
+                每个工作日
+              </option>
+              <option value="FREQ=WEEKLY">每周</option>
+              <option value="FREQ=MONTHLY">每月</option>
+              <option value="FREQ=YEARLY">每年</option>
+              <option value="CUSTOM">自定义</option>
+            </select></label
+          ><label v-if="draft.rrule"
+            >循环基准<select v-model="draft.recurrenceAnchor">
+              <option value="DUE_DATE">按到期日期</option>
+              <option value="COMPLETION_DATE">按完成日期</option>
+            </select></label
+          >
+        </div>
+        <label v-if="draft.rrule === 'CUSTOM'"
+          >RRULE<input
+            v-model="draft.customRrule"
+            placeholder="FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,FR"
+        /></label>
+        <fieldset class="clone-reminder-editor">
+          <legend>提醒</legend>
+          <label class="clone-inline-check"
+            ><input
+              v-model="draft.reminderEnabled"
+              type="checkbox"
+            />启用站内提醒</label
+          >
+          <div v-if="draft.reminderEnabled" class="clone-form-grid">
+            <label
+              >方式<select v-model="draft.reminderKind">
+                <option value="RELATIVE">相对截止时间</option>
+                <option value="ABSOLUTE">指定时间</option>
+              </select></label
+            ><label v-if="draft.reminderKind === 'RELATIVE'"
+              >提前<select v-model.number="draft.reminderOffset">
+                <option :value="0">准时</option>
+                <option :value="5">5 分钟</option>
+                <option :value="15">15 分钟</option>
+                <option :value="30">30 分钟</option>
+                <option :value="60">1 小时</option>
+                <option :value="1440">1 天</option>
+              </select></label
+            ><label v-else
+              >提醒时间<input v-model="draft.remindLocal" type="datetime-local"
+            /></label>
+          </div>
+        </fieldset>
+        <fieldset v-if="store.tags.length" class="clone-tags">
+          <legend>标签</legend>
+          <label v-for="tag in store.tags" :key="tag.publicId"
+            ><input
+              v-model="draft.tagIds"
+              type="checkbox"
+              :value="tag.publicId"
+            />{{ tag.name }}</label
+          >
+        </fieldset>
+        <label
+          >检查项<textarea
+            v-model="draft.checklistText"
+            placeholder="每行一个检查项"
+          />
+        </label>
+        <div class="clone-detail-actions">
+          <button
+            type="button"
+            class="danger"
+            @click="deleteTask(editing || selectedTask)"
+          >
+            <Trash2 :size="15" />删除</button
+          ><button type="submit" class="clone-primary-button">保存</button>
+        </div>
+      </form>
+      <div v-else class="clone-detail-read">
+        <div class="clone-detail-title">
+          <button
+            type="button"
+            class="clone-check"
+            @click="toggleComplete(selectedTask)"
+          >
+            <Check v-if="selectedTask.status === 'COMPLETED'" :size="14" />
+          </button>
+          <h2>{{ selectedTask.title }}</h2>
+        </div>
+        <p v-if="selectedTask.description" class="clone-detail-description">
+          {{ selectedTask.description }}
+        </p>
+        <dl>
+          <div>
+            <dt>清单</dt>
+            <dd>{{ listName(selectedTask.listId) }}</dd>
+          </div>
+          <div>
+            <dt>日期</dt>
+            <dd>
+              {{
+                selectedTask.dueAt ? formatDate(selectedTask.dueAt) : "无日期"
+              }}
+            </dd>
+          </div>
+          <div>
+            <dt>优先级</dt>
+            <dd>{{ priorityLabel(selectedTask.priority) }}</dd>
+          </div>
+          <div v-if="selectedTask.rrule">
+            <dt>重复</dt>
+            <dd>{{ selectedTask.rrule }}</dd>
+          </div>
+        </dl>
+        <button
+          type="button"
+          class="clone-primary-button full"
+          @click="openEdit(selectedTask)"
+        >
+          <Pencil :size="15" />编辑任务
+        </button>
+      </div>
+    </aside>
 
-    <div v-if="context.open" class="clone-context-menu" :style="{ left: `${context.x}px`, top: `${context.y}px` }" role="menu" @click.stop><strong>{{ context.task?.title }}</strong><button type="button" @click="openDetail(context.task); closeContext()"><Pencil :size="14" />打开详情</button><button type="button" @click="toggleComplete(context.task); closeContext()"><CheckCircle2 :size="14" />{{ context.task?.status === 'COMPLETED' ? '重新打开' : '标记完成' }}</button><button type="button" @click="duplicateTask(context.task); closeContext()"><Copy :size="14" />创建副本</button><button type="button" class="danger" @click="deleteTask(context.task); closeContext()"><Trash2 :size="14" />删除任务</button></div>
+    <div
+      v-if="context.open"
+      class="clone-context-menu"
+      :style="{ left: `${context.x}px`, top: `${context.y}px` }"
+      role="menu"
+      @click.stop
+    >
+      <strong>{{ context.task?.title }}</strong
+      ><button
+        type="button"
+        @click="
+          openDetail(context.task);
+          closeContext();
+        "
+      >
+        <Pencil :size="14" />打开详情</button
+      ><button
+        type="button"
+        @click="
+          toggleComplete(context.task);
+          closeContext();
+        "
+      >
+        <CheckCircle2 :size="14" />{{
+          context.task?.status === "COMPLETED" ? "重新打开" : "标记完成"
+        }}</button
+      ><button
+        type="button"
+        @click="
+          duplicateTask(context.task);
+          closeContext();
+        "
+      >
+        <Copy :size="14" />创建副本</button
+      ><button
+        type="button"
+        class="danger"
+        @click="
+          deleteTask(context.task);
+          closeContext();
+        "
+      >
+        <Trash2 :size="14" />删除任务
+      </button>
+    </div>
   </section>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter, RouterLink } from 'vue-router'
-import { CalendarClock, Check, CheckCircle2, ChevronDown, Copy, Ellipsis, GripVertical, Inbox, ListFilter, ListTodo, PanelLeft, PanelLeftClose, Pencil, Plus, Search, SlidersHorizontal, Tag, Trash2, WifiOff, X } from 'lucide-vue-next'
-import TaskRichTextEditor from '../components/tasks/TaskRichTextEditor.vue'
-import { useTasksStore } from '../stores/tasks.js'
-import { apiListTaskFilters } from '../../packages/api-client/src/index.js'
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
+import { useRoute, useRouter, RouterLink } from "vue-router";
+import {
+  CalendarClock,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  Copy,
+  Ellipsis,
+  GripVertical,
+  Inbox,
+  ListFilter,
+  ListTodo,
+  PanelLeft,
+  PanelLeftClose,
+  Pencil,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Tag,
+  Trash2,
+  WifiOff,
+  X,
+} from "lucide-vue-next";
+import TaskRichTextEditor from "../components/tasks/TaskRichTextEditor.vue";
+import { useTasksStore } from "../stores/tasks.js";
+import {
+  apiCreateTaskReminder,
+  apiDeleteTaskReminder,
+  apiListTaskFilters,
+  apiListTaskReminders,
+  apiUpdateTaskReminder,
+} from "../../packages/api-client/src/index.js";
 
-const route = useRoute(); const router = useRouter(); const store = useTasksStore(); const filters = ref([]); const quickTitle = ref(''); const sidebarHidden = ref(false); const moreOpen = ref(false); const batchMode = ref(false); const selectedIds = reactive(new Set()); const collapsed = reactive({ overdue: false, today: false, later: false, none: false, open: false }); const sections = reactive({ lists: true, filters: true, tags: true }); const selectedTask = ref(null); const editorOpen = ref(false); const editing = ref(null); const dragged = ref(null); const sort = ref('manual'); const showDescription = ref(true); const context = reactive({ open: false, x: 0, y: 0, task: null }); const draft = reactive({ title: '', description: '', listId: '', priority: 'NONE', startAt: '', dueAt: '', rrule: '', checklistText: '' })
-const primaryViews = [{ key: 'all', label: '所有', to: '/tasks/all', icon: ListTodo }, { key: 'today', label: '今天', to: '/tasks/today', icon: CalendarClock }, { key: 'tomorrow', label: '明天', to: '/tasks/tomorrow', icon: CalendarClock }, { key: 'next7', label: '最近 7 天', to: '/tasks/next7', icon: CalendarClock }, { key: 'inbox', label: '收件箱', to: '/tasks/inbox', icon: Inbox }]; const shortcutViews = [{ label: '无日期任务', to: '/tasks/shortcut/no-date' }, { label: '本周', to: '/tasks/shortcut/this-week' }, { label: '下周', to: '/tasks/shortcut/next-week' }]
-const title = computed(() => route.name === 'tasks-today' ? '今天' : route.name === 'tasks-tomorrow' ? '明天' : route.name === 'tasks-next7' ? '最近 7 天' : route.name === 'tasks-inbox' ? '收件箱' : route.name === 'tasks-list' ? listName(route.params.publicId) : route.name === 'tasks-tag' ? `#${tagName(route.params.publicId)}` : route.name === 'tasks-filter' ? (filters.value.find(item => item.publicId === route.params.publicId)?.name || '智能清单') : route.name === 'tasks-shortcut' ? ({ 'no-date': '无日期任务', 'this-week': '本周', 'next-week': '下周' }[route.params.shortcut] || '任务') : '所有')
-const syncLabel = computed(() => !store.online ? '离线' : store.syncing ? '同步中' : store.pending ? '待同步' : '已同步')
-const sourceTasks = computed(() => store.tasks.filter(task => route.name === 'tasks-trash' ? task.deleted : !task.deleted && (task.status !== 'COMPLETED' || route.name === 'tasks-completed')))
-const visibleTasks = computed(() => { let values = [...sourceTasks.value]; const today = startOfDay(new Date()); const tomorrow = addDays(today, 1); const end = addDays(today, 8); if (route.name === 'tasks-completed') values = values.filter(task => task.status === 'COMPLETED'); else if (route.name === 'tasks-list') values = values.filter(task => task.listId === route.params.publicId); else if (route.name === 'tasks-tag') values = values.filter(task => task.tagIds?.includes(route.params.publicId)); else if (route.name === 'tasks-inbox') values = values.filter(task => task.listId === store.inbox?.publicId); else if (route.name === 'tasks-today') values = values.filter(task => inRange(task.dueAt, today, tomorrow)); else if (route.name === 'tasks-tomorrow') values = values.filter(task => inRange(task.dueAt, tomorrow, addDays(tomorrow, 1))); else if (route.name === 'tasks-next7') values = values.filter(task => inRange(task.dueAt, today, end)); else if (route.name === 'tasks-shortcut') values = values.filter(task => route.params.shortcut === 'no-date' ? !task.dueAt : route.params.shortcut === 'this-week' ? inRange(task.dueAt, today, addDays(today, 7)) : inRange(task.dueAt, addDays(today, 7), end)); if (sort.value === 'due') values.sort((a, b) => (a.dueAt ? Date.parse(a.dueAt) : Infinity) - (b.dueAt ? Date.parse(b.dueAt) : Infinity)); else values.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)); return values })
-const openTasks = computed(() => visibleTasks.value.filter(task => task.status !== 'COMPLETED')); const completedTasks = computed(() => visibleTasks.value.filter(task => task.status === 'COMPLETED')); const groups = computed(() => { if (route.name === 'tasks-all' || route.name === 'tasks-list' || route.name === 'tasks-tag' || route.name === 'tasks-inbox' || route.name === 'tasks-shortcut') return [{ key: 'open', label: '待完成', tasks: visibleTasks.value }]; const today = startOfDay(new Date()); const result = [{ key: 'overdue', label: '逾期', tasks: [] }, { key: 'today', label: title.value, tasks: [] }, { key: 'later', label: '之后', tasks: [] }, { key: 'none', label: '无日期', tasks: [] }]; visibleTasks.value.forEach(task => { if (!task.dueAt) result[3].tasks.push(task); else if (new Date(task.dueAt) < today) result[0].tasks.push(task); else if (new Date(task.dueAt) < addDays(today, 1)) result[1].tasks.push(task); else result[2].tasks.push(task) }); return result.filter(group => group.tasks.length) })
-function startOfDay(date) { date.setHours(0, 0, 0, 0); return date } function addDays(date, days) { const next = new Date(date); next.setDate(next.getDate() + days); return next } function inRange(value, start, end) { return value && new Date(value) >= start && new Date(value) < end } function formatDate(value) { return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) } function listName(id) { return store.lists.find(item => item.publicId === id)?.name || '收件箱' } function tagName(id) { return store.tags.find(item => item.publicId === id)?.name || '标签' } function priorityLabel(value) { return ({ NONE: '无', LOW: '低', MEDIUM: '中', HIGH: '高' })[value] || value } function itemCount(key) { return key === 'all' ? store.tasks.filter(item => !item.deleted).length : key === 'inbox' ? store.tasks.filter(item => item.listId === store.inbox?.publicId && item.status !== 'COMPLETED').length : '' } function isActive(to) { return route.path === to || route.path.startsWith(`${to}/`) } function toggleSidebar() { sidebarHidden.value = !sidebarHidden.value } function toggleSection(key) { sections[key] = !sections[key] } function closeContext() { context.open = false; context.task = null } function openContext(task, event) { if (!task) return; context.task = task; context.x = Math.max(8, Math.min(event.clientX, window.innerWidth - 220)); context.y = Math.max(8, Math.min(event.clientY, window.innerHeight - 210)); context.open = true } function openDetail(task) { if (!task) return; selectedTask.value = task; editorOpen.value = false } function openEdit(task) { if (!task) return; editing.value = task; selectedTask.value = task; Object.assign(draft, { title: task.title, description: task.description || '', listId: task.listId || store.inbox?.publicId || '', priority: task.priority || 'NONE', startAt: toLocal(task.startAt), dueAt: toLocal(task.dueAt), rrule: task.rrule || '', checklistText: (task.checklist || []).map(item => item.title).join('\n') }); editorOpen.value = true } function openCreate() { editing.value = null; selectedTask.value = {}; Object.assign(draft, { title: '', description: '', listId: store.inbox?.publicId || '', priority: 'NONE', startAt: '', dueAt: '', rrule: '', checklistText: '' }); editorOpen.value = true } function closeDetail() { selectedTask.value = null; editing.value = null; editorOpen.value = false } function toLocal(value) { if (!value) return ''; const date = new Date(value); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` }
-async function quickAdd() { if (!quickTitle.value.trim()) return; await store.create({ title: quickTitle.value.trim(), description: '', listId: route.name === 'tasks-list' ? route.params.publicId : store.inbox?.publicId, priority: 'NONE', startAt: '', dueAt: route.name === 'tasks-today' ? new Date().toISOString() : '', durationMinutes: 0, allDay: false, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, rrule: '', recurrenceAnchor: '', tagIds: [], checklist: [] }); quickTitle.value = '' }
-async function saveDetail() { const payload = { title: draft.title.trim(), description: draft.description, listId: draft.listId, priority: draft.priority, startAt: draft.startAt ? new Date(draft.startAt).toISOString() : '', dueAt: draft.dueAt ? new Date(draft.dueAt).toISOString() : '', durationMinutes: 0, allDay: false, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, rrule: draft.rrule, recurrenceAnchor: draft.rrule ? 'DUE_DATE' : '', checklist: draft.checklistText.split('\n').map((title, index) => ({ title: title.trim(), completed: false, sortOrder: index })).filter(item => item.title) }; const saved = editing.value ? await store.update(editing.value, payload) : await store.create(payload); selectedTask.value = store.tasks.find(item => item.publicId === saved.publicId) || saved; editorOpen.value = false }
-async function toggleComplete(task) { if (!task) return; await (task.status === 'COMPLETED' ? store.reopen(task) : store.complete(task)); selectedTask.value = store.tasks.find(item => item.publicId === task.publicId) || null }
-async function duplicateTask(task) { if (!task) return; await store.create({ ...task, title: `${task.title} 副本`, status: 'OPEN', completedAt: null, publicId: undefined }) }
-async function deleteTask(task) { if (!task || !window.confirm(`删除任务“${task.title}”？`)) return; await store.remove(task); if (selectedTask.value?.publicId === task.publicId) closeDetail() }
-function toggleSelected(task) { selectedIds.has(task.publicId) ? selectedIds.delete(task.publicId) : selectedIds.add(task.publicId) } async function batchComplete() { await store.batchTasks([...selectedIds].map(id => store.tasks.find(task => task.publicId === id)).filter(Boolean), 'COMPLETE'); selectedIds.clear(); batchMode.value = false } async function batchDelete() { if (!window.confirm(`删除选中的 ${selectedIds.size} 项任务？`)) return; await store.batchTasks([...selectedIds].map(id => store.tasks.find(task => task.publicId === id)).filter(Boolean), 'DELETE'); selectedIds.clear(); batchMode.value = false } async function dropTask(target) { if (!dragged.value || dragged.value.publicId === target.publicId) return; await store.sortTask(dragged.value, target.sortOrder || 0); dragged.value = null }
-async function createList() { const name = window.prompt('新建清单'); if (!name?.trim()) return; try { await store.createList({ name: name.trim(), color: '#2563eb', icon: '', archived: false, sortOrder: store.lists.length }) } catch (error) { store.error = error?.message || '新建清单失败' } } async function loadFilters() { if (!store.online) return; try { filters.value = await apiListTaskFilters() } catch { filters.value = [] } } function onKeydown(event) { if (event.key === 'Escape') { moreOpen.value = false; closeContext(); if (editorOpen.value) closeDetail() } if (event.key.toLowerCase() === 'n' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target?.tagName)) { event.preventDefault(); document.querySelector('.clone-quick-add input')?.focus() } }
-watch(() => route.fullPath, () => { closeContext(); if (route.query.task) { const task = store.tasks.find(item => item.publicId === route.query.task); if (task) openDetail(task) } }); watch(() => store.tasks, () => { if (selectedTask.value?.publicId) selectedTask.value = store.tasks.find(item => item.publicId === selectedTask.value.publicId) || null }, { deep: true })
-onMounted(async () => { await store.init(); await loadFilters(); document.addEventListener('click', closeContext); window.addEventListener('keydown', onKeydown) }); onBeforeUnmount(() => { document.removeEventListener('click', closeContext); window.removeEventListener('keydown', onKeydown) })
+const route = useRoute();
+const router = useRouter();
+const store = useTasksStore();
+const filters = ref([]);
+const quickTitle = ref("");
+const sidebarHidden = ref(false);
+const moreOpen = ref(false);
+const batchMode = ref(false);
+const selectedIds = reactive(new Set());
+const collapsed = reactive({
+  overdue: false,
+  today: false,
+  later: false,
+  none: false,
+  open: false,
+});
+const sections = reactive({ lists: true, filters: true, tags: true });
+const selectedTask = ref(null);
+const editorOpen = ref(false);
+const editing = ref(null);
+const dragged = ref(null);
+const sort = ref("manual");
+const showDescription = ref(true);
+const context = reactive({ open: false, x: 0, y: 0, task: null });
+const draft = reactive({
+  title: "",
+  description: "",
+  listId: "",
+  parentId: "",
+  tagIds: [],
+  priority: "NONE",
+  durationMinutes: 0,
+  allDay: false,
+  startAt: "",
+  dueAt: "",
+  rrule: "",
+  customRrule: "",
+  recurrenceAnchor: "DUE_DATE",
+  reminderEnabled: false,
+  reminderKind: "RELATIVE",
+  reminderOffset: 30,
+  remindLocal: "",
+  reminder: null,
+  checklistText: "",
+});
+const primaryViews = [
+  { key: "all", label: "所有", to: "/tasks/all", icon: ListTodo },
+  { key: "today", label: "今天", to: "/tasks/today", icon: CalendarClock },
+  {
+    key: "tomorrow",
+    label: "明天",
+    to: "/tasks/tomorrow",
+    icon: CalendarClock,
+  },
+  { key: "next7", label: "最近 7 天", to: "/tasks/next7", icon: CalendarClock },
+  { key: "inbox", label: "收件箱", to: "/tasks/inbox", icon: Inbox },
+];
+const shortcutViews = [
+  { label: "无日期任务", to: "/tasks/shortcut/no-date" },
+  { label: "本周", to: "/tasks/shortcut/this-week" },
+  { label: "下周", to: "/tasks/shortcut/next-week" },
+];
+const title = computed(() =>
+  route.name === "tasks-today"
+    ? "今天"
+    : route.name === "tasks-tomorrow"
+      ? "明天"
+      : route.name === "tasks-next7"
+        ? "最近 7 天"
+        : route.name === "tasks-inbox"
+          ? "收件箱"
+          : route.name === "tasks-list"
+            ? listName(route.params.publicId)
+            : route.name === "tasks-tag"
+              ? `#${tagName(route.params.publicId)}`
+              : route.name === "tasks-filter"
+                ? filters.value.find(
+                    (item) => item.publicId === route.params.publicId,
+                  )?.name || "智能清单"
+                : route.name === "tasks-shortcut"
+                  ? {
+                      "no-date": "无日期任务",
+                      "this-week": "本周",
+                      "next-week": "下周",
+                    }[route.params.shortcut] || "任务"
+                  : "所有",
+);
+const parentOptions = computed(() =>
+  store.tasks.filter(
+    (task) =>
+      !task.deleted &&
+      task.status !== "COMPLETED" &&
+      task.publicId !== editing.value?.publicId &&
+      task.listId === draft.listId,
+  ),
+);
+const syncLabel = computed(() =>
+  !store.online
+    ? "离线"
+    : store.syncing
+      ? "同步中"
+      : store.pending
+        ? "待同步"
+        : "已同步",
+);
+const sourceTasks = computed(() =>
+  store.tasks.filter((task) =>
+    route.name === "tasks-trash"
+      ? task.deleted
+      : !task.deleted &&
+        (task.status !== "COMPLETED" || route.name === "tasks-completed"),
+  ),
+);
+const visibleTasks = computed(() => {
+  let values = [...sourceTasks.value];
+  const today = startOfDay(new Date());
+  const tomorrow = addDays(today, 1);
+  const end = addDays(today, 8);
+  if (route.name === "tasks-completed")
+    values = values.filter((task) => task.status === "COMPLETED");
+  else if (route.name === "tasks-list")
+    values = values.filter((task) => task.listId === route.params.publicId);
+  else if (route.name === "tasks-tag")
+    values = values.filter((task) =>
+      task.tagIds?.includes(route.params.publicId),
+    );
+  else if (route.name === "tasks-inbox")
+    values = values.filter((task) => task.listId === store.inbox?.publicId);
+  else if (route.name === "tasks-today")
+    values = values.filter((task) => inRange(task.dueAt, today, tomorrow));
+  else if (route.name === "tasks-tomorrow")
+    values = values.filter((task) =>
+      inRange(task.dueAt, tomorrow, addDays(tomorrow, 1)),
+    );
+  else if (route.name === "tasks-next7")
+    values = values.filter((task) => inRange(task.dueAt, today, end));
+  else if (route.name === "tasks-shortcut")
+    values = values.filter((task) =>
+      route.params.shortcut === "no-date"
+        ? !task.dueAt
+        : route.params.shortcut === "this-week"
+          ? inRange(task.dueAt, today, addDays(today, 7))
+          : inRange(task.dueAt, addDays(today, 7), end),
+    );
+  if (sort.value === "due")
+    values.sort(
+      (a, b) =>
+        (a.dueAt ? Date.parse(a.dueAt) : Infinity) -
+        (b.dueAt ? Date.parse(b.dueAt) : Infinity),
+    );
+  else values.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+  return values;
+});
+const openTasks = computed(() =>
+  visibleTasks.value.filter((task) => task.status !== "COMPLETED"),
+);
+const completedTasks = computed(() =>
+  visibleTasks.value.filter((task) => task.status === "COMPLETED"),
+);
+const groups = computed(() => {
+  if (
+    route.name === "tasks-all" ||
+    route.name === "tasks-list" ||
+    route.name === "tasks-tag" ||
+    route.name === "tasks-inbox" ||
+    route.name === "tasks-shortcut"
+  )
+    return [{ key: "open", label: "待完成", tasks: visibleTasks.value }];
+  const today = startOfDay(new Date());
+  const result = [
+    { key: "overdue", label: "逾期", tasks: [] },
+    { key: "today", label: title.value, tasks: [] },
+    { key: "later", label: "之后", tasks: [] },
+    { key: "none", label: "无日期", tasks: [] },
+  ];
+  visibleTasks.value.forEach((task) => {
+    if (!task.dueAt) result[3].tasks.push(task);
+    else if (new Date(task.dueAt) < today) result[0].tasks.push(task);
+    else if (new Date(task.dueAt) < addDays(today, 1))
+      result[1].tasks.push(task);
+    else result[2].tasks.push(task);
+  });
+  return result.filter((group) => group.tasks.length);
+});
+function startOfDay(date) {
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+function inRange(value, start, end) {
+  return value && new Date(value) >= start && new Date(value) < end;
+}
+function formatDate(value) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+function listName(id) {
+  return store.lists.find((item) => item.publicId === id)?.name || "收件箱";
+}
+function tagName(id) {
+  return store.tags.find((item) => item.publicId === id)?.name || "标签";
+}
+function priorityLabel(value) {
+  return { NONE: "无", LOW: "低", MEDIUM: "中", HIGH: "高" }[value] || value;
+}
+function itemCount(key) {
+  return key === "all"
+    ? store.tasks.filter((item) => !item.deleted).length
+    : key === "inbox"
+      ? store.tasks.filter(
+          (item) =>
+            item.listId === store.inbox?.publicId &&
+            item.status !== "COMPLETED",
+        ).length
+      : "";
+}
+function isActive(to) {
+  return route.path === to || route.path.startsWith(`${to}/`);
+}
+function toggleSidebar() {
+  sidebarHidden.value = !sidebarHidden.value;
+}
+function toggleSection(key) {
+  sections[key] = !sections[key];
+}
+function closeContext() {
+  context.open = false;
+  context.task = null;
+}
+function openContext(task, event) {
+  if (!task) return;
+  context.task = task;
+  context.x = Math.max(8, Math.min(event.clientX, window.innerWidth - 220));
+  context.y = Math.max(8, Math.min(event.clientY, window.innerHeight - 210));
+  context.open = true;
+}
+function openDetail(task) {
+  if (!task) return;
+  selectedTask.value = task;
+  editorOpen.value = false;
+}
+async function openEdit(task) {
+  if (!task) return;
+  editing.value = task;
+  selectedTask.value = task;
+  Object.assign(draft, {
+    title: task.title,
+    description: task.description || "",
+    listId: task.listId || store.inbox?.publicId || "",
+    parentId: task.parentId || "",
+    tagIds: [...(task.tagIds || [])],
+    priority: task.priority || "NONE",
+    durationMinutes: task.durationMinutes || 0,
+    allDay: Boolean(task.allDay),
+    startAt: toLocal(task.startAt),
+    dueAt: toLocal(task.dueAt),
+    rrule: [
+      "",
+      "FREQ=DAILY",
+      "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
+      "FREQ=WEEKLY",
+      "FREQ=MONTHLY",
+      "FREQ=YEARLY",
+    ].includes(task.rrule || "")
+      ? task.rrule || ""
+      : "CUSTOM",
+    customRrule: [
+      "",
+      "FREQ=DAILY",
+      "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
+      "FREQ=WEEKLY",
+      "FREQ=MONTHLY",
+      "FREQ=YEARLY",
+    ].includes(task.rrule || "")
+      ? ""
+      : task.rrule || "",
+    recurrenceAnchor: task.recurrenceAnchor || "DUE_DATE",
+    reminderEnabled: false,
+    reminderKind: "RELATIVE",
+    reminderOffset: 30,
+    remindLocal: "",
+    reminder: null,
+    checklistText: (task.checklist || []).map((item) => item.title).join("\n"),
+  });
+  editorOpen.value = true;
+  if (store.online) {
+    try {
+      const reminders = await apiListTaskReminders(task.publicId);
+      const reminder = reminders?.[0];
+      if (reminder)
+        Object.assign(draft, {
+          reminderEnabled: true,
+          reminderKind: reminder.kind,
+          reminderOffset: reminder.offsetMinutes ?? 30,
+          remindLocal: reminder.remindAt ? toLocal(reminder.remindAt) : "",
+          reminder,
+        });
+    } catch (error) {
+      store.error =
+        error?.response?.data?.detail || error?.message || "提醒加载失败";
+    }
+  }
+}
+function openCreate() {
+  editing.value = null;
+  selectedTask.value = {};
+  Object.assign(draft, {
+    title: "",
+    description: "",
+    listId: store.inbox?.publicId || "",
+    parentId: "",
+    tagIds: [],
+    priority: "NONE",
+    durationMinutes: 0,
+    allDay: false,
+    startAt: "",
+    dueAt: "",
+    rrule: "",
+    customRrule: "",
+    recurrenceAnchor: "DUE_DATE",
+    reminderEnabled: false,
+    reminderKind: "RELATIVE",
+    reminderOffset: 30,
+    remindLocal: "",
+    reminder: null,
+    checklistText: "",
+  });
+  editorOpen.value = true;
+}
+function closeDetail() {
+  selectedTask.value = null;
+  editing.value = null;
+  editorOpen.value = false;
+}
+function toLocal(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+async function quickAdd() {
+  if (!quickTitle.value.trim()) return;
+  await store.create({
+    title: quickTitle.value.trim(),
+    description: "",
+    listId:
+      route.name === "tasks-list"
+        ? route.params.publicId
+        : store.inbox?.publicId,
+    priority: "NONE",
+    startAt: "",
+    dueAt: route.name === "tasks-today" ? new Date().toISOString() : "",
+    durationMinutes: 0,
+    allDay: false,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    rrule: "",
+    recurrenceAnchor: "",
+    tagIds: [],
+    checklist: [],
+  });
+  quickTitle.value = "";
+}
+async function saveDetail() {
+  if ((draft.reminderEnabled || draft.reminder) && !store.online) {
+    store.error = "提醒需要联网保存";
+    return;
+  }
+  const rrule =
+    draft.rrule === "CUSTOM" ? draft.customRrule.trim() : draft.rrule;
+  const payload = {
+    title: draft.title.trim(),
+    description: draft.description,
+    listId: draft.listId,
+    parentId: draft.parentId || "",
+    tagIds: draft.tagIds,
+    priority: draft.priority,
+    startAt: draft.startAt ? new Date(draft.startAt).toISOString() : "",
+    dueAt: draft.dueAt ? new Date(draft.dueAt).toISOString() : "",
+    durationMinutes: Number(draft.durationMinutes) || 0,
+    allDay: draft.allDay,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    rrule,
+    recurrenceAnchor: rrule ? draft.recurrenceAnchor : "",
+    checklist: draft.checklistText
+      .split("\n")
+      .map((title, index) => ({
+        title: title.trim(),
+        completed: false,
+        sortOrder: index,
+      }))
+      .filter((item) => item.title),
+  };
+  try {
+    const saved = editing.value
+      ? await store.update(editing.value, payload)
+      : await store.create(payload);
+    if (draft.reminderEnabled || draft.reminder) {
+      await store.syncNow();
+      const serverTask =
+        store.tasks.find((item) => item.publicId === saved.publicId) || saved;
+      const reminder = {
+        kind: draft.reminderKind,
+        offsetMinutes:
+          draft.reminderKind === "RELATIVE" ? draft.reminderOffset : null,
+        remindAt:
+          draft.reminderKind === "ABSOLUTE" && draft.remindLocal
+            ? new Date(draft.remindLocal).toISOString()
+            : null,
+        channel: "IN_APP",
+        dailyUntilDone: false,
+      };
+      if (draft.reminderEnabled) {
+        if (draft.reminder)
+          await apiUpdateTaskReminder(
+            serverTask.publicId,
+            draft.reminder.publicId,
+            reminder,
+            draft.reminder.revision,
+          );
+        else await apiCreateTaskReminder(serverTask.publicId, reminder);
+      } else if (draft.reminder) {
+        await apiDeleteTaskReminder(
+          serverTask.publicId,
+          draft.reminder.publicId,
+          draft.reminder.revision,
+        );
+      }
+    }
+    selectedTask.value =
+      store.tasks.find((item) => item.publicId === saved.publicId) || saved;
+    editorOpen.value = false;
+  } catch (error) {
+    store.error =
+      error?.response?.data?.detail || error?.message || "任务保存失败";
+  }
+}
+async function toggleComplete(task) {
+  if (!task) return;
+  await (task.status === "COMPLETED"
+    ? store.reopen(task)
+    : store.complete(task));
+  selectedTask.value =
+    store.tasks.find((item) => item.publicId === task.publicId) || null;
+}
+async function duplicateTask(task) {
+  if (!task) return;
+  await store.create({
+    ...task,
+    title: `${task.title} 副本`,
+    status: "OPEN",
+    completedAt: null,
+    publicId: undefined,
+  });
+}
+async function deleteTask(task) {
+  if (!task || !window.confirm(`删除任务“${task.title}”？`)) return;
+  await store.remove(task);
+  if (selectedTask.value?.publicId === task.publicId) closeDetail();
+}
+function toggleSelected(task) {
+  selectedIds.has(task.publicId)
+    ? selectedIds.delete(task.publicId)
+    : selectedIds.add(task.publicId);
+}
+async function batchComplete() {
+  await store.batchTasks(
+    [...selectedIds]
+      .map((id) => store.tasks.find((task) => task.publicId === id))
+      .filter(Boolean),
+    "COMPLETE",
+  );
+  selectedIds.clear();
+  batchMode.value = false;
+}
+async function batchDelete() {
+  if (!window.confirm(`删除选中的 ${selectedIds.size} 项任务？`)) return;
+  await store.batchTasks(
+    [...selectedIds]
+      .map((id) => store.tasks.find((task) => task.publicId === id))
+      .filter(Boolean),
+    "DELETE",
+  );
+  selectedIds.clear();
+  batchMode.value = false;
+}
+async function dropTask(target) {
+  if (!dragged.value || dragged.value.publicId === target.publicId) return;
+  await store.sortTask(dragged.value, target.sortOrder || 0);
+  dragged.value = null;
+}
+async function createList() {
+  const name = window.prompt("新建清单");
+  if (!name?.trim()) return;
+  try {
+    await store.createList({
+      name: name.trim(),
+      color: "#2563eb",
+      icon: "",
+      archived: false,
+      sortOrder: store.lists.length,
+    });
+  } catch (error) {
+    store.error = error?.message || "新建清单失败";
+  }
+}
+async function loadFilters() {
+  if (!store.online) return;
+  try {
+    filters.value = await apiListTaskFilters();
+  } catch {
+    filters.value = [];
+  }
+}
+function onKeydown(event) {
+  if (event.key === "Escape") {
+    moreOpen.value = false;
+    closeContext();
+    if (editorOpen.value) closeDetail();
+  }
+  if (
+    event.key.toLowerCase() === "n" &&
+    !["INPUT", "TEXTAREA", "SELECT"].includes(event.target?.tagName)
+  ) {
+    event.preventDefault();
+    document.querySelector(".clone-quick-add input")?.focus();
+  }
+}
+watch(
+  () => route.fullPath,
+  () => {
+    closeContext();
+    if (route.query.task) {
+      const task = store.tasks.find(
+        (item) => item.publicId === route.query.task,
+      );
+      if (task) openDetail(task);
+    }
+  },
+);
+watch(
+  () => store.tasks,
+  () => {
+    if (selectedTask.value?.publicId)
+      selectedTask.value =
+        store.tasks.find(
+          (item) => item.publicId === selectedTask.value.publicId,
+        ) || null;
+  },
+  { deep: true },
+);
+onMounted(async () => {
+  await store.init();
+  await loadFilters();
+  document.addEventListener("click", closeContext);
+  window.addEventListener("keydown", onKeydown);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener("click", closeContext);
+  window.removeEventListener("keydown", onKeydown);
+});
 
-const SidebarSection = { props: { title: String, open: Boolean }, emits: ['toggle'], template: '<section class="clone-sidebar-section"><header><button type="button" @click="$emit(\'toggle\')"><ChevronDown :size="14" :class="{ rotated: !open }" />{{ title }}</button><slot name="actions" /></header><div v-show="open" class="clone-sidebar-items"><slot /></div></section>', components: { ChevronDown } }
+const SidebarSection = {
+  props: { title: String, open: Boolean },
+  emits: ["toggle"],
+  template:
+    '<section class="clone-sidebar-section"><header><button type="button" @click="$emit(\'toggle\')"><ChevronDown :size="14" :class="{ rotated: !open }" />{{ title }}</button><slot name="actions" /></header><div v-show="open" class="clone-sidebar-items"><slot /></div></section>',
+  components: { ChevronDown },
+};
 </script>
 
 <style scoped>
-.clone-task-shell{display:grid;grid-template-columns:240px minmax(420px,1fr) minmax(340px,420px);height:100vh;margin:0;background:var(--card);color:var(--ink);overflow:hidden}.clone-task-sidebar{display:flex;min-width:0;flex-direction:column;gap:14px;padding:18px 12px;border-right:1px solid var(--line);background:color-mix(in srgb,var(--card) 96%,var(--paper));overflow:auto}.clone-sidebar-head{display:flex;align-items:center;justify-content:space-between;padding:0 8px}.clone-sidebar-head button,.clone-icon-button,.clone-row-more{display:grid;width:34px;height:34px;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}.clone-sidebar-head button:hover,.clone-icon-button:hover,.clone-row-more:hover{background:var(--paper);color:var(--ink)}.clone-primary-nav,.clone-sidebar-items{display:grid;gap:3px}.clone-primary-nav a,.clone-sidebar-footer a,.clone-nav-item{display:flex;align-items:center;gap:9px;min-height:36px;padding:7px 10px;border-radius:8px;color:var(--ink2);font-size:13px;text-decoration:none}.clone-primary-nav a:hover,.clone-primary-nav a.active,.clone-nav-item:hover,.clone-nav-item.active,.clone-sidebar-footer a:hover{background:color-mix(in srgb,var(--ink) 7%,transparent);color:var(--ink)}.clone-primary-nav a.active{font-weight:700}.clone-primary-nav span,.clone-nav-item span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.clone-primary-nav small{color:var(--muted);font-size:11px}.clone-sidebar-section{display:grid;gap:7px}.clone-sidebar-section>header{display:flex;align-items:center;justify-content:space-between;padding:4px 8px;color:var(--muted);font-size:11px;font-weight:700}.clone-sidebar-section>header button{display:flex;align-items:center;gap:4px;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer}.clone-sidebar-section>header svg{transition:transform .15s}.rotated{transform:rotate(-90deg)}.sidebar-create{display:grid;width:24px;height:24px;place-items:center;border:0;background:transparent;color:var(--muted);cursor:pointer}.clone-empty-item{padding:8px 10px;color:var(--muted);font-size:12px}.clone-sidebar-footer{display:grid;gap:3px;margin-top:auto;padding-top:12px;border-top:1px solid var(--line)}.clone-task-main{position:relative;min-width:0;overflow:auto;padding:20px 28px 100px}.clone-task-header{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:54px}.clone-title-block,.clone-header-actions{display:flex;align-items:center;gap:9px}.clone-title-block p{margin:0;color:var(--muted);font-size:11px}.clone-title-block h1{margin:2px 0;font-size:22px}.clone-title-block span{color:var(--muted);font-size:12px}.clone-header-actions{justify-content:flex-end}.clone-sync-state{color:var(--muted);font-size:11px}.clone-primary-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:34px;padding:0 12px;border:0;border-radius:7px;background:var(--accent);color:var(--accent-contrast,#fff);font-size:13px;font-weight:700;cursor:pointer}.clone-primary-button.full{width:100%;margin-top:22px}.clone-quick-add{display:flex;align-items:center;gap:8px;margin:18px 0 14px;padding:0 12px;min-height:44px;border:1px solid var(--line);border-radius:9px;color:var(--accent)}.clone-quick-add form{display:flex;align-items:center;flex:1;gap:8px}.clone-quick-add input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:var(--ink);font:inherit}.clone-quick-add form button{border:0;border-radius:6px;background:var(--accent);color:var(--accent-contrast,#fff);padding:6px 10px;cursor:pointer}.clone-quick-add form button:disabled{opacity:.45}.clone-quick-add kbd{padding:2px 6px;border:1px solid var(--line);border-radius:4px;color:var(--muted);font-size:11px}.clone-status,.clone-error{display:flex;gap:7px;align-items:center;margin:9px 0;padding:9px 11px;border-radius:7px;background:color-mix(in srgb,var(--accent) 8%,var(--card));color:var(--muted);font-size:12px}.clone-error{background:color-mix(in srgb,var(--down) 8%,var(--card));color:var(--down)}.clone-list-toolbar{display:flex;align-items:center;justify-content:space-between;margin:12px 0;color:var(--muted);font-size:12px}.clone-list-toolbar button{border:0;background:transparent;color:var(--muted);cursor:pointer}.clone-list-toolbar button.active{color:var(--accent);font-weight:700}.clone-task-groups{display:grid;gap:18px}.clone-group-heading{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;border:0;background:transparent;color:var(--ink2);text-align:left;cursor:pointer}.clone-group-heading span{color:var(--muted);font-size:12px}.clone-group-heading svg{transition:transform .15s}.clone-task-rows{border-top:1px solid var(--line)}.clone-task-row{display:flex;align-items:center;gap:7px;min-height:56px;border-bottom:1px solid var(--line);padding:0 6px}.clone-task-row:hover,.clone-task-row.selected{background:color-mix(in srgb,var(--ink) 4%,transparent)}.clone-task-row.multi{background:color-mix(in srgb,var(--accent) 10%,transparent)}.clone-task-row.checked .clone-task-content strong{color:var(--muted);text-decoration:line-through}.clone-drag-handle{flex:none;color:color-mix(in srgb,var(--muted) 65%,transparent)}.clone-check,.clone-select-box{display:grid;flex:none;width:21px;height:21px;place-items:center;border:1.5px solid var(--line2);border-radius:50%;background:transparent;color:var(--accent);cursor:pointer}.clone-select-box{border-radius:5px}.clone-task-content{display:grid;min-width:0;flex:1;gap:2px;border:0;background:transparent;color:var(--ink);text-align:left;cursor:pointer}.clone-task-content strong{overflow:hidden;font-size:14px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}.clone-task-content small{overflow:hidden;color:var(--muted);font-size:12px;text-overflow:ellipsis;white-space:nowrap}.clone-task-content>span{display:flex;gap:7px;overflow:hidden;color:var(--muted);font-size:11px;white-space:nowrap}.clone-task-content>span span{display:inline-flex;align-items:center;gap:3px}.clone-task-row em{font-style:normal;font-size:11px}.clone-task-row em[data-priority=HIGH]{color:var(--down)}.clone-task-row em[data-priority=MEDIUM]{color:var(--warn)}.clone-row-more{flex:none}.clone-empty-state{display:grid;justify-items:center;gap:9px;min-height:260px;align-content:center;color:var(--muted)}.clone-empty-state strong{color:var(--ink2);font-size:15px}.clone-floating-menu,.clone-context-menu{position:fixed;z-index:90;display:grid;min-width:190px;padding:7px;border:1px solid var(--line);border-radius:9px;background:var(--card);box-shadow:0 16px 36px rgba(15,23,42,.18)}.clone-floating-menu{top:118px;right:24px}.clone-floating-menu button,.clone-context-menu button{display:flex;align-items:center;gap:8px;min-height:34px;padding:7px 9px;border:0;border-radius:6px;background:transparent;color:var(--ink);text-align:left;cursor:pointer}.clone-floating-menu button:hover,.clone-context-menu button:hover{background:var(--accent-soft);color:var(--accent)}.clone-context-menu strong{overflow:hidden;padding:7px 9px;color:var(--muted);font-size:11px;text-overflow:ellipsis;white-space:nowrap}.clone-context-menu .danger,.clone-detail-actions .danger{color:var(--down)}.clone-batch-bar{position:fixed;z-index:70;bottom:24px;left:50%;display:flex;align-items:center;gap:8px;transform:translateX(-50%);padding:10px 14px;border:1px solid var(--line);border-radius:9px;background:var(--card);box-shadow:0 12px 30px rgba(15,23,42,.16)}.clone-batch-bar button{border:0;border-radius:6px;padding:7px 9px;background:var(--accent);color:var(--accent-contrast,#fff);cursor:pointer}.clone-batch-bar button.danger{background:transparent;color:var(--down)}.clone-detail-pane{min-width:0;overflow:auto;border-left:1px solid var(--line);background:color-mix(in srgb,var(--card) 98%,var(--paper))}.clone-detail-pane>header{display:flex;align-items:center;justify-content:space-between;min-height:56px;padding:0 20px;border-bottom:1px solid var(--line);color:var(--muted);font-size:13px}.clone-detail-pane>header button{display:grid;width:32px;height:32px;place-items:center;border:0;border-radius:7px;background:transparent;color:var(--muted);cursor:pointer}.clone-detail-form,.clone-detail-read{display:grid;gap:16px;padding:20px}.clone-detail-form label{display:grid;gap:7px;color:var(--muted);font-size:12px}.clone-detail-form input,.clone-detail-form select,.clone-detail-form textarea{min-width:0;min-height:36px;padding:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit}.clone-detail-form textarea{min-height:90px;resize:vertical}.clone-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.clone-detail-actions{display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid var(--line)}.clone-detail-actions button{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;padding:7px;cursor:pointer}.clone-detail-title{display:flex;align-items:flex-start;gap:10px}.clone-detail-title h2{margin:1px 0;font-size:19px;line-height:1.4}.clone-detail-description{margin:0;white-space:pre-wrap;color:var(--ink2);font-size:13px;line-height:1.7}.clone-detail-read dl{margin:0}.clone-detail-read dl div{display:grid;grid-template-columns:58px 1fr;gap:8px;padding:11px 0;border-top:1px solid var(--line);font-size:12px}.clone-detail-read dt{color:var(--muted)}.clone-detail-read dd{margin:0;overflow-wrap:anywhere}@media(max-width:1279px){.clone-task-shell{grid-template-columns:220px minmax(420px,1fr)}.clone-detail-pane{grid-column:2;border-top:1px solid var(--line)}.clone-task-shell.detail-open{grid-template-rows:minmax(0,1fr) minmax(320px,auto)}.clone-detail-pane{grid-row:2}}@media(max-width:900px){.clone-task-shell{display:block;height:auto;min-height:calc(100vh - 72px);margin:0;overflow:visible}.clone-task-sidebar{display:none}.clone-task-shell:not(.sidebar-hidden) .clone-task-sidebar{display:flex;min-height:0;max-height:340px;border-right:0;border-bottom:1px solid var(--line)}.clone-task-main{padding:16px 14px 100px}.clone-task-header{align-items:flex-start}.clone-header-actions .clone-sync-state{display:none}.clone-primary-button{font-size:0;width:36px;padding:0}.clone-primary-button svg{margin:0}.clone-detail-pane{margin:0 14px 90px;border:1px solid var(--line);border-radius:8px}.clone-batch-bar{right:14px;left:14px;justify-content:center;transform:none;flex-wrap:wrap}.clone-form-grid{grid-template-columns:1fr}}
+.clone-task-shell {
+  display: grid;
+  grid-template-columns: 240px minmax(420px, 1fr) minmax(340px, 420px);
+  height: 100vh;
+  margin: 0;
+  background: var(--card);
+  color: var(--ink);
+  overflow: hidden;
+}
+.clone-task-sidebar {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 12px;
+  border-right: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 96%, var(--paper));
+  overflow: auto;
+}
+.clone-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+}
+.clone-sidebar-head button,
+.clone-icon-button,
+.clone-row-more {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.clone-sidebar-head button:hover,
+.clone-icon-button:hover,
+.clone-row-more:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+.clone-primary-nav,
+.clone-sidebar-items {
+  display: grid;
+  gap: 3px;
+}
+.clone-primary-nav a,
+.clone-sidebar-footer a,
+.clone-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: var(--ink2);
+  font-size: 13px;
+  text-decoration: none;
+}
+.clone-primary-nav a:hover,
+.clone-primary-nav a.active,
+.clone-nav-item:hover,
+.clone-nav-item.active,
+.clone-sidebar-footer a:hover {
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--ink);
+}
+.clone-primary-nav a.active {
+  font-weight: 700;
+}
+.clone-primary-nav span,
+.clone-nav-item span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clone-primary-nav small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.clone-sidebar-section {
+  display: grid;
+  gap: 7px;
+}
+.clone-sidebar-section > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.clone-sidebar-section > header button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.clone-sidebar-section > header svg {
+  transition: transform 0.15s;
+}
+.rotated {
+  transform: rotate(-90deg);
+}
+.sidebar-create {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.clone-empty-item {
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.clone-sidebar-footer {
+  display: grid;
+  gap: 3px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.clone-task-main {
+  position: relative;
+  min-width: 0;
+  overflow: auto;
+  padding: 20px 28px 100px;
+}
+.clone-task-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 54px;
+}
+.clone-title-block,
+.clone-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.clone-title-block p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.clone-title-block h1 {
+  margin: 2px 0;
+  font-size: 22px;
+}
+.clone-title-block span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.clone-header-actions {
+  justify-content: flex-end;
+}
+.clone-sync-state {
+  color: var(--muted);
+  font-size: 11px;
+}
+.clone-primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.clone-primary-button.full {
+  width: 100%;
+  margin-top: 22px;
+}
+.clone-quick-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0 14px;
+  padding: 0 12px;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--accent);
+}
+.clone-quick-add form {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 8px;
+}
+.clone-quick-add input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+}
+.clone-quick-add form button {
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.clone-quick-add form button:disabled {
+  opacity: 0.45;
+}
+.clone-quick-add kbd {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.clone-status,
+.clone-error {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  margin: 9px 0;
+  padding: 9px 11px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--card));
+  color: var(--muted);
+  font-size: 12px;
+}
+.clone-error {
+  background: color-mix(in srgb, var(--down) 8%, var(--card));
+  color: var(--down);
+}
+.clone-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.clone-list-toolbar button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.clone-list-toolbar button.active {
+  color: var(--accent);
+  font-weight: 700;
+}
+.clone-task-groups {
+  display: grid;
+  gap: 18px;
+}
+.clone-group-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--ink2);
+  text-align: left;
+  cursor: pointer;
+}
+.clone-group-heading span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.clone-group-heading svg {
+  transition: transform 0.15s;
+}
+.clone-task-rows {
+  border-top: 1px solid var(--line);
+}
+.clone-task-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 56px;
+  border-bottom: 1px solid var(--line);
+  padding: 0 6px;
+}
+.clone-task-row:hover,
+.clone-task-row.selected {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.clone-task-row.multi {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.clone-task-row.checked .clone-task-content strong {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.clone-drag-handle {
+  flex: none;
+  color: color-mix(in srgb, var(--muted) 65%, transparent);
+}
+.clone-check,
+.clone-select-box {
+  display: grid;
+  flex: none;
+  width: 21px;
+  height: 21px;
+  place-items: center;
+  border: 1.5px solid var(--line2);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+}
+.clone-select-box {
+  border-radius: 5px;
+}
+.clone-task-content {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.clone-task-content strong {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clone-task-content small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clone-task-content > span {
+  display: flex;
+  gap: 7px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.clone-task-content > span span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.clone-task-row em {
+  font-style: normal;
+  font-size: 11px;
+}
+.clone-task-row em[data-priority="HIGH"] {
+  color: var(--down);
+}
+.clone-task-row em[data-priority="MEDIUM"] {
+  color: var(--warn);
+}
+.clone-row-more {
+  flex: none;
+}
+.clone-empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  min-height: 260px;
+  align-content: center;
+  color: var(--muted);
+}
+.clone-empty-state strong {
+  color: var(--ink2);
+  font-size: 15px;
+}
+.clone-floating-menu,
+.clone-context-menu {
+  position: fixed;
+  z-index: 90;
+  display: grid;
+  min-width: 190px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--card);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.18);
+}
+.clone-floating-menu {
+  top: 118px;
+  right: 24px;
+}
+.clone-floating-menu button,
+.clone-context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.clone-floating-menu button:hover,
+.clone-context-menu button:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.clone-context-menu strong {
+  overflow: hidden;
+  padding: 7px 9px;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clone-context-menu .danger,
+.clone-detail-actions .danger {
+  color: var(--down);
+}
+.clone-batch-bar {
+  position: fixed;
+  z-index: 70;
+  bottom: 24px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--card);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
+}
+.clone-batch-bar button {
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 9px;
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+  cursor: pointer;
+}
+.clone-batch-bar button.danger {
+  background: transparent;
+  color: var(--down);
+}
+.clone-detail-pane {
+  min-width: 0;
+  overflow: auto;
+  border-left: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 98%, var(--paper));
+}
+.clone-detail-pane > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+}
+.clone-detail-pane > header button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.clone-detail-form,
+.clone-detail-read {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+.clone-detail-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.clone-detail-form input,
+.clone-detail-form select,
+.clone-detail-form textarea {
+  min-width: 0;
+  min-height: 36px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+}
+.clone-detail-form textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+.clone-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.clone-inline-check {
+  display: flex !important;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 8px !important;
+}
+.clone-inline-check input {
+  min-height: 16px;
+  width: 16px;
+}
+.clone-reminder-editor,
+.clone-tags {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+}
+.clone-reminder-editor legend,
+.clone-tags legend {
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.clone-tags {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.clone-tags legend {
+  grid-column: 1 / -1;
+}
+.clone-tags label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.clone-tags input {
+  min-height: 16px;
+  width: 16px;
+}
+.clone-detail-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.clone-detail-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  padding: 7px;
+  cursor: pointer;
+}
+.clone-detail-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.clone-detail-title h2 {
+  margin: 1px 0;
+  font-size: 19px;
+  line-height: 1.4;
+}
+.clone-detail-description {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--ink2);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.clone-detail-read dl {
+  margin: 0;
+}
+.clone-detail-read dl div {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 8px;
+  padding: 11px 0;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.clone-detail-read dt {
+  color: var(--muted);
+}
+.clone-detail-read dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1279px) {
+  .clone-task-shell {
+    grid-template-columns: 220px minmax(420px, 1fr);
+  }
+  .clone-detail-pane {
+    grid-column: 2;
+    border-top: 1px solid var(--line);
+  }
+  .clone-task-shell.detail-open {
+    grid-template-rows: minmax(0, 1fr) minmax(320px, auto);
+  }
+  .clone-detail-pane {
+    grid-row: 2;
+  }
+}
+@media (max-width: 900px) {
+  .clone-task-shell {
+    display: block;
+    height: auto;
+    min-height: calc(100vh - 72px);
+    margin: 0;
+    overflow: visible;
+  }
+  .clone-task-sidebar {
+    display: none;
+  }
+  .clone-task-shell:not(.sidebar-hidden) .clone-task-sidebar {
+    display: flex;
+    min-height: 0;
+    max-height: 340px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .clone-task-main {
+    padding: 16px 14px 100px;
+  }
+  .clone-task-header {
+    align-items: flex-start;
+  }
+  .clone-header-actions .clone-sync-state {
+    display: none;
+  }
+  .clone-primary-button {
+    font-size: 0;
+    width: 36px;
+    padding: 0;
+  }
+  .clone-primary-button svg {
+    margin: 0;
+  }
+  .clone-detail-pane {
+    margin: 0 14px 90px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+  .clone-batch-bar {
+    right: 14px;
+    left: 14px;
+    justify-content: center;
+    transform: none;
+    flex-wrap: wrap;
+  }
+  .clone-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
 </style>
