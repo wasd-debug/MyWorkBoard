@@ -227,6 +227,7 @@
                 checked: task.status === 'COMPLETED',
                 multi: selectedIds.has(task.publicId),
               }"
+              :data-priority="task.priority"
               draggable="true"
               @dragstart="dragged = task"
               @dragover.prevent
@@ -335,7 +336,7 @@
             label="任务描述"
             placeholder="补充任务描述"
         /></label>
-        <div class="clone-form-grid">
+          <div class="clone-form-grid clone-detail-section">
           <label
             >清单<select v-model="draft.listId">
               <option
@@ -359,7 +360,7 @@
             </select></label
           >
         </div>
-        <div class="clone-form-grid">
+          <div class="clone-form-grid clone-detail-section">
           <label
             >优先级<select v-model="draft.priority">
               <option value="NONE">无优先级</option>
@@ -376,43 +377,52 @@
           /></label>
         </div>
         <div class="clone-form-grid">
-          <label
+          <label class="clone-popover-field"
             >开始时间<input
               v-model="draft.startAt"
               type="datetime-local" /></label
-          ><label
-            >截止时间<input v-model="draft.dueAt" type="datetime-local"
-          /></label>
+          ><label class="clone-popover-field"
+            >截止时间
+            <button type="button" class="clone-field-trigger" @click.stop="datePopoverOpen = !datePopoverOpen">
+              <CalendarClock :size="15" /><span>{{ draft.dueAt ? formatDate(draft.dueAt) : '设置日期和时间' }}</span>
+            </button>
+            <div v-if="datePopoverOpen" class="clone-field-popover" @click.stop>
+              <strong>日期和时间</strong>
+              <input v-model="draft.dueAt" type="datetime-local" aria-label="截止日期时间" />
+              <div class="clone-popover-actions">
+                <button type="button" @click="draft.dueAt = toLocal(new Date()); datePopoverOpen = false">今天</button>
+                <button type="button" @click="draft.dueAt = toLocal(addDays(new Date(), 1)); datePopoverOpen = false">明天</button>
+                <button type="button" @click="draft.dueAt = ''; datePopoverOpen = false">清除</button>
+              </div>
+            </div>
+          </label>
         </div>
         <label class="clone-inline-check"
           ><input v-model="draft.allDay" type="checkbox" />全天任务</label
         >
         <div class="clone-form-grid">
-          <label
-            >重复<select v-model="draft.rrule">
-              <option value="">不重复</option>
-              <option value="FREQ=DAILY">每天</option>
-              <option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">
-                每个工作日
-              </option>
-              <option value="FREQ=WEEKLY">每周</option>
-              <option value="FREQ=MONTHLY">每月</option>
-              <option value="FREQ=YEARLY">每年</option>
-              <option value="CUSTOM">自定义</option>
-            </select></label
-          ><label v-if="draft.rrule"
+          <label class="clone-popover-field"
+            >重复
+            <button type="button" class="clone-field-trigger" @click.stop="repeatPopoverOpen = !repeatPopoverOpen">
+              <span>{{ recurrenceLabel(draft.rrule) }}</span><ChevronDown :size="14" />
+            </button>
+            <div v-if="repeatPopoverOpen" class="clone-field-popover clone-repeat-popover" @click.stop>
+              <strong>重复</strong>
+              <button v-for="option in recurrenceOptions" :key="option.value" type="button" :class="{ active: draft.rrule === option.value }" @click="draft.rrule = option.value; repeatPopoverOpen = false">{{ option.label }}</button>
+            </div>
+          </label><label v-if="draft.rrule"
             >循环基准<select v-model="draft.recurrenceAnchor">
               <option value="DUE_DATE">按到期日期</option>
               <option value="COMPLETION_DATE">按完成日期</option>
             </select></label
           >
         </div>
-        <label v-if="draft.rrule === 'CUSTOM'"
+        <label v-if="draft.rrule === 'CUSTOM'" class="clone-detail-section"
           >RRULE<input
             v-model="draft.customRrule"
             placeholder="FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,FR"
         /></label>
-        <fieldset class="clone-reminder-editor">
+        <fieldset class="clone-reminder-editor clone-detail-section">
           <legend>提醒</legend>
           <label class="clone-inline-check"
             ><input
@@ -644,6 +654,10 @@
         <CheckCircle2 :size="14" />{{
           context.task?.status === "COMPLETED" ? "重新打开" : "标记完成"
         }}</button
+      ><button type="button" @click="setContextDue(0)"><CalendarClock :size="14" />安排今天</button
+      ><button type="button" @click="setContextDue(1)"><CalendarClock :size="14" />安排明天</button
+      ><button type="button" @click="setContextDue(null)"><X :size="14" />清除日期</button
+      ><div class="clone-context-divider" aria-hidden="true"></div
       ><button
         type="button"
         @click="
@@ -726,6 +740,8 @@ const filters = ref([]);
 const quickTitle = ref("");
 const sidebarHidden = ref(false);
 const moreOpen = ref(false);
+const datePopoverOpen = ref(false);
+const repeatPopoverOpen = ref(false);
 const batchMode = ref(false);
 const selectedIds = reactive(new Set());
 const collapsed = reactive({
@@ -792,6 +808,15 @@ const shortcutViews = [
   { label: "无日期任务", to: "/tasks/shortcut/no-date" },
   { label: "本周", to: "/tasks/shortcut/this-week" },
   { label: "下周", to: "/tasks/shortcut/next-week" },
+];
+const recurrenceOptions = [
+  { value: "", label: "不重复" },
+  { value: "FREQ=DAILY", label: "每天" },
+  { value: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", label: "每个工作日" },
+  { value: "FREQ=WEEKLY", label: "每周" },
+  { value: "FREQ=MONTHLY", label: "每月" },
+  { value: "FREQ=YEARLY", label: "每年" },
+  { value: "CUSTOM", label: "自定义" },
 ];
 const title = computed(() =>
   route.name === "tasks-today"
@@ -944,6 +969,9 @@ function tagName(id) {
 function priorityLabel(value) {
   return { NONE: "无", LOW: "低", MEDIUM: "中", HIGH: "高" }[value] || value;
 }
+function recurrenceLabel(value) {
+  return recurrenceOptions.find((option) => option.value === value)?.label || (value ? "自定义" : "不重复");
+}
 function itemCount(key) {
   return key === "all"
     ? store.tasks.filter((item) => !item.deleted).length
@@ -968,11 +996,18 @@ function closeContext() {
   context.open = false;
   context.task = null;
 }
+async function setContextDue(offset) {
+  const task = context.task;
+  closeContext();
+  if (!task) return;
+  const dueAt = offset === null ? "" : addDays(startOfDay(new Date()), offset).toISOString();
+  await store.update(task, { dueAt });
+}
 function openContext(task, event) {
   if (!task) return;
   context.task = task;
-  context.x = Math.max(8, Math.min(event.clientX, window.innerWidth - 220));
-  context.y = Math.max(8, Math.min(event.clientY, window.innerHeight - 210));
+  context.x = Math.max(8, Math.min(event.clientX, window.innerWidth - 230));
+  context.y = Math.max(8, Math.min(event.clientY, window.innerHeight - 330));
   context.open = true;
 }
 function openDetail(task) {
@@ -1026,6 +1061,8 @@ async function openEdit(task) {
     checklistText: (task.checklist || []).map((item) => item.title).join("\n"),
   });
   editorOpen.value = true;
+  datePopoverOpen.value = false;
+  repeatPopoverOpen.value = false;
   void loadActivity(task);
   void loadCollaboration(task);
   if (store.online) {
@@ -1072,12 +1109,16 @@ function openCreate() {
     checklistText: "",
   });
   editorOpen.value = true;
+  datePopoverOpen.value = false;
+  repeatPopoverOpen.value = false;
 }
 function closeDetail() {
   selectedTask.value = null;
   editing.value = null;
   editorOpen.value = false;
   resetCollaboration();
+  datePopoverOpen.value = false;
+  repeatPopoverOpen.value = false;
 }
 function toLocal(value) {
   if (!value) return "";
@@ -1792,14 +1833,16 @@ const SidebarSection = {
   gap: 7px;
   min-height: 40px;
   border-bottom: 1px solid var(--line);
-  padding: 0 6px;
+  padding: 0 8px;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
 }
 .clone-drag-handle { display: none; }
 .clone-check,
 .clone-select-box { width: 20px; height: 20px; border-radius: 5px; }
 .clone-task-row:hover,
 .clone-task-row.selected {
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--card));
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 .clone-task-row.multi {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
@@ -1841,8 +1884,8 @@ const SidebarSection = {
 }
 .clone-task-content strong {
   overflow: hidden;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1858,7 +1901,7 @@ const SidebarSection = {
   gap: 7px;
   overflow: hidden;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   white-space: nowrap;
 }
 .clone-task-content > span span {
@@ -1876,6 +1919,9 @@ const SidebarSection = {
 .clone-task-row em[data-priority="MEDIUM"] {
   color: var(--warn);
 }
+.clone-task-row[data-priority="HIGH"] .clone-check { border-color: var(--down); color: var(--down); }
+.clone-task-row[data-priority="MEDIUM"] .clone-check { border-color: var(--warn); color: var(--warn); }
+.clone-task-row[data-priority="LOW"] .clone-check { border-color: var(--accent); }
 .clone-row-more {
   flex: none;
 }
@@ -1956,6 +2002,7 @@ const SidebarSection = {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.clone-context-divider { height: 1px; margin: 5px 3px; background: var(--line); }
 .clone-context-menu .danger,
 .clone-detail-actions .danger {
   color: var(--down);
@@ -2021,6 +2068,54 @@ const SidebarSection = {
   gap: 16px;
   padding: 20px;
 }
+.clone-detail-section { padding-top: 12px; border-top: 1px solid var(--line); }
+.clone-popover-field { position: relative; }
+.clone-field-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 36px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--card);
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+}
+.clone-field-trigger:hover { border-color: var(--accent); }
+.clone-field-popover {
+  position: absolute;
+  z-index: 95;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--card);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, .16);
+}
+.clone-field-popover strong { color: var(--ink2); font-size: 12px; }
+.clone-field-popover input { width: 100%; }
+.clone-popover-actions { display: flex; gap: 5px; }
+.clone-popover-actions button,
+.clone-repeat-popover > button {
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink2);
+  text-align: left;
+  cursor: pointer;
+}
+.clone-popover-actions button:hover,
+.clone-repeat-popover > button:hover,
+.clone-repeat-popover > button.active { background: var(--accent-soft); color: var(--accent); }
 .clone-detail-form label {
   display: grid;
   gap: 7px;
