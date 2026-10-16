@@ -116,6 +116,14 @@ test('task rows open the persistent detail editor for direct task edits', () => 
   assert.match(inboxView, /提醒/)
 })
 
+test('task rows expose a viewport-safe context menu with contract actions', () => {
+  assert.match(inboxView, /@contextmenu\.prevent="openTaskContextMenu\(task, \$event\)"/)
+  assert.match(inboxView, /class="task-context-menu"/)
+  for (const token of ['打开详情', '标记完成', '重新打开', '创建副本', '删除任务']) assert.match(inboxView, new RegExp(token))
+  assert.match(inboxView, /Math\.min\(event\.clientX, window\.innerWidth - 228\)/)
+  assert.match(inboxView, /document\.addEventListener\('click', closeTaskContextMenu\)/)
+})
+
 test('task detail exposes contract-backed Markdown comments and attachments', () => {
   assert.match(inboxView, /TaskRichTextEditor/)
   for (const token of ['apiListTaskComments', 'apiCreateTaskComment', 'apiUpdateTaskComment', 'apiDeleteTaskComment', 'apiListTaskAttachments', 'apiUploadTaskAttachment', 'apiDeleteTaskAttachment']) assert.match(inboxView, new RegExp(token))
