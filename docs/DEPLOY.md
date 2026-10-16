@@ -1,5 +1,11 @@
 # 部署说明
 
+## 2026-10-16 本地前端切换 Vite 热更新
+
+- 本地任务域和前端验收不再运行 `salary-frontend` Docker/Nginx 容器；已停止并删除本机该容器。
+- 本地只通过 `docker compose ... up -d mysql backend` 提供数据库与 API，前端在 `frontend/` 执行 `npm run dev`，默认访问 `http://localhost:5173` 并由 Vite 代理 `/api`、`/mcp`。
+- `deploy/docker-compose.local.yml` 已移除前端服务定义。生产 Compose、Dockerfile 和历史发布记录暂时保留，只用于明确的生产静态发布，不作为本地热更新入口。
+
 ## 2026-10-14 任务页特性收口生产发布
 
 - 应用提交：`bf012ec`，已推送至远程 `main`；发布归档 `/home/ubuntu/salary-tracker/releases/bf012ec2f80b517c94476f95e5713a04f6f41289`，归档 SHA-256 为 `81d5d987c26e51890d1cc7051f65f349ff8d55bf6cbb4218ea4c64525d3a5f85`。
@@ -68,7 +74,7 @@
 > 状态日期：2026-09-28
 > SSH 规则：所有连接必须使用仓库根目录的 `workboard.pem`，禁止密码认证。
 
-本项目通过 Docker Compose 运行三个服务：MySQL、Spring Boot 后端和 Nginx 前端。前端对外提供 80 端口，并将 `/api`、MCP Streamable HTTP `/mcp`、`/.well-known/*` 和 OAuth 协议端点转发到后端。
+生产环境通过 Docker Compose 运行 MySQL、Spring Boot 后端和 Nginx 前端；本地开发/验收使用 MySQL、后端容器加 Vite 开发服务器。生产 Nginx 对外提供 80 端口，并将 `/api`、MCP Streamable HTTP `/mcp`、`/.well-known/*` 和 OAuth 协议端点转发到后端。
 
 ## 已配置服务器
 
@@ -242,13 +248,20 @@ bash deploy/dev-backend.sh
 (cd frontend && npm install && npm run build)
 ```
 
-再启动联调 Compose：
+再启动后端联调 Compose（不启动前端容器）：
 
 ```bash
-docker compose --env-file deploy/.env -f deploy/docker-compose.local.yml up -d
+docker compose --env-file deploy/.env -f deploy/docker-compose.local.yml up -d mysql backend
 ```
 
-该模式把 `backend/target` 和 `frontend/dist` 挂载到容器中，适合验证构建产物与容器网络。
+另开终端启动 Vite：
+
+```bash
+cd frontend
+npm run dev
+```
+
+该模式只把 `backend/target` 挂载到后端容器；前端源码由 Vite 热更新并通过 `http://localhost:5173` 访问。
 
 本地联调 Compose 对 Flyway 使用宽松校验：关闭历史 checksum 校验，并忽略快照中已落地但尚未登记的 pending migration。这样可以直接使用旧的本地数据库快照启动后端；生产 Compose 仍保持严格校验。若需要验证迁移完整性，请使用上面的 `verify-backup-restore.sh` 恢复演练，而不要把本地宽松配置带到生产环境。
 
@@ -262,7 +275,6 @@ sudo docker compose --env-file deploy/.env -f deploy/docker-compose.yml ps
 
 # 查看日志
 sudo docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs -f backend
-sudo docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs -f frontend
 sudo docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs -f mysql
 
 # 重启或停止

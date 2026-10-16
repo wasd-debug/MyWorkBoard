@@ -417,6 +417,16 @@ TasksWorkspace
 
 仍需人工确认：桌面三栏比例与滚动、375/430px 页面内导航展开收起、右键菜单边界、拖拽排序落点、批量失败提示、详情关闭后列表位置、暗色主题及真实在线/离线同步反馈。
 
+### P2-FE12 浏览器验收门禁与 Vite 热更新运行方式
+
+本轮移除 AGENTS.md 中禁止浏览器验收的旧约束，前端增量从本轮起必须包含浏览器验收、截图/DOM 证据和代表性桌面与移动视口交互记录。由于本机任务工作区原先使用负外边距抵消外层布局，页面首屏出现 `y=-36` 顶部裁切并可能产生横向溢出；`TaskWorkspaceView.vue` 已改为根节点 `margin: 0`、`height: 100vh`，移动断点同步取消负外边距。
+
+本地运行方式已收口到 Vite：已停止并删除 `salary-frontend` 容器及本地 `deploy-frontend:latest` 镜像；`deploy/docker-compose.local.yml` 不再定义前端服务，只启动 MySQL/后端，前端使用 `cd frontend && npm run dev`（默认 `http://localhost:5173`，本地验收时可指定其他空闲端口）。生产 Compose 与前端镜像文件仍保留，用于明确的生产静态发布，不作为本地开发或本轮验收入口。
+
+浏览器证据：Playwright Chromium 离线 QA 用户访问 `/tasks/tomorrow`，桌面 `1440x900` 验证三栏工作区、无横向溢出、“更多视图操作”打开并可由 `Esc` 关闭、新建任务打开详情、关闭详情；移动 `375x812` 验证页面无横向溢出、任务侧栏和底部导航可见。期间发现并修复 `Esc` 未关闭视图菜单的遗漏。截图位于 `/tmp/task-workspace-desktop-vite-fixed.png`、`/tmp/task-workspace-mobile-vite-fixed.png`。当前 CUA 会话报 `SyntaxError: Unexpected token ':'`，因此按前端验收规范使用 Playwright fallback；未将在线真实账号写入行为标记为通过。
+
+Docker 前端镜像重建尝试因 Docker Hub `node:22-alpine` 元数据请求 EOF 失败，未影响正在运行的后端/MySQL 容器；本轮不再依赖该前端容器进行验收。
+
 ## 13. 验收标准
 
 ### 13.1 自动化门禁

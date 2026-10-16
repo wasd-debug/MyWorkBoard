@@ -117,20 +117,22 @@ npm run dev
 
 Vite 默认监听 `http://localhost:5173`，并将 `/api` 代理到 `http://localhost:8080`。应用需要后端认证；本地缓存用于工时缓存和账本投影，不代表只启动前端即可使用全部功能。
 
-### 完整 Compose
+本地开发不再启动前端 Docker/Nginx 容器。前端验收、任务域改造和热更新统一使用 Vite；后端和 MySQL 可通过下面的 Compose 命令启动。
+
+### 后端与数据库 Compose
 
 ```bash
 cp deploy/.env.example deploy/.env
 # 编辑 deploy/.env，至少设置数据库密码、JWT_SECRET 和管理员初始密码
-docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build mysql backend
 ```
 
-服务启动后访问 `http://localhost`。常用命令：
+服务启动后另开终端运行 `cd frontend && npm run dev`，访问 `http://localhost:5173`。常用命令：
 
 ```bash
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml ps
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs -f backend
-docker compose --env-file deploy/.env -f deploy/docker-compose.yml restart
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml restart mysql backend
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml down
 ```
 
