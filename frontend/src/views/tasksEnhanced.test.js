@@ -109,6 +109,13 @@ test('task list routes use the replacement workspace and preserve the task contr
   for (const token of ['parentId', 'tagIds', 'durationMinutes', 'allDay', 'recurrenceAnchor', 'apiListTaskReminders', 'apiCreateTaskReminder', 'apiUpdateTaskReminder', 'apiDeleteTaskReminder', '提醒需要联网保存']) assert.match(workspaceView, new RegExp(token))
 })
 
+test('task detail collaboration and slash insertion stay in the replacement workspace', async () => {
+  for (const token of ['apiListTaskActivity', 'apiListTaskComments', 'apiCreateTaskComment', 'apiUpdateTaskComment', 'apiDeleteTaskComment', 'apiListTaskAttachments', 'apiUploadTaskAttachment', 'apiDownloadTaskAttachment', 'apiDeleteTaskAttachment']) assert.match(workspaceView, new RegExp(token))
+  for (const token of ['clone-collaboration-section', 'clone-attachment-list', 'clone-activity-section', '评论', '附件', '活动记录']) assert.match(workspaceView, new RegExp(token))
+  const editor = await readFile(new URL('../components/tasks/TaskRichTextEditor.vue', import.meta.url), 'utf8')
+  for (const token of ['slashCommands', 'task-slash-menu', 'chooseSlash', 'Escape', '标题', '检查项']) assert.match(editor, new RegExp(token))
+})
+
 test('task inbox mirrors ticktick shortcut navigation and mixed efficiency groups', () => {
   assert.match(router, /path: '\/tasks\/shortcut\/:shortcut'/)
   for (const label of ['指派给我', '摘要', '归档', '本周', '下周', '无日期任务', '无标签']) assert.match(inboxView, new RegExp(label))

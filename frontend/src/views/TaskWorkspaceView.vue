@@ -462,6 +462,68 @@
             placeholder="每行一个检查项"
           />
         </label>
+        <section v-if="editing" class="clone-collaboration-section">
+          <header class="clone-section-heading">
+            <h3>评论 <span>{{ comments.length }}</span></h3>
+          </header>
+          <p v-if="commentError" class="clone-error" role="alert">{{ commentError }}</p>
+          <p v-if="!store.online && !commentError" class="clone-muted">离线时无法加载评论，联网后可发表评论</p>
+          <article v-for="comment in comments" :key="comment.publicId" class="clone-comment">
+            <header>
+              <strong>{{ comment.authorName || '当前用户' }}</strong>
+              <time>{{ formatDate(comment.createdAt) }}</time>
+            </header>
+            <TaskRichTextEditor
+              v-if="editingCommentId !== comment.publicId"
+              :model-value="comment.bodyMarkdown || ''"
+              label="评论内容"
+              preview-only
+            />
+            <textarea v-else v-model="commentEditDraft" aria-label="编辑评论" placeholder="编辑评论内容" />
+            <div class="clone-comment-actions">
+              <button v-if="editingCommentId !== comment.publicId" type="button" @click="startCommentEdit(comment)">编辑</button>
+              <button v-if="editingCommentId !== comment.publicId" type="button" @click="removeComment(comment)">删除</button>
+              <button v-if="editingCommentId === comment.publicId" type="button" @click="saveComment(comment)">保存</button>
+              <button v-if="editingCommentId === comment.publicId" type="button" @click="cancelCommentEdit">取消</button>
+            </div>
+          </article>
+          <div class="clone-comment-compose">
+            <TaskRichTextEditor v-model="commentDraft" label="添加评论" placeholder="写下评论，支持 Markdown" />
+            <button type="button" class="clone-primary-button" :disabled="!commentDraft.trim() || !store.online" @click="addComment">发表评论</button>
+          </div>
+        </section>
+        <section v-if="editing" class="clone-collaboration-section">
+          <header class="clone-section-heading">
+            <h3>附件 <span>{{ attachments.length }}</span></h3>
+            <label class="clone-attachment-upload">
+              <Paperclip :size="14" />上传附件
+              <input type="file" hidden @change="uploadAttachment" />
+            </label>
+          </header>
+          <progress v-if="attachmentProgress" max="100" :value="attachmentProgress" />
+          <p v-if="attachmentError" class="clone-error" role="alert">{{ attachmentError }}</p>
+          <p v-if="!store.online && !attachmentError" class="clone-muted">离线时无法加载附件，联网后可上传或下载</p>
+          <button v-if="pendingAttachment && !store.online" type="button" class="clone-retry" @click="retryAttachment">联网后重试：{{ pendingAttachment.name }}</button>
+          <p v-if="!attachments.length" class="clone-muted">暂无附件</p>
+          <ul v-else class="clone-attachment-list">
+            <li v-for="file in attachments" :key="file.publicId">
+              <Paperclip :size="14" />
+              <span>{{ file.fileName }} <small>{{ formatBytes(file.sizeBytes) }}</small></span>
+              <button type="button" :aria-label="`下载附件${file.fileName}`" @click="downloadAttachment(file)"><Download :size="14" /></button>
+              <button type="button" :aria-label="`删除附件${file.fileName}`" @click="removeAttachment(file)"><Trash2 :size="14" /></button>
+            </li>
+          </ul>
+        </section>
+        <section v-if="editing" class="clone-activity-section">
+          <h3>活动记录</h3>
+          <p v-if="activityLoading" class="clone-muted">加载中…</p>
+          <p v-else-if="!activities.length" class="clone-muted">{{ store.online ? "暂无活动记录" : "离线时无法加载活动记录" }}</p>
+          <ol v-else>
+            <li v-for="item in activities" :key="item.publicId">
+              <strong>{{ item.summary }}</strong><time>{{ formatDate(item.createdAt) }}</time>
+            </li>
+          </ol>
+        </section>
         <div class="clone-detail-actions">
           <button
             type="button"
@@ -508,6 +570,50 @@
             <dd>{{ selectedTask.rrule }}</dd>
           </div>
         </dl>
+        <section class="clone-collaboration-section">
+          <header class="clone-section-heading">
+            <h3>评论 <span>{{ comments.length }}</span></h3>
+          </header>
+          <p v-if="commentError" class="clone-error" role="alert">{{ commentError }}</p>
+          <p v-if="!store.online && !commentError" class="clone-muted">离线时无法加载评论，联网后可发表评论</p>
+          <article v-for="comment in comments" :key="comment.publicId" class="clone-comment">
+            <header>
+              <strong>{{ comment.authorName || "当前用户" }}</strong>
+              <time>{{ formatDate(comment.createdAt) }}</time>
+            </header>
+            <TaskRichTextEditor
+              :model-value="comment.bodyMarkdown || ''"
+              label="评论内容"
+              preview-only
+            />
+          </article>
+          <p v-if="!comments.length && !commentError" class="clone-muted">暂无评论</p>
+        </section>
+        <section class="clone-collaboration-section">
+          <header class="clone-section-heading">
+            <h3>附件 <span>{{ attachments.length }}</span></h3>
+          </header>
+          <p v-if="attachmentError" class="clone-error" role="alert">{{ attachmentError }}</p>
+          <p v-if="!store.online && !attachmentError" class="clone-muted">离线时无法加载附件，联网后可上传或下载</p>
+          <p v-if="!attachments.length && !attachmentError" class="clone-muted">暂无附件</p>
+          <ul v-else class="clone-attachment-list">
+            <li v-for="file in attachments" :key="file.publicId">
+              <Paperclip :size="14" />
+              <span>{{ file.fileName }} <small>{{ formatBytes(file.sizeBytes) }}</small></span>
+              <button type="button" :aria-label="`下载附件${file.fileName}`" @click="downloadAttachment(file)"><Download :size="14" /></button>
+            </li>
+          </ul>
+        </section>
+        <section class="clone-activity-section">
+          <h3>活动记录</h3>
+          <p v-if="activityLoading" class="clone-muted">加载中…</p>
+          <p v-else-if="!activities.length" class="clone-muted">{{ store.online ? "暂无活动记录" : "离线时无法加载活动记录" }}</p>
+          <ol v-else>
+            <li v-for="item in activities" :key="item.publicId">
+              <strong>{{ item.summary }}</strong><time>{{ formatDate(item.createdAt) }}</time>
+            </li>
+          </ol>
+        </section>
         <button
           type="button"
           class="clone-primary-button full"
@@ -583,12 +689,14 @@ import {
   ChevronDown,
   Copy,
   Ellipsis,
+  Download,
   GripVertical,
   Inbox,
   ListFilter,
   ListTodo,
   PanelLeft,
   PanelLeftClose,
+  Paperclip,
   Pencil,
   Plus,
   Search,
@@ -602,10 +710,19 @@ import TaskRichTextEditor from "../components/tasks/TaskRichTextEditor.vue";
 import { useTasksStore } from "../stores/tasks.js";
 import {
   apiCreateTaskReminder,
+  apiCreateTaskComment,
+  apiDeleteTaskAttachment,
+  apiDeleteTaskComment,
   apiDeleteTaskReminder,
+  apiDownloadTaskAttachment,
+  apiListTaskActivity,
+  apiListTaskAttachments,
+  apiListTaskComments,
   apiListTaskFilters,
   apiListTaskReminders,
+  apiUpdateTaskComment,
   apiUpdateTaskReminder,
+  apiUploadTaskAttachment,
 } from "../../packages/api-client/src/index.js";
 
 const route = useRoute();
@@ -632,6 +749,17 @@ const dragged = ref(null);
 const sort = ref("manual");
 const showDescription = ref(true);
 const context = reactive({ open: false, x: 0, y: 0, task: null });
+const activities = ref([]);
+const activityLoading = ref(false);
+const comments = ref([]);
+const attachments = ref([]);
+const commentDraft = ref("");
+const commentEditDraft = ref("");
+const editingCommentId = ref("");
+const commentError = ref("");
+const attachmentError = ref("");
+const attachmentProgress = ref(0);
+const pendingAttachment = ref(null);
 const draft = reactive({
   title: "",
   description: "",
@@ -856,6 +984,8 @@ function openDetail(task) {
   if (!task) return;
   selectedTask.value = task;
   editorOpen.value = false;
+  void loadActivity(task);
+  void loadCollaboration(task);
 }
 async function openEdit(task) {
   if (!task) return;
@@ -901,6 +1031,8 @@ async function openEdit(task) {
     checklistText: (task.checklist || []).map((item) => item.title).join("\n"),
   });
   editorOpen.value = true;
+  void loadActivity(task);
+  void loadCollaboration(task);
   if (store.online) {
     try {
       const reminders = await apiListTaskReminders(task.publicId);
@@ -922,6 +1054,7 @@ async function openEdit(task) {
 function openCreate() {
   editing.value = null;
   selectedTask.value = {};
+  resetCollaboration();
   Object.assign(draft, {
     title: "",
     description: "",
@@ -949,6 +1082,7 @@ function closeDetail() {
   selectedTask.value = null;
   editing.value = null;
   editorOpen.value = false;
+  resetCollaboration();
 }
 function toLocal(value) {
   if (!value) return "";
@@ -976,6 +1110,160 @@ async function quickAdd() {
     checklist: [],
   });
   quickTitle.value = "";
+}
+function resetCollaboration() {
+  activities.value = [];
+  activityLoading.value = false;
+  comments.value = [];
+  attachments.value = [];
+  commentDraft.value = "";
+  commentEditDraft.value = "";
+  editingCommentId.value = "";
+  commentError.value = "";
+  attachmentError.value = "";
+  attachmentProgress.value = 0;
+  pendingAttachment.value = null;
+}
+async function loadActivity(task) {
+  if (!task?.publicId || !store.online) {
+    activities.value = [];
+    return;
+  }
+  activityLoading.value = true;
+  try {
+    activities.value = (await apiListTaskActivity(task.publicId, { size: 20 }))?.items || [];
+  } catch (error) {
+    store.error = error?.response?.data?.detail || error?.message || "活动记录加载失败";
+  } finally {
+    activityLoading.value = false;
+  }
+}
+async function loadCollaboration(task) {
+  comments.value = [];
+  attachments.value = [];
+  commentError.value = "";
+  attachmentError.value = "";
+  if (!task?.publicId || !store.online) return;
+  const [commentResult, attachmentResult] = await Promise.allSettled([
+    apiListTaskComments(task.publicId, { size: 50 }),
+    apiListTaskAttachments(task.publicId),
+  ]);
+  if (commentResult.status === "fulfilled") comments.value = commentResult.value?.items || [];
+  else commentError.value = commentResult.reason?.response?.data?.detail || commentResult.reason?.message || "评论加载失败";
+  if (attachmentResult.status === "fulfilled") attachments.value = attachmentResult.value || [];
+  else attachmentError.value = attachmentResult.reason?.response?.data?.detail || attachmentResult.reason?.message || "附件加载失败";
+}
+async function addComment() {
+  if (!editing.value || !commentDraft.value.trim()) return;
+  if (!store.online) {
+    commentError.value = "评论需要联网保存";
+    return;
+  }
+  commentError.value = "";
+  try {
+    await apiCreateTaskComment(editing.value.publicId, { bodyMarkdown: commentDraft.value.trim() });
+    commentDraft.value = "";
+    await Promise.all([loadCollaboration(editing.value), loadActivity(editing.value)]);
+  } catch (error) {
+    commentError.value = error?.response?.data?.detail || error?.message || "发表评论失败";
+  }
+}
+function startCommentEdit(comment) {
+  editingCommentId.value = comment.publicId;
+  commentEditDraft.value = comment.bodyMarkdown || "";
+}
+function cancelCommentEdit() {
+  editingCommentId.value = "";
+  commentEditDraft.value = "";
+}
+async function saveComment(comment) {
+  if (!editing.value || !commentEditDraft.value.trim()) return;
+  if (!store.online) {
+    commentError.value = "评论需要联网保存";
+    return;
+  }
+  commentError.value = "";
+  try {
+    await apiUpdateTaskComment(editing.value.publicId, comment.publicId, { bodyMarkdown: commentEditDraft.value.trim() }, comment.revision);
+    cancelCommentEdit();
+    await Promise.all([loadCollaboration(editing.value), loadActivity(editing.value)]);
+  } catch (error) {
+    commentError.value = error?.response?.data?.detail || error?.message || "保存评论失败";
+  }
+}
+async function removeComment(comment) {
+  if (!editing.value || !window.confirm("删除这条评论？")) return;
+  if (!store.online) {
+    commentError.value = "评论需要联网删除";
+    return;
+  }
+  try {
+    await apiDeleteTaskComment(editing.value.publicId, comment.publicId, comment.revision);
+    await Promise.all([loadCollaboration(editing.value), loadActivity(editing.value)]);
+  } catch (error) {
+    commentError.value = error?.response?.data?.detail || error?.message || "删除评论失败";
+  }
+}
+async function uploadAttachment(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file || !editing.value) return;
+  pendingAttachment.value = file;
+  await uploadAttachmentFile(file);
+}
+async function uploadAttachmentFile(file) {
+  if (!editing.value || !file) return;
+  if (!store.online) {
+    attachmentError.value = "当前离线，附件未上传；联网后可重试";
+    return;
+  }
+  attachmentError.value = "";
+  attachmentProgress.value = 1;
+  try {
+    await apiUploadTaskAttachment(editing.value.publicId, file, (value) => { attachmentProgress.value = value; });
+    pendingAttachment.value = null;
+    await Promise.all([loadCollaboration(editing.value), loadActivity(editing.value)]);
+  } catch (error) {
+    attachmentError.value = error?.response?.data?.detail || error?.message || "上传附件失败";
+  } finally {
+    attachmentProgress.value = 0;
+  }
+}
+async function retryAttachment() {
+  await uploadAttachmentFile(pendingAttachment.value);
+}
+async function downloadAttachment(file) {
+  const task = editing.value || selectedTask.value;
+  if (!task?.publicId) return;
+  try {
+    const blob = await apiDownloadTaskAttachment(task.publicId, file.publicId);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = file.fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    attachmentError.value = error?.response?.data?.detail || error?.message || "下载附件失败";
+  }
+}
+async function removeAttachment(file) {
+  if (!editing.value || !window.confirm(`删除附件“${file.fileName}”？`)) return;
+  if (!store.online) {
+    attachmentError.value = "附件需要联网删除";
+    return;
+  }
+  try {
+    await apiDeleteTaskAttachment(editing.value.publicId, file.publicId, file.revision);
+    await Promise.all([loadCollaboration(editing.value), loadActivity(editing.value)]);
+  } catch (error) {
+    attachmentError.value = error?.response?.data?.detail || error?.message || "删除附件失败";
+  }
+}
+function formatBytes(size = 0) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 async function saveDetail() {
   if ((draft.reminderEnabled || draft.reminder) && !store.online) {
@@ -1808,6 +2096,174 @@ const SidebarSection = {
 .clone-detail-read dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+.clone-collaboration-section,
+.clone-activity-section {
+  display: grid;
+  gap: 10px;
+  margin-top: 2px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.clone-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.clone-section-heading h3,
+.clone-activity-section h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+}
+.clone-section-heading h3 span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.clone-comment {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--paper) 76%, var(--card));
+}
+.clone-comment > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--ink2);
+  font-size: 12px;
+}
+.clone-comment > header time,
+.clone-activity-section time {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.clone-comment textarea {
+  width: 100%;
+  min-height: 88px;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.clone-comment-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.clone-comment-actions button,
+.clone-retry {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--card);
+  color: var(--ink2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.clone-comment-actions button:hover,
+.clone-retry:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.clone-comment-compose {
+  display: grid;
+  gap: 8px;
+}
+.clone-comment-compose .clone-primary-button {
+  justify-self: end;
+}
+.clone-attachment-upload {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink2) !important;
+  font-size: 12px !important;
+  cursor: pointer;
+}
+.clone-attachment-upload:hover {
+  border-color: var(--accent);
+  color: var(--accent) !important;
+}
+.clone-collaboration-section progress {
+  width: 100%;
+  height: 5px;
+  accent-color: var(--accent);
+}
+.clone-attachment-list,
+.clone-activity-section ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.clone-attachment-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink2);
+  font-size: 12px;
+}
+.clone-attachment-list li > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clone-attachment-list small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.clone-attachment-list button {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.clone-attachment-list button:hover {
+  background: var(--paper);
+  color: var(--accent);
+}
+.clone-activity-section ol {
+  border-left: 2px solid var(--line);
+}
+.clone-activity-section li {
+  display: grid;
+  gap: 3px;
+  padding: 0 0 8px 10px;
+  color: var(--ink2);
+  font-size: 12px;
+}
+.clone-muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.clone-retry {
+  justify-self: start;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--accent);
 }
 @media (max-width: 1279px) {
   .clone-task-shell {

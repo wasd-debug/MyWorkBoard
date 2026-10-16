@@ -439,6 +439,18 @@ Docker 前端镜像重建尝试因 Docker Hub `node:22-alpine` 元数据请求 E
 - 移动 `375x812`：同一路径打开新建任务并滚动第三栏表单，确认字段可见、页面 `scrollWidth === clientWidth`（375），无页面级横向溢出。截图：`/tmp/task-detail-mobile-editor.png`、`/tmp/task-detail-mobile-editor-scrolled.png`。
 - 页面身份、非空渲染、交互状态和截图均通过；控制台仅记录既有动态组件的 Vue runtime-template warning，无新增错误。在线真实提醒写入、权限和冲突仍待后端启动后的用户验收。
 
+### P2-FE14 详情栏协作内容与 `/` 富文本菜单
+
+任务评论、附件和活动记录已迁移到 `TaskWorkspaceView.vue` 的第三栏详情工作区：普通详情态展示评论 Markdown 预览、附件下载和活动时间线；编辑态增加评论新增/编辑/删除、附件上传/进度/下载/删除和活动刷新。附件二进制继续走独立附件 API，不进入任务同步 payload；离线评论/附件操作显示联网限制，附件保留联网后重试入口。
+
+`TaskRichTextEditor.vue` 现在提供真正的 `/` 插入菜单。光标位于行首或空白行输入 `/` 时显示标题、无序列表、检查项、引用、分割线、代码和链接；选择后替换当前 `/`，`Esc` 关闭菜单，Markdown 预览继续通过 DOMPurify 清洗并限制链接协议。
+
+浏览器验收（Vite `http://127.0.0.1:14173/tasks/today`，亮色主题，离线 QA 用户）：
+
+- 桌面当前 Chrome 视口 `1608x885`：点击任务行打开第三栏，确认评论/附件/活动三个区块；进入编辑态确认评论编辑器、附件上传控件和活动记录；描述输入 `/` 显示 7 个菜单项，选择“标题”写入 `# `，菜单可关闭。截图：`/tmp/task-detail-collaboration-desktop.png`、`/tmp/task-detail-slash-menu-desktop.png`。
+- 窄屏 Chrome 视口 `500x691`（当前窗口最小宽度限制，按移动断点检查）：折叠页面内任务导航后详情编辑区仍可滚动，评论/附件/活动区保持在详情栏内，`document.documentElement.scrollWidth === clientWidth === 492`，无页面级横向溢出。截图：`/tmp/task-detail-collaboration-mobile.png`。
+- 本机后端 `:8080` 未启动，未进行真实在线评论写入、附件上传下载、revision 冲突和权限验收；本轮仅验证离线页面渲染、错误降级和交互结构。
+
 ## 13. 验收标准
 
 ### 13.1 自动化门禁
