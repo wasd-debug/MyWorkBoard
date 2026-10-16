@@ -193,8 +193,8 @@
             selectedIds.clear();
           "
         >
-          {{ batchMode ? "退出多选" : "多选" }}</button
-        ><span>{{ visibleTasks.length }} 项任务</span>
+        {{ batchMode ? "退出多选" : "多选" }}</button
+        ><button v-if="batchMode" type="button" @click="toggleAllSelected">{{ selectedIds.size === visibleTasks.length ? "取消全选" : "全选" }}</button><span>{{ visibleTasks.length }} 项任务</span>
       </div>
       <div v-if="!visibleTasks.length" class="clone-empty-state">
         <Inbox :size="28" /><strong>{{ title === "今天" ? "今天没有安排" : "这里还没有任务" }}</strong>
@@ -226,12 +226,16 @@
                 selected: selectedTask?.publicId === task.publicId,
                 checked: task.status === 'COMPLETED',
                 multi: selectedIds.has(task.publicId),
+                dragging: dragged?.publicId === task.publicId,
+                'drag-over': dragOverTask?.publicId === task.publicId,
               }"
               :data-priority="task.priority"
-              draggable="true"
-              @dragstart="dragged = task"
-              @dragover.prevent
-              @drop="dropTask(task)"
+              :style="{ '--task-group-color': groupColor(task) }"
+              :draggable="!batchMode && sort === 'manual'"
+              @dragstart="startTaskDrag(task, $event)"
+              @dragover.prevent="dragOverTask = task"
+              @drop="dropTask(task, group.tasks.indexOf(task))"
+              @dragend="endTaskDrag"
               @contextmenu.prevent="openContext(task, $event)"
             >
               <button
@@ -296,6 +300,28 @@
               </button>
             </article>
           </div>
+        </section>
+        <section v-if="todayCountdowns.length || todayHabits.length" class="clone-efficiency-groups">
+          <section v-if="todayCountdowns.length" class="clone-task-group clone-efficiency-group">
+            <button class="clone-group-heading" type="button" @click="collapsed.countdowns = !collapsed.countdowns">
+              <ChevronDown :size="16" :class="{ rotated: collapsed.countdowns }" /><strong>倒数纪念日</strong><span>{{ todayCountdowns.length }}</span>
+            </button>
+            <div v-show="!collapsed.countdowns" class="clone-efficiency-rows">
+              <article v-for="item in todayCountdowns" :key="item.publicId" class="clone-efficiency-row countdown-row">
+                <span class="clone-efficiency-icon">{{ item.icon || '◷' }}</span><strong>{{ item.name || item.title }}</strong><span class="clone-efficiency-meta">{{ countdownLabel(item) }}</span>
+              </article>
+            </div>
+          </section>
+          <section v-if="todayHabits.length" class="clone-task-group clone-efficiency-group">
+            <button class="clone-group-heading" type="button" @click="collapsed.habits = !collapsed.habits">
+              <ChevronDown :size="16" :class="{ rotated: collapsed.habits }" /><strong>习惯</strong><span>{{ todayHabits.length }}</span>
+            </button>
+            <div v-show="!collapsed.habits" class="clone-efficiency-rows">
+              <article v-for="item in todayHabits" :key="item.publicId" class="clone-efficiency-row">
+                <button type="button" class="clone-efficiency-check" :class="{ checked: habitDone(item) }" :aria-label="`${habitDone(item) ? '取消' : '完成'}习惯${item.name}`" @click="toggleHabitToday(item)">{{ habitDone(item) ? '✓' : '' }}</button><strong>{{ item.name }}</strong><span class="clone-efficiency-meta">{{ habitDone(item) ? '已完成' : '今天' }}</span>
+              </article>
+            </div>
+          </section>
         </section>
       </div>
       <div v-if="batchMode && selectedIds.size" class="clone-batch-bar">
@@ -770,12 +796,15 @@ const collapsed = reactive({
   later: false,
   none: false,
   open: false,
+  countdowns: false,
+  habits: false,
 });
 const sections = reactive({ lists: true, filters: true, tags: true });
 const selectedTask = ref(null);
 const editorOpen = ref(false);
 const editing = ref(null);
 const dragged = ref(null);
+const dragOverTask = ref(null);
 const sort = ref("manual");
 const showDescription = ref(true);
 const context = reactive({ open: false, x: 0, y: 0, task: null });
@@ -967,6 +996,18 @@ const groups = computed(() => {
   });
   return result.filter((group) => group.tasks.length);
 });
+const todayCountdowns = computed(() => route.name === "tasks-today" && !route.query.date ? store.countdowns.filter((item) => !item.archived && !item.deleted) : []);
+const todayHabits = computed(() => route.name === "tasks-today" && !route.query.date ? store.habits.filter((item) => !item.archived && !item.deleted) : []);
+function groupColor(task) {
+  const list = store.lists.find((item) => item.publicId === task.listId);
+  return list?.color || (task.priority === "HIGH" ? "#ef4444" : task.priority === "MEDIUM" ? "#f59e0b" : "var(--accent)");
+}
+function countdownLabel(item) {
+  const target = item.targetDate || item.date || item.dueDate;
+  if (!target) return "倒数日";
+  const days = Math.ceil((new Date(target).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000);
+  return days >= 0 ? `还有 ${days} 天` : `已过 ${Math.abs(days)} 天`;
+}
 function startOfDay(date) {
   date.setHours(0, 0, 0, 0);
   return date;
@@ -1462,6 +1503,18 @@ function toggleSelected(task) {
     ? selectedIds.delete(task.publicId)
     : selectedIds.add(task.publicId);
 }
+function toggleAllSelected() {
+  if (selectedIds.size === visibleTasks.value.length) selectedIds.clear();
+  else visibleTasks.value.forEach((task) => selectedIds.add(task.publicId));
+}
+function habitDone(habit) {
+  const today = new Date().toISOString().slice(0, 10);
+  return store.habitCheckins.some((item) => item.habitId === habit.publicId && item.date === today && item.status === "DONE");
+}
+async function toggleHabitToday(habit) {
+  const done = habitDone(habit);
+  await store.checkinHabit(habit, { date: new Date().toISOString().slice(0, 10), count: done ? 0 : 1, status: done ? "SKIP" : "DONE" });
+}
 async function batchComplete() {
   await store.batchTasks(
     [...selectedIds]
@@ -1483,10 +1536,24 @@ async function batchDelete() {
   selectedIds.clear();
   batchMode.value = false;
 }
-async function dropTask(target) {
-  if (!dragged.value || dragged.value.publicId === target.publicId) return;
-  await store.sortTask(dragged.value, target.sortOrder || 0);
+function startTaskDrag(task, event) {
+  if (batchMode.value || sort.value !== "manual") return;
+  dragged.value = task;
+  dragOverTask.value = null;
+  event.dataTransfer?.setData("text/plain", task.publicId);
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+}
+async function dropTask(target, index = 0) {
+  if (!dragged.value || dragged.value.publicId === target.publicId || batchMode.value) return endTaskDrag();
+  try {
+    await store.sortTask(dragged.value, index);
+  } finally {
+    endTaskDrag();
+  }
+}
+function endTaskDrag() {
   dragged.value = null;
+  dragOverTask.value = null;
 }
 async function createList() {
   const name = window.prompt("新建清单");
@@ -1849,7 +1916,7 @@ const SidebarSection = {
   color: var(--muted);
   font-size: 12px;
 }
-.clone-list-toolbar { display: none; }
+.clone-list-toolbar { display: flex; }
 .clone-list-toolbar button {
   border: 0;
   background: transparent;
@@ -1893,8 +1960,11 @@ const SidebarSection = {
   min-height: 40px;
   border-bottom: 1px solid var(--line);
   padding: 0 8px;
-  transition: background 0.12s ease, box-shadow 0.12s ease;
+  border-left: 3px solid var(--task-group-color, transparent);
+  transition: background 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease, transform 0.12s ease;
 }
+.clone-task-row.dragging { opacity: .42; }
+.clone-task-row.drag-over { box-shadow: inset 0 3px 0 var(--accent), inset 3px 0 0 var(--task-group-color, var(--accent)); }
 .clone-drag-handle { display: none; }
 .clone-check,
 .clone-select-box { width: 20px; height: 20px; border-radius: 5px; }
@@ -1992,6 +2062,15 @@ const SidebarSection = {
   align-content: center;
   color: var(--muted);
 }
+.clone-efficiency-groups { display: grid; gap: 18px; margin-top: 18px; }
+.clone-efficiency-rows { border-top: 1px solid var(--line); }
+.clone-efficiency-row { display: flex; align-items: center; gap: 9px; min-height: 42px; padding: 0 8px; border-bottom: 1px solid var(--line); border-left: 3px solid var(--efficiency-color, #22c55e); }
+.clone-efficiency-row strong { min-width: 0; flex: 1; overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.clone-efficiency-icon { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 50%; background: var(--accent-soft); font-size: 13px; }
+.clone-efficiency-meta { color: var(--muted); font-size: 11px; }
+.clone-efficiency-check { display: grid; width: 21px; height: 21px; place-items: center; border: 1.5px solid var(--line2); border-radius: 50%; background: transparent; color: var(--accent); cursor: pointer; }
+.clone-efficiency-check.checked { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast, #fff); }
+.countdown-row { --efficiency-color: #f59e0b; }
 .clone-detail-empty {
   display: grid;
   justify-items: center;
