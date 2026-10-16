@@ -311,13 +311,37 @@
       :class="{ 'is-empty': !selectedTask && !editorOpen }"
       aria-label="任务详情"
     >
-      <header>
-        <span>{{
-          editorOpen ? (editing ? "编辑任务" : "新建任务") : "任务详情"
-        }}</span
-        ><button type="button" aria-label="关闭任务详情" @click="closeDetail">
-          <X :size="17" />
-        </button>
+      <header v-if="selectedTask || editorOpen" class="clone-detail-toolbar">
+        <div class="clone-detail-toolbar-main">
+          <button type="button" class="clone-detail-tool clone-detail-list-tool" aria-label="任务清单" @click="editorOpen ? null : openEdit(selectedTask)">
+            <ListTodo :size="15" /><span>{{ listName(editorOpen ? draft.listId : selectedTask?.listId) }}</span>
+          </button>
+          <button type="button" class="clone-detail-tool" aria-label="设置日期" @click.stop="datePopoverOpen = !datePopoverOpen">
+            <CalendarClock :size="15" /><span>{{ editorOpen && draft.dueAt ? formatDate(draft.dueAt) : selectedTask?.dueAt ? formatDate(selectedTask.dueAt) : '设置日期' }}</span>
+          </button>
+          <button type="button" class="clone-detail-tool" aria-label="设置重复" @click.stop="repeatPopoverOpen = !repeatPopoverOpen">
+            <span class="clone-detail-repeat-icon">↻</span><span>{{ recurrenceLabel(editorOpen ? draft.rrule : selectedTask?.rrule) }}</span>
+          </button>
+          <div v-if="datePopoverOpen" class="clone-toolbar-popover clone-date-toolbar-popover" @click.stop>
+            <strong>日期和时间</strong>
+            <input v-if="editorOpen" v-model="draft.dueAt" type="datetime-local" aria-label="截止日期时间" />
+            <span v-else class="clone-popover-current">{{ selectedTask?.dueAt ? formatDate(selectedTask.dueAt) : '未设置日期' }}</span>
+            <div class="clone-popover-actions">
+              <button type="button" @click="editorOpen ? draft.dueAt = toLocal(new Date()) : setTaskDue(0); datePopoverOpen = false">今天</button>
+              <button type="button" @click="editorOpen ? draft.dueAt = toLocal(addDays(new Date(), 1)) : setTaskDue(1); datePopoverOpen = false">明天</button>
+              <button type="button" @click="editorOpen ? draft.dueAt = '' : clearTaskDue(); datePopoverOpen = false">清除</button>
+            </div>
+          </div>
+          <div v-if="repeatPopoverOpen" class="clone-toolbar-popover clone-repeat-toolbar-popover" @click.stop>
+            <strong>重复</strong>
+            <button v-for="option in recurrenceOptions" :key="option.value" type="button" :class="{ active: (editorOpen ? draft.rrule : selectedTask?.rrule) === option.value }" @click="editorOpen ? (draft.rrule = option.value) : setTaskRepeat(option.value); repeatPopoverOpen = false">{{ option.label }}</button>
+          </div>
+        </div>
+        <div class="clone-detail-toolbar-actions">
+          <button type="button" class="clone-detail-priority-tool" :data-priority="editorOpen ? draft.priority : selectedTask?.priority" aria-label="设置优先级" @click="editorOpen ? null : openEdit(selectedTask)">⚑</button>
+          <button type="button" class="clone-detail-tool" aria-label="更多详情操作" @click="editorOpen ? null : openEdit(selectedTask)"><Ellipsis :size="17" /></button>
+          <button type="button" class="clone-detail-tool clone-detail-close" aria-label="关闭任务详情" @click="closeDetail"><X :size="17" /></button>
+        </div>
       </header>
       <div v-if="!selectedTask && !editorOpen" class="clone-detail-empty">
         <span class="clone-detail-empty-icon">✦</span>
@@ -460,12 +484,15 @@
             />{{ tag.name }}</label
           >
         </fieldset>
-        <label
-          >检查项<textarea
-            v-model="draft.checklistText"
-            placeholder="每行一个检查项"
-          />
-        </label>
+        <section class="clone-checklist-editor" aria-label="检查项">
+          <header><strong>检查项</strong><button type="button" aria-label="添加检查项" @click="addChecklistItem"><Plus :size="15" /></button></header>
+          <div v-for="(item, index) in draft.checklistItems" :key="item.id || index" class="clone-checklist-row">
+            <input v-model="item.completed" type="checkbox" :aria-label="`完成检查项 ${index + 1}`" />
+            <input v-model="item.title" :class="{ completed: item.completed }" :aria-label="`检查项 ${index + 1}`" placeholder="添加检查项" />
+            <button type="button" aria-label="删除检查项" @click="removeChecklistItem(index)"><Trash2 :size="14" /></button>
+          </div>
+          <button v-if="!draft.checklistItems.length" type="button" class="clone-checklist-add" @click="addChecklistItem"><Plus :size="14" />添加检查项</button>
+        </section>
         <section v-if="editing" class="clone-collaboration-section">
           <header class="clone-section-heading">
             <h3>评论 <span>{{ comments.length }}</span></h3>
@@ -552,28 +579,16 @@
         <p v-if="selectedTask.description" class="clone-detail-description">
           {{ selectedTask.description }}
         </p>
-        <dl>
-          <div>
-            <dt>清单</dt>
-            <dd>{{ listName(selectedTask.listId) }}</dd>
-          </div>
-          <div>
-            <dt>日期</dt>
-            <dd>
-              {{
-                selectedTask.dueAt ? formatDate(selectedTask.dueAt) : "无日期"
-              }}
-            </dd>
-          </div>
-          <div>
-            <dt>优先级</dt>
-            <dd>{{ priorityLabel(selectedTask.priority) }}</dd>
-          </div>
-          <div v-if="selectedTask.rrule">
-            <dt>重复</dt>
-            <dd>{{ selectedTask.rrule }}</dd>
-          </div>
-        </dl>
+        <section v-if="selectedTask.checklist?.length" class="clone-checklist-read" aria-label="检查项">
+          <header><strong>检查项</strong><span>{{ selectedTask.checklist.filter((item) => item.completed).length }}/{{ selectedTask.checklist.length }}</span></header>
+          <label v-for="item in selectedTask.checklist" :key="item.publicId || item.title" class="clone-checklist-row">
+            <input type="checkbox" :checked="item.completed" @change="toggleChecklistItem(selectedTask, item)" />
+            <span :class="{ completed: item.completed }">{{ item.title }}</span>
+          </label>
+        </section>
+        <div class="clone-detail-tags-row" v-if="selectedTask.tagIds?.length">
+          <Tag :size="14" /><span v-for="tagId in selectedTask.tagIds" :key="tagId" class="clone-detail-tag">#{{ tagName(tagId) }}</span><button type="button" aria-label="添加标签" @click="openEdit(selectedTask)"><Plus :size="14" /></button>
+        </div>
         <section class="clone-collaboration-section">
           <header class="clone-section-heading">
             <h3>评论 <span>{{ comments.length }}</span></h3>
@@ -790,6 +805,7 @@ const draft = reactive({
   remindLocal: "",
   reminder: null,
   checklistText: "",
+  checklistItems: [],
 });
 const primaryViews = [
   { key: "all", label: "所有", to: "/tasks/all", icon: ListTodo },
@@ -1003,6 +1019,30 @@ async function setContextDue(offset) {
   const dueAt = offset === null ? "" : addDays(startOfDay(new Date()), offset).toISOString();
   await store.update(task, { dueAt });
 }
+async function setTaskDue(offset) {
+  if (!selectedTask.value) return;
+  const dueAt = addDays(startOfDay(new Date()), offset).toISOString();
+  selectedTask.value = await store.update(selectedTask.value, { dueAt });
+}
+async function clearTaskDue() {
+  if (!selectedTask.value) return;
+  selectedTask.value = await store.update(selectedTask.value, { dueAt: "" });
+}
+async function setTaskRepeat(value) {
+  if (!selectedTask.value) return;
+  selectedTask.value = await store.update(selectedTask.value, { rrule: value, recurrenceAnchor: value ? "DUE_DATE" : "" });
+}
+function addChecklistItem() {
+  draft.checklistItems.push({ id: `new-${Date.now()}-${draft.checklistItems.length}`, title: "", completed: false });
+}
+function removeChecklistItem(index) {
+  draft.checklistItems.splice(index, 1);
+}
+async function toggleChecklistItem(task, item) {
+  const checklist = (task.checklist || []).map((entry) => entry === item || entry.publicId === item.publicId ? { ...entry, completed: !entry.completed } : entry);
+  const updated = await store.update(task, { checklist });
+  if (selectedTask.value?.publicId === task.publicId) selectedTask.value = updated;
+}
 function openContext(task, event) {
   if (!task) return;
   context.task = task;
@@ -1059,6 +1099,7 @@ async function openEdit(task) {
     remindLocal: "",
     reminder: null,
     checklistText: (task.checklist || []).map((item) => item.title).join("\n"),
+    checklistItems: (task.checklist || []).map((item, index) => ({ id: item.publicId || `item-${index}`, title: item.title || "", completed: Boolean(item.completed) })),
   });
   editorOpen.value = true;
   datePopoverOpen.value = false;
@@ -1107,6 +1148,7 @@ function openCreate() {
     remindLocal: "",
     reminder: null,
     checklistText: "",
+    checklistItems: [],
   });
   editorOpen.value = true;
   datePopoverOpen.value = false;
@@ -1322,11 +1364,10 @@ async function saveDetail() {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     rrule,
     recurrenceAnchor: rrule ? draft.recurrenceAnchor : "",
-    checklist: draft.checklistText
-      .split("\n")
-      .map((title, index) => ({
-        title: title.trim(),
-        completed: false,
+    checklist: draft.checklistItems
+      .map((item, index) => ({
+        title: item.title.trim(),
+        completed: Boolean(item.completed),
         sortOrder: index,
       }))
       .filter((item) => item.title),
@@ -2050,6 +2091,44 @@ const SidebarSection = {
   color: var(--muted);
   font-size: 13px;
 }
+.clone-detail-toolbar {
+  position: relative;
+  min-height: 52px !important;
+  padding: 0 12px !important;
+  color: var(--ink2) !important;
+}
+.clone-detail-toolbar-main,
+.clone-detail-toolbar-actions { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.clone-detail-toolbar-main { flex: 1; overflow: visible; }
+.clone-detail-toolbar-actions { margin-left: auto; }
+.clone-detail-tool,
+.clone-detail-priority-tool {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 32px; max-width: 132px;
+  padding: 5px 7px; border: 0; border-radius: 5px; background: transparent; color: var(--muted);
+  font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap;
+}
+.clone-detail-tool span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clone-detail-tool:hover { background: var(--accent-soft); color: var(--accent); }
+.clone-detail-list-tool { width: 28px; padding-inline: 6px; color: var(--ink2); font-weight: 600; }
+.clone-detail-list-tool span { display: none; }
+.clone-detail-toolbar-main > .clone-detail-tool:nth-child(2) { max-width: 95px; }
+.clone-detail-toolbar-main > .clone-detail-tool:nth-child(3) { max-width: 72px; }
+.clone-detail-priority-tool { color: var(--muted); font-size: 20px; line-height: 1; }
+.clone-detail-priority-tool[data-priority="HIGH"] { color: var(--down); }
+.clone-detail-priority-tool[data-priority="MEDIUM"] { color: var(--warn); }
+.clone-detail-repeat-icon { font-size: 18px !important; line-height: 1; }
+.clone-detail-close { margin-left: 2px; }
+.clone-toolbar-popover {
+  position: absolute; z-index: 110; top: 46px; left: 12px; display: grid; gap: 7px; min-width: 170px;
+  padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--card);
+  box-shadow: 0 14px 30px rgba(15,23,42,.18);
+}
+.clone-toolbar-popover strong { color: var(--ink2); font-size: 12px; }
+.clone-toolbar-popover button { min-height: 29px; padding: 5px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ink2); text-align: left; cursor: pointer; }
+.clone-toolbar-popover button:hover, .clone-toolbar-popover button.active { background: var(--accent-soft); color: var(--accent); }
+.clone-toolbar-popover input { width: 100%; box-sizing: border-box; }
+.clone-repeat-toolbar-popover { left: 150px; }
+.clone-popover-current { color: var(--muted); font-size: 12px; }
 .clone-detail-pane.is-empty > header { display: none; }
 .clone-detail-pane > header button {
   display: grid;
@@ -2062,6 +2141,9 @@ const SidebarSection = {
   color: var(--muted);
   cursor: pointer;
 }
+.clone-detail-toolbar .clone-detail-tool,
+.clone-detail-toolbar .clone-detail-priority-tool { display: inline-flex; width: auto; }
+.clone-detail-toolbar .clone-detail-list-tool { width: 28px; }
 .clone-detail-form,
 .clone-detail-read {
   display: grid;
@@ -2207,6 +2289,26 @@ const SidebarSection = {
   font-size: 19px;
   line-height: 1.4;
 }
+.clone-checklist-editor,
+.clone-checklist-read { display: grid; gap: 0; border-top: 1px solid var(--line); }
+.clone-checklist-editor > header,
+.clone-checklist-read > header { display: flex; align-items: center; justify-content: space-between; padding: 12px 0 5px; color: var(--ink2); font-size: 12px; }
+.clone-checklist-editor > header button,
+.clone-detail-tags-row button { display: grid; width: 26px; height: 26px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-checklist-editor > header button:hover,
+.clone-detail-tags-row button:hover { background: var(--accent-soft); color: var(--accent); }
+.clone-checklist-row { display: flex; align-items: center; gap: 8px; min-height: 38px; border-bottom: 1px solid color-mix(in srgb, var(--line) 75%, transparent); }
+.clone-checklist-row input[type="checkbox"] { flex: 0 0 auto; width: 15px; min-height: 15px; margin: 0; accent-color: var(--accent); }
+.clone-checklist-row input[type="text"], .clone-checklist-row > input:not([type]) { flex: 1; min-width: 0; min-height: 30px; padding: 4px 0; border: 0; background: transparent; }
+.clone-checklist-row button { display: grid; place-items: center; width: 26px; height: 26px; border: 0; background: transparent; color: var(--muted); opacity: .35; cursor: pointer; }
+.clone-checklist-row:hover button { opacity: 1; }
+.clone-checklist-row span { flex: 1; color: var(--ink2); font-size: 13px; }
+.clone-checklist-row .completed, .clone-checklist-row input.completed { color: var(--muted); text-decoration: line-through; }
+.clone-checklist-add { display: inline-flex; align-items: center; gap: 6px; justify-self: start; margin-top: 7px; padding: 5px 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
+.clone-checklist-add:hover { color: var(--accent); }
+.clone-checklist-read > header span { color: var(--muted); font-size: 11px; }
+.clone-detail-tags-row { display: flex; align-items: center; gap: 6px; padding: 10px 0; border-top: 1px solid var(--line); color: var(--muted); }
+.clone-detail-tag { padding: 3px 7px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 11px; }
 .clone-detail-description {
   margin: 0;
   white-space: pre-wrap;
