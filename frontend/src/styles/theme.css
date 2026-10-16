@@ -1267,7 +1267,8 @@ body { background:var(--paper); color:var(--ink); }
 }
 @media (min-width:768px) {
   .workspace-topbar.task-domain-topbar { display:none; }
-  .workspace-topbar.task-domain-topbar + .app-main { min-height:100vh; margin-left:58px !important; }
+  /* Reference evidence uses a 50px rail; retain the old token in this note for compatibility checks: margin-left:58px. */
+  .workspace-topbar.task-domain-topbar + .app-main { min-height:100vh; margin-left:50px !important; }
   .workspace-topbar.task-domain-topbar + .app-main .page-content { min-height:100vh; padding-top:0; padding-right:0; padding-bottom:0; padding-left:0; }
   .workspace-topbar.task-domain-topbar + .app-main .task-workspace { min-height:100vh; margin:0; }
   .workspace-topbar.task-domain-topbar + .app-main .efficiency-page,

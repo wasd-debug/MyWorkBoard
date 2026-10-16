@@ -23,20 +23,9 @@
           ><small>{{ itemCount(item.key) }}</small></RouterLink
         >
       </nav>
-      <SidebarSection
-        title="清单"
-        :open="sections.lists"
-        @toggle="toggleSection('lists')"
-      >
-        <template #actions
-          ><button
-            class="sidebar-create"
-            type="button"
-            aria-label="新建清单"
-            @click="createList"
-          >
-            <Plus :size="14" /></button
-        ></template>
+      <section class="clone-sidebar-section">
+        <header><button type="button" @click="toggleSection('lists')"><ChevronDown :size="14" :class="{ rotated: !sections.lists }" />清单</button><button class="sidebar-create" type="button" aria-label="新建清单" @click="createList"><Plus :size="14" /></button></header>
+        <div v-show="sections.lists" class="clone-sidebar-items">
         <RouterLink
           v-for="list in store.lists.filter((item) => !item.archived)"
           :key="list.publicId"
@@ -49,12 +38,12 @@
           :class="{ active: route.params.publicId === list.publicId }"
           ><ListTodo :size="15" /><span>{{ list.name }}</span></RouterLink
         >
-      </SidebarSection>
-      <SidebarSection
-        title="筛选器"
-        :open="sections.filters"
-        @toggle="toggleSection('filters')"
-      >
+        <span v-if="!store.lists.length" class="clone-empty-item">暂无清单</span>
+        </div>
+      </section>
+      <section class="clone-sidebar-section">
+        <header><button type="button" @click="toggleSection('filters')"><ChevronDown :size="14" :class="{ rotated: !sections.filters }" />筛选器</button><button class="sidebar-create" type="button" aria-label="管理筛选器" @click="router.push('/tasks/search')">···</button></header>
+        <div v-show="sections.filters" class="clone-sidebar-items">
         <RouterLink
           v-for="item in shortcutViews"
           :key="item.to"
@@ -74,12 +63,11 @@
         <span v-if="!filters.length" class="clone-empty-item"
           >暂无自定义筛选器</span
         >
-      </SidebarSection>
-      <SidebarSection
-        title="标签"
-        :open="sections.tags"
-        @toggle="toggleSection('tags')"
-      >
+        </div>
+      </section>
+      <section class="clone-sidebar-section">
+        <header><button type="button" @click="toggleSection('tags')"><ChevronDown :size="14" :class="{ rotated: !sections.tags }" />标签</button><button class="sidebar-create" type="button" aria-label="新建标签" @click="createTag"><Plus :size="14" /></button></header>
+        <div v-show="sections.tags" class="clone-sidebar-items">
         <RouterLink
           v-for="tag in store.tags"
           :key="tag.publicId"
@@ -88,7 +76,8 @@
           ><Tag :size="15" /><span>#{{ tag.name }}</span></RouterLink
         >
         <span v-if="!store.tags.length" class="clone-empty-item">暂无标签</span>
-      </SidebarSection>
+        </div>
+      </section>
       <div class="clone-sidebar-footer">
         <RouterLink to="/tasks/completed"
           ><CheckCircle2 :size="15" />已完成</RouterLink
@@ -176,7 +165,7 @@
           <input
             v-model="quickTitle"
             aria-label="快速添加任务标题"
-            placeholder="添加任务至当前列表"
+            :placeholder="`添加任务至“${title === '今天' ? '收件箱' : title}”`"
           /><button type="submit" :disabled="!quickTitle.trim()">添加</button
           ><kbd>N</kbd>
         </form>
@@ -208,8 +197,8 @@
         ><span>{{ visibleTasks.length }} 项任务</span>
       </div>
       <div v-if="!visibleTasks.length" class="clone-empty-state">
-        <Inbox :size="28" /><strong>这里还没有任务</strong
-        ><span>使用上方输入框快速创建第一项任务</span>
+        <Inbox :size="28" /><strong>{{ title === "今天" ? "今天没有安排" : "这里还没有任务" }}</strong>
+        <span v-if="title !== '今天'">使用上方输入框快速创建第一项任务</span>
       </div>
       <div v-else class="clone-task-groups">
         <section
@@ -317,8 +306,8 @@
     </main>
 
     <aside
-      v-if="selectedTask || editorOpen"
       class="clone-detail-pane"
+      :class="{ 'is-empty': !selectedTask && !editorOpen }"
       aria-label="任务详情"
     >
       <header>
@@ -329,8 +318,13 @@
           <X :size="17" />
         </button>
       </header>
+      <div v-if="!selectedTask && !editorOpen" class="clone-detail-empty">
+        <span class="clone-detail-empty-icon">✦</span>
+        <strong>选择一个任务</strong>
+        <p>任务详情、检查项和活动记录会显示在这里</p>
+      </div>
       <form
-        v-if="editorOpen"
+        v-else-if="editorOpen"
         class="clone-detail-form"
         @submit.prevent="saveDetail"
       >
@@ -792,6 +786,7 @@ const primaryViews = [
   },
   { key: "next7", label: "最近 7 天", to: "/tasks/next7", icon: CalendarClock },
   { key: "inbox", label: "收件箱", to: "/tasks/inbox", icon: Inbox },
+  { key: "summary", label: "摘要", to: "/tasks/shortcut/summary", icon: ListTodo },
 ];
 const shortcutViews = [
   { label: "无日期任务", to: "/tasks/shortcut/no-date" },
@@ -1408,6 +1403,15 @@ async function createList() {
     store.error = error?.message || "新建清单失败";
   }
 }
+async function createTag() {
+  const name = window.prompt("新建标签");
+  if (!name?.trim()) return;
+  try {
+    await store.createTag({ name: name.trim() });
+  } catch (error) {
+    store.error = error?.message || "标签创建失败";
+  }
+}
 async function loadFilters() {
   if (!store.online) return;
   try {
@@ -1476,7 +1480,7 @@ const SidebarSection = {
 <style scoped>
 .clone-task-shell {
   display: grid;
-  grid-template-columns: 240px minmax(420px, 1fr) minmax(340px, 420px);
+  grid-template-columns: 240px minmax(420px, 1fr) 342px;
   height: 100vh;
   margin: 0;
   background: var(--card);
@@ -1488,7 +1492,7 @@ const SidebarSection = {
   min-width: 0;
   flex-direction: column;
   gap: 14px;
-  padding: 18px 12px;
+  padding: 14px 10px;
   border-right: 1px solid var(--line);
   background: color-mix(in srgb, var(--card) 96%, var(--paper));
   overflow: auto;
@@ -1499,6 +1503,7 @@ const SidebarSection = {
   justify-content: space-between;
   padding: 0 8px;
 }
+.clone-sidebar-head { display: none; }
 .clone-sidebar-head button,
 .clone-icon-button,
 .clone-row-more {
@@ -1634,9 +1639,12 @@ const SidebarSection = {
   color: var(--muted);
   font-size: 11px;
 }
+.clone-title-block p,
+.clone-title-block > div > span { display: none; }
 .clone-title-block h1 {
-  margin: 2px 0;
-  font-size: 22px;
+  margin: 0;
+  font-size: 25px;
+  line-height: 1.2;
 }
 .clone-title-block span {
   color: var(--muted);
@@ -1645,6 +1653,7 @@ const SidebarSection = {
 .clone-header-actions {
   justify-content: flex-end;
 }
+.clone-sync-state { display: none; }
 .clone-sync-state {
   color: var(--muted);
   font-size: 11px;
@@ -1664,6 +1673,7 @@ const SidebarSection = {
   font-weight: 700;
   cursor: pointer;
 }
+.clone-header-actions .clone-primary-button { display: none; }
 .clone-primary-button.full {
   width: 100%;
   margin-top: 22px;
@@ -1672,12 +1682,13 @@ const SidebarSection = {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 18px 0 14px;
-  padding: 0 12px;
-  min-height: 44px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  color: var(--accent);
+  margin: 22px 0 18px;
+  padding: 0 16px;
+  min-height: 56px;
+  border: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--paper) 78%, var(--card));
+  color: var(--muted);
 }
 .clone-quick-add form {
   display: flex;
@@ -1712,6 +1723,8 @@ const SidebarSection = {
   color: var(--muted);
   font-size: 11px;
 }
+.clone-quick-add form button,
+.clone-quick-add kbd { display: none; }
 .clone-status,
 .clone-error {
   display: flex;
@@ -1736,6 +1749,7 @@ const SidebarSection = {
   color: var(--muted);
   font-size: 12px;
 }
+.clone-list-toolbar { display: none; }
 .clone-list-toolbar button {
   border: 0;
   background: transparent;
@@ -1776,10 +1790,13 @@ const SidebarSection = {
   display: flex;
   align-items: center;
   gap: 7px;
-  min-height: 56px;
+  min-height: 40px;
   border-bottom: 1px solid var(--line);
   padding: 0 6px;
 }
+.clone-drag-handle { display: none; }
+.clone-check,
+.clone-select-box { width: 20px; height: 20px; border-radius: 5px; }
 .clone-task-row:hover,
 .clone-task-row.selected {
   background: color-mix(in srgb, var(--ink) 4%, transparent);
@@ -1870,6 +1887,28 @@ const SidebarSection = {
   align-content: center;
   color: var(--muted);
 }
+.clone-detail-empty {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 10px;
+  height: calc(100% - 56px);
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+}
+.clone-detail-empty-icon {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--ink2);
+  font-size: 23px;
+}
+.clone-detail-empty strong { color: var(--ink2); font-size: 14px; }
+.clone-detail-empty p { max-width: 190px; margin: 0; font-size: 12px; line-height: 1.6; }
 .clone-empty-state strong {
   color: var(--ink2);
   font-size: 15px;
@@ -1964,6 +2003,7 @@ const SidebarSection = {
   color: var(--muted);
   font-size: 13px;
 }
+.clone-detail-pane.is-empty > header { display: none; }
 .clone-detail-pane > header button {
   display: grid;
   width: 32px;
