@@ -168,6 +168,48 @@ class TaskOrganizationIntegrationTest extends MySqlIntegrationTestSupport {
         assertEquals(child.publicId(), service.listTasks(null, null, "TRASH", null, 0, 20).items().get(0).publicId());
     }
 
+    @Test
+    void mergesTagsAtomicallyAndKeepsTaskSyncStateConsistent() {
+        long userId = createUser();
+        TaskService service = service(userId);
+        var source = service.createTag(new TaskTagCommand(null, "旧标签", "#16a34a", 0));
+        var target = service.createTag(new TaskTagCommand(null, "目标标签", "#2563eb", 1));
+        var child = service.createTag(new TaskTagCommand(source.publicId(), "子标签", null, 2));
+        var task = service.create(new TaskCommand(null, "待迁移", "", "NONE", null, null, false,
+                "Asia/Shanghai", null, null, List.of(source.publicId(), target.publicId()), List.of()), "tag-merge-task");
+
+        var result = service.mergeTag(source.publicId(), target.publicId(), String.valueOf(source.revision()), target.revision());
+
+        assertEquals(1, result.movedTasks());
+        assertEquals(1, result.movedChildren());
+        assertEquals(List.of(target.publicId()), service.get(task.publicId()).tagIds());
+        assertEquals(target.publicId(), service.listTags().stream().filter(tag -> tag.publicId().equals(child.publicId()))
+                .findFirst().orElseThrow().parentId());
+        assertTrue(service.listTags().stream().noneMatch(tag -> tag.publicId().equals(source.publicId())));
+        assertTrue(jdbc.queryForObject("SELECT COUNT(*) FROM task_sync_oplog WHERE user_id=? AND entity_type='task-tag' " +
+                "AND entity_id=? AND operation='DELETE'", Integer.class, userId, source.publicId()) > 0);
+        assertTrue(jdbc.queryForObject("SELECT COUNT(*) FROM task_sync_oplog WHERE user_id=? AND entity_id=? AND operation='UPSERT'",
+                Integer.class, userId, task.publicId()) > 0);
+    }
+
+    @Test
+    void rejectsStaleOrStructurallyInvalidTagMergeWithoutPartialChanges() {
+        TaskService service = service(createUser());
+        var source = service.createTag(new TaskTagCommand(null, "待合并", null, 0));
+        var child = service.createTag(new TaskTagCommand(source.publicId(), "子级", null, 1));
+        var root = service.createTag(new TaskTagCommand(null, "一级", null, 2));
+        var target = service.createTag(new TaskTagCommand(root.publicId(), "二级", null, 3));
+        assertThrows(ConflictException.class, () -> service.mergeTag(source.publicId(), target.publicId(),
+                String.valueOf(source.revision() + 1), target.revision()));
+        assertThrows(ConflictException.class, () -> service.mergeTag(source.publicId(), target.publicId(),
+                String.valueOf(source.revision()), target.revision() + 1));
+        assertThrows(IllegalArgumentException.class, () -> service.mergeTag(source.publicId(), target.publicId(),
+                String.valueOf(source.revision()), target.revision()));
+        assertTrue(service.listTags().stream().anyMatch(tag -> tag.publicId().equals(source.publicId())));
+        assertEquals(source.publicId(), service.listTags().stream().filter(tag -> tag.publicId().equals(child.publicId()))
+                .findFirst().orElseThrow().parentId());
+    }
+
     private TaskService service(long userId) {
         CurrentUserResolver currentUser = mock(CurrentUserResolver.class);
         when(currentUser.id()).thenReturn(userId);

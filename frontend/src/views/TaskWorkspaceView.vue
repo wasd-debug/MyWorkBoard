@@ -816,7 +816,7 @@
     <Dialog v-model:open="sidebarVisibilityOpen" title="侧栏显示项"><div class="clone-visibility-form"><fieldset><legend>系统视图</legend><div v-for="item in allSidebarSystemViews" :key="item.key" class="clone-visibility-row"><input :id="`visibility-system-${item.key}`" type="checkbox" :checked="!isHiddenObject('system', item)" @change="setObjectVisibility('system', item, $event.target.checked)" /><label :for="`visibility-system-${item.key}`">{{ item.label }}</label><button type="button" class="clone-visibility-pin" :aria-label="`${isPinnedObject('system', item) ? '取消' : ''}置顶${item.label}`" @click="togglePinnedObject('system', item)"><Pin :size="13" /></button></div></fieldset><fieldset><legend>清单</legend><div v-for="item in activeLists" :key="item.publicId" class="clone-visibility-row"><input :id="`visibility-list-${item.publicId}`" type="checkbox" :checked="!isHiddenObject('list', item)" @change="setObjectVisibility('list', item, $event.target.checked)" /><label :for="`visibility-list-${item.publicId}`">{{ item.name }}</label><button type="button" class="clone-visibility-pin" :aria-label="`${isPinnedObject('list', item) ? '取消' : ''}置顶${item.name}`" @click="togglePinnedObject('list', item)"><Pin :size="13" /></button></div></fieldset><fieldset><legend>标签</legend><div v-for="item in sortedTags" :key="item.publicId" class="clone-visibility-row"><input :id="`visibility-tag-${item.publicId}`" type="checkbox" :checked="!isHiddenObject('tag', item)" @change="setObjectVisibility('tag', item, $event.target.checked)" /><label :for="`visibility-tag-${item.publicId}`">#{{ item.name }}</label><button type="button" class="clone-visibility-pin" :aria-label="`${isPinnedObject('tag', item) ? '取消' : ''}置顶#${item.name}`" @click="togglePinnedObject('tag', item)"><Pin :size="13" /></button></div></fieldset><fieldset><legend>筛选器</legend><div v-for="item in filters" :key="item.publicId" class="clone-visibility-row"><input :id="`visibility-filter-${item.publicId}`" type="checkbox" :checked="!isHiddenObject('filter', item)" @change="setObjectVisibility('filter', item, $event.target.checked)" /><label :for="`visibility-filter-${item.publicId}`">{{ item.name }}</label><button type="button" class="clone-visibility-pin" :aria-label="`${item.pinned ? '取消' : ''}置顶${item.name}`" @click="setFilterPinned(item, !item.pinned)"><Pin :size="13" /></button></div></fieldset><footer><button type="button" @click="sidebarVisibilityOpen = false">完成</button></footer></div></Dialog>
     <Dialog v-model:open="filterPreviewOpen" :title="`筛选器预览：${filterPreviewTitle}`"><div class="clone-filter-preview clone-filter-preview-modal"><strong>匹配 {{ filterPreviewTotal }} 条任务</strong><RouterLink v-for="task in filterPreview" :key="task.publicId" :to="`/tasks/list/${task.listId}`" @click="filterPreviewOpen = false">{{ task.title }}</RouterLink><span v-if="!filterPreview.length">当前没有匹配任务</span><footer><button type="button" @click="filterPreviewOpen = false">关闭</button><button type="button" @click="router.push(`/tasks/filter/${filterPreviewFilterId}`); filterPreviewOpen = false">打开筛选列表</button></footer></div></Dialog>
     <Dialog v-model:open="listCopyOpen" title="复制清单"><form class="clone-organization-form" @submit.prevent="confirmListCopy"><label>新清单名称<input v-model.trim="listCopy.name" required maxlength="120" /></label><fieldset><legend>复制任务</legend><label><input v-model="listCopy.mode" type="radio" value="OPEN_ONLY" />仅复制未完成任务</label><label><input v-model="listCopy.mode" type="radio" value="ALL_PRESERVE" />复制全部任务并保留已完成状态</label><label><input v-model="listCopy.mode" type="radio" value="ALL_OPEN" />复制全部任务为未完成</label></fieldset><p v-if="listCopy.mode !== 'NONE'" class="clone-dialog-note">描述、日期、优先级、标签、检查项、重复规则和父子关系会复制；提醒不会复制。</p><footer><button type="button" :disabled="listCopy.busy" @click="listCopyOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="listCopy.busy">{{ listCopy.busy ? '复制中…' : '复制' }}</button></footer></form></Dialog>
-    <Dialog v-model:open="tagMergeOpen" title="合并标签"><form class="clone-organization-form" @submit.prevent="confirmTagMerge"><p>将“#{{ tagMerge.source?.name }}”关联的任务和子标签迁移到目标标签，全部迁移成功后删除源标签。</p><label>目标标签<select v-model="tagMerge.targetId" required><option value="" disabled>选择目标标签</option><option v-for="tag in mergeTargets" :key="tag.publicId" :value="tag.publicId">#{{ tag.name }}</option></select></label><footer><button type="button" :disabled="tagMerge.busy" @click="tagMergeOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="tagMerge.busy || !mergeTargets.length">{{ tagMerge.busy ? '合并中…' : '合并' }}</button></footer></form></Dialog>
+    <Dialog v-model:open="tagMergeOpen" title="合并标签"><form class="clone-organization-form" @submit.prevent="confirmTagMerge"><p>将“#{{ tagMerge.source?.name }}”关联的任务和子标签迁移到目标标签。操作一次提交，失败时不会留下部分变更。</p><label>目标标签<select v-model="tagMerge.targetId" required><option value="" disabled>选择目标标签</option><option v-for="tag in mergeTargets" :key="tag.publicId" :value="tag.publicId">#{{ tag.name }}</option></select></label><footer><button type="button" :disabled="tagMerge.busy" @click="tagMergeOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="tagMerge.busy || !mergeTargets.length">{{ tagMerge.busy ? '合并中…' : '合并' }}</button></footer></form></Dialog>
   </section>
 </template>
 
@@ -901,6 +901,7 @@ import {
   apiCreateTaskListGroup,
   apiUpdateTaskTag,
   apiDeleteTaskTag,
+  apiMergeTaskTag,
   apiUpdateTaskComment,
   apiUpdateTaskReminder,
   apiUploadTaskAttachment,
@@ -1112,13 +1113,15 @@ const visibleFilters = computed(() => sortedFilters.value.filter(item => !isHidd
 const pinnedFilters = computed(() => sortedFilters.value.filter(item => !isHiddenObject("filter", item) && item.pinned));
 const mergeTargets = computed(() => {
   if (!tagMerge.source) return [];
+  const sourceHasChildren = store.tags.some(item => item.parentId === tagMerge.source.publicId);
   const descendants = new Set();
   let changed = true;
   while (changed) {
     changed = false;
     for (const item of store.tags) if ((item.parentId === tagMerge.source.publicId || descendants.has(item.parentId)) && !descendants.has(item.publicId)) { descendants.add(item.publicId); changed = true; }
   }
-  return store.tags.filter(item => item.publicId !== tagMerge.source.publicId && !descendants.has(item.publicId));
+  return store.tags.filter(item => item.publicId !== tagMerge.source.publicId && !descendants.has(item.publicId)
+    && (!sourceHasChildren || !item.parentId));
 });
 function openCount(predicate) { return store.tasks.filter(task => !task.deleted && !["COMPLETED", "ABANDONED"].includes(task.status) && predicate(task)).length; }
 function listOpenCount(listId) { return openCount(task => task.listId === listId); }
@@ -2465,17 +2468,10 @@ async function confirmTagMerge() {
   tagMerge.busy = true;
   try {
     await store.syncNow();
-    const tasksToMove = store.tasks.filter(item => !item.deleted && (item.tagIds || []).includes(source.publicId));
-    for (const task of tasksToMove) {
-      const tagIds = [...new Set([...(task.tagIds || []).filter(id => id !== source.publicId), target.publicId])];
-      await apiUpdateTask(task.publicId, { listId: task.listId, title: task.title, description: task.description || "", priority: task.priority || "NONE", startAt: task.startAt || "", dueAt: task.dueAt || "", allDay: Boolean(task.allDay), timezone: task.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone, durationMinutes: Number(task.durationMinutes) || 0, parentId: task.parentId || "", tagIds, checklist: task.checklist || [], rrule: task.rrule || "", recurrenceAnchor: task.recurrenceAnchor || "", sortOrder: task.sortOrder ?? 0 }, task.revision);
-    }
-    const children = store.tags.filter(item => item.parentId === source.publicId);
-    for (const child of children) await apiUpdateTaskTag(child.publicId, { parentId: target.publicId, name: child.name, color: child.color || "", sortOrder: child.sortOrder }, child.revision);
-    await apiDeleteTaskTag(source.publicId, source.revision);
+    const result = await apiMergeTaskTag(source.publicId, target.publicId, target.revision, source.revision);
     tagMergeOpen.value = false;
     await store.refreshServer();
-    message.success(`已合并标签，迁移 ${tasksToMove.length} 条任务和 ${children.length} 个子标签`);
+    message.success(`已合并标签，迁移 ${result.movedTasks} 条任务和 ${result.movedChildren} 个子标签`);
   } catch (error) {
     store.error = `${error?.response?.data?.detail || error?.message || "合并失败"}；源标签已保留，可刷新后重试`;
     await store.refreshServer();

@@ -426,6 +426,62 @@ public class TaskService {
     }
 
     @Transactional
+    public TaskModels.TaskTagMergeResult mergeTag(String sourcePublicId, String targetPublicId,
+                                                   String sourceIfMatch, long targetRevision) {
+        long userId = currentUser.id();
+        if (sourcePublicId != null && sourcePublicId.equals(targetPublicId))
+            throw new IllegalArgumentException("不能将标签合并到自身");
+        List<Long> lockedTagIds = jdbcTemplate.query("SELECT id FROM task_tag WHERE public_id IN (?,?) AND user_id=? " +
+                        "AND deleted=FALSE ORDER BY id FOR UPDATE", (result, rowNum) -> result.getLong(1),
+                validUuid(sourcePublicId, "sourceTagId"), validUuid(targetPublicId, "targetTagId"), userId);
+        if (lockedTagIds.size() != 2) throw new NotFoundException("源标签或目标标签不存在");
+        TaskTag source = tagForUser(userId, sourcePublicId);
+        TaskTag target = tagForUser(userId, targetPublicId);
+        long expectedSourceRevision = requiredRevision(sourceIfMatch);
+        if (source.revision() != expectedSourceRevision) throw new ConflictException("源标签版本已变化", source.revision());
+        if (target.revision() != targetRevision) throw new ConflictException("目标标签版本已变化", target.revision());
+
+        long sourceId = jdbcTemplate.queryForObject("SELECT id FROM task_tag WHERE public_id=? AND user_id=?", Long.class,
+                source.publicId(), userId);
+        long targetId = jdbcTemplate.queryForObject("SELECT id FROM task_tag WHERE public_id=? AND user_id=?", Long.class,
+                target.publicId(), userId);
+        List<String> childIds = jdbcTemplate.query("SELECT public_id FROM task_tag WHERE parent_id=? AND deleted=FALSE ORDER BY id",
+                (result, rowNum) -> result.getString(1), sourceId);
+        if (!childIds.isEmpty() && target.parentId() != null)
+            throw new IllegalArgumentException("含有子标签的标签只能合并到一级标签");
+
+        List<String> affectedTasks = jdbcTemplate.query("SELECT DISTINCT t.public_id FROM task t " +
+                        "JOIN task_tag_link link ON link.task_id=t.id WHERE link.tag_id=? AND t.user_id=? ORDER BY t.public_id",
+                (result, rowNum) -> result.getString(1), sourceId, userId);
+        for (String taskPublicId : affectedTasks) {
+            jdbcTemplate.update("INSERT IGNORE INTO task_tag_link(task_id,tag_id) " +
+                            "SELECT task.id,? FROM task WHERE task.public_id=? AND task.user_id=?", targetId, taskPublicId, userId);
+            jdbcTemplate.update("DELETE link FROM task_tag_link link JOIN task ON task.id=link.task_id " +
+                            "WHERE task.public_id=? AND task.user_id=? AND link.tag_id=?", taskPublicId, userId, sourceId);
+            jdbcTemplate.update("UPDATE task SET revision=revision+1 WHERE public_id=? AND user_id=?", taskPublicId, userId);
+            boolean deleted = jdbcTemplate.queryForObject("SELECT deleted FROM task WHERE public_id=? AND user_id=?",
+                    Boolean.class, taskPublicId, userId);
+            changeLog.append(userId, UUID.randomUUID().toString(), taskPublicId, deleted ? "DELETE" : "UPSERT",
+                    syncEntity(taskForUserIncludingDeleted(userId, taskPublicId), deleted));
+        }
+        for (String childId : childIds) {
+            int changed = jdbcTemplate.update("UPDATE task_tag SET parent_id=?,revision=revision+1 " +
+                    "WHERE public_id=? AND user_id=? AND deleted=FALSE", targetId, childId, userId);
+            if (changed != 1) throw new ConflictException("子标签已被其他操作修改", 0);
+            changeLog.append(userId, UUID.randomUUID().toString(), "task-tag", childId,
+                    "UPSERT", syncEntity(tagForUser(userId, childId), false));
+        }
+        int deleted = jdbcTemplate.update("UPDATE task_tag SET deleted=TRUE,deleted_at=CURRENT_TIMESTAMP,revision=revision+1 " +
+                "WHERE public_id=? AND user_id=? AND deleted=FALSE AND revision=?",
+                source.publicId(), userId, expectedSourceRevision);
+        if (deleted != 1) throw new ConflictException("源标签版本已变化", tagForUser(userId, source.publicId()).revision());
+        changeLog.append(userId, UUID.randomUUID().toString(), "task-tag", source.publicId(),
+                "DELETE", syncEntity(source, true));
+        return new TaskModels.TaskTagMergeResult(source.publicId(), target.publicId(), affectedTasks.size(),
+                childIds.size(), expectedSourceRevision + 1, target.revision());
+    }
+
+    @Transactional
     DeletedResource deleteTagForSync(String publicId, long revision, String opId) {
         return deleteTag(publicId, String.valueOf(revision), opId);
     }

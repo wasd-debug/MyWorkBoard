@@ -243,6 +243,7 @@ export const apiCreateTaskList = async payload => data(await api.post('/api/v1/t
 export const apiCreateTaskTag = async payload => data(await api.post('/api/v1/tasks/tags', payload))
 export const apiUpdateTaskTag = async (id, payload, currentRevision) => data(await tasks.updateTaskTag({ publicId: id, taskTagCommand: payload, ifMatch: revision(currentRevision) }))
 export const apiDeleteTaskTag = async (id, currentRevision) => data(await tasks.deleteTaskTag({ publicId: id, ifMatch: revision(currentRevision) }))
+export const apiMergeTaskTag = async (id, targetTagId, targetRevision, currentRevision) => data(await tasks.mergeTaskTag({ publicId: id, ifMatch: revision(currentRevision), taskTagMergeCommand: { targetTagId, targetRevision } }))
 export const apiRestoreTask = async (publicId, currentRevision) => data(await api.post(`/api/v1/tasks/${publicId}/restore`, null, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiRestoreTaskList = async (publicId, currentRevision) => data(await api.post(`/api/v1/tasks/lists/${publicId}/restore`, null, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiPurgeTask = async publicId => data(await api.delete(`/api/v1/tasks/trash/${publicId}`, { params: { confirmation: `DELETE:${publicId}` } }))

@@ -12,6 +12,8 @@ import com.salarytracker.task.TaskModels.TaskPage;
 import com.salarytracker.task.TaskModels.TaskListCommand;
 import com.salarytracker.task.TaskModels.TaskTag;
 import com.salarytracker.task.TaskModels.TaskTagCommand;
+import com.salarytracker.task.TaskModels.TaskTagMergeCommand;
+import com.salarytracker.task.TaskModels.TaskTagMergeResult;
 import com.salarytracker.task.TaskModels.ListGroup;
 import com.salarytracker.task.TaskModels.ListGroupCommand;
 import com.salarytracker.task.TaskModels.ListGroupAssignment;
@@ -182,6 +184,16 @@ public class TaskController {
     public ApiResponse<DeletedResource> deleteTag(@PathVariable String publicId,
                                                   @RequestHeader("If-Match") String ifMatch) {
         return ApiResponse.ok(taskService.deleteTag(publicId, ifMatch));
+    }
+
+    @PostMapping(value = "/tags/{publicId}/merge", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Audit(module = "task", action = "task.tag.merge", targetType = "task-tag")
+    @Operation(operationId = "mergeTaskTag")
+    public ApiResponse<TaskTagMergeResult> mergeTag(@PathVariable String publicId,
+                                                     @RequestBody TaskTagMergeCommand body,
+                                                     @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(taskService.mergeTag(publicId, body.targetTagId(), ifMatch, body.targetRevision()));
     }
 
     @GetMapping

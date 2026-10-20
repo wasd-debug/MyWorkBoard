@@ -71,6 +71,15 @@ public final class TaskModels {
     public record TaskTagCommand(String parentId, String name, String color, Integer sortOrder) {
     }
 
+    @Schema(name = "TaskTagMergeCommand")
+    public record TaskTagMergeCommand(String targetTagId, long targetRevision) {
+    }
+
+    @Schema(name = "TaskTagMergeResult")
+    public record TaskTagMergeResult(String sourceTagId, String targetTagId, int movedTasks,
+                                     int movedChildren, long sourceRevision, long targetRevision) {
+    }
+
     @Schema(name = "TaskChecklistItem")
     public record ChecklistItem(String publicId, String title, boolean completed, int sortOrder, long revision) {
     }

@@ -17,8 +17,8 @@
 export interface TaskListGroup {
     'publicId'?: string;
     'name'?: string;
+    'color'?: string;
+    'icon'?: string;
     'sortOrder'?: number;
     'revision'?: number;
-    'color'?: string | null;
-    'icon'?: string | null;
 }

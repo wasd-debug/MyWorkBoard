@@ -74,6 +74,8 @@ import type { ApiResponseTaskSyncPushResponse } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskTag } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseTaskTagMergeResult } from '../models/index.ts';
+// @ts-ignore
 import type { ApiResponseVoid } from '../models/index.ts';
 // @ts-ignore
 import type { SseEmitter } from '../models/index.ts';
@@ -103,6 +105,8 @@ import type { TaskSortCommand } from '../models/index.ts';
 import type { TaskSyncOperation } from '../models/index.ts';
 // @ts-ignore
 import type { TaskTagCommand } from '../models/index.ts';
+// @ts-ignore
+import type { TaskTagMergeCommand } from '../models/index.ts';
 /**
  * TasksApi - axios parameter creator
  */
@@ -110,7 +114,6 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
     return {
         /**
          *
-         * @summary Abandon task
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {*} [options] Override http request option.
@@ -1365,6 +1368,50 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
         },
         /**
          *
+         * @param {string} publicId
+         * @param {string} ifMatch
+         * @param {TaskTagMergeCommand} taskTagMergeCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        mergeTaskTag: async (publicId: string, ifMatch: string, taskTagMergeCommand: TaskTagMergeCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('mergeTaskTag', 'publicId', publicId)
+            // verify required parameter 'ifMatch' is not null or undefined
+            assertParamExists('mergeTaskTag', 'ifMatch', ifMatch)
+            // verify required parameter 'taskTagMergeCommand' is not null or undefined
+            assertParamExists('mergeTaskTag', 'taskTagMergeCommand', taskTagMergeCommand)
+            const localVarPath = `/api/v1/tasks/tags/{publicId}/merge`
+                .replace('{publicId}', encodeURIComponent(String(publicId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            if (ifMatch != null) {
+                localVarHeaderParameter['If-Match'] = String(ifMatch);
+            }
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(taskTagMergeCommand, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {number} [cursor]
          * @param {number} [limit]
          * @param {*} [options] Override http request option.
@@ -1595,7 +1642,6 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
         },
         /**
          *
-         * @summary Restore abandoned task
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {*} [options] Override http request option.
@@ -2158,7 +2204,6 @@ export const TasksApiFp = function(configuration?: Configuration) {
     return {
         /**
          *
-         * @summary Abandon task
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {*} [options] Override http request option.
@@ -2582,6 +2627,20 @@ export const TasksApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {string} publicId
+         * @param {string} ifMatch
+         * @param {TaskTagMergeCommand} taskTagMergeCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async mergeTaskTag(publicId: string, ifMatch: string, taskTagMergeCommand: TaskTagMergeCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskTagMergeResult>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.mergeTaskTag(publicId, ifMatch, taskTagMergeCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.mergeTaskTag']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {number} [cursor]
          * @param {number} [limit]
          * @param {*} [options] Override http request option.
@@ -2659,7 +2718,6 @@ export const TasksApiFp = function(configuration?: Configuration) {
         },
         /**
          *
-         * @summary Restore abandoned task
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {*} [options] Override http request option.
@@ -2846,7 +2904,6 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
     return {
         /**
          *
-         * @summary Abandon task
          * @param {TasksApiAbandonTaskRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -3137,6 +3194,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         },
         /**
          *
+         * @param {TasksApiMergeTaskTagRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        mergeTaskTag(requestParameters: TasksApiMergeTaskTagRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskTagMergeResult> {
+            return localVarFp.mergeTaskTag(requestParameters.publicId, requestParameters.ifMatch, requestParameters.taskTagMergeCommand, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {TasksApiPullTaskSyncRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -3191,7 +3257,6 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         },
         /**
          *
-         * @summary Restore abandoned task
          * @param {TasksApiRestoreAbandonedTaskRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -3560,6 +3625,17 @@ export interface TasksApiListTasksRequest {
 }
 
 /**
+ * Request parameters for mergeTaskTag operation in TasksApi.
+ */
+export interface TasksApiMergeTaskTagRequest {
+    readonly publicId: string
+
+    readonly ifMatch: string
+
+    readonly taskTagMergeCommand: TaskTagMergeCommand
+}
+
+/**
  * Request parameters for pullTaskSync operation in TasksApi.
  */
 export interface TasksApiPullTaskSyncRequest {
@@ -3745,7 +3821,6 @@ export interface TasksApiUploadTaskAttachmentRequest {
 export class TasksApi extends BaseAPI {
     /**
      *
-     * @summary Abandon task
      * @param {TasksApiAbandonTaskRequest} requestParameters Request parameters.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -4069,6 +4144,16 @@ export class TasksApi extends BaseAPI {
 
     /**
      *
+     * @param {TasksApiMergeTaskTagRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public mergeTaskTag(requestParameters: TasksApiMergeTaskTagRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).mergeTaskTag(requestParameters.publicId, requestParameters.ifMatch, requestParameters.taskTagMergeCommand, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
      * @param {TasksApiPullTaskSyncRequest} requestParameters Request parameters.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -4129,7 +4214,6 @@ export class TasksApi extends BaseAPI {
 
     /**
      *
-     * @summary Restore abandoned task
      * @param {TasksApiRestoreAbandonedTaskRequest} requestParameters Request parameters.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
