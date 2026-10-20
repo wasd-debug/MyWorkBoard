@@ -376,29 +376,44 @@
           <button type="button" class="clone-detail-tool clone-detail-list-tool" aria-label="任务清单" @click="editorOpen ? null : openEdit(selectedTask)">
             <ListTodo :size="15" /><span>{{ listName(editorOpen ? draft.listId : selectedTask?.listId) }}</span>
           </button>
-          <button type="button" class="clone-detail-tool" aria-label="设置日期" @click.stop="datePopoverOpen = !datePopoverOpen; repeatPopoverOpen = false; priorityPopoverOpen = false">
+          <button type="button" class="clone-detail-tool" aria-label="设置日期" @click.stop="toggleDatePopover">
             <CalendarClock :size="15" /><span>{{ editorOpen && draft.dueAt ? formatDate(draft.dueAt) : selectedTask?.dueAt ? formatDate(selectedTask.dueAt) : '设置日期' }}</span>
           </button>
-          <button type="button" class="clone-detail-tool" aria-label="设置重复" @click.stop="repeatPopoverOpen = !repeatPopoverOpen; datePopoverOpen = false; priorityPopoverOpen = false">
+          <button type="button" class="clone-detail-tool" aria-label="设置重复" :aria-expanded="repeatPopoverOpen" @click.stop="toggleRepeatPopover">
             <span class="clone-detail-repeat-icon">↻</span><span>{{ recurrenceLabel(editorOpen ? draft.rrule : selectedTask?.rrule) }}</span>
           </button>
           <div v-if="datePopoverOpen" class="clone-toolbar-popover clone-date-toolbar-popover" @click.stop>
             <strong>日期和时间</strong>
             <input v-if="editorOpen" v-model="draft.dueAt" type="datetime-local" aria-label="截止日期时间" />
-            <span v-else class="clone-popover-current">{{ selectedTask?.dueAt ? formatDate(selectedTask.dueAt) : '未设置日期' }}</span>
+            <template v-else><input v-model="datePopoverDue" type="datetime-local" aria-label="截止日期时间" /><button type="button" class="clone-popover-save" :disabled="dateSaving" @click="saveTaskDueDate">{{ dateSaving ? '保存中…' : '保存日期' }}</button></template>
             <div class="clone-popover-actions">
-              <button type="button" @click="editorOpen ? draft.dueAt = toLocal(new Date()) : setTaskDue(0); datePopoverOpen = false">今天</button>
-              <button type="button" @click="editorOpen ? draft.dueAt = toLocal(addDays(new Date(), 1)) : setTaskDue(1); datePopoverOpen = false">明天</button>
-              <button type="button" @click="editorOpen ? draft.dueAt = '' : clearTaskDue(); datePopoverOpen = false">清除</button>
+              <button type="button" @click="editorOpen ? draft.dueAt = toLocal(new Date()) : applyTaskDueOffset(0)">今天</button>
+              <button type="button" @click="editorOpen ? draft.dueAt = toLocal(addDays(new Date(), 1)) : applyTaskDueOffset(1)">明天</button>
+              <button type="button" @click="editorOpen ? draft.dueAt = '' : applyTaskDueOffset(null)">清除</button>
             </div>
           </div>
           <div v-if="repeatPopoverOpen" class="clone-toolbar-popover clone-repeat-toolbar-popover" @click.stop>
             <strong>重复</strong>
-            <button v-for="option in recurrenceOptions" :key="option.value" type="button" :class="{ active: (editorOpen ? draft.rrule : selectedTask?.rrule) === option.value }" @click="editorOpen ? (draft.rrule = option.value) : setTaskRepeat(option.value); repeatPopoverOpen = false">{{ option.label }}</button>
+            <button v-for="option in recurrenceOptions" :key="option.value" type="button" :class="{ active: recurrenceValue(editorOpen ? draft.rrule : selectedTask?.rrule) === option.value }" @click="selectTaskRepeat(option.value)">{{ option.label }}</button>
           </div>
         </div>
         <div class="clone-detail-toolbar-actions">
-          <button type="button" class="clone-detail-priority-tool" :data-priority="editorOpen ? draft.priority : selectedTask?.priority" aria-label="设置优先级" @click.stop="priorityPopoverOpen = !priorityPopoverOpen; datePopoverOpen = false; repeatPopoverOpen = false">⚑</button>
+          <button type="button" class="clone-detail-tool clone-reminder-tool" :class="{ active: editorOpen ? draft.reminderEnabled : quickReminder.reminder }" aria-label="设置提醒" :aria-expanded="reminderPopoverOpen" @click.stop="toggleReminderPopover"><Bell :size="15" /></button>
+          <div v-if="reminderPopoverOpen" class="clone-toolbar-popover clone-reminder-popover" @click.stop>
+            <strong>提醒</strong>
+            <p v-if="reminderLoading" class="clone-muted">正在读取提醒…</p>
+            <template v-else>
+              <label class="clone-inline-check"><input v-model="reminderEnabledModel" type="checkbox" />启用站内提醒</label>
+              <template v-if="reminderEnabledModel">
+                <label class="clone-reminder-popover-field">方式<select v-model="reminderKindModel"><option value="RELATIVE">相对截止时间</option><option value="ABSOLUTE">指定时间</option></select></label>
+                <label v-if="reminderKindModel === 'RELATIVE'" class="clone-reminder-popover-field">提前<select v-model.number="reminderOffsetModel"><option :value="0">准时</option><option :value="5">5 分钟</option><option :value="15">15 分钟</option><option :value="30">30 分钟</option><option :value="60">1 小时</option><option :value="1440">1 天</option></select></label>
+                <label v-else class="clone-reminder-popover-field">提醒时间<input v-model="remindLocalModel" type="datetime-local" /></label>
+                <label class="clone-inline-check"><input v-model="dailyUntilDoneModel" type="checkbox" />未完成时每日提醒</label>
+              </template>
+              <div class="clone-popover-actions"><button v-if="!editorOpen && quickReminder.reminder" type="button" @click="disableTaskReminder">关闭提醒</button><button v-if="editorOpen" type="button" @click="reminderPopoverOpen = false">完成后保存</button><button v-else type="button" class="clone-popover-save" :disabled="reminderSaving" @click="saveTaskReminder">{{ reminderSaving ? '保存中…' : '保存提醒' }}</button></div>
+            </template>
+          </div>
+          <button type="button" class="clone-detail-priority-tool" :data-priority="editorOpen ? draft.priority : selectedTask?.priority" aria-label="设置优先级" :aria-expanded="priorityPopoverOpen" @click.stop="togglePriorityPopover">⚑</button>
           <div v-if="priorityPopoverOpen" class="clone-toolbar-popover clone-priority-toolbar-popover" @click.stop>
             <strong>优先级</strong>
             <button v-for="option in priorityOptions" :key="option.value" type="button" :class="{ active: (editorOpen ? draft.priority : selectedTask?.priority) === option.value }" @click="editorOpen ? (draft.priority = option.value) : setTaskPriority(option.value); priorityPopoverOpen = false">{{ option.label }}</button>
@@ -760,6 +775,7 @@ import { useRoute, useRouter, RouterLink } from "vue-router";
 import {
   Archive,
   CalendarClock,
+  Bell,
   Check,
   CheckCircle2,
   CheckSquare,
@@ -836,13 +852,25 @@ const checklistDragIndex = ref(null);
 const checklistDropTarget = ref(null);
 const sidebarHidden = ref(false);
 const sidebarPreferenceScope = ref("");
-const detailWidth = ref(342);
+const detailWidth = ref(390);
 const detailPreferenceScope = ref("");
 let detailResizeState = null;
 let detailPreviousUserSelect = "";
 const moreOpen = ref(false);
 const datePopoverOpen = ref(false);
 const repeatPopoverOpen = ref(false);
+const reminderPopoverOpen = ref(false);
+const datePopoverDue = ref("");
+const dateSaving = ref(false);
+const reminderLoading = ref(false);
+const reminderSaving = ref(false);
+let reminderLoadSequence = 0;
+const quickReminder = reactive({ enabled: false, kind: "RELATIVE", offsetMinutes: 30, remindLocal: "", dailyUntilDone: false, reminder: null });
+const reminderEnabledModel = computed({ get: () => editorOpen.value ? draft.reminderEnabled : quickReminder.enabled, set: (value) => { if (editorOpen.value) draft.reminderEnabled = value; else quickReminder.enabled = value; } });
+const reminderKindModel = computed({ get: () => editorOpen.value ? draft.reminderKind : quickReminder.kind, set: (value) => { if (editorOpen.value) draft.reminderKind = value; else quickReminder.kind = value; } });
+const reminderOffsetModel = computed({ get: () => editorOpen.value ? draft.reminderOffset : quickReminder.offsetMinutes, set: (value) => { if (editorOpen.value) draft.reminderOffset = value; else quickReminder.offsetMinutes = value; } });
+const remindLocalModel = computed({ get: () => editorOpen.value ? draft.remindLocal : quickReminder.remindLocal, set: (value) => { if (editorOpen.value) draft.remindLocal = value; else quickReminder.remindLocal = value; } });
+const dailyUntilDoneModel = computed({ get: () => editorOpen.value ? draft.dailyUntilDone : quickReminder.dailyUntilDone, set: (value) => { if (editorOpen.value) draft.dailyUntilDone = value; else quickReminder.dailyUntilDone = value; } });
 const priorityPopoverOpen = ref(false);
 const batchMode = ref(false);
 const selectedIds = reactive(new Set());
@@ -955,6 +983,7 @@ const draft = reactive({
   reminderKind: "RELATIVE",
   reminderOffset: 30,
   remindLocal: "",
+  dailyUntilDone: false,
   reminder: null,
   checklistText: "",
   checklistItems: [],
@@ -1188,6 +1217,9 @@ function priorityLabel(value) {
 function recurrenceLabel(value) {
   return recurrenceOptions.find((option) => option.value === value)?.label || (value ? "自定义" : "不重复");
 }
+function recurrenceValue(value) {
+  return recurrenceOptions.some((option) => option.value === value) ? value : value ? "CUSTOM" : "";
+}
 function itemCount(key) {
   const tasks = store.tasks.filter(item => !item.deleted && item.status !== "COMPLETED");
   const today = startOfDay(new Date());
@@ -1207,13 +1239,131 @@ function isActive(to) {
 function toggleSidebar() {
   sidebarHidden.value = !sidebarHidden.value;
 }
+function toggleDatePopover() {
+  datePopoverOpen.value = !datePopoverOpen.value;
+  repeatPopoverOpen.value = false;
+  reminderPopoverOpen.value = false;
+  priorityPopoverOpen.value = false;
+  if (datePopoverOpen.value) datePopoverDue.value = toLocal(selectedTask.value?.dueAt);
+}
+function toggleRepeatPopover() {
+  repeatPopoverOpen.value = !repeatPopoverOpen.value;
+  datePopoverOpen.value = false;
+  reminderPopoverOpen.value = false;
+  priorityPopoverOpen.value = false;
+}
+function togglePriorityPopover() {
+  priorityPopoverOpen.value = !priorityPopoverOpen.value;
+  datePopoverOpen.value = false;
+  repeatPopoverOpen.value = false;
+  reminderPopoverOpen.value = false;
+}
+async function applyTaskDueOffset(offset) {
+  if (editorOpen.value) {
+    draft.dueAt = offset === null ? "" : toLocal(addDays(startOfDay(new Date()), offset));
+    return;
+  }
+  if (!selectedTask.value) return;
+  try {
+    selectedTask.value = await store.update(selectedTask.value, { dueAt: offset === null ? "" : addDays(startOfDay(new Date()), offset).toISOString() });
+    store.error = "";
+    datePopoverDue.value = toLocal(selectedTask.value.dueAt);
+    datePopoverOpen.value = false;
+  } catch (error) { store.error = error?.response?.data?.detail || error?.message || "日期保存失败"; }
+}
+async function saveTaskDueDate() {
+  if (!selectedTask.value || dateSaving.value) return;
+  dateSaving.value = true;
+  try {
+    selectedTask.value = await store.update(selectedTask.value, { dueAt: datePopoverDue.value ? new Date(datePopoverDue.value).toISOString() : "" });
+    store.error = "";
+    datePopoverOpen.value = false;
+  } catch (error) { store.error = error?.response?.data?.detail || error?.message || "日期保存失败"; }
+  finally { dateSaving.value = false; }
+}
+async function selectTaskRepeat(value) {
+  if (value === "CUSTOM" && !editorOpen.value) {
+    const task = selectedTask.value;
+    openEdit(task);
+    draft.rrule = "CUSTOM";
+    draft.customRrule = recurrenceValue(task?.rrule) === "CUSTOM" ? task.rrule : "";
+    repeatPopoverOpen.value = false;
+    return;
+  }
+  if (editorOpen.value) draft.rrule = value;
+  else await setTaskRepeat(value);
+  repeatPopoverOpen.value = false;
+}
+async function toggleReminderPopover() {
+  reminderPopoverOpen.value = !reminderPopoverOpen.value;
+  datePopoverOpen.value = false;
+  repeatPopoverOpen.value = false;
+  priorityPopoverOpen.value = false;
+  const loadSequence = ++reminderLoadSequence;
+  if (!reminderPopoverOpen.value || editorOpen.value) return;
+  Object.assign(quickReminder, { enabled: false, kind: "RELATIVE", offsetMinutes: 30, remindLocal: "", dailyUntilDone: false, reminder: null });
+  const task = selectedTask.value;
+  if (!task?.publicId) return;
+  if (!store.online) { store.error = "提醒需要联网读取和保存"; return; }
+  reminderLoading.value = true;
+  try {
+    const reminders = await apiListTaskReminders(task.publicId);
+    if (loadSequence !== reminderLoadSequence || selectedTask.value?.publicId !== task.publicId || !reminderPopoverOpen.value) return;
+    const reminder = reminders?.[0] || null;
+    quickReminder.reminder = reminder;
+    if (reminder) Object.assign(quickReminder, {
+      enabled: true,
+      kind: reminder.kind || "RELATIVE",
+      offsetMinutes: reminder.offsetMinutes ?? 30,
+      remindLocal: reminder.remindAt ? toLocal(reminder.remindAt) : "",
+      dailyUntilDone: Boolean(reminder.dailyUntilDone),
+    });
+  } catch (error) {
+    if (loadSequence === reminderLoadSequence) store.error = error?.response?.data?.detail || error?.message || "提醒读取失败";
+  } finally {
+    if (loadSequence === reminderLoadSequence) reminderLoading.value = false;
+  }
+}
+async function saveTaskReminder() {
+  const task = selectedTask.value;
+  if (!task?.publicId || reminderSaving.value) return;
+  if (!store.online) { store.error = "提醒需要联网保存"; return; }
+  if (quickReminder.enabled && quickReminder.kind === "RELATIVE" && !task.dueAt) { store.error = "相对提醒需要先设置任务截止时间"; return; }
+  if (quickReminder.enabled && quickReminder.kind === "ABSOLUTE" && !quickReminder.remindLocal) { store.error = "请设置提醒时间"; return; }
+  reminderSaving.value = true;
+  try {
+    if (!quickReminder.enabled) {
+      if (quickReminder.reminder) await apiDeleteTaskReminder(task.publicId, quickReminder.reminder.publicId, quickReminder.reminder.revision);
+      quickReminder.reminder = null;
+    } else {
+      const payload = {
+        kind: quickReminder.kind,
+        offsetMinutes: quickReminder.kind === "RELATIVE" ? Number(quickReminder.offsetMinutes) : null,
+        remindAt: quickReminder.kind === "ABSOLUTE" ? new Date(quickReminder.remindLocal).toISOString() : null,
+        channel: "IN_APP",
+        dailyUntilDone: quickReminder.dailyUntilDone,
+      };
+      quickReminder.reminder = quickReminder.reminder
+        ? await apiUpdateTaskReminder(task.publicId, quickReminder.reminder.publicId, payload, quickReminder.reminder.revision)
+        : await apiCreateTaskReminder(task.publicId, payload);
+    }
+    store.error = "";
+    reminderPopoverOpen.value = false;
+    await loadActivity(task);
+  } catch (error) { store.error = error?.response?.data?.detail || error?.message || "提醒保存失败"; }
+  finally { reminderSaving.value = false; }
+}
+async function disableTaskReminder() {
+  quickReminder.enabled = false;
+  await saveTaskReminder();
+}
 function detailWidthKey() {
   return `task_detail_width:${store.accountScope || "anonymous"}`;
 }
 function loadDetailWidth() {
   const scope = store.accountScope || "anonymous";
   detailPreferenceScope.value = scope;
-  detailWidth.value = 342;
+  detailWidth.value = 390;
   try {
     const value = Number(localStorage.getItem(detailWidthKey()));
     if (Number.isFinite(value) && value >= 320 && value <= 560) detailWidth.value = value;
@@ -1247,7 +1397,7 @@ function stopDetailResize() {
   persistDetailWidth();
 }
 function resetDetailWidth() {
-  detailWidth.value = 342;
+  detailWidth.value = 390;
   persistDetailWidth();
 }
 function resizeDetailByKey(event) {
@@ -1267,7 +1417,14 @@ function persistSidebarVisibility() {
 function loadSidebarVisibility() {
   const scope = store.accountScope || "anonymous";
   sidebarPreferenceScope.value = scope;
-  try { sidebarHidden.value = JSON.parse(localStorage.getItem(sidebarPreferenceKey()) || "false"); } catch { sidebarHidden.value = false; }
+  try {
+    const saved = localStorage.getItem(sidebarPreferenceKey());
+    sidebarHidden.value = saved === null
+      ? window.matchMedia("(max-width: 900px)").matches
+      : JSON.parse(saved);
+  } catch {
+    sidebarHidden.value = window.matchMedia("(max-width: 900px)").matches;
+  }
 }
 function handleSidebarClick(event) {
   if (window.matchMedia("(max-width: 900px)").matches && event.target.closest("a[href]")) sidebarHidden.value = true;
@@ -1398,6 +1555,9 @@ async function copyContextTaskLink() {
 }
 function openDetail(task) {
   if (!task) return;
+  reminderLoadSequence += 1;
+  closeAttributePopovers();
+  Object.assign(quickReminder, { enabled: false, kind: "RELATIVE", offsetMinutes: 30, remindLocal: "", dailyUntilDone: false, reminder: null });
   selectedTask.value = task;
   editorOpen.value = false;
   inlineTitleEditing.value = false;
@@ -1449,6 +1609,9 @@ async function saveInlineDescription() {
 }
 async function openEdit(task) {
   if (!task) return;
+  reminderLoadSequence += 1;
+  closeAttributePopovers();
+  Object.assign(quickReminder, { enabled: false, kind: "RELATIVE", offsetMinutes: 30, remindLocal: "", dailyUntilDone: false, reminder: null });
   editing.value = task;
   selectedTask.value = task;
   Object.assign(draft, {
@@ -1487,6 +1650,7 @@ async function openEdit(task) {
     reminderKind: "RELATIVE",
     reminderOffset: 30,
     remindLocal: "",
+    dailyUntilDone: false,
     reminder: null,
     checklistText: (task.checklist || []).map((item) => item.title).join("\n"),
     checklistItems: (task.checklist || []).map((item, index) => ({ id: item.publicId || `item-${index}`, title: item.title || "", completed: Boolean(item.completed) })),
@@ -1495,6 +1659,7 @@ async function openEdit(task) {
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
   priorityPopoverOpen.value = false;
+  reminderPopoverOpen.value = false;
   void loadActivity(task);
   void loadCollaboration(task);
   if (store.online) {
@@ -1507,6 +1672,7 @@ async function openEdit(task) {
           reminderKind: reminder.kind,
           reminderOffset: reminder.offsetMinutes ?? 30,
           remindLocal: reminder.remindAt ? toLocal(reminder.remindAt) : "",
+          dailyUntilDone: Boolean(reminder.dailyUntilDone),
           reminder,
         });
     } catch (error) {
@@ -1537,6 +1703,7 @@ function openCreate(parentId = "") {
     reminderKind: "RELATIVE",
     reminderOffset: 30,
     remindLocal: "",
+    dailyUntilDone: false,
     reminder: null,
     checklistText: "",
     checklistItems: [],
@@ -1545,6 +1712,7 @@ function openCreate(parentId = "") {
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
   priorityPopoverOpen.value = false;
+  reminderPopoverOpen.value = false;
 }
 function createSubtask(task) {
   if (!task) return;
@@ -1552,6 +1720,7 @@ function createSubtask(task) {
   draft.listId = task.listId || store.inbox?.publicId || "";
 }
 function closeDetail() {
+  reminderLoadSequence += 1;
   selectedTask.value = null;
   editing.value = null;
   editorOpen.value = false;
@@ -1560,6 +1729,13 @@ function closeDetail() {
   resetCollaboration();
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
+  priorityPopoverOpen.value = false;
+  reminderPopoverOpen.value = false;
+}
+function closeAttributePopovers() {
+  datePopoverOpen.value = false;
+  repeatPopoverOpen.value = false;
+  reminderPopoverOpen.value = false;
   priorityPopoverOpen.value = false;
 }
 function toLocal(value) {
@@ -1823,7 +1999,7 @@ async function saveDetail() {
             ? new Date(draft.remindLocal).toISOString()
             : null,
         channel: "IN_APP",
-        dailyUntilDone: false,
+        dailyUntilDone: draft.dailyUntilDone,
       };
       if (draft.reminderEnabled) {
         if (draft.reminder)
@@ -2136,14 +2312,14 @@ const SidebarSection = {
 <style scoped>
 .clone-task-shell {
   display: grid;
-  grid-template-columns: 240px minmax(420px, 1fr) 5px var(--clone-detail-width, 342px);
+  grid-template-columns: 248px minmax(420px, 1fr) 5px var(--clone-detail-width, 390px);
   height: 100vh;
   margin: 0;
   background: var(--card);
   color: var(--ink);
   overflow: hidden;
 }
-.clone-task-shell.sidebar-hidden { grid-template-columns: 44px minmax(420px, 1fr) 5px var(--clone-detail-width, 342px); }
+.clone-task-shell.sidebar-hidden { grid-template-columns: 44px minmax(420px, 1fr) 5px var(--clone-detail-width, 390px); }
 .clone-task-shell.sidebar-hidden .clone-task-sidebar { align-items: center; gap: 0; padding: 10px 4px; overflow: hidden; }
 .clone-task-shell.sidebar-hidden .clone-sidebar-head { display: flex; justify-content: center; width: 100%; padding: 0; }
 .clone-task-shell.sidebar-hidden .clone-sidebar-head strong,
@@ -2153,8 +2329,8 @@ const SidebarSection = {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 14px;
-  padding: 14px 10px;
+  gap: 12px;
+  padding: 14px 10px 12px;
   border-right: 1px solid var(--line);
   background: color-mix(in srgb, var(--card) 96%, var(--paper));
   overflow: auto;
@@ -2208,11 +2384,12 @@ const SidebarSection = {
 .clone-nav-item:hover,
 .clone-nav-item.active,
 .clone-sidebar-footer a:hover {
-  background: color-mix(in srgb, var(--ink) 7%, transparent);
-  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 9%, var(--card));
+  color: var(--accent);
 }
 .clone-primary-nav a.active {
   font-weight: 700;
+  box-shadow: inset 2px 0 var(--accent);
 }
 .clone-primary-nav span,
 .clone-nav-item span {
@@ -2223,7 +2400,7 @@ const SidebarSection = {
   white-space: nowrap;
 }
 .clone-primary-nav small {
-  color: var(--muted);
+  color: var(--ink2);
   font-size: 11px;
 }
 .clone-sidebar-section {
@@ -2303,7 +2480,7 @@ const SidebarSection = {
   position: relative;
   min-width: 0;
   overflow: auto;
-  padding: 20px 28px 100px;
+  padding: 20px 30px 100px;
 }
 .clone-task-header {
   display: flex;
@@ -2311,6 +2488,7 @@ const SidebarSection = {
   justify-content: space-between;
   gap: 16px;
   min-height: 54px;
+  max-width: 860px;
 }
 .clone-title-block,
 .clone-header-actions {
@@ -2327,7 +2505,8 @@ const SidebarSection = {
 .clone-title-block > div > span { display: none; }
 .clone-title-block h1 {
   margin: 0;
-  font-size: 25px;
+  font-size: 23px;
+  font-weight: 650;
   line-height: 1.2;
 }
 .clone-title-block span {
@@ -2365,14 +2544,21 @@ const SidebarSection = {
 .clone-quick-add {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 22px 0 18px;
-  padding: 0 16px;
-  min-height: 56px;
-  border: 0;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--paper) 78%, var(--card));
+  gap: 10px;
+  width: min(100%, 820px);
+  margin: 24px 0 18px;
+  padding: 0 14px;
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
   color: var(--muted);
+  box-shadow: 0 1px 2px rgba(20, 27, 38, 0.035);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.clone-quick-add:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent), 0 2px 6px rgba(20, 27, 38, 0.05);
 }
 .clone-quick-add form {
   display: flex;
@@ -2411,6 +2597,7 @@ const SidebarSection = {
 .clone-quick-add kbd { display: none; }
 .clone-quick-draft {
   display: grid;
+  width: min(100%, 820px);
   gap: 10px;
   margin: -8px 0 16px;
   padding: 12px;
@@ -2452,6 +2639,7 @@ const SidebarSection = {
   align-items: center;
   justify-content: space-between;
   margin: 12px 0;
+  max-width: 860px;
   color: var(--muted);
   font-size: 12px;
 }
@@ -2468,6 +2656,7 @@ const SidebarSection = {
 }
 .clone-task-groups {
   display: grid;
+  max-width: 860px;
   gap: 18px;
 }
 .clone-group-heading {
@@ -2597,10 +2786,14 @@ const SidebarSection = {
   display: grid;
   justify-items: center;
   gap: 9px;
-  min-height: 260px;
+  width: min(100%, 820px);
+  min-height: 210px;
   align-content: center;
   color: var(--muted);
+  border-top: 1px solid var(--line);
 }
+.clone-empty-state strong { color: var(--ink2); font-size: 15px; font-weight: 600; }
+.clone-empty-state p { max-width: 340px; margin: 0; font-size: 12px; line-height: 1.6; text-align: center; }
 .clone-efficiency-groups { display: grid; gap: 18px; margin-top: 18px; }
 .clone-efficiency-rows { border-top: 1px solid var(--line); }
 .clone-efficiency-row { display: flex; align-items: center; gap: 9px; min-height: 42px; padding: 0 8px; border-bottom: 1px solid var(--line); border-left: 3px solid var(--efficiency-color, #22c55e); }
@@ -2782,11 +2975,23 @@ const SidebarSection = {
   padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--card);
   box-shadow: 0 14px 30px rgba(15,23,42,.18);
 }
+.clone-date-toolbar-popover { width: min(258px, calc(100vw - 32px)); }
 .clone-toolbar-popover strong { color: var(--ink2); font-size: 12px; }
 .clone-toolbar-popover button { min-height: 29px; padding: 5px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ink2); text-align: left; cursor: pointer; }
+.clone-toolbar-popover button:focus-visible,
+.clone-toolbar-popover input:focus-visible,
+.clone-toolbar-popover select:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 1px; }
 .clone-toolbar-popover button:hover, .clone-toolbar-popover button.active { background: var(--accent-soft); color: var(--accent); }
 .clone-toolbar-popover input { width: 100%; box-sizing: border-box; }
 .clone-repeat-toolbar-popover { left: 150px; }
+.clone-reminder-popover { right: 48px; left: auto; width: min(250px, calc(100vw - 28px)); }
+.clone-reminder-popover-field { display: grid; gap: 4px; color: var(--muted); font-size: 11px; }
+.clone-reminder-popover-field select { min-height: 32px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--ink); }
+.clone-toolbar-popover .clone-inline-check { display: flex; align-items: center; gap: 7px; color: var(--ink2); font-size: 12px; }
+.clone-toolbar-popover .clone-inline-check input { width: 15px; min-height: 15px; margin: 0; }
+.clone-toolbar-popover .clone-popover-save { justify-self: end; background: var(--accent); color: var(--accent-contrast, #fff); }
+.clone-toolbar-popover .clone-popover-save:hover { background: var(--accent); color: var(--accent-contrast, #fff); }
+.clone-reminder-tool.active { color: var(--accent); }
 .clone-popover-current { color: var(--muted); font-size: 12px; }
 .clone-detail-pane.is-empty > header { display: none; }
 .clone-detail-pane > header button {

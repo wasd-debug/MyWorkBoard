@@ -148,6 +148,30 @@ test('task detail exposes contract-backed Markdown comments and attachments', ()
   assert.match(inboxView, /retryAttachment/)
 })
 
+test('task date, recurrence, and reminder popovers preserve task state boundaries', () => {
+  for (const token of [
+    'toggleDatePopover', 'saveTaskDueDate', 'applyTaskDueOffset',
+    'toggleRepeatPopover', 'selectTaskRepeat', 'recurrenceValue',
+    'toggleReminderPopover', 'saveTaskReminder', 'disableTaskReminder',
+    'apiListTaskReminders', 'apiCreateTaskReminder', 'apiUpdateTaskReminder', 'apiDeleteTaskReminder',
+    'reminderLoadSequence', 'closeAttributePopovers',
+  ]) assert.ok(workspaceView.includes(token), `missing popover behavior ${token}`)
+  assert.match(workspaceView, /kind: quickReminder\.kind,[\s\S]*channel: "IN_APP",[\s\S]*dailyUntilDone: quickReminder\.dailyUntilDone/)
+  assert.match(workspaceView, /reminderLoadSequence \+= 1;[\s\S]*closeAttributePopovers\(\);[\s\S]*selectedTask\.value = task/)
+  assert.match(workspaceView, /if \(loadSequence !== reminderLoadSequence \|\| selectedTask\.value\?\.publicId !== task\.publicId/)
+  assert.match(workspaceView, /@click\.stop="toggleDatePopover"/)
+  assert.match(workspaceView, /@click\.stop="toggleRepeatPopover"/)
+  assert.match(workspaceView, /@click\.stop="toggleReminderPopover"/)
+})
+
+test('task workspace keeps reading width and focus states deliberate on wide screens', () => {
+  assert.match(workspaceView, /const detailWidth = ref\(390\)/)
+  assert.match(workspaceView, /\.clone-task-header \{[\s\S]*max-width: 860px/)
+  assert.match(workspaceView, /\.clone-quick-add \{[\s\S]*width: min\(100%, 820px\)[\s\S]*border: 1px solid var\(--line\)/)
+  assert.match(workspaceView, /\.clone-task-groups \{[\s\S]*max-width: 860px/)
+  assert.match(workspaceView, /\.clone-toolbar-popover button:focus-visible/)
+})
+
 test('task calendar edits tasks in a page panel instead of a drawer', () => {
   assert.match(calendarView, /class="calendar-task-editor"/)
   assert.doesNotMatch(calendarView, /<Drawer|ui\/Drawer/)
@@ -243,8 +267,14 @@ test('task detail width can be resized accessibly and persists per account', () 
   assert.match(workspaceView, /@keydown="resizeDetailByKey"/)
   assert.match(workspaceView, /task_detail_width:/)
   assert.match(workspaceView, /Math\.min\(560, Math\.max\(320/)
-  assert.match(workspaceView, /clone-task-shell\.sidebar-hidden \{ grid-template-columns: 44px minmax\(420px, 1fr\) 5px var\(--clone-detail-width, 342px\); \}/)
+  assert.match(workspaceView, /clone-task-shell\.sidebar-hidden \{ grid-template-columns: 44px minmax\(420px, 1fr\) 5px var\(--clone-detail-width, 390px\); \}/)
   assert.match(workspaceView, /@media \(max-width: 1279px\)[\s\S]*\.clone-detail-divider \{ display: none;/)
+})
+
+test('first-time mobile task navigation starts collapsed without replacing inline navigation', () => {
+  assert.match(workspaceView, /const saved = localStorage\.getItem\(sidebarPreferenceKey\(\)\);[\s\S]*saved === null[\s\S]*matchMedia\("\(max-width: 900px\)"\)\.matches/)
+  assert.match(workspaceView, /\.clone-task-shell:not\(\.sidebar-hidden\) \.clone-task-sidebar \{[\s\S]*max-height: 340px/)
+  assert.doesNotMatch(workspaceView, /task-navigation-backdrop|task-navigation-open/)
 })
 
 test('task domain exposes a ticktick-style desktop module rail', async () => {
