@@ -25,7 +25,7 @@ const app = useAppStore()
 const inbox = useTaskInboxStore()
 const userInitial = computed(() => String(app.authUser?.nickname || app.authUser?.username || '我').slice(0, 1))
 const items = [
-  { to: '/tasks/today', label: '任务', icon: CheckSquare2, matches: ['/tasks/inbox', '/tasks/today', '/tasks/tomorrow', '/tasks/next7', '/tasks/all', '/tasks/completed', '/tasks/trash', '/tasks/list/', '/tasks/tag/', '/tasks/filter/', '/tasks/timeline'] },
+  { to: '/tasks/today', label: '任务', icon: CheckSquare2, matches: ['/tasks/inbox', '/tasks/today', '/tasks/tomorrow', '/tasks/next7', '/tasks/all', '/tasks/completed', '/tasks/abandoned', '/tasks/trash', '/tasks/list/', '/tasks/tag/', '/tasks/filter/', '/tasks/timeline'] },
   { to: '/tasks/calendar', label: '日历', icon: CalendarDays },
   { to: '/tasks/focus', label: '专注', icon: CircleDot },
   { to: '/tasks/habits', label: '习惯', icon: Target },

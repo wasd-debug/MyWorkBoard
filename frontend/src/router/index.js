@@ -27,6 +27,7 @@ const routes = [
   { path: '/tasks/shortcut/:shortcut', name: 'tasks-shortcut', component: () => import('../views/TaskWorkspaceView.vue'), meta: { title: '任务快捷视图' } },
   { path: '/tasks/all', name: 'tasks-all', component: () => import('../views/TaskWorkspaceView.vue'), meta: { title: '全部任务' } },
   { path: '/tasks/completed', name: 'tasks-completed', component: () => import('../views/TaskWorkspaceView.vue'), meta: { title: '已完成任务' } },
+  { path: '/tasks/abandoned', name: 'tasks-abandoned', component: () => import('../views/TaskWorkspaceView.vue'), meta: { title: '已放弃任务' } },
   { path: '/tasks/inbox-notify', name: 'tasks-notifications', component: () => import('../views/TaskNotificationsView.vue'), meta: { title: '任务提醒' } },
   { path: '/tasks/focus', name: 'tasks-focus', component: () => import('../views/TaskFocusView.vue'), meta: { title: '专注' } },
   { path: '/tasks/habits', name: 'tasks-habits', component: () => import('../views/TaskHabitsView.vue'), meta: { title: '习惯' } },

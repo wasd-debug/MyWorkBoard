@@ -110,6 +110,46 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
     return {
         /**
          *
+         * @summary Abandon task
+         * @param {string} publicId
+         * @param {string} ifMatch
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        abandonTask: async (publicId: string, ifMatch: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('abandonTask', 'publicId', publicId)
+            // verify required parameter 'ifMatch' is not null or undefined
+            assertParamExists('abandonTask', 'ifMatch', ifMatch)
+            const localVarPath = `/api/v1/tasks/{publicId}/abandon`
+                .replace('{publicId}', encodeURIComponent(String(publicId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            if (ifMatch != null) {
+                localVarHeaderParameter['If-Match'] = String(ifMatch);
+            }
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {TaskListGroupAssignment} taskListGroupAssignment
@@ -1555,6 +1595,46 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
         },
         /**
          *
+         * @summary Restore abandoned task
+         * @param {string} publicId
+         * @param {string} ifMatch
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        restoreAbandonedTask: async (publicId: string, ifMatch: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('restoreAbandonedTask', 'publicId', publicId)
+            // verify required parameter 'ifMatch' is not null or undefined
+            assertParamExists('restoreAbandonedTask', 'ifMatch', ifMatch)
+            const localVarPath = `/api/v1/tasks/{publicId}/restore-abandoned`
+                .replace('{publicId}', encodeURIComponent(String(publicId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            if (ifMatch != null) {
+                localVarHeaderParameter['If-Match'] = String(ifMatch);
+            }
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {*} [options] Override http request option.
@@ -2078,6 +2158,20 @@ export const TasksApiFp = function(configuration?: Configuration) {
     return {
         /**
          *
+         * @summary Abandon task
+         * @param {string} publicId
+         * @param {string} ifMatch
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async abandonTask(publicId: string, ifMatch: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskItem>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.abandonTask(publicId, ifMatch, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.abandonTask']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {TaskListGroupAssignment} taskListGroupAssignment
@@ -2565,6 +2659,20 @@ export const TasksApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @summary Restore abandoned task
+         * @param {string} publicId
+         * @param {string} ifMatch
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async restoreAbandonedTask(publicId: string, ifMatch: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskItem>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.restoreAbandonedTask(publicId, ifMatch, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.restoreAbandonedTask']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {*} [options] Override http request option.
@@ -2736,6 +2844,16 @@ export const TasksApiFp = function(configuration?: Configuration) {
 export const TasksApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
     const localVarFp = TasksApiFp(configuration)
     return {
+        /**
+         *
+         * @summary Abandon task
+         * @param {TasksApiAbandonTaskRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        abandonTask(requestParameters: TasksApiAbandonTaskRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskItem> {
+            return localVarFp.abandonTask(requestParameters.publicId, requestParameters.ifMatch, options).then((request) => request(axios, basePath));
+        },
         /**
          *
          * @param {TasksApiAssignTaskListGroupRequest} requestParameters Request parameters.
@@ -3073,6 +3191,16 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         },
         /**
          *
+         * @summary Restore abandoned task
+         * @param {TasksApiRestoreAbandonedTaskRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        restoreAbandonedTask(requestParameters: TasksApiRestoreAbandonedTaskRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskItem> {
+            return localVarFp.restoreAbandonedTask(requestParameters.publicId, requestParameters.ifMatch, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {TasksApiRestoreTaskRequest} requestParameters Request parameters.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -3180,6 +3308,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         },
     };
 };
+
+/**
+ * Request parameters for abandonTask operation in TasksApi.
+ */
+export interface TasksApiAbandonTaskRequest {
+    readonly publicId: string
+
+    readonly ifMatch: string
+}
 
 /**
  * Request parameters for assignTaskListGroup operation in TasksApi.
@@ -3475,6 +3612,15 @@ export interface TasksApiRescheduleTaskRequest {
 }
 
 /**
+ * Request parameters for restoreAbandonedTask operation in TasksApi.
+ */
+export interface TasksApiRestoreAbandonedTaskRequest {
+    readonly publicId: string
+
+    readonly ifMatch: string
+}
+
+/**
  * Request parameters for restoreTask operation in TasksApi.
  */
 export interface TasksApiRestoreTaskRequest {
@@ -3597,6 +3743,17 @@ export interface TasksApiUploadTaskAttachmentRequest {
  * TasksApi - object-oriented interface
  */
 export class TasksApi extends BaseAPI {
+    /**
+     *
+     * @summary Abandon task
+     * @param {TasksApiAbandonTaskRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public abandonTask(requestParameters: TasksApiAbandonTaskRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).abandonTask(requestParameters.publicId, requestParameters.ifMatch, options).then((request) => request(this.axios, this.basePath));
+    }
+
     /**
      *
      * @param {TasksApiAssignTaskListGroupRequest} requestParameters Request parameters.
@@ -3968,6 +4125,17 @@ export class TasksApi extends BaseAPI {
      */
     public rescheduleTask(requestParameters: TasksApiRescheduleTaskRequest, options?: RawAxiosRequestConfig) {
         return TasksApiFp(this.configuration).rescheduleTask(requestParameters.publicId, requestParameters.ifMatch, requestParameters.taskRescheduleCommand, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @summary Restore abandoned task
+     * @param {TasksApiRestoreAbandonedTaskRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public restoreAbandonedTask(requestParameters: TasksApiRestoreAbandonedTaskRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).restoreAbandonedTask(requestParameters.publicId, requestParameters.ifMatch, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

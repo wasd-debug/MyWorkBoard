@@ -100,12 +100,16 @@ test('task inbox uses a ticktick-style three-pane workspace shell', () => {
 })
 
 test('task list routes use the replacement workspace and preserve the task contract', () => {
-  for (const path of ['/tasks/inbox', '/tasks/today', '/tasks/tomorrow', '/tasks/next7', '/tasks/all', '/tasks/completed', '/tasks/trash', '/tasks/list/:publicId', '/tasks/tag/:publicId', '/tasks/filter/:publicId', '/tasks/shortcut/:shortcut']) {
+  for (const path of ['/tasks/inbox', '/tasks/today', '/tasks/tomorrow', '/tasks/next7', '/tasks/all', '/tasks/completed', '/tasks/abandoned', '/tasks/trash', '/tasks/list/:publicId', '/tasks/tag/:publicId', '/tasks/filter/:publicId', '/tasks/shortcut/:shortcut']) {
     const routePattern = new RegExp(`path: '${path.replace(/[/:]/g, match => `\\${match}`)}'[\\s\\S]*TaskWorkspaceView`)
     assert.match(router, routePattern)
   }
   for (const token of ['clone-task-shell', 'TaskRichTextEditor', 'batchTasks', 'sortTask', 'clone-context-menu', 'store.createList']) assert.match(workspaceView, new RegExp(token.replace('.', '\\.' )))
   assert.match(workspaceView, /route\.name === ["']tasks-trash["'][\s\S]*\? task\.deleted/)
+  assert.match(workspaceView, /to="\/tasks\/abandoned"/)
+  assert.match(workspaceView, /restoreAbandoned\(context\.task\)/)
+  assert.match(client, /apiAbandonTask/)
+  assert.match(client, /apiRestoreAbandonedTask/)
   for (const token of ['parentId', 'tagIds', 'durationMinutes', 'allDay', 'recurrenceAnchor', 'apiListTaskReminders', 'apiCreateTaskReminder', 'apiUpdateTaskReminder', 'apiDeleteTaskReminder', '提醒需要联网保存']) assert.match(workspaceView, new RegExp(token))
 })
 
@@ -253,7 +257,7 @@ test('task sidebar has a lunar mini calendar, mobile controls, and no fake aband
   assert.match(workspaceView, /aria-expanded="miniCalendarExpanded"/)
   assert.match(workspaceView, /新增任务/)
   assert.match(workspaceView, /aria-pressed="sidebarEditing"/)
-  assert.match(workspaceView, /aria-disabled="true" title="需要后端增加 ABANDONED 状态及对应查询\/恢复 API"/)
+  assert.doesNotMatch(workspaceView, /需要后端增加 ABANDONED 状态/)
   assert.match(workspaceView, /clone-sidebar-system[\s\S]*clone-sidebar-organization[\s\S]*clone-sidebar-status[\s\S]*clone-mini-calendar/)
 })
 

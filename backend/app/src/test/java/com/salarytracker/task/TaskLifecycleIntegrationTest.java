@@ -59,6 +59,25 @@ class TaskLifecycleIntegrationTest extends MySqlIntegrationTestSupport {
                 null, null, null, null, null, null), "private-2"));
     }
 
+    @Test
+    void abandonsAndRestoresTasksWithRevisionChecksAndActivity() {
+        long userId = createUser("task-owner-");
+        TaskService service = service(userId);
+        TaskItem created = service.create(new TaskCommand(null, "暂缓的任务", null, null,
+                null, null, null, null, null), "abandon-1");
+
+        TaskItem abandoned = service.abandon(created.publicId(), String.valueOf(created.revision()));
+        assertEquals("ABANDONED", abandoned.status());
+        assertEquals(1L, service.listTasks(null, "ABANDONED", 0, 50).total());
+        assertEquals(0L, service.listTasks(null, "OPEN", 0, 50).total());
+        assertThrows(ConflictException.class, () -> service.restoreAbandoned(created.publicId(), "1"));
+
+        TaskItem restored = service.restoreAbandoned(created.publicId(), String.valueOf(abandoned.revision()));
+        assertEquals("OPEN", restored.status());
+        assertEquals(2L, jdbc.queryForObject("SELECT COUNT(*) FROM task_activity WHERE task_id=(SELECT id FROM task WHERE public_id=?) " +
+                "AND event_type IN ('ABANDONED','REOPENED')", Long.class, created.publicId()));
+    }
+
     private TaskService service(long userId) {
         CurrentUserResolver currentUser = mock(CurrentUserResolver.class);
         when(currentUser.id()).thenReturn(userId);

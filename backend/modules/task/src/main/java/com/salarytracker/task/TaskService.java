@@ -197,6 +197,7 @@ public class TaskService {
             case "INBOX" -> where.append(" AND l.system_key='INBOX'");
             case "ALL", "TRASH", "" -> { }
             case "COMPLETED" -> where.append(" AND t.status='COMPLETED'");
+            case "ABANDONED" -> where.append(" AND t.status='ABANDONED'");
             default -> throw new IllegalArgumentException("view 无效");
         }
         if (tagId != null && !tagId.isBlank()) {
@@ -550,7 +551,7 @@ public class TaskService {
             else if (parentListId != listDatabaseId) throw new IllegalArgumentException("子任务与父任务必须位于同一清单");
         }
         ValidatedTask values = validate(command, null);
-        String normalizedStatus = enumValue(status, "OPEN", List.of("OPEN", "COMPLETED"), "status");
+        String normalizedStatus = enumValue(status, "OPEN", List.of("OPEN", "COMPLETED", "ABANDONED"), "status");
         String rrule = TaskRecurrence.validate(command == null ? null : command.rrule());
         String anchor = rrule == null ? null : enumValue(command.recurrenceAnchor(), "DUE_DATE",
                 List.of("DUE_DATE", "COMPLETION_DATE"), "recurrenceAnchor");
@@ -609,7 +610,7 @@ public class TaskService {
         }
         ValidatedTask values = validate(command, before);
         String normalizedStatus = status == null ? before.status()
-                : enumValue(status, before.status(), List.of("OPEN", "COMPLETED"), "status");
+                : enumValue(status, before.status(), List.of("OPEN", "COMPLETED", "ABANDONED"), "status");
         if ("COMPLETED".equals(before.status()) && "OPEN".equals(normalizedStatus)) {
             ensureRecurringTaskCanReopen(userId, before);
         }
@@ -658,8 +659,17 @@ public class TaskService {
         TaskItem changed = taskForUser(userId, publicId);
         changeLog.append(userId, opId, publicId, "UPSERT", syncEntity(changed, false));
         if (!before.status().equals(changed.status())) {
-            appendActivity(userId, publicId, "COMPLETED".equals(changed.status()) ? "COMPLETED" : "REOPENED",
-                    "COMPLETED".equals(changed.status()) ? "完成了任务" : "重新打开了任务", null);
+            String event = switch (changed.status()) {
+                case "COMPLETED" -> "COMPLETED";
+                case "ABANDONED" -> "ABANDONED";
+                default -> "REOPENED";
+            };
+            String summary = switch (changed.status()) {
+                case "COMPLETED" -> "完成了任务";
+                case "ABANDONED" -> "放弃了任务";
+                default -> "重新打开了任务";
+            };
+            appendActivity(userId, publicId, event, summary, null);
         } else {
             appendActivity(userId, publicId, "UPDATED", updateSummary(before, changed), updateDetail(before, changed));
         }
@@ -674,7 +684,21 @@ public class TaskService {
     @Transactional
     public TaskItem reopen(String publicId, String ifMatch) {
         TaskItem current = taskForUser(currentUser.id(), publicId);
-        ensureRecurringTaskCanReopen(currentUser.id(), current);
+        if ("COMPLETED".equals(current.status())) ensureRecurringTaskCanReopen(currentUser.id(), current);
+        return changeStatus(publicId, ifMatch, "OPEN", UUID.randomUUID().toString());
+    }
+
+    @Transactional
+    public TaskItem abandon(String publicId, String ifMatch) {
+        return changeStatus(publicId, ifMatch, "ABANDONED", UUID.randomUUID().toString());
+    }
+
+    @Transactional
+    public TaskItem restoreAbandoned(String publicId, String ifMatch) {
+        TaskItem current = taskForUser(currentUser.id(), publicId);
+        if (!"ABANDONED".equals(current.status())) {
+            throw new ConflictException("任务当前并非已放弃状态", current.revision());
+        }
         return changeStatus(publicId, ifMatch, "OPEN", UUID.randomUUID().toString());
     }
 
@@ -869,13 +893,24 @@ public class TaskService {
         ensureUpdated(updated, userId, publicId);
         if ("COMPLETED".equals(status)) {
             generateNextInstance(userId, before, Instant.now());
+        }
+        if ("COMPLETED".equals(status) || "ABANDONED".equals(status)) {
             jdbcTemplate.update("UPDATE task_reminder r JOIN task t ON t.id=r.task_id SET r.cancelled_at=CURRENT_TIMESTAMP(3),r.revision=r.revision+1 " +
                     "WHERE t.public_id=? AND t.user_id=? AND r.cancelled_at IS NULL AND r.sent_at IS NULL", publicId, userId);
         }
         TaskItem changed = taskForUser(userId, publicId);
         changeLog.append(userId, opId, publicId, "UPSERT", syncEntity(changed, false));
-        appendActivity(userId, publicId, "COMPLETED".equals(status) ? "COMPLETED" : "REOPENED",
-                "COMPLETED".equals(status) ? "完成了任务" : "重新打开了任务", null);
+        String event = switch (status) {
+            case "COMPLETED" -> "COMPLETED";
+            case "ABANDONED" -> "ABANDONED";
+            default -> "REOPENED";
+        };
+        String summary = switch (status) {
+            case "COMPLETED" -> "完成了任务";
+            case "ABANDONED" -> "放弃了任务";
+            default -> "重新打开了任务";
+        };
+        appendActivity(userId, publicId, event, summary, null);
         return changed;
     }
 
@@ -1287,7 +1322,7 @@ public class TaskService {
 
     private String optionalStatus(String value) {
         if (value == null || value.isBlank()) return null;
-        return enumValue(value, null, List.of("OPEN", "COMPLETED"), "status");
+        return enumValue(value, null, List.of("OPEN", "COMPLETED", "ABANDONED"), "status");
     }
 
     private String enumValue(String value, String fallback, List<String> allowed, String field) {

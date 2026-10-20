@@ -184,6 +184,8 @@ export const apiCreateTask = async (payload, idempotencyKey) => data(await tasks
 export const apiUpdateTask = async (publicId, payload, currentRevision) => data(await tasks.updateTask({ publicId, taskCommand: payload, ifMatch: revision(currentRevision) }))
 export const apiCompleteTask = async (publicId, currentRevision) => data(await tasks.completeTask({ publicId, ifMatch: revision(currentRevision) }))
 export const apiReopenTask = async (publicId, currentRevision) => data(await tasks.reopenTask({ publicId, ifMatch: revision(currentRevision) }))
+export const apiAbandonTask = async (publicId, currentRevision) => data(await tasks.abandonTask({ publicId, ifMatch: revision(currentRevision) }))
+export const apiRestoreAbandonedTask = async (publicId, currentRevision) => data(await tasks.restoreAbandonedTask({ publicId, ifMatch: revision(currentRevision) }))
 export const apiDeleteTask = async (publicId, currentRevision) => data(await tasks.deleteTask({ publicId, ifMatch: revision(currentRevision) }))
 export const apiListTaskReminders = async publicId => data(await api.get(`/api/v1/tasks/${publicId}/reminders`))
 export const apiCreateTaskReminder = async (publicId, payload) => data(await api.post(`/api/v1/tasks/${publicId}/reminders`, payload))

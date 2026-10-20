@@ -128,7 +128,7 @@
       <section class="clone-sidebar-block clone-sidebar-status" aria-label="任务状态集合">
         <div class="clone-sidebar-block-title">任务状态</div>
         <RouterLink v-if="!isHiddenObject('system', completedView) && !isPinnedObject('system', completedView)" to="/tasks/completed" class="clone-nav-item" @contextmenu.prevent="openOrganizationMenu('system', completedView, $event)"><CheckCircle2 :size="15" /><span>已完成</span><button class="clone-item-menu-trigger" type="button" aria-label="已完成的更多操作" @click.prevent.stop="openOrganizationMenu('system', completedView, $event)"><Ellipsis :size="14" /></button></RouterLink>
-        <span class="clone-nav-item clone-unsupported-item" aria-disabled="true" title="需要后端增加 ABANDONED 状态及对应查询/恢复 API"><X :size="15" /><span>已放弃</span><small>待支持</small></span>
+        <RouterLink v-if="!isHiddenObject('system', abandonedView) && !isPinnedObject('system', abandonedView)" to="/tasks/abandoned" class="clone-nav-item" :class="{ active: route.name === 'tasks-abandoned' }" @contextmenu.prevent="openOrganizationMenu('system', abandonedView, $event)"><X :size="15" /><span>已放弃</span><small>{{ abandonedTaskCount }}</small><button class="clone-item-menu-trigger" type="button" aria-label="已放弃的更多操作" @click.prevent.stop="openOrganizationMenu('system', abandonedView, $event)"><Ellipsis :size="14" /></button></RouterLink>
         <RouterLink v-if="!isHiddenObject('system', trashView) && !isPinnedObject('system', trashView)" to="/tasks/trash" class="clone-nav-item" @contextmenu.prevent="openOrganizationMenu('system', trashView, $event)"><Trash2 :size="15" /><span>垃圾桶</span><button class="clone-item-menu-trigger" type="button" aria-label="垃圾桶的更多操作" @click.prevent.stop="openOrganizationMenu('system', trashView, $event)"><Ellipsis :size="14" /></button></RouterLink>
       </section>
       <section class="clone-sidebar-block clone-mini-calendar" aria-label="迷你日历">
@@ -787,6 +787,8 @@
       <strong>{{ context.task?.title }}</strong>
       <button type="button" @click="openDetail(context.task); closeContext()"><Pencil :size="14" />打开详情</button>
       <button type="button" @click="toggleComplete(context.task); closeContext()"><CheckCircle2 :size="14" />{{ context.task?.status === "COMPLETED" ? "重新打开" : "标记完成" }}</button>
+      <button v-if="context.task?.status === 'ABANDONED'" type="button" @click="restoreAbandoned(context.task); closeContext()"><RotateCcw :size="14" />恢复任务</button>
+      <button v-else type="button" @click="store.abandon(context.task); closeContext()"><X :size="14" />放弃任务</button>
       <button type="button" @click="setContextDue(0)"><CalendarClock :size="14" />安排今天</button>
       <button type="button" @click="setContextDue(1)"><CalendarClock :size="14" />安排明天</button>
       <button type="button" @click="setContextDue(null)"><X :size="14" />清除日期</button>
@@ -857,6 +859,7 @@ import {
   Pencil,
   Pin,
   Plus,
+  RotateCcw,
   Search,
   Settings2,
   SquareKanban,
@@ -1087,9 +1090,10 @@ const primaryViews = [
   { key: "summary", label: "摘要", to: "/tasks/shortcut/summary", icon: ClipboardList },
 ];
 const completedView = { key: "completed", label: "已完成", to: "/tasks/completed", icon: CheckCircle2 };
+const abandonedView = { key: "abandoned", label: "已放弃", to: "/tasks/abandoned", icon: X };
 const trashView = { key: "trash", label: "垃圾桶", to: "/tasks/trash", icon: Trash2 };
 const archivedView = { key: "archived", label: "归档", to: "/tasks/shortcut/archived", icon: Archive };
-const allSidebarSystemViews = computed(() => [...primaryViews, ...shortcutViews, completedView, trashView, archivedView]);
+const allSidebarSystemViews = computed(() => [...primaryViews, ...shortcutViews, completedView, abandonedView, trashView, archivedView]);
 const visiblePrimaryViews = computed(() => primaryViews.filter(item => !isHiddenObject("system", item) && !isPinnedObject("system", item)));
 const pinnedPrimaryViews = computed(() => primaryViews.filter(item => !isHiddenObject("system", item) && isPinnedObject("system", item)));
 const sortedListGroups = computed(() => [...store.listGroups].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
@@ -1097,6 +1101,7 @@ const activeLists = computed(() => store.lists.filter(item => !item.archived));
 const pinnedLists = computed(() => activeLists.value.filter(item => item.systemKey !== "INBOX" && !isHiddenObject("list", item) && isPinnedObject("list", item)).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
 const archivedLists = computed(() => store.lists.filter(item => item.archived).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
 const archivedTaskCount = computed(() => store.tasks.filter(task => !task.deleted && archivedLists.value.some(list => list.publicId === task.listId)).length);
+const abandonedTaskCount = computed(() => store.tasks.filter(task => !task.deleted && task.status === "ABANDONED").length);
 const ungroupedLists = computed(() => activeLists.value.filter(item => !item.groupId && !isHiddenObject("list", item) && !isPinnedObject("list", item)).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
 const rootTags = computed(() => store.tags.filter(item => !item.parentId && !isHiddenObject("tag", item) && !isPinnedObject("tag", item)).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
 const childTags = computed(() => store.tags.filter(item => item.parentId && !isHiddenObject("tag", item) && !isPinnedObject("tag", item)).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
@@ -1115,7 +1120,7 @@ const mergeTargets = computed(() => {
   }
   return store.tags.filter(item => item.publicId !== tagMerge.source.publicId && !descendants.has(item.publicId));
 });
-function openCount(predicate) { return store.tasks.filter(task => !task.deleted && task.status !== "COMPLETED" && predicate(task)).length; }
+function openCount(predicate) { return store.tasks.filter(task => !task.deleted && !["COMPLETED", "ABANDONED"].includes(task.status) && predicate(task)).length; }
 function listOpenCount(listId) { return openCount(task => task.listId === listId); }
 function tagOpenCount(tagId) { return openCount(task => (task.tagIds || []).includes(tagId)); }
 function tagHasTasks(tagId) { return store.tasks.some(task => !task.deleted && (task.tagIds || []).includes(tagId)); }
@@ -1132,7 +1137,7 @@ const shortcutViews = [
 ];
 const pinnedShortcutViews = computed(() => shortcutViews.filter(item => !isHiddenObject("system", item) && isPinnedObject("system", item)));
 const visibleShortcutViews = computed(() => shortcutViews.filter(item => !isHiddenObject("system", item) && !isPinnedObject("system", item)));
-const pinnedBottomViews = computed(() => [completedView, trashView, archivedView].filter(item => !isHiddenObject("system", item) && isPinnedObject("system", item)));
+const pinnedBottomViews = computed(() => [completedView, abandonedView, trashView, archivedView].filter(item => !isHiddenObject("system", item) && isPinnedObject("system", item)));
 const recurrenceOptions = [
   { value: "", label: "不重复" },
   { value: "FREQ=DAILY", label: "每天" },
@@ -1155,6 +1160,8 @@ const title = computed(() =>
       ? "明天"
       : route.name === "tasks-next7"
         ? "最近 7 天"
+        : route.name === "tasks-abandoned"
+          ? "已放弃"
         : route.name === "tasks-inbox"
           ? "收件箱"
           : route.name === "tasks-list"
@@ -1265,9 +1272,11 @@ const sourceTasks = computed(() =>
       ? task.deleted
       : !task.deleted && (route.name === "tasks-completed"
         ? task.status === "COMPLETED"
+        : route.name === "tasks-abandoned"
+          ? task.status === "ABANDONED"
         : route.params.shortcut === "archived"
           ? archivedLists.value.some((list) => list.publicId === task.listId)
-          : !hideCompleted.value || task.status !== "COMPLETED"),
+          : task.status !== "ABANDONED" && (!hideCompleted.value || task.status !== "COMPLETED")),
   ),
 );
 const visibleTasks = computed(() => {
@@ -1277,6 +1286,8 @@ const visibleTasks = computed(() => {
   const end = addDays(today, 8);
   if (route.name === "tasks-completed")
     values = values.filter((task) => task.status === "COMPLETED");
+  else if (route.name === "tasks-abandoned")
+    values = values.filter((task) => task.status === "ABANDONED");
   else if (route.name === "tasks-list")
     values = values.filter((task) => task.listId === route.params.publicId);
   else if (route.name === "tasks-tag")
@@ -1313,7 +1324,7 @@ const visibleTasks = computed(() => {
   return sortTaskItems(values, { sortBy: sort.value, direction: sortDirection.value });
 });
 const openTasks = computed(() =>
-  visibleTasks.value.filter((task) => task.status !== "COMPLETED"),
+  visibleTasks.value.filter((task) => !["COMPLETED", "ABANDONED"].includes(task.status)),
 );
 const completedTasks = computed(() =>
   visibleTasks.value.filter((task) => task.status === "COMPLETED"),
@@ -1380,7 +1391,7 @@ function recurrenceValue(value) {
   return recurrenceOptions.some((option) => option.value === value) ? value : value ? "CUSTOM" : "";
 }
 function itemCount(key) {
-  const tasks = store.tasks.filter(item => !item.deleted && item.status !== "COMPLETED");
+  const tasks = store.tasks.filter(item => !item.deleted && !["COMPLETED", "ABANDONED"].includes(item.status));
   const today = startOfDay(new Date());
   const tomorrow = addDays(today, 1);
   if (key === "all") return tasks.length;
@@ -2227,6 +2238,11 @@ async function toggleComplete(task) {
   selectedTask.value =
     store.tasks.find((item) => item.publicId === task.publicId) || null;
 }
+async function restoreAbandoned(task) {
+  if (!task || task.status !== "ABANDONED") return;
+  await store.reopen(task);
+  selectedTask.value = store.tasks.find(item => item.publicId === task.publicId) || null;
+}
 async function duplicateTask(task) {
   if (!task) return;
   await store.create({
@@ -2343,7 +2359,7 @@ function isHiddenObject(kind, item) {
   if (getDisplayOption(kind, item) !== "NON_EMPTY") return false;
   if (kind === "tag") return !tagHasTasks(item.publicId);
   if (kind === "system") {
-    if (["completed", "trash", "archived"].includes(item.key)) return item.key === "completed" ? !store.tasks.some(task => task.status === "COMPLETED" && !task.deleted) : item.key === "trash" ? !store.tasks.some(task => task.deleted) : archivedTaskCount.value === 0;
+    if (["completed", "abandoned", "trash", "archived"].includes(item.key)) return item.key === "completed" ? !store.tasks.some(task => task.status === "COMPLETED" && !task.deleted) : item.key === "abandoned" ? abandonedTaskCount.value === 0 : item.key === "trash" ? !store.tasks.some(task => task.deleted) : archivedTaskCount.value === 0;
     return itemCount(item.key) === 0;
   }
   return false;

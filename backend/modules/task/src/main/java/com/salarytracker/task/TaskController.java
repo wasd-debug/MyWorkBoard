@@ -352,6 +352,24 @@ public class TaskController {
         return ApiResponse.ok(taskService.reopen(publicId, ifMatch));
     }
 
+    @PostMapping("/{publicId}/abandon")
+    @PreAuthorize("hasAuthority('task:write')")
+    @Audit(module = "task", action = "task.abandon", targetType = "task")
+    @Operation(operationId = "abandonTask")
+    public ApiResponse<TaskItem> abandon(@PathVariable String publicId,
+                                         @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(taskService.abandon(publicId, ifMatch));
+    }
+
+    @PostMapping("/{publicId}/restore-abandoned")
+    @PreAuthorize("hasAuthority('task:write')")
+    @Audit(module = "task", action = "task.restoreAbandoned", targetType = "task")
+    @Operation(operationId = "restoreAbandonedTask")
+    public ApiResponse<TaskItem> restoreAbandoned(@PathVariable String publicId,
+                                                  @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(taskService.restoreAbandoned(publicId, ifMatch));
+    }
+
     @PostMapping("/{publicId}/restore")
     @PreAuthorize("hasAuthority('task:write')")
     @Audit(module = "task", action = "task.restore", targetType = "task")

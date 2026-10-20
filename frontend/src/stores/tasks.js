@@ -3,7 +3,8 @@ import { createTaskSyncEngine } from '../../packages/sync-engine/src/index.js'
 import { apiListDeletedTaskLists, apiListTaskLists, apiListTaskTags, apiListTasks, apiPullTaskSync,
   apiGetHabitStats, apiListCountdowns, apiListHabits, apiPurgeTask, apiPushTaskSync, apiRestoreTask,
   apiRestoreTaskList, apiListTaskListGroups, apiCreateTaskListGroup, apiUpdateTaskListGroup,
-  apiDeleteTaskListGroup, apiAssignTaskListGroup, apiBatchTasks, apiSortTask } from '../../packages/api-client/src/index.js'
+  apiDeleteTaskListGroup, apiAssignTaskListGroup, apiBatchTasks, apiSortTask, apiAbandonTask,
+  apiRestoreAbandonedTask } from '../../packages/api-client/src/index.js'
 import { accountScopeFor, taskDatabaseName } from '../utils/accountScope.js'
 import { createClientId } from '../utils/clientId.js'
 
@@ -55,7 +56,7 @@ export const useTasksStore = defineStore('tasks', {
   }),
   getters: {
     inbox: state => state.lists.find(item => item.systemKey === 'INBOX') || state.lists[0],
-    openTasks: state => state.tasks.filter(item => !item.deleted && item.status !== 'COMPLETED'),
+    openTasks: state => state.tasks.filter(item => !item.deleted && !['COMPLETED', 'ABANDONED'].includes(item.status)),
     completedTasks: state => state.tasks.filter(item => !item.deleted && item.status === 'COMPLETED'),
     trashedTasks: state => state.tasks.filter(item => item.deleted)
   },
@@ -238,10 +239,27 @@ export const useTasksStore = defineStore('tasks', {
       finally { this.saving = false }
     },
     async complete(item) { this.undoStack.push({ item: { ...item }, label: '完成任务' }); return this.saveLocal({ ...item, status: 'COMPLETED', completedAt: new Date().toISOString() }) },
+    async abandon(item) {
+      if (item.status === 'ABANDONED') return item
+      if (this.online && item.publicId && Number(item.revision) > 0) {
+        const changed = await apiAbandonTask(item.publicId, item.revision)
+        await engine.put('task', { ...changed, id: changed.publicId }, { bookId: SCOPE, recordOp: false })
+        await this.hydrate()
+        return changed
+      }
+      this.undoStack.push({ item: { ...item }, label: '放弃任务' })
+      return this.saveLocal({ ...item, status: 'ABANDONED', completedAt: null })
+    },
     async reopen(item) {
       this.undoStack.push({ item: { ...item }, label: '重新打开任务' })
       if (item.rrule && item.seriesId && this.tasks.some(value => value.seriesId === item.seriesId && value.seriesSequence > (item.seriesSequence || 0) && value.status === 'OPEN' && !value.deleted)) {
         throw new Error('周期任务的下一实例已生成，无法重开当前实例')
+      }
+      if (item.status === 'ABANDONED' && this.online && item.publicId && Number(item.revision) > 0) {
+        const changed = await apiRestoreAbandonedTask(item.publicId, item.revision)
+        await engine.put('task', { ...changed, id: changed.publicId }, { bookId: SCOPE, recordOp: false })
+        await this.hydrate()
+        return changed
       }
       return this.saveLocal({ ...item, status: 'OPEN', completedAt: null })
     },
