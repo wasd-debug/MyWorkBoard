@@ -283,10 +283,12 @@
                     ><CalendarClock :size="13" />{{
                       formatDate(task.dueAt)
                     }}</span
-                  ><span v-if="showChecklist && (task.totalSubtasks || task.checklist?.length)"
-                    >{{ task.completedSubtasks ?? task.checklist?.filter(item => item.completed).length ?? 0 }}/{{
-                      task.totalSubtasks || task.checklist.length
-                    }}<CheckSquare :size="13" />检查项</span
+                  ><span v-if="showChecklist && task.checklist?.length"
+                    >{{ task.checklist.filter(item => item.completed).length }}/{{ task.checklist.length }}<CheckSquare :size="13" />检查项</span
+                  ><span v-if="task.totalSubtasks"
+                    >{{ task.completedSubtasks || 0 }}/{{ task.totalSubtasks }}<ListTodo :size="13" />子任务</span
+                  ><span v-if="task.rrule" :title="recurrenceLabel(task.rrule)"><Repeat2 :size="13" />{{ recurrenceLabel(task.rrule) }}</span
+                  ><span v-if="task.focusMinutes" :title="`累计专注 ${task.focusMinutes} 分钟`"><Timer :size="13" />{{ task.focusMinutes }} 分钟</span
                   ></span
                 ></button
               ><em
@@ -684,54 +686,25 @@
       </div>
     </aside>
 
-    <div
-      v-if="context.open"
-      class="clone-context-menu"
-      :style="{ left: `${context.x}px`, top: `${context.y}px` }"
-      role="menu"
-      @click.stop
-    >
-      <strong>{{ context.task?.title }}</strong
-      ><button
-        type="button"
-        @click="
-          openDetail(context.task);
-          closeContext();
-        "
-      >
-        <Pencil :size="14" />打开详情</button
-      ><button
-        type="button"
-        @click="
-          toggleComplete(context.task);
-          closeContext();
-        "
-      >
-        <CheckCircle2 :size="14" />{{
-          context.task?.status === "COMPLETED" ? "重新打开" : "标记完成"
-        }}</button
-      ><button type="button" @click="setContextDue(0)"><CalendarClock :size="14" />安排今天</button
-      ><button type="button" @click="setContextDue(1)"><CalendarClock :size="14" />安排明天</button
-      ><button type="button" @click="setContextDue(null)"><X :size="14" />清除日期</button
-      ><div class="clone-context-divider" aria-hidden="true"></div
-      ><button
-        type="button"
-        @click="
-          duplicateTask(context.task);
-          closeContext();
-        "
-      >
-        <Copy :size="14" />创建副本</button
-      ><button
-        type="button"
-        class="danger"
-        @click="
-          deleteTask(context.task);
-          closeContext();
-        "
-      >
-        <Trash2 :size="14" />删除任务
-      </button>
+    <div v-if="context.open" class="clone-context-menu clone-task-row-menu" :style="{ left: `${context.x}px`, top: `${context.y}px` }" role="menu" @click.stop>
+      <strong>{{ context.task?.title }}</strong>
+      <button type="button" @click="openDetail(context.task); closeContext()"><Pencil :size="14" />打开详情</button>
+      <button type="button" @click="toggleComplete(context.task); closeContext()"><CheckCircle2 :size="14" />{{ context.task?.status === "COMPLETED" ? "重新打开" : "标记完成" }}</button>
+      <button type="button" @click="setContextDue(0)"><CalendarClock :size="14" />安排今天</button>
+      <button type="button" @click="setContextDue(1)"><CalendarClock :size="14" />安排明天</button>
+      <button type="button" @click="setContextDue(null)"><X :size="14" />清除日期</button>
+      <button type="button" @click="contextSubmenu = contextSubmenu === 'priority' ? '' : 'priority'"><Flag :size="14" />设置优先级<ChevronDown :size="13" /></button>
+      <div v-if="contextSubmenu === 'priority'" class="clone-context-submenu"><button v-for="option in priorityOptions" :key="option.value" type="button" @click="setContextPriority(option.value)">{{ option.label }}</button></div>
+      <button type="button" @click="contextSubmenu = contextSubmenu === 'list' ? '' : 'list'"><ListTodo :size="14" />移至清单<ChevronDown :size="13" /></button>
+      <div v-if="contextSubmenu === 'list'" class="clone-context-submenu"><button v-for="list in activeLists" :key="list.publicId" type="button" :disabled="list.publicId === context.task?.listId" @click="moveContextTask(list)">{{ list.name }}</button></div>
+      <button type="button" @click="contextSubmenu = contextSubmenu === 'tags' ? '' : 'tags'"><Tag :size="14" />设置标签<ChevronDown :size="13" /></button>
+      <div v-if="contextSubmenu === 'tags'" class="clone-context-submenu"><label v-for="tag in sortedTags" :key="tag.publicId"><input type="checkbox" :checked="context.task?.tagIds?.includes(tag.publicId)" @change="toggleContextTag(tag)" />#{{ tag.name }}</label><span v-if="!sortedTags.length">暂无标签</span></div>
+      <button type="button" @click="createSubtask(context.task); closeContext()"><Plus :size="14" />添加子任务</button>
+      <button type="button" @click="startContextFocus"><Timer :size="14" />开始专注</button>
+      <button type="button" @click="copyContextTaskLink"><Copy :size="14" />复制任务链接</button>
+      <div class="clone-context-divider" aria-hidden="true"></div>
+      <button type="button" @click="duplicateTask(context.task); closeContext()"><Copy :size="14" />创建副本</button>
+      <button type="button" class="danger" @click="deleteTask(context.task); closeContext()"><Trash2 :size="14" />删除任务</button>
     </div>
     <div v-if="organizationMenuOpen" class="clone-context-menu clone-organization-menu" role="menu" :style="{ left: `${organizationMenu.x}px`, top: `${organizationMenu.y}px` }" @click.stop>
       <template v-if="organizationMenu.kind === 'list'"><button type="button" @click="editOrganization('list')"><Pencil :size="14" />编辑清单</button><button type="button" @click="createListGroupForItem"><Plus :size="14" />新建分组</button><button v-if="sortedListGroups.length" type="button" @click="toggleListGroupAssignment"><ListTodo :size="14" />{{ organizationMenu.item.groupId ? '移出分组' : '加入分组' }}</button><button type="button" @click="archiveList">{{ organizationMenu.item.archived ? '取消归档' : '归档清单' }}</button><button type="button" class="danger" @click="deleteOrganization('list')"><Trash2 :size="14" />删除清单</button></template>
@@ -764,6 +737,7 @@ import {
   Copy,
   Ellipsis,
   Download,
+  Flag,
   GripVertical,
   Inbox,
   ListFilter,
@@ -775,8 +749,10 @@ import {
   Plus,
   Search,
   SquareKanban,
+  Repeat2,
   SlidersHorizontal,
   Tag,
+  Timer,
   Trash2,
   WifiOff,
   X,
@@ -787,6 +763,8 @@ import Dialog from "../components/ui/Dialog.vue";
 import { moveItem } from "./taskSidebar.js";
 import { groupTaskItems, sortTaskItems } from "./taskList.js";
 import { useTasksStore } from "../stores/tasks.js";
+import { useTaskFocusStore } from "../stores/taskFocus.js";
+import { message } from "../services/message.js";
 import {
   apiCreateTaskReminder,
   apiCreateTaskComment,
@@ -813,6 +791,7 @@ import {
 const route = useRoute();
 const router = useRouter();
 const store = useTasksStore();
+const focusStore = useTaskFocusStore();
 const filters = ref([]);
 const quickTitle = ref("");
 const sidebarHidden = ref(false);
@@ -901,6 +880,7 @@ watch(() => store.accountScope, (scope) => {
   if (scope !== viewPreferencesScope.value) loadViewPreferences();
 });
 const context = reactive({ open: false, x: 0, y: 0, task: null });
+const contextSubmenu = ref("");
 const activities = ref([]);
 const activityLoading = ref(false);
 const comments = ref([]);
@@ -955,6 +935,7 @@ const archivedTaskCount = computed(() => store.tasks.filter(task => !task.delete
 const ungroupedLists = computed(() => activeLists.value.filter(item => !item.groupId).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
 const rootTags = computed(() => store.tags.filter(item => !item.parentId).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
 const childTags = computed(() => store.tags.filter(item => item.parentId).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
+const sortedTags = computed(() => [...store.tags].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
 const sortedFilters = computed(() => [...filters.value].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
 function openCount(predicate) { return store.tasks.filter(task => !task.deleted && task.status !== "COMPLETED" && predicate(task)).length; }
 function listOpenCount(listId) { return openCount(task => task.listId === listId); }
@@ -1188,6 +1169,7 @@ function toggleSection(key) {
 function closeContext() {
   context.open = false;
   context.task = null;
+  contextSubmenu.value = "";
   organizationMenuOpen.value = false;
 }
 async function setContextDue(offset) {
@@ -1228,9 +1210,60 @@ async function toggleChecklistItem(task, item) {
 function openContext(task, event) {
   if (!task) return;
   context.task = task;
-  context.x = Math.max(8, Math.min(event.clientX, window.innerWidth - 230));
-  context.y = Math.max(8, Math.min(event.clientY, window.innerHeight - 330));
+  contextSubmenu.value = "";
+  context.x = Math.max(8, Math.min(event.clientX, window.innerWidth - 290));
+  const menuHeight = Math.min(window.innerHeight * 0.8, 680);
+  context.y = Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8));
   context.open = true;
+}
+async function setContextPriority(priority) {
+  const task = context.task;
+  closeContext();
+  if (task) await store.update(task, { priority });
+}
+async function moveContextTask(list) {
+  const task = context.task;
+  closeContext();
+  if (task && list.publicId !== task.listId) await store.update(task, { listId: list.publicId });
+}
+async function toggleContextTag(tag) {
+  const task = context.task;
+  if (!task) return;
+  const current = task.tagIds || [];
+  const tagIds = current.includes(tag.publicId)
+    ? current.filter((id) => id !== tag.publicId)
+    : [...current, tag.publicId];
+  try {
+    const updated = await store.update(task, { tagIds });
+    context.task = updated;
+    message.success(current.includes(tag.publicId) ? `已移除标签 ${tag.name}` : `已添加标签 ${tag.name}`);
+  } catch (error) {
+    message.error(error?.response?.data?.detail || error?.message || "标签更新失败");
+  }
+}
+async function startContextFocus() {
+  const task = context.task;
+  closeContext();
+  if (!task) return;
+  try {
+    await focusStore.start({ taskId: task.publicId });
+    await router.push("/tasks/focus");
+  } catch (error) {
+    message.error(error?.response?.data?.detail || error?.message || "无法开始专注");
+  }
+}
+async function copyContextTaskLink() {
+  const task = context.task;
+  if (!task) return;
+  const url = new URL("/tasks/all", window.location.origin);
+  url.searchParams.set("task", task.publicId);
+  try {
+    await navigator.clipboard.writeText(url.href);
+    closeContext();
+    message.success("任务链接已复制");
+  } catch {
+    message.warning("复制失败，请检查浏览器剪贴板权限");
+  }
 }
 function openDetail(task) {
   if (!task) return;
@@ -1351,7 +1384,7 @@ async function openEdit(task) {
     }
   }
 }
-function openCreate() {
+function openCreate(parentId = "") {
   editing.value = null;
   selectedTask.value = {};
   resetCollaboration();
@@ -1359,7 +1392,7 @@ function openCreate() {
     title: "",
     description: "",
     listId: store.inbox?.publicId || "",
-    parentId: "",
+    parentId,
     tagIds: [],
     priority: "NONE",
     durationMinutes: 0,
@@ -1381,6 +1414,11 @@ function openCreate() {
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
   priorityPopoverOpen.value = false;
+}
+function createSubtask(task) {
+  if (!task) return;
+  openCreate(task.publicId);
+  draft.listId = task.listId || store.inbox?.publicId || "";
 }
 function closeDetail() {
   selectedTask.value = null;
@@ -2453,6 +2491,16 @@ const SidebarSection = {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.clone-task-row-menu { width: min(290px, calc(100vw - 16px)); max-height: min(80vh, 680px); overflow-y: auto; overscroll-behavior: contain; }
+.clone-task-row-menu > button { width: 100%; }
+.clone-task-row-menu > button > svg:last-child { margin-left: auto; }
+.clone-task-row-menu button:disabled { color: var(--muted); opacity: .55; cursor: default; }
+.clone-context-submenu { display: grid; gap: 2px; max-height: 180px; overflow: auto; margin: 0 4px 4px 22px; padding: 4px; border-left: 1px solid var(--line); }
+.clone-context-submenu button { min-height: 29px; padding: 5px 7px; font-size: 12px; }
+.clone-context-submenu label { display: flex; align-items: center; gap: 7px; min-height: 28px; padding: 4px 7px; border-radius: 5px; color: var(--ink2); font-size: 12px; cursor: pointer; }
+.clone-context-submenu label:hover { background: var(--accent-soft); }
+.clone-context-submenu input { flex: 0 0 auto; width: 14px; min-height: 14px; margin: 0; accent-color: var(--accent); }
+.clone-context-submenu > span { padding: 6px 7px; color: var(--muted); font-size: 12px; }
 .clone-context-divider { height: 1px; margin: 5px 3px; background: var(--line); }
 .clone-context-menu .danger,
 .clone-detail-actions .danger {

@@ -195,6 +195,17 @@ test('task detail allows direct title and Markdown description editing in its pa
   assert.match(workspaceView, /clone-detail-edit-fields/)
 })
 
+test('task row menu exposes contract-backed task operations and accurate metadata', () => {
+  for (const token of ['设置优先级', '移至清单', '设置标签', '添加子任务', '开始专注', '复制任务链接']) {
+    assert.ok(workspaceView.includes(token), `missing row action ${token}`)
+  }
+  assert.match(workspaceView, /focusStore\.start\(\{ taskId: task\.publicId \}\)/)
+  assert.match(workspaceView, /async function moveContextTask\(list\)/)
+  assert.match(workspaceView, /async function toggleContextTag\(tag\)/)
+  assert.match(workspaceView, /task\.focusMinutes/)
+  assert.match(workspaceView, /ListTodo :size="13" \/>子任务/)
+})
+
 test('task domain exposes a ticktick-style desktop module rail', async () => {
   const rail = await readFile(new URL('../components/tasks/TaskModuleRail.vue', import.meta.url), 'utf8')
   const app = await readFile(new URL('../App.vue', import.meta.url), 'utf8')
