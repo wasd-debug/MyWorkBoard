@@ -25,20 +25,31 @@
       </nav>
       <section class="clone-sidebar-section">
         <header><button type="button" @click="toggleSection('lists')"><ChevronDown :size="14" :class="{ rotated: !sections.lists }" />清单</button><button class="sidebar-create" type="button" aria-label="新建清单" @click="createList"><Plus :size="14" /></button></header>
-        <div v-show="sections.lists" class="clone-sidebar-items">
+        <div v-show="sections.lists" class="clone-sidebar-items" @dragover.prevent="organizationDrag && (organizationDropTarget = 'list-root')" @drop.prevent="dropOrganizationRoot('list')">
+        <section v-for="group in sortedListGroups" :key="group.publicId" class="clone-list-group clone-sortable-group" :class="{ 'drag-over': organizationDropTarget === `group:${group.publicId}` }" @dragover.prevent="organizationDropTarget = `group:${group.publicId}`" @drop.prevent.stop="dropGroup(group)" @contextmenu.prevent="openOrganizationMenu('group', group, $event)">
+          <header class="clone-list-group-heading" draggable="true" @dragstart="startOrganizationDrag('group', group)"><button type="button" class="clone-group-toggle" :aria-label="`${groupCollapsed[group.publicId] ? '展开' : '折叠'}${group.name}`" @click.stop="toggleListGroupCollapsed(group)"><ChevronDown :size="13" :class="{ rotated: groupCollapsed[group.publicId] }" /></button><span>{{ group.name }}</span><small>{{ listsInGroup(group.publicId).length }}</small><button type="button" :aria-label="`新建清单到${group.name}`" @click.stop="createList(group.publicId)"><Plus :size="13" /></button><button type="button" :aria-label="`${group.name}的更多操作`" @click.stop="openOrganizationMenu('group', group, $event)"><Ellipsis :size="14" /></button></header>
+          <div v-show="!groupCollapsed[group.publicId]" class="clone-group-lists"><RouterLink v-for="list in listsInGroup(group.publicId)" :key="list.publicId" :to="list.systemKey === 'INBOX' ? '/tasks/inbox' : `/tasks/list/${list.publicId}`" class="clone-nav-item clone-sortable-item" :class="{ active: route.params.publicId === list.publicId, 'drag-over': organizationDropTarget === list.publicId }" :draggable="list.systemKey !== 'INBOX'" @dragstart="startOrganizationDrag('list', list)" @dragover.prevent="organizationDropTarget = list.publicId" @drop.prevent.stop="dropOrganization('list', list)" @contextmenu.prevent="openOrganizationMenu('list', list, $event)"><ListTodo :size="15" :style="{ color: list.color || undefined }" /><span>{{ list.name }}</span><small>{{ listOpenCount(list.publicId) }}</small><button v-if="list.systemKey !== 'INBOX'" class="clone-item-menu-trigger" type="button" :aria-label="`${list.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('list', list, $event)"><Ellipsis :size="14" /></button></RouterLink></div>
+        </section>
+        <div v-if="ungroupedLists.length" class="clone-ungrouped-heading">未分组</div>
         <RouterLink
-          v-for="list in store.lists.filter((item) => !item.archived)"
+          v-for="list in ungroupedLists"
           :key="list.publicId"
           :to="
             list.systemKey === 'INBOX'
               ? '/tasks/inbox'
               : `/tasks/list/${list.publicId}`
           "
-          class="clone-nav-item"
+          class="clone-nav-item clone-sortable-item"
           :class="{ active: route.params.publicId === list.publicId }"
-          ><ListTodo :size="15" /><span>{{ list.name }}</span></RouterLink
+          :draggable="list.systemKey !== 'INBOX'"
+          @dragstart="startOrganizationDrag('list', list)"
+          @dragover.prevent="organizationDropTarget = list.publicId"
+          @drop.prevent.stop="dropOrganization('list', list)"
+          @contextmenu.prevent="openOrganizationMenu('list', list, $event)"
+          ><ListTodo :size="15" :style="{ color: list.color || undefined }" /><span>{{ list.name }}</span><small>{{ listOpenCount(list.publicId) }}</small><button class="clone-item-menu-trigger" type="button" :aria-label="`${list.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('list', list, $event)"><Ellipsis :size="14" /></button></RouterLink
         >
-        <span v-if="!store.lists.length" class="clone-empty-item">暂无清单</span>
+        <RouterLink to="/tasks/shortcut/archived" class="clone-nav-item" :class="{ active: route.params.shortcut === 'archived' }"><Archive :size="15" /><span>归档</span><small>{{ archivedTaskCount }}</small></RouterLink>
+        <span v-if="!activeLists.length && !archivedLists.length" class="clone-empty-item">暂无清单</span>
         </div>
       </section>
       <section class="clone-sidebar-section">
@@ -49,16 +60,22 @@
           :key="item.to"
           :to="item.to"
           class="clone-nav-item"
-          ><ListFilter :size="15" /><span>{{ item.label }}</span></RouterLink
+          ><component :is="item.icon" :size="15" /><span>{{ item.label }}</span></RouterLink
         >
         <RouterLink
-          v-for="filter in filters"
+          v-for="filter in sortedFilters"
           :key="filter.publicId"
           :to="`/tasks/filter/${filter.publicId}`"
-          class="clone-nav-item"
+          class="clone-nav-item clone-sortable-item"
+          :class="{ 'drag-over': organizationDropTarget === filter.publicId }"
+          draggable="true"
+          @dragstart="startOrganizationDrag('filter', filter)"
+          @dragover.prevent="organizationDropTarget = filter.publicId"
+          @drop.prevent.stop="dropOrganization('filter', filter)"
+          @contextmenu.prevent="openOrganizationMenu('filter', filter, $event)"
           ><SlidersHorizontal :size="15" /><span>{{
             filter.name
-          }}</span></RouterLink
+          }}</span><button class="clone-item-menu-trigger" type="button" :aria-label="`${filter.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('filter', filter, $event)"><Ellipsis :size="14" /></button></RouterLink
         >
         <span v-if="!filters.length" class="clone-empty-item"
           >暂无自定义筛选器</span
@@ -68,13 +85,10 @@
       <section class="clone-sidebar-section">
         <header><button type="button" @click="toggleSection('tags')"><ChevronDown :size="14" :class="{ rotated: !sections.tags }" />标签</button><button class="sidebar-create" type="button" aria-label="新建标签" @click="createTag"><Plus :size="14" /></button></header>
         <div v-show="sections.tags" class="clone-sidebar-items">
-        <RouterLink
-          v-for="tag in store.tags"
-          :key="tag.publicId"
-          :to="`/tasks/tag/${tag.publicId}`"
-          class="clone-nav-item"
-          ><Tag :size="15" /><span>#{{ tag.name }}</span></RouterLink
-        >
+        <div v-for="tag in rootTags" :key="tag.publicId" class="clone-tag-group">
+          <RouterLink :to="`/tasks/tag/${tag.publicId}`" class="clone-nav-item clone-sortable-item" :class="{ 'drag-over': organizationDropTarget === tag.publicId }" draggable="true" @dragstart="startOrganizationDrag('tag', tag)" @dragover.prevent="organizationDropTarget = tag.publicId" @drop.prevent.stop="dropOrganization('tag', tag)" @contextmenu.prevent="openOrganizationMenu('tag', tag, $event)"><Tag :size="15" :style="{ color: tag.color || undefined }" /><span>#{{ tag.name }}</span><small>{{ tagOpenCount(tag.publicId) }}</small><button class="clone-item-menu-trigger" type="button" :aria-label="`#${tag.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('tag', tag, $event)"><Ellipsis :size="14" /></button></RouterLink>
+          <RouterLink v-for="child in childTags.filter(item => item.parentId === tag.publicId)" :key="child.publicId" :to="`/tasks/tag/${child.publicId}`" class="clone-nav-item clone-child-tag clone-sortable-item" :class="{ 'drag-over': organizationDropTarget === child.publicId }" draggable="true" @dragstart="startOrganizationDrag('tag', child)" @dragover.prevent="organizationDropTarget = child.publicId" @drop.prevent.stop="dropOrganization('tag', child)" @contextmenu.prevent="openOrganizationMenu('tag', child, $event)"><Tag :size="14" :style="{ color: child.color || undefined }" /><span>#{{ child.name }}</span><small>{{ tagOpenCount(child.publicId) }}</small><button class="clone-item-menu-trigger" type="button" :aria-label="`#${child.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('tag', child, $event)"><Ellipsis :size="14" /></button></RouterLink>
+        </div>
         <span v-if="!store.tags.length" class="clone-empty-item">暂无标签</span>
         </div>
       </section>
@@ -82,6 +96,7 @@
         <RouterLink to="/tasks/completed"
           ><CheckCircle2 :size="15" />已完成</RouterLink
         ><RouterLink to="/tasks/trash"><Trash2 :size="15" />垃圾桶</RouterLink>
+        <div class="clone-week-nav" aria-label="一周日期导航"><RouterLink v-for="(date, index) in weekDates" :key="dateKey(date)" :to="{ path: '/tasks/today', query: { date: dateKey(date) } }" :class="{ selected: dateKey(date) === dateKey(selectedDate) }" :aria-label="`${date.getMonth() + 1}月${date.getDate()}日`"><small>{{ weekDayLabels[index] }}</small><span>{{ date.getDate() }}</span></RouterLink></div>
       </div>
     </aside>
 
@@ -132,32 +147,22 @@
           </button>
         </div>
       </header>
-      <div v-if="moreOpen" class="clone-floating-menu" role="menu">
-        <button
-          type="button"
-          @click="
-            sort = sort === 'manual' ? 'due' : 'manual';
-            moreOpen = false;
-          "
-        >
-          排序：{{ sort === "manual" ? "手动" : "截止时间" }}</button
-        ><button
-          type="button"
-          @click="
-            showDescription = !showDescription;
-            moreOpen = false;
-          "
-        >
-          {{ showDescription ? "隐藏详细" : "显示详细" }}</button
-        ><button
-          type="button"
-          @click="
-            router.push('/tasks/board');
-            moreOpen = false;
-          "
-        >
-          打开看板
+      <div v-if="moreOpen" class="clone-floating-menu clone-view-menu" role="menu" aria-label="视图设置" @click.stop>
+        <strong>分组</strong>
+        <button v-for="option in groupOptions" :key="option.value" type="button" role="menuitemradio" :aria-checked="groupBy === option.value" @click="groupBy = option.value">
+          <Check v-if="groupBy === option.value" :size="14" /><span v-else class="clone-menu-check-spacer"></span>{{ option.label }}
         </button>
+        <strong>排序</strong>
+        <button v-for="option in sortOptions" :key="option.value" type="button" role="menuitemradio" :aria-checked="sort === option.value" @click="sort = option.value">
+          <Check v-if="sort === option.value" :size="14" /><span v-else class="clone-menu-check-spacer"></span>{{ option.label }}
+        </button>
+        <div class="clone-view-menu-order"><span>顺序</span><button type="button" :aria-pressed="sortDirection === 'asc'" @click="sortDirection = sortDirection === 'asc' ? 'desc' : 'asc'">{{ sortDirection === 'asc' ? '从旧到新' : '从新到旧' }}</button></div>
+        <button type="button" :disabled="sort === 'time' && sortDirection === 'asc' && groupBy === 'time'" @click="sort = 'time'; sortDirection = 'asc'; groupBy = 'time'">恢复默认时间顺序</button>
+        <hr />
+        <button type="button" role="menuitemcheckbox" :aria-checked="hideCompleted" @click="hideCompleted = !hideCompleted"><Check v-if="hideCompleted" :size="14" /><span v-else class="clone-menu-check-spacer"></span>隐藏已完成</button>
+        <button type="button" role="menuitemcheckbox" :aria-checked="showDescription" @click="showDescription = !showDescription"><Check v-if="showDescription" :size="14" /><span v-else class="clone-menu-check-spacer"></span>显示详细</button>
+        <button type="button" role="menuitemcheckbox" :aria-checked="showChecklist" @click="showChecklist = !showChecklist"><Check v-if="showChecklist" :size="14" /><span v-else class="clone-menu-check-spacer"></span>显示检查事项</button>
+        <button type="button" @click="router.push('/tasks/board'); moreOpen = false"><SquareKanban :size="14" />打开看板</button>
       </div>
       <div class="clone-quick-add">
         <Plus :size="17" />
@@ -278,11 +283,10 @@
                     ><CalendarClock :size="13" />{{
                       formatDate(task.dueAt)
                     }}</span
-                  ><span v-if="task.totalSubtasks"
-                    >{{ task.completedSubtasks }}/{{
-                      task.totalSubtasks
-                    }}
-                    子任务</span
+                  ><span v-if="showChecklist && (task.totalSubtasks || task.checklist?.length)"
+                    >{{ task.completedSubtasks ?? task.checklist?.filter(item => item.completed).length ?? 0 }}/{{
+                      task.totalSubtasks || task.checklist.length
+                    }}<CheckSquare :size="13" />检查项</span
                   ></span
                 ></button
               ><em
@@ -722,6 +726,13 @@
         <Trash2 :size="14" />删除任务
       </button>
     </div>
+    <div v-if="organizationMenuOpen" class="clone-context-menu clone-organization-menu" role="menu" :style="{ left: `${organizationMenu.x}px`, top: `${organizationMenu.y}px` }" @click.stop>
+      <template v-if="organizationMenu.kind === 'list'"><button type="button" @click="editOrganization('list')"><Pencil :size="14" />编辑清单</button><button type="button" @click="createListGroupForItem"><Plus :size="14" />新建分组</button><button v-if="sortedListGroups.length" type="button" @click="toggleListGroupAssignment"><ListTodo :size="14" />{{ organizationMenu.item.groupId ? '移出分组' : '加入分组' }}</button><button type="button" @click="archiveList">{{ organizationMenu.item.archived ? '取消归档' : '归档清单' }}</button><button type="button" class="danger" @click="deleteOrganization('list')"><Trash2 :size="14" />删除清单</button></template>
+      <template v-else-if="organizationMenu.kind === 'tag'"><button type="button" @click="editOrganization('tag')"><Pencil :size="14" />编辑标签</button><button type="button" @click="createChildTag"><Plus :size="14" />新建子标签</button><button type="button" class="danger" @click="deleteOrganization('tag')"><Trash2 :size="14" />删除标签</button></template>
+      <template v-else-if="organizationMenu.kind === 'filter'"><button type="button" @click="editOrganization('filter')"><Pencil :size="14" />编辑筛选器</button><button type="button" class="danger" @click="deleteOrganization('filter')"><Trash2 :size="14" />删除筛选器</button></template>
+      <template v-else><button type="button" @click="editListGroup"><Pencil :size="14" />编辑分组</button><button type="button" class="danger" @click="deleteListGroup"><Trash2 :size="14" />删除分组</button></template>
+    </div>
+    <Dialog v-model:open="organizationDialogOpen" :title="organizationDialogTitle"><form class="clone-organization-form" @submit.prevent="saveOrganization"><label>名称<input v-model.trim="organizationDialog.name" required maxlength="120" autofocus /></label><label v-if="['list','tag'].includes(organizationDialog.kind)">颜色<input v-model="organizationDialog.color" type="color" /></label><label v-if="organizationDialog.kind === 'tag'">父标签<select v-model="organizationDialog.parentId"><option value="">无</option><option v-for="tag in rootTags.filter(item => item.publicId !== organizationDialog.item?.publicId)" :key="tag.publicId" :value="tag.publicId">{{ tag.name }}</option></select></label><label v-if="organizationDialog.kind === 'list' && sortedListGroups.length"><span>分组</span><select v-model="organizationDialog.groupId"><option value="">未分组</option><option v-for="group in sortedListGroups" :key="group.publicId" :value="group.publicId">{{ group.name }}</option></select></label><footer><button type="button" @click="organizationDialogOpen = false">取消</button><button type="submit" class="clone-primary-button">保存</button></footer></form></Dialog>
   </section>
 </template>
 
@@ -736,10 +747,13 @@ import {
 } from "vue";
 import { useRoute, useRouter, RouterLink } from "vue-router";
 import {
+  Archive,
   CalendarClock,
   Check,
   CheckCircle2,
+  CheckSquare,
   ChevronDown,
+  ClipboardList,
   Copy,
   Ellipsis,
   Download,
@@ -753,13 +767,18 @@ import {
   Pencil,
   Plus,
   Search,
+  SquareKanban,
   SlidersHorizontal,
   Tag,
   Trash2,
   WifiOff,
   X,
+  UserRound,
 } from "lucide-vue-next";
 import TaskRichTextEditor from "../components/tasks/TaskRichTextEditor.vue";
+import Dialog from "../components/ui/Dialog.vue";
+import { moveItem } from "./taskSidebar.js";
+import { groupTaskItems, sortTaskItems } from "./taskList.js";
 import { useTasksStore } from "../stores/tasks.js";
 import {
   apiCreateTaskReminder,
@@ -773,6 +792,12 @@ import {
   apiListTaskComments,
   apiListTaskFilters,
   apiListTaskReminders,
+  apiCreateTaskFilter,
+  apiUpdateTaskFilter,
+  apiDeleteTaskFilter,
+  apiCreateTaskListGroup,
+  apiUpdateTaskTag,
+  apiDeleteTaskTag,
   apiUpdateTaskComment,
   apiUpdateTaskReminder,
   apiUploadTaskAttachment,
@@ -800,13 +825,68 @@ const collapsed = reactive({
   habits: false,
 });
 const sections = reactive({ lists: true, filters: true, tags: true });
+const groupCollapsed = reactive({});
+const organizationDrag = ref(null);
+const organizationDropTarget = ref("");
+const organizationMenuOpen = ref(false);
+const organizationDialogOpen = ref(false);
+const organizationMenu = reactive({ open: false, kind: "", item: null, x: 0, y: 0 });
+const organizationDialog = reactive({ open: false, kind: "", item: null, name: "", color: "#2563eb", parentId: "", groupId: "" });
 const selectedTask = ref(null);
 const editorOpen = ref(false);
 const editing = ref(null);
 const dragged = ref(null);
 const dragOverTask = ref(null);
-const sort = ref("manual");
+const groupBy = ref("time");
+const sort = ref("time");
+const sortDirection = ref("asc");
+const hideCompleted = ref(true);
 const showDescription = ref(true);
+const showChecklist = ref(true);
+const groupOptions = [
+  { value: "time", label: "时间" },
+  { value: "list", label: "清单" },
+];
+const sortOptions = [
+  { value: "time", label: "时间" },
+  { value: "priority", label: "优先级" },
+  { value: "title", label: "标题" },
+  { value: "manual", label: "手动" },
+];
+const viewPreferencesScope = ref("");
+function viewPreferencesKey() {
+  return `task_view_preferences:${store.accountScope || "anonymous"}`;
+}
+function persistViewPreferences() {
+  if (!viewPreferencesScope.value || viewPreferencesScope.value !== store.accountScope) return;
+  try {
+    localStorage.setItem(viewPreferencesKey(), JSON.stringify({
+      groupBy: groupBy.value,
+      sort: sort.value,
+      sortDirection: sortDirection.value,
+      hideCompleted: hideCompleted.value,
+      showDescription: showDescription.value,
+      showChecklist: showChecklist.value,
+    }));
+  } catch {}
+}
+function loadViewPreferences() {
+  const scope = store.accountScope || "anonymous";
+  viewPreferencesScope.value = scope;
+  try {
+    const saved = JSON.parse(localStorage.getItem(viewPreferencesKey()) || "{}");
+    if (groupOptions.some((item) => item.value === saved.groupBy)) groupBy.value = saved.groupBy;
+    if (sortOptions.some((item) => item.value === saved.sort)) sort.value = saved.sort;
+    if (["asc", "desc"].includes(saved.sortDirection)) sortDirection.value = saved.sortDirection;
+    if (typeof saved.hideCompleted === "boolean") hideCompleted.value = saved.hideCompleted;
+    if (typeof saved.showDescription === "boolean") showDescription.value = saved.showDescription;
+    if (typeof saved.showChecklist === "boolean") showChecklist.value = saved.showChecklist;
+  } catch {}
+}
+watch([groupBy, sort, sortDirection, hideCompleted, showDescription, showChecklist], persistViewPreferences);
+watch(() => store.accountScope, (scope) => {
+  if (scope !== viewPreferencesScope.value) loadViewPreferences();
+});
 const context = reactive({ open: false, x: 0, y: 0, task: null });
 const activities = ref([]);
 const activityLoading = ref(false);
@@ -851,13 +931,30 @@ const primaryViews = [
     icon: CalendarClock,
   },
   { key: "next7", label: "最近 7 天", to: "/tasks/next7", icon: CalendarClock },
+  { key: "assigned", label: "指派给我", to: "/tasks/shortcut/assigned", icon: UserRound },
   { key: "inbox", label: "收件箱", to: "/tasks/inbox", icon: Inbox },
-  { key: "summary", label: "摘要", to: "/tasks/shortcut/summary", icon: ListTodo },
+  { key: "summary", label: "摘要", to: "/tasks/shortcut/summary", icon: ClipboardList },
 ];
+const sortedListGroups = computed(() => [...store.listGroups].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
+const activeLists = computed(() => store.lists.filter(item => !item.archived));
+const archivedLists = computed(() => store.lists.filter(item => item.archived).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
+const archivedTaskCount = computed(() => store.tasks.filter(task => !task.deleted && archivedLists.value.some(list => list.publicId === task.listId)).length);
+const ungroupedLists = computed(() => activeLists.value.filter(item => !item.groupId).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
+const rootTags = computed(() => store.tags.filter(item => !item.parentId).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
+const childTags = computed(() => store.tags.filter(item => item.parentId).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
+const sortedFilters = computed(() => [...filters.value].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
+function openCount(predicate) { return store.tasks.filter(task => !task.deleted && task.status !== "COMPLETED" && predicate(task)).length; }
+function listOpenCount(listId) { return openCount(task => task.listId === listId); }
+function tagOpenCount(tagId) { return openCount(task => (task.tagIds || []).includes(tagId)); }
+function toggleListGroupCollapsed(group) { groupCollapsed[group.publicId] = !groupCollapsed[group.publicId]; persistListGroupState(); }
+function persistListGroupState() { try { localStorage.setItem(`task_sidebar_groups:${store.accountScope || "anonymous"}`, JSON.stringify(groupCollapsed)); } catch {} }
+function loadListGroupState() { try { Object.assign(groupCollapsed, JSON.parse(localStorage.getItem(`task_sidebar_groups:${store.accountScope || "anonymous"}`) || "{}")); } catch {} }
+const organizationDialogTitle = computed(() => `${organizationDialog.item ? "编辑" : "新建"}${({ list: "清单", tag: "标签", filter: "筛选器", group: "清单分组" })[organizationDialog.kind] || "项目"}`);
 const shortcutViews = [
-  { label: "无日期任务", to: "/tasks/shortcut/no-date" },
-  { label: "本周", to: "/tasks/shortcut/this-week" },
-  { label: "下周", to: "/tasks/shortcut/next-week" },
+  { label: "本周", to: "/tasks/shortcut/this-week", icon: CalendarClock },
+  { label: "下周", to: "/tasks/shortcut/next-week", icon: CalendarClock },
+  { label: "无日期任务", to: "/tasks/shortcut/no-date", icon: ListFilter },
+  { label: "无标签", to: "/tasks/shortcut/no-tag", icon: ListFilter },
 ];
 const recurrenceOptions = [
   { value: "", label: "不重复" },
@@ -896,9 +993,27 @@ const title = computed(() =>
                       "no-date": "无日期任务",
                       "this-week": "本周",
                       "next-week": "下周",
+                      "no-tag": "无标签",
+                      assigned: "指派给我",
+                      summary: "摘要",
+                      archived: "归档",
                     }[route.params.shortcut] || "任务"
                   : "所有",
 );
+const selectedDate = computed(() => {
+  const match = String(route.query.date || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : startOfDay(new Date());
+});
+const weekDayLabels = ["一", "二", "三", "四", "五", "六", "日"];
+const weekDates = computed(() => {
+  const monday = new Date(selectedDate.value);
+  const weekday = monday.getDay() || 7;
+  monday.setDate(monday.getDate() - weekday + 1);
+  return Array.from({ length: 7 }, (_, index) => addDays(monday, index));
+});
+function dateKey(value) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
 const parentOptions = computed(() =>
   store.tasks.filter(
     (task) =>
@@ -921,8 +1036,11 @@ const sourceTasks = computed(() =>
   store.tasks.filter((task) =>
     route.name === "tasks-trash"
       ? task.deleted
-      : !task.deleted &&
-        (task.status !== "COMPLETED" || route.name === "tasks-completed"),
+      : !task.deleted && (route.name === "tasks-completed"
+        ? task.status === "COMPLETED"
+        : route.params.shortcut === "archived"
+          ? archivedLists.value.some((list) => list.publicId === task.listId)
+          : !hideCompleted.value || task.status !== "COMPLETED"),
   ),
 );
 const visibleTasks = computed(() => {
@@ -948,22 +1066,24 @@ const visibleTasks = computed(() => {
     );
   else if (route.name === "tasks-next7")
     values = values.filter((task) => inRange(task.dueAt, today, end));
-  else if (route.name === "tasks-shortcut")
-    values = values.filter((task) =>
-      route.params.shortcut === "no-date"
-        ? !task.dueAt
-        : route.params.shortcut === "this-week"
-          ? inRange(task.dueAt, today, addDays(today, 7))
-          : inRange(task.dueAt, addDays(today, 7), end),
-    );
-  if (sort.value === "due")
-    values.sort(
-      (a, b) =>
-        (a.dueAt ? Date.parse(a.dueAt) : Infinity) -
-        (b.dueAt ? Date.parse(b.dueAt) : Infinity),
-    );
-  else values.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-  return values;
+  else if (route.name === "tasks-shortcut") {
+    const shortcut = route.params.shortcut;
+    const archivedIds = new Set(archivedLists.value.map(list => list.publicId));
+    values = values.filter(task => shortcut === "assigned"
+      ? false
+      : shortcut === "summary"
+        ? task.status !== "COMPLETED" && task.dueAt && new Date(task.dueAt) < tomorrow
+        : shortcut === "archived"
+          ? archivedIds.has(task.listId)
+          : shortcut === "no-tag"
+            ? !(task.tagIds || []).length && task.status !== "COMPLETED"
+            : shortcut === "no-date"
+              ? !task.dueAt && task.status !== "COMPLETED"
+              : shortcut === "this-week"
+                ? inRange(task.dueAt, today, addDays(today, 7)) && task.status !== "COMPLETED"
+                : inRange(task.dueAt, addDays(today, 7), addDays(today, 14)) && task.status !== "COMPLETED");
+  }
+  return sortTaskItems(values, { sortBy: sort.value, direction: sortDirection.value });
 });
 const openTasks = computed(() =>
   visibleTasks.value.filter((task) => task.status !== "COMPLETED"),
@@ -972,29 +1092,15 @@ const completedTasks = computed(() =>
   visibleTasks.value.filter((task) => task.status === "COMPLETED"),
 );
 const groups = computed(() => {
-  if (
-    route.name === "tasks-all" ||
-    route.name === "tasks-list" ||
-    route.name === "tasks-tag" ||
-    route.name === "tasks-inbox" ||
-    route.name === "tasks-shortcut"
-  )
-    return [{ key: "open", label: "待完成", tasks: visibleTasks.value }];
-  const today = startOfDay(new Date());
-  const result = [
-    { key: "overdue", label: "逾期", tasks: [] },
-    { key: "today", label: title.value, tasks: [] },
-    { key: "later", label: "之后", tasks: [] },
-    { key: "none", label: "无日期", tasks: [] },
-  ];
-  visibleTasks.value.forEach((task) => {
-    if (!task.dueAt) result[3].tasks.push(task);
-    else if (new Date(task.dueAt) < today) result[0].tasks.push(task);
-    else if (new Date(task.dueAt) < addDays(today, 1))
-      result[1].tasks.push(task);
-    else result[2].tasks.push(task);
-  });
-  return result.filter((group) => group.tasks.length);
+  if (groupBy.value === "list") return groupTaskItems(visibleTasks.value, "list", store.lists);
+  if (route.name === "tasks-shortcut" && route.params.shortcut === "archived")
+    return [{ key: "open", label: "归档任务", tasks: visibleTasks.value }];
+  const result = groupTaskItems(visibleTasks.value, "time", store.lists);
+  if (["tasks-today", "tasks-tomorrow", "tasks-next7"].includes(route.name)) {
+    const currentDay = result.find((group) => group.key === "today");
+    if (currentDay) currentDay.label = title.value;
+  }
+  return result;
 });
 const todayCountdowns = computed(() => route.name === "tasks-today" && !route.query.date ? store.countdowns.filter((item) => !item.archived && !item.deleted) : []);
 const todayHabits = computed(() => route.name === "tasks-today" && !route.query.date ? store.habits.filter((item) => !item.archived && !item.deleted) : []);
@@ -1041,15 +1147,17 @@ function recurrenceLabel(value) {
   return recurrenceOptions.find((option) => option.value === value)?.label || (value ? "自定义" : "不重复");
 }
 function itemCount(key) {
-  return key === "all"
-    ? store.tasks.filter((item) => !item.deleted).length
-    : key === "inbox"
-      ? store.tasks.filter(
-          (item) =>
-            item.listId === store.inbox?.publicId &&
-            item.status !== "COMPLETED",
-        ).length
-      : "";
+  const tasks = store.tasks.filter(item => !item.deleted && item.status !== "COMPLETED");
+  const today = startOfDay(new Date());
+  const tomorrow = addDays(today, 1);
+  if (key === "all") return tasks.length;
+  if (key === "assigned") return 0;
+  if (key === "summary") return tasks.filter(item => item.dueAt && new Date(item.dueAt) < tomorrow).length;
+  if (key === "inbox") return tasks.filter(item => item.listId === store.inbox?.publicId).length;
+  if (key === "today") return tasks.filter(item => inRange(item.dueAt, today, tomorrow)).length;
+  if (key === "tomorrow") return tasks.filter(item => inRange(item.dueAt, tomorrow, addDays(tomorrow, 1))).length;
+  if (key === "next7") return tasks.filter(item => inRange(item.dueAt, today, addDays(today, 8))).length;
+  return "";
 }
 function isActive(to) {
   return route.path === to || route.path.startsWith(`${to}/`);
@@ -1059,10 +1167,12 @@ function toggleSidebar() {
 }
 function toggleSection(key) {
   sections[key] = !sections[key];
+  persistSidebarSections();
 }
 function closeContext() {
   context.open = false;
   context.task = null;
+  organizationMenuOpen.value = false;
 }
 async function setContextDue(offset) {
   const task = context.task;
@@ -1555,30 +1665,136 @@ function endTaskDrag() {
   dragged.value = null;
   dragOverTask.value = null;
 }
-async function createList() {
-  const name = window.prompt("新建清单");
-  if (!name?.trim()) return;
-  try {
-    await store.createList({
-      name: name.trim(),
-      color: "#2563eb",
-      icon: "",
-      archived: false,
-      sortOrder: store.lists.length,
-    });
-  } catch (error) {
-    store.error = error?.message || "新建清单失败";
-  }
+async function createList(groupId = "") {
+  openOrganizationDialog("list", null, { groupId });
 }
 async function createTag() {
-  const name = window.prompt("新建标签");
-  if (!name?.trim()) return;
-  try {
-    await store.createTag({ name: name.trim() });
-  } catch (error) {
-    store.error = error?.message || "标签创建失败";
-  }
+  openOrganizationDialog("tag");
 }
+function listsInGroup(groupId) { return activeLists.value.filter(item => item.groupId === groupId).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)); }
+function persistSidebarSections() { try { localStorage.setItem(`task_sidebar_sections:${store.accountScope || "anonymous"}`, JSON.stringify(sections)); } catch {} }
+function loadSidebarSections() { try { Object.assign(sections, JSON.parse(localStorage.getItem(`task_sidebar_sections:${store.accountScope || "anonymous"}`) || "{}")); } catch {} }
+function openOrganizationDialog(kind, item = null, overrides = {}) {
+  const defaults = { list: { color: "#2563eb", groupId: "" }, tag: { color: "#2f746f", parentId: "" }, filter: {}, group: {} }[kind] || {};
+  Object.assign(organizationDialog, { open: true, kind, item, name: item?.name || "", color: item?.color || defaults.color || "#2563eb", parentId: item?.parentId || defaults.parentId || "", groupId: item?.groupId || overrides.groupId || "" });
+  organizationDialogOpen.value = true;
+  organizationMenuOpen.value = false;
+}
+function openOrganizationMenu(kind, item, event) {
+  const width = 210, height = 230;
+  Object.assign(organizationMenu, { open: true, kind, item, x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)) });
+  organizationMenuOpen.value = true;
+}
+function editOrganization(kind) { openOrganizationDialog(kind, organizationMenu.item); }
+function createListGroupForItem() { const list = organizationMenu.item; openOrganizationDialog("group", null, { groupId: list.publicId }); }
+function editListGroup() { openOrganizationDialog("group", organizationMenu.item); organizationMenuOpen.value = false; }
+function createChildTag() { const tag = organizationMenu.item; openOrganizationDialog("tag", null, { parentId: tag.publicId }); }
+async function saveOrganization() {
+  const item = organizationDialog.item, kind = organizationDialog.kind;
+  const name = organizationDialog.name.trim();
+  if (!name) return;
+  try {
+    if (kind === "list") {
+      const payload = { name, color: organizationDialog.color, icon: item?.icon || "", archived: item?.archived || false, sortOrder: item?.sortOrder ?? store.lists.length };
+      const saved = item ? await store.updateList(item, payload) : await store.createList(payload);
+      const target = store.lists.find(value => value.publicId === (item?.publicId || saved?.id || saved?.publicId));
+      if (target && (organizationDialog.groupId || target.groupId)) await store.assignListGroup(target, organizationDialog.groupId);
+    } else if (kind === "tag") {
+      const payload = { name, color: organizationDialog.color, parentId: organizationDialog.parentId || null, sortOrder: item?.sortOrder ?? store.tags.length };
+      if (item) await apiUpdateTaskTag(item.publicId, payload, item.revision); else await store.createTag(payload);
+      await store.refreshServer();
+    } else if (kind === "filter") {
+      const payload = { ...item, name, sortOrder: item?.sortOrder ?? filters.value.length };
+      if (item) await apiUpdateTaskFilter(item.publicId, payload, item.revision);
+      else await apiCreateTaskFilter({ name, sortOrder: filters.value.length, status: "OPEN", dueRange: "ANY", listIds: [], tagIds: [], priorities: [], includeSubtasks: true, matchAllTags: false, pinned: false });
+      await loadFilters();
+    } else if (kind === "group") {
+      if (item) await store.updateListGroup(item, { name, sortOrder: item.sortOrder });
+      else {
+        const group = await apiCreateTaskListGroup({ name, sortOrder: store.listGroups.length });
+        await store.refreshServer();
+        const list = store.lists.find(value => value.publicId === organizationDialog.groupId);
+        const createdGroup = store.listGroups.find(value => value.publicId === group?.publicId || value.name === name);
+        if (list && createdGroup) await store.assignListGroup(list, createdGroup.publicId);
+      }
+    }
+    organizationDialogOpen.value = false;
+    await store.refreshServer();
+  } catch (error) { store.error = error?.response?.data?.detail || error?.message || "保存失败"; }
+}
+async function archiveList() {
+  const item = organizationMenu.item;
+  organizationMenuOpen.value = false;
+  try { await store.updateList(item, { archived: !item.archived }); await store.refreshServer(); } catch (error) { store.error = error?.message || "归档清单失败"; }
+}
+async function deleteOrganization(kind) {
+  const item = organizationMenu.item;
+  organizationMenuOpen.value = false;
+  if (!window.confirm(`删除${({ list: "清单", tag: "标签", filter: "筛选器" })[kind]}“${item.name}”？`)) return;
+  try {
+    if (kind === "list") await store.deleteList(item);
+    else if (kind === "tag") { await apiDeleteTaskTag(item.publicId, item.revision); await store.refreshServer(); }
+    else { await apiDeleteTaskFilter(item.publicId, item.revision); await loadFilters(); }
+  } catch (error) { store.error = error?.response?.data?.detail || error?.message || "删除失败"; }
+}
+async function toggleListGroupAssignment() {
+  const item = organizationMenu.item; organizationMenuOpen.value = false;
+  try {
+    if (item.groupId) await store.assignListGroup(item, "");
+    else {
+      let group = sortedListGroups.value[0];
+      if (!group) { const name = window.prompt("新建清单分组"); if (!name?.trim()) return; await apiCreateTaskListGroup({ name: name.trim(), sortOrder: 0 }); await store.refreshServer(); group = store.listGroups[0]; }
+      if (group) await store.assignListGroup(item, group.publicId);
+    }
+  } catch (error) { store.error = error?.message || "更新清单分组失败"; }
+}
+async function deleteListGroup() {
+  const item = organizationMenu.item; organizationMenuOpen.value = false;
+  if (!window.confirm(`删除分组“${item.name}”？分组中的清单将保留。`)) return;
+  try { await store.deleteListGroup(item); } catch (error) { store.error = error?.message || "删除分组失败"; }
+}
+function startOrganizationDrag(kind, item) { organizationDrag.value = { kind, item }; organizationDropTarget.value = ""; }
+async function dropOrganization(kind, target) {
+  const source = organizationDrag.value;
+  if (!source || source.kind !== kind || source.item.publicId === target.publicId) return endOrganizationDrag();
+  try {
+    if (kind === "list" && source.item.groupId !== target.groupId) await store.assignListGroup(source.item, target.groupId || "");
+    const collection = kind === "list" ? activeLists.value.filter(value => (value.groupId || "") === (target.groupId || "")) : kind === "tag" ? store.tags.filter(value => (value.parentId || "") === (target.parentId || "")) : filters.value;
+    const ordered = moveItem(collection, source.item.publicId, target.publicId);
+    if (kind === "list") for (const value of ordered) await store.updateList(store.lists.find(item => item.publicId === value.publicId), { sortOrder: value.sortOrder });
+    else if (kind === "tag") for (const value of ordered) await apiUpdateTaskTag(value.publicId, { name: value.name, color: value.color || "", parentId: value.parentId || "", sortOrder: value.sortOrder }, value.revision);
+    else for (const value of ordered) await apiUpdateTaskFilter(value.publicId, { ...value, sortOrder: value.sortOrder }, value.revision);
+    await store.refreshServer(); await loadFilters();
+  } catch (error) { store.error = error?.response?.data?.detail || error?.message || "排序保存失败"; }
+  endOrganizationDrag();
+}
+async function dropOrganizationRoot(kind) {
+  if (kind === "list" && organizationDrag.value?.kind === "list" && organizationDrag.value.item.groupId) {
+    try { await store.assignListGroup(organizationDrag.value.item, ""); await store.refreshServer(); } catch (error) { store.error = error?.message || "移出分组失败"; }
+  }
+  endOrganizationDrag();
+}
+async function dropListGroup(group) {
+  const source = organizationDrag.value;
+  if (!source || source.kind !== "list") return endOrganizationDrag();
+  try { await store.assignListGroup(source.item, group.publicId); await store.refreshServer(); } catch (error) { store.error = error?.message || "移动清单失败"; }
+  endOrganizationDrag();
+}
+async function dropGroup(target) {
+  const source = organizationDrag.value;
+  if (!source || source.item.publicId === target.publicId) return endOrganizationDrag();
+  try {
+    if (source.kind === "list") {
+      await store.assignListGroup(source.item, target.publicId);
+    } else if (source.kind === "group") {
+      const ordered = moveItem(sortedListGroups.value, source.item.publicId, target.publicId);
+      for (const value of ordered) await apiUpdateTaskListGroup(value.publicId, { name: value.name, sortOrder: value.sortOrder }, value.revision);
+      await store.refreshServer();
+    }
+  } catch (error) { store.error = error?.response?.data?.detail || error?.message || "移动失败"; }
+  endOrganizationDrag();
+}
+function endOrganizationDrag() { organizationDrag.value = null; organizationDropTarget.value = ""; }
 async function loadFilters() {
   if (!store.online) return;
   try {
@@ -1591,6 +1807,7 @@ function onKeydown(event) {
   if (event.key === "Escape") {
     moreOpen.value = false;
     closeContext();
+    organizationMenuOpen.value = false;
     if (editorOpen.value) closeDetail();
   }
   if (
@@ -1626,6 +1843,9 @@ watch(
 );
 onMounted(async () => {
   await store.init();
+  loadViewPreferences();
+  loadSidebarSections();
+  loadListGroupState();
   await loadFilters();
   document.addEventListener("click", closeContext);
   window.addEventListener("keydown", onKeydown);
@@ -1735,6 +1955,23 @@ const SidebarSection = {
   display: grid;
   gap: 7px;
 }
+.clone-list-group { display: grid; gap: 2px; }
+.clone-list-group-heading { display: flex; align-items: center; gap: 4px; min-height: 28px; padding: 0 8px 0 10px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.clone-list-group-heading span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clone-list-group-heading button { display: grid; width: 22px; height: 22px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-list-group-heading button:hover, .clone-item-menu-trigger:hover { background: var(--paper); color: var(--ink); }
+.clone-sortable-item { position: relative; }
+.clone-sortable-item.drag-over { outline: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--card)); }
+.clone-item-menu-trigger { display: grid; flex: none; width: 24px; height: 24px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); opacity: 0; cursor: pointer; }
+.clone-sortable-item:hover .clone-item-menu-trigger, .clone-sortable-item:focus-within .clone-item-menu-trigger { opacity: 1; }
+.clone-child-tag { margin-left: 16px; }
+.clone-tag-group { display: grid; gap: 2px; }
+.clone-organization-form { display: grid; gap: 14px; }
+.clone-organization-form label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
+.clone-organization-form input:not([type="color"]), .clone-organization-form select { min-height: 38px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); }
+.clone-organization-form input[type="color"] { width: 46px; height: 34px; padding: 2px; border: 1px solid var(--line); background: var(--card); }
+.clone-organization-form footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 6px; }
+.clone-organization-form footer > button:first-child { min-height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink2); }
 .clone-sidebar-section > header {
   display: flex;
   align-items: center;
@@ -1782,6 +2019,11 @@ const SidebarSection = {
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
+.clone-week-nav { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; padding: 8px 2px 0; border-top: 1px solid var(--line); }
+.clone-week-nav a { display: grid; min-width: 0; min-height: 42px; place-content: center; gap: 2px; border-radius: 6px; color: var(--muted); text-align: center; text-decoration: none; }
+.clone-week-nav small { font-size: 9px; }
+.clone-week-nav span { font-size: 11px; font-variant-numeric: tabular-nums; }
+.clone-week-nav a:hover, .clone-week-nav a.selected { background: color-mix(in srgb, var(--accent) 10%, var(--card)); color: var(--accent); }
 .clone-task-main {
   position: relative;
   min-width: 0;
@@ -2113,6 +2355,15 @@ const SidebarSection = {
   top: 118px;
   right: 24px;
 }
+.clone-view-menu { width: 252px; max-height: min(74vh, 620px); overflow: auto; padding: 8px; }
+.clone-view-menu > strong { padding: 8px 9px 4px; color: var(--muted); font-size: 11px; }
+.clone-view-menu > button { min-height: 32px; }
+.clone-view-menu > button:disabled { color: var(--muted); opacity: .5; cursor: default; }
+.clone-view-menu hr { width: 100%; margin: 5px 0; border: 0; border-top: 1px solid var(--line); }
+.clone-view-menu .clone-menu-check-spacer { flex: 0 0 14px; width: 14px; height: 14px; }
+.clone-view-menu-order { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 9px; color: var(--muted); font-size: 12px; }
+.clone-view-menu-order button { min-height: 28px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--ink2); font: inherit; cursor: pointer; }
+.clone-view-menu-order button:hover { border-color: var(--accent); color: var(--accent); }
 .clone-floating-menu button,
 .clone-context-menu button {
   display: flex;

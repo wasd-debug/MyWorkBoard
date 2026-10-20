@@ -165,6 +165,26 @@ test('task sidebar sections reorder independently and task rows open the detail 
   assert.match(router, /path: '\/tasks\/filter\/:publicId'[\s\S]*TaskWorkspaceView/)
 })
 
+test('replacement task sidebar matches the captured navigation and shortcut filters', () => {
+  for (const path of ['/tasks/shortcut/assigned', '/tasks/shortcut/summary', '/tasks/shortcut/archived', '/tasks/shortcut/no-tag']) {
+    assert.ok(workspaceView.includes(path), `missing task sidebar route ${path}`)
+  }
+  for (const label of ['指派给我', '摘要', '归档', '无标签', '一周日期导航']) assert.ok(workspaceView.includes(label))
+  assert.match(workspaceView, /shortcut === "assigned"\s*\? false/)
+  assert.match(workspaceView, /shortcut === "summary"[\s\S]*tomorrow/)
+  assert.match(workspaceView, /shortcut === "archived"[\s\S]*archivedIds\.has/)
+})
+
+test('full task page rebuild exposes persistent list grouping and sorting controls', () => {
+  for (const token of ['分组', '排序', '顺序', '恢复默认时间顺序', '隐藏已完成', '显示详细', '显示检查事项']) {
+    assert.ok(workspaceView.includes(token), `missing list view control ${token}`)
+  }
+  assert.match(workspaceView, /task_view_preferences:/)
+  assert.match(workspaceView, /groupTaskItems\(visibleTasks\.value, "list", store\.lists\)/)
+  assert.match(workspaceView, /sortTaskItems\(values, \{ sortBy: sort\.value, direction: sortDirection\.value \}\)/)
+  assert.match(workspaceView, /:draggable="!batchMode && sort === 'manual'"/)
+})
+
 test('task domain exposes a ticktick-style desktop module rail', async () => {
   const rail = await readFile(new URL('../components/tasks/TaskModuleRail.vue', import.meta.url), 'utf8')
   const app = await readFile(new URL('../App.vue', import.meta.url), 'utf8')

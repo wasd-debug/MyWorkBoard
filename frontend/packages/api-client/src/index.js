@@ -239,6 +239,8 @@ export const apiBatchTasks = async payload => data(await api.post('/api/v1/tasks
 export const apiSortTask = async (id, sortOrder, currentRevision) => data(await api.post(`/api/v1/tasks/${id}/sort`, { sortOrder }, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiCreateTaskList = async payload => data(await api.post('/api/v1/tasks/lists', payload, { headers: { 'Idempotency-Key': crypto.randomUUID() } }))
 export const apiCreateTaskTag = async payload => data(await api.post('/api/v1/tasks/tags', payload))
+export const apiUpdateTaskTag = async (id, payload, currentRevision) => data(await tasks.updateTaskTag({ publicId: id, taskTagCommand: payload, ifMatch: revision(currentRevision) }))
+export const apiDeleteTaskTag = async (id, currentRevision) => data(await tasks.deleteTaskTag({ publicId: id, ifMatch: revision(currentRevision) }))
 export const apiRestoreTask = async (publicId, currentRevision) => data(await api.post(`/api/v1/tasks/${publicId}/restore`, null, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiRestoreTaskList = async (publicId, currentRevision) => data(await api.post(`/api/v1/tasks/lists/${publicId}/restore`, null, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiPurgeTask = async publicId => data(await api.delete(`/api/v1/tasks/trash/${publicId}`, { params: { confirmation: `DELETE:${publicId}` } }))
