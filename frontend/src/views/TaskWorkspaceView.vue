@@ -171,11 +171,23 @@
           <input
             v-model="quickTitle"
             aria-label="快速添加任务标题"
-            :placeholder="`添加任务至“${title === '今天' ? '收件箱' : title}”`"
+            :placeholder="`添加任务至“${title === '今天' ? '收件箱' : title}” · 支持日期、优先级、#标签、@清单`"
           /><button type="submit" :disabled="!quickTitle.trim()">添加</button
           ><kbd>N</kbd>
         </form>
       </div>
+      <section v-if="quickDraft" class="clone-quick-draft" aria-label="快速添加预览">
+        <header><strong>确认任务</strong><span v-if="quickDraft.unrecognized?.length">未识别：{{ quickDraft.unrecognized.join('、') }}</span></header>
+        <label>标题<input v-model="quickDraft.title" aria-label="快速添加任务标题预览" maxlength="500" /></label>
+        <div class="clone-quick-draft-fields">
+          <label>日期<input v-model="quickDraftDue" type="datetime-local" aria-label="快速添加日期" /></label>
+          <label>优先级<select v-model="quickDraft.priority" aria-label="快速添加优先级"><option value="NONE">无</option><option value="LOW">低</option><option value="MEDIUM">中</option><option value="HIGH">高</option></select></label>
+          <label>清单<select v-model="quickDraft.listId" aria-label="快速添加清单"><option v-for="list in store.lists.filter((item) => !item.archived)" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select></label>
+        </div>
+        <fieldset v-if="store.tags.length" class="clone-quick-draft-tags"><legend>标签</legend><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="quickDraft.tagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label></fieldset>
+        <footer><button type="button" @click="cancelQuickDraft">取消</button><button type="button" class="clone-primary-button" :disabled="quickSaving || !quickDraft.title.trim()" @click="confirmQuickAdd">{{ quickSaving ? '保存中…' : '确认添加' }}</button></footer>
+      </section>
+      <p v-if="quickParseError" class="clone-error" role="alert">{{ quickParseError }}</p>
       <div v-if="store.error" class="clone-error" role="alert">
         {{ store.error }}
       </div>
@@ -767,6 +779,7 @@ import { useTasksStore } from "../stores/tasks.js";
 import { useTaskFocusStore } from "../stores/taskFocus.js";
 import { message } from "../services/message.js";
 import {
+  apiParseTaskQuickAdd,
   apiCreateTaskReminder,
   apiCreateTaskComment,
   apiDeleteTaskAttachment,
@@ -795,6 +808,11 @@ const store = useTasksStore();
 const focusStore = useTaskFocusStore();
 const filters = ref([]);
 const quickTitle = ref("");
+const quickDraft = ref(null);
+const quickDraftDue = ref("");
+const quickParseError = ref("");
+const quickParsing = ref(false);
+const quickSaving = ref(false);
 const sidebarHidden = ref(false);
 const sidebarPreferenceScope = ref("");
 const moreOpen = ref(false);
@@ -1456,26 +1474,60 @@ function toLocal(value) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 async function quickAdd() {
-  if (!quickTitle.value.trim()) return;
-  await store.create({
-    title: quickTitle.value.trim(),
-    description: "",
-    listId:
-      route.name === "tasks-list"
-        ? route.params.publicId
-        : store.inbox?.publicId,
-    priority: "NONE",
-    startAt: "",
-    dueAt: route.name === "tasks-today" ? new Date().toISOString() : "",
-    durationMinutes: 0,
-    allDay: false,
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    rrule: "",
-    recurrenceAnchor: "",
-    tagIds: [],
-    checklist: [],
-  });
-  quickTitle.value = "";
+  const text = quickTitle.value.trim();
+  if (!text || quickParsing.value) return;
+  quickParsing.value = true;
+  quickParseError.value = "";
+  try {
+    const parsed = await apiParseTaskQuickAdd(text);
+    const fallbackListId = route.name === "tasks-list" ? route.params.publicId : store.inbox?.publicId || "";
+    const list = store.lists.find((item) => item.name.toLocaleLowerCase() === String(parsed.listName || "").toLocaleLowerCase());
+    quickDraft.value = {
+      ...parsed,
+      title: parsed.title || text,
+      priority: parsed.priority || "NONE",
+      listId: list?.publicId || fallbackListId,
+      tagIds: store.tags.filter((tag) => parsed.tagNames?.some((name) => name.toLocaleLowerCase() === tag.name.toLocaleLowerCase())).map((tag) => tag.publicId),
+    };
+    quickDraftDue.value = parsed.dueAt ? toLocal(parsed.dueAt) : route.name === "tasks-today" ? toLocal(new Date()) : "";
+  } catch (error) {
+    quickParseError.value = error?.response?.data?.detail || error?.message || "解析快速添加内容失败";
+  } finally {
+    quickParsing.value = false;
+  }
+}
+function cancelQuickDraft() {
+  quickDraft.value = null;
+  quickDraftDue.value = "";
+}
+async function confirmQuickAdd() {
+  if (!quickDraft.value?.title?.trim() || quickSaving.value) return;
+  quickSaving.value = true;
+  quickParseError.value = "";
+  try {
+    const saved = await store.create({
+      title: quickDraft.value.title.trim(),
+      description: "",
+      listId: quickDraft.value.listId || store.inbox?.publicId || "",
+      priority: quickDraft.value.priority || "NONE",
+      startAt: "",
+      dueAt: quickDraftDue.value ? new Date(quickDraftDue.value).toISOString() : "",
+      durationMinutes: 0,
+      allDay: false,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      rrule: quickDraft.value.rrule || "",
+      recurrenceAnchor: quickDraft.value.rrule ? "DUE_DATE" : "",
+      tagIds: [...quickDraft.value.tagIds],
+      checklist: [],
+    });
+    quickTitle.value = "";
+    cancelQuickDraft();
+    if (saved?.publicId) openDetail(saved);
+  } catch (error) {
+    quickParseError.value = error?.response?.data?.detail || error?.message || "新增任务失败";
+  } finally {
+    quickSaving.value = false;
+  }
 }
 function resetCollaboration() {
   activities.value = [];
@@ -2261,6 +2313,28 @@ const SidebarSection = {
 }
 .clone-quick-add form button,
 .clone-quick-add kbd { display: none; }
+.clone-quick-draft {
+  display: grid;
+  gap: 10px;
+  margin: -8px 0 16px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--card);
+}
+.clone-quick-draft > header,
+.clone-quick-draft > footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.clone-quick-draft > header span { color: var(--muted); font-size: 11px; }
+.clone-quick-draft > label,
+.clone-quick-draft-fields label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+.clone-quick-draft input:not([type="checkbox"]),
+.clone-quick-draft select { min-width: 0; width: 100%; height: 34px; padding: 0 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--ink); }
+.clone-quick-draft-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.clone-quick-draft-tags { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 0; padding: 7px 8px; border: 1px solid var(--line); border-radius: 5px; }
+.clone-quick-draft-tags legend { padding: 0 4px; color: var(--muted); font-size: 11px; }
+.clone-quick-draft-tags label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+.clone-quick-draft > footer button:not(.clone-primary-button) { border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-quick-draft > footer .clone-primary-button { min-height: 30px; }
 .clone-status,
 .clone-error {
   display: flex;
@@ -3028,6 +3102,7 @@ const SidebarSection = {
   }
 }
 @media (max-width: 900px) {
+  .clone-quick-draft-fields { grid-template-columns: 1fr; }
   .clone-task-shell {
     display: block;
     height: auto;

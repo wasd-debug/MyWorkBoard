@@ -215,6 +215,17 @@ test('task navigation collapses inline on narrow screens and persists by account
   assert.doesNotMatch(workspaceView, /<Drawer|drawer-backdrop|sidebar-overlay/)
 })
 
+test('task quick add previews parsed fields and writes only after confirmation', () => {
+  assert.match(workspaceView, /apiParseTaskQuickAdd\(text\)/)
+  assert.match(workspaceView, /aria-label="快速添加预览"/)
+  assert.match(workspaceView, /async function confirmQuickAdd\(\)/)
+  assert.match(workspaceView, /@click="confirmQuickAdd"/)
+  assert.match(workspaceView, /parsed\.tagNames[\s\S]*map\(\(tag\) => tag\.publicId\)/)
+  assert.match(workspaceView, /quickDraftDue\.value \? new Date\(quickDraftDue\.value\)\.toISOString\(\)/)
+  assert.match(workspaceView, /async function quickAdd\(\)[\s\S]*apiParseTaskQuickAdd[\s\S]*?\n}\nfunction cancelQuickDraft/)
+  assert.match(workspaceView, /async function confirmQuickAdd\(\)[\s\S]*store\.create\(/)
+})
+
 test('task domain exposes a ticktick-style desktop module rail', async () => {
   const rail = await readFile(new URL('../components/tasks/TaskModuleRail.vue', import.meta.url), 'utf8')
   const app = await readFile(new URL('../App.vue', import.meta.url), 'utf8')
