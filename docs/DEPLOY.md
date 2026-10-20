@@ -1,5 +1,13 @@
 # 部署说明
 
+## 2026-10-20 任务左栏后端契约发布
+
+- 应用提交 `1b7d5a3`（包含本地原先未推送的 `5e53553`、`cf18edb`、`515ec68` 和本轮实现）已推送至远程 `main`。精确提交归档位于 `/home/ubuntu/salary-tracker/releases/1b7d5a3/source.tar.gz`，SHA-256 为 `08a17173589fed7aff612d1ee903afbc50bd43fb03aaa017b132f1b12c98538c`。
+- 发布前数据库备份 `/home/ubuntu/salary-tracker/backups/salary-before-1b7d5a3-20261020-155045.sql.gz` 为 4,316,907 字节且通过 `gzip -t`。MySQL 容器 ID `eab10f4bfbb0d0821a84e14d3e575ff153cdd3e7ea1951ea96b7713ffa1d008d` 保持不变；仅重建 backend/frontend。旧应用镜像保留为 `salary-backend:pre-1b7d5a3`（`785826e`）和 `salary-frontend:pre-1b7d5a3`（`785826e`），Compose 配置保留为 `docker-compose.prod.yml.bak.1b7d5a3`。
+- 从该归档构建 `linux/amd64` 镜像并更新服务器 Compose 固定标签为 `1b7d5a3`。后端镜像 ID 为 `sha256:0f6c259a3ce984fc178512f99d9efbeacbaf7e672a9b3fe8ea2f441e4924589c`，前端镜像 ID 为 `sha256:d8b8624fa85ba97386ea531928c3cebe920af1fdb3e3014db101542b51d5f6a3`；实际运行容器标签与 ID 一致。
+- Flyway 已应用 V41，schema 最新版本为 `41` 且成功标记为 `1`；`app_user=3`。服务器本机 `/api/health`、`/`、`/tasks/all`、`/tasks/today` 均返回 HTTP 200。公网 `https://jsn1024.cn/api/health` TLS 探测失败（LibreSSL `SSL_ERROR_SYSCALL`），因此不报告公网验收成功。
+- 本轮无 UI 改动。浏览器侧栏偏好 API 接入、规则树编辑器与真实业务数据交互仍待前端增量及浏览器验收，详见《前端手工检查清单》P2-FE35。
+
 ## 2026-10-20 任务左栏与移动端布局发布
 
 - 应用提交 `785826e`（包含本轮左栏及此前 11 个任务页增量）已推送至远程 `main`。精确提交归档位于服务器 `/home/ubuntu/salary-tracker/releases/785826ee889c4cfa34c8c1e494ecc969ebaf9dc9/source.tar.gz`，SHA-256 为 `6a8634f438d8c7d8f4974cbcb874aff1e433a794de12a0f4036cb6d53030bf78`。
