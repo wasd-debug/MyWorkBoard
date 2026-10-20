@@ -193,7 +193,7 @@ test('replacement task sidebar matches the captured navigation and shortcut filt
   for (const path of ['/tasks/shortcut/assigned', '/tasks/shortcut/summary', '/tasks/shortcut/archived', '/tasks/shortcut/no-tag']) {
     assert.ok(workspaceView.includes(path), `missing task sidebar route ${path}`)
   }
-  for (const label of ['指派给我', '摘要', '归档', '无标签', '一周日期导航']) assert.ok(workspaceView.includes(label))
+  for (const label of ['指派给我', '摘要', '归档', '无标签', '系统集合', '任务状态', '迷你日历']) assert.ok(workspaceView.includes(label))
   assert.match(workspaceView, /shortcut === "assigned"\s*\? false/)
   assert.match(workspaceView, /shortcut === "summary"[\s\S]*tomorrow/)
   assert.match(workspaceView, /shortcut === "archived"[\s\S]*archivedIds\.has/)
@@ -235,11 +235,41 @@ test('task navigation collapses inline on narrow screens and persists by account
   assert.match(workspaceView, /function handleSidebarClick\(event\)/)
   assert.match(workspaceView, /max-width: 900px\).*event\.target\.closest\("a\[href\]"\)/)
   assert.match(workspaceView, /clone-task-shell\.sidebar-hidden \.clone-task-sidebar/)
-  assert.match(workspaceView, /@media \(max-width: 900px\)[\s\S]*max-height: 0;[\s\S]*max-height: 340px;/)
+  assert.match(workspaceView, /@media \(max-width: 900px\)[\s\S]*max-height: 0;[\s\S]*max-height: min\(72vh, 680px\);/)
   assert.match(workspaceView, /transition: grid-template-columns 0\.24s/)
   assert.match(workspaceView, /visibility: hidden; pointer-events: none; transition-delay: 0s, 0s, 0\.2s/)
   assert.doesNotMatch(workspaceView, /\.clone-task-shell\.sidebar-hidden \.clone-task-sidebar \{ display: none;/)
   assert.doesNotMatch(workspaceView, /<Drawer|drawer-backdrop|sidebar-overlay/)
+})
+
+test('task sidebar has a lunar mini calendar, mobile controls, and no fake abandoned-task action', () => {
+  assert.match(workspaceView, /apiGetTaskCalendar\(\{ from: dateKey\(from\), to: dateKey\(to\), layers: "", lunar: 1 \}\)/)
+  assert.match(workspaceView, /miniCalendarResponse\.value\.lunar/)
+  assert.match(workspaceView, /\[\.\.\.store\.tasks, \.\.\.\(miniCalendarResponse\.value\.tasks \|\| \[\]\)\]/)
+  assert.match(workspaceView, /function moveMiniMonth\(offset\)/)
+  assert.match(workspaceView, /selected\.getFullYear\(\) === month\.getFullYear\(\) && selected\.getMonth\(\) === month\.getMonth\(\)[\s\S]*new Date\(month\.getFullYear\(\), month\.getMonth\(\), 1\)/)
+  assert.match(workspaceView, /aria-expanded="miniCalendarExpanded"/)
+  assert.match(workspaceView, /新增任务/)
+  assert.match(workspaceView, /aria-pressed="sidebarEditing"/)
+  assert.match(workspaceView, /aria-disabled="true" title="需要后端增加 ABANDONED 状态及对应查询\/恢复 API"/)
+  assert.match(workspaceView, /clone-sidebar-system[\s\S]*clone-sidebar-organization[\s\S]*clone-sidebar-status[\s\S]*clone-mini-calendar/)
+})
+
+test('task sidebar organization exposes display modes, pin recovery, list-copy modes, and filter preview actions', () => {
+  assert.match(workspaceView, /function displayOptionsFor\(/)
+  for (const shortcut of ['this-week', 'next-week', 'no-date', 'no-tag']) assert.match(workspaceView, new RegExp(`key === "${shortcut}"`))
+  assert.match(workspaceView, /有内容时显示/)
+  assert.match(workspaceView, /function setDisplayOption\(/)
+  assert.match(workspaceView, /置顶区|clone-pinned-zone/)
+  assert.match(workspaceView, /value="OPEN_ONLY"/)
+  assert.match(workspaceView, /value="ALL_PRESERVE"/)
+  assert.match(workspaceView, /value="ALL_OPEN"/)
+  assert.match(workspaceView, /async function confirmTagMerge\(/)
+  assert.match(workspaceView, /apiDeleteTaskTag\(source\.publicId/)
+  assert.match(workspaceView, /async function previewSavedFilter\(/)
+  assert.match(workspaceView, /function setFilterPinned\(/)
+  assert.match(workspaceView, /loadSidebarObjectPrefs\(\)/)
+  assert.match(workspaceView, /clearTimeout\(listHoverTimer\)/)
 })
 
 test('task navigation, collapsible groups and sortable rows expose motion and reduced-motion behavior', () => {
@@ -287,7 +317,7 @@ test('task detail width can be resized accessibly and persists per account', () 
 
 test('first-time mobile task navigation starts collapsed without replacing inline navigation', () => {
   assert.match(workspaceView, /const saved = localStorage\.getItem\(sidebarPreferenceKey\(\)\);[\s\S]*saved === null[\s\S]*matchMedia\("\(max-width: 900px\)"\)\.matches/)
-  assert.match(workspaceView, /\.clone-task-shell:not\(\.sidebar-hidden\) \.clone-task-sidebar \{[\s\S]*max-height: 340px/)
+  assert.match(workspaceView, /\.clone-task-shell:not\(\.sidebar-hidden\) \.clone-task-sidebar \{[\s\S]*max-height: min\(72vh, 680px\)/)
   assert.doesNotMatch(workspaceView, /task-navigation-backdrop|task-navigation-open/)
 })
 
