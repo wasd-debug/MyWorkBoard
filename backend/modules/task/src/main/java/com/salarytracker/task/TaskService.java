@@ -81,7 +81,7 @@ public class TaskService {
     }
 
     public List<ListGroup> listGroups() {
-        return jdbcTemplate.query("SELECT public_id,name,sort_order,revision FROM task_list_group WHERE user_id=? ORDER BY sort_order,id",
+        return jdbcTemplate.query("SELECT public_id,name,color,icon,sort_order,revision FROM task_list_group WHERE user_id=? ORDER BY sort_order,id",
                 (result, rowNum) -> listGroup(result), currentUser.id());
     }
 
@@ -92,8 +92,8 @@ public class TaskService {
         ensureUniqueListGroupName(userId, name, null);
         String publicId = UUID.randomUUID().toString();
         int order = command.sortOrder() == null ? nextOrder("task_list_group", userId) : command.sortOrder();
-        jdbcTemplate.update("INSERT INTO task_list_group(public_id,user_id,name,sort_order) VALUES(?,?,?,?)",
-                publicId, userId, name, order);
+        jdbcTemplate.update("INSERT INTO task_list_group(public_id,user_id,name,color,icon,sort_order) VALUES(?,?,?,?,?,?)",
+                publicId, userId, name, optionalText(command.color(), 16), optionalText(command.icon(), 24), order);
         return listGroupForUser(userId, publicId);
     }
 
@@ -105,8 +105,10 @@ public class TaskService {
         if (before.revision() != expected) throw new ConflictException("清单分组版本已变化", before.revision());
         String name = command == null || command.name() == null ? before.name() : requiredText(command.name(), "name", 100);
         ensureUniqueListGroupName(userId, name, publicId);
-        int changed = jdbcTemplate.update("UPDATE task_list_group SET name=?,sort_order=?,revision=revision+1 " +
+        int changed = jdbcTemplate.update("UPDATE task_list_group SET name=?,color=?,icon=?,sort_order=?,revision=revision+1 " +
                         "WHERE public_id=? AND user_id=? AND revision=?", name,
+                command == null || command.color() == null ? before.color() : optionalText(command.color(), 16),
+                command == null || command.icon() == null ? before.icon() : optionalText(command.icon(), 24),
                 command == null || command.sortOrder() == null ? before.sortOrder() : command.sortOrder(),
                 validUuid(publicId, "publicId"), userId, expected);
         if (changed == 0) throw new ConflictException("清单分组版本已变化", before.revision());
@@ -1086,7 +1088,7 @@ public class TaskService {
     }
 
     private ListGroup listGroupForUser(long userId, String publicId) {
-        List<ListGroup> rows = jdbcTemplate.query("SELECT public_id,name,sort_order,revision FROM task_list_group " +
+        List<ListGroup> rows = jdbcTemplate.query("SELECT public_id,name,color,icon,sort_order,revision FROM task_list_group " +
                         "WHERE public_id=? AND user_id=?", (result, rowNum) -> listGroup(result),
                 validUuid(publicId, "publicId"), userId);
         if (rows.isEmpty()) throw new NotFoundException("清单分组不存在");
@@ -1094,7 +1096,8 @@ public class TaskService {
     }
 
     private ListGroup listGroup(ResultSet result) throws SQLException {
-        return new ListGroup(result.getString("public_id"), result.getString("name"), result.getInt("sort_order"),
+        return new ListGroup(result.getString("public_id"), result.getString("name"), result.getString("color"),
+                result.getString("icon"), result.getInt("sort_order"),
                 result.getLong("revision"));
     }
 

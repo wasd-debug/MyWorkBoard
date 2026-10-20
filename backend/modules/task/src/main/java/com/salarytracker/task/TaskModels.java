@@ -19,11 +19,11 @@ public final class TaskModels {
     }
 
     @Schema(name = "TaskListGroup")
-    public record ListGroup(String publicId, String name, int sortOrder, long revision) {
+    public record ListGroup(String publicId, String name, String color, String icon, int sortOrder, long revision) {
     }
 
     @Schema(name = "TaskListGroupCommand")
-    public record ListGroupCommand(String name, Integer sortOrder) {
+    public record ListGroupCommand(String name, String color, String icon, Integer sortOrder) {
     }
 
     @Schema(name = "TaskListGroupAssignment")

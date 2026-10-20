@@ -19,4 +19,6 @@ export interface TaskListGroup {
     'name'?: string;
     'sortOrder'?: number;
     'revision'?: number;
+    'color'?: string | null;
+    'icon'?: string | null;
 }

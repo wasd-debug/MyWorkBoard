@@ -235,11 +235,13 @@ test('task navigation collapses inline on narrow screens and persists by account
   assert.match(workspaceView, /function handleSidebarClick\(event\)/)
   assert.match(workspaceView, /max-width: 900px\).*event\.target\.closest\("a\[href\]"\)/)
   assert.match(workspaceView, /clone-task-shell\.sidebar-hidden \.clone-task-sidebar/)
-  assert.match(workspaceView, /@media \(max-width: 900px\)[\s\S]*max-height: 0;[\s\S]*max-height: min\(72vh, 680px\);/)
+  assert.match(workspaceView, /@media \(max-width: 900px\)[\s\S]*position: fixed;[\s\S]*transform: translateX\(-100%\)/)
   assert.match(workspaceView, /transition: grid-template-columns 0\.24s/)
-  assert.match(workspaceView, /visibility: hidden; pointer-events: none; transition-delay: 0s, 0s, 0\.2s/)
+  assert.match(workspaceView, /visibility: hidden; pointer-events: none;/)
   assert.doesNotMatch(workspaceView, /\.clone-task-shell\.sidebar-hidden \.clone-task-sidebar \{ display: none;/)
-  assert.doesNotMatch(workspaceView, /<Drawer|drawer-backdrop|sidebar-overlay/)
+  assert.match(workspaceView, /clone-sidebar-backdrop/)
+  assert.match(workspaceView, /function startSidebarSwipe\(event\)/)
+  assert.match(workspaceView, /function finishSidebarSwipe\(event\)/)
 })
 
 test('task sidebar has a lunar mini calendar, mobile controls, and no fake abandoned-task action', () => {
@@ -315,10 +317,26 @@ test('task detail width can be resized accessibly and persists per account', () 
   assert.match(workspaceView, /@media \(max-width: 1279px\)[\s\S]*\.clone-detail-divider \{ display: none;/)
 })
 
-test('first-time mobile task navigation starts collapsed without replacing inline navigation', () => {
+test('first-time mobile task navigation starts collapsed and uses a swipeable drawer', () => {
   assert.match(workspaceView, /const saved = localStorage\.getItem\(sidebarPreferenceKey\(\)\);[\s\S]*saved === null[\s\S]*matchMedia\("\(max-width: 900px\)"\)\.matches/)
-  assert.match(workspaceView, /\.clone-task-shell:not\(\.sidebar-hidden\) \.clone-task-sidebar \{[\s\S]*max-height: min\(72vh, 680px\)/)
+  assert.match(workspaceView, /\.clone-task-shell:not\(\.sidebar-hidden\) \.clone-task-sidebar \{[\s\S]*transform: translateX\(0\)/)
+  assert.match(workspaceView, /@touchstart\.passive="startSidebarSwipe"/)
   assert.doesNotMatch(workspaceView, /task-navigation-backdrop|task-navigation-open/)
+})
+
+test('task sidebar groups have durable appearance, flat list alignment, and a fixed footer calendar', () => {
+  assert.match(workspaceView, /group: \{ color: "#64748b", icon: "📁" \}/)
+  assert.match(workspaceView, /\['list','tag','group'\]\.includes\(organizationDialog\.kind\)/)
+  assert.match(workspaceView, /\['list','group'\]\.includes\(organizationDialog\.kind\)/)
+  assert.match(workspaceView, /updateListGroup\(item, \{ name, color: organizationDialog\.color, icon: organizationDialog\.icon/)
+  assert.match(workspaceView, /flex: 1 1 0; min-height: 0; align-content: start;[\s\S]*overflow-y: auto/)
+  assert.match(workspaceView, /\.clone-group-lists \{ padding-left: 0; \}/)
+  assert.match(workspaceView, /\.clone-sidebar-system \{ max-height: min\(28vh, 230px\); overflow-y: auto; \}/)
+  assert.match(workspaceView, /\.clone-sidebar-status,[\s\S]*\.clone-mini-calendar \{ flex: none; \}/)
+  assert.match(workspaceView, /function lunarDayLabel\(value\)/)
+  assert.match(workspaceView, /text\.replace\(\/\^\(\?:闰\)\?\(\?:正\|冬\|腊\|\[一二三四五六七八九十\]\{1,3\}\|\\d\{1,2\}\)月/)
+  assert.match(workspaceView, /const miniCalendarExpanded = ref\(false\)/)
+  assert.match(workspaceView, /if \(isMobileSidebar\.value\) \{\s+sidebarHidden\.value = true;/)
 })
 
 test('task domain exposes a ticktick-style desktop module rail', async () => {

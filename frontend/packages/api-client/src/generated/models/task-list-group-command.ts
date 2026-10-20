@@ -17,4 +17,6 @@
 export interface TaskListGroupCommand {
     'name'?: string;
     'sortOrder'?: number;
+    'color'?: string | null;
+    'icon'?: string | null;
 }

@@ -49,7 +49,12 @@ class TaskOrganizationIntegrationTest extends MySqlIntegrationTestSupport {
     void groupsListsShowsTomorrowAndRecordsActivity() {
         long userId = createUser();
         TaskService service = service(userId);
-        var group = service.createListGroup(new TaskModels.ListGroupCommand("工作", 0));
+        var group = service.createListGroup(new TaskModels.ListGroupCommand("工作", "#334155", "💼", 0));
+        assertEquals("#334155", group.color());
+        assertEquals("💼", group.icon());
+        group = service.updateListGroup(group.publicId(), new TaskModels.ListGroupCommand("工作事项", "#2563eb", "📁", 1),
+                String.valueOf(group.revision()));
+        assertEquals("📁", group.icon());
         var list = service.createList(new TaskModels.TaskListCommand("项目", "#2563eb", "folder", 1, false), "list-group-create");
         var grouped = service.assignListGroup(list.publicId(), group.publicId(), String.valueOf(list.revision()));
         assertEquals(group.publicId(), grouped.groupId());
