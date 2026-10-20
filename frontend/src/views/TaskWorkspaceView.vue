@@ -6,11 +6,11 @@
       'detail-open': Boolean(selectedTask),
     }"
   >
-    <aside class="clone-task-sidebar" aria-label="任务导航">
+    <aside class="clone-task-sidebar" aria-label="任务导航" @click="handleSidebarClick">
       <div class="clone-sidebar-head">
         <strong>任务</strong
-        ><button type="button" aria-label="折叠任务侧栏" @click="toggleSidebar">
-          <PanelLeftClose :size="17" />
+        ><button type="button" :aria-label="sidebarHidden ? '展开任务侧栏' : '折叠任务侧栏'" :title="sidebarHidden ? '展开任务侧栏' : '折叠任务侧栏'" @click="toggleSidebar">
+          <PanelLeft v-if="sidebarHidden" :size="17" /><PanelLeftClose v-else :size="17" />
         </button>
       </div>
       <nav class="clone-primary-nav">
@@ -107,6 +107,7 @@
             type="button"
             class="clone-icon-button"
             aria-label="展开或折叠任务侧栏"
+            :aria-expanded="!sidebarHidden"
             @click="toggleSidebar"
           >
             <PanelLeft :size="18" />
@@ -795,6 +796,7 @@ const focusStore = useTaskFocusStore();
 const filters = ref([]);
 const quickTitle = ref("");
 const sidebarHidden = ref(false);
+const sidebarPreferenceScope = ref("");
 const moreOpen = ref(false);
 const datePopoverOpen = ref(false);
 const repeatPopoverOpen = ref(false);
@@ -1162,6 +1164,23 @@ function isActive(to) {
 function toggleSidebar() {
   sidebarHidden.value = !sidebarHidden.value;
 }
+function sidebarPreferenceKey() {
+  return `task_sidebar_collapsed:${store.accountScope || "anonymous"}`;
+}
+function persistSidebarVisibility() {
+  if (sidebarPreferenceScope.value !== store.accountScope) return;
+  try { localStorage.setItem(sidebarPreferenceKey(), JSON.stringify(sidebarHidden.value)); } catch {}
+}
+function loadSidebarVisibility() {
+  const scope = store.accountScope || "anonymous";
+  sidebarPreferenceScope.value = scope;
+  try { sidebarHidden.value = JSON.parse(localStorage.getItem(sidebarPreferenceKey()) || "false"); } catch { sidebarHidden.value = false; }
+}
+function handleSidebarClick(event) {
+  if (window.matchMedia("(max-width: 900px)").matches && event.target.closest("a[href]")) sidebarHidden.value = true;
+}
+watch(sidebarHidden, persistSidebarVisibility);
+watch(() => store.accountScope, () => loadSidebarVisibility());
 function toggleSection(key) {
   sections[key] = !sections[key];
   persistSidebarSections();
@@ -1908,6 +1927,7 @@ function onKeydown(event) {
     moreOpen.value = false;
     closeContext();
     organizationMenuOpen.value = false;
+    if (window.matchMedia("(max-width: 900px)").matches) sidebarHidden.value = true;
     if (editorOpen.value) closeDetail();
   }
   if (
@@ -1943,6 +1963,7 @@ watch(
 );
 onMounted(async () => {
   await store.init();
+  loadSidebarVisibility();
   loadViewPreferences();
   loadSidebarSections();
   loadListGroupState();
@@ -1974,6 +1995,12 @@ const SidebarSection = {
   color: var(--ink);
   overflow: hidden;
 }
+.clone-task-shell.sidebar-hidden { grid-template-columns: 44px minmax(420px, 1fr) 342px; }
+.clone-task-shell.sidebar-hidden .clone-task-sidebar { align-items: center; gap: 0; padding: 10px 4px; overflow: hidden; }
+.clone-task-shell.sidebar-hidden .clone-sidebar-head { display: flex; justify-content: center; width: 100%; padding: 0; }
+.clone-task-shell.sidebar-hidden .clone-sidebar-head strong,
+.clone-task-shell.sidebar-hidden .clone-task-sidebar > :not(.clone-sidebar-head) { display: none; }
+.clone-task-shell.sidebar-hidden .clone-sidebar-head button { width: 34px; height: 34px; }
 .clone-task-sidebar {
   display: flex;
   min-width: 0;
@@ -2988,6 +3015,7 @@ const SidebarSection = {
   .clone-task-shell {
     grid-template-columns: 220px minmax(420px, 1fr);
   }
+  .clone-task-shell.sidebar-hidden { grid-template-columns: 44px minmax(420px, 1fr); }
   .clone-detail-pane {
     grid-column: 2;
     border-top: 1px solid var(--line);
@@ -3010,6 +3038,7 @@ const SidebarSection = {
   .clone-task-sidebar {
     display: none;
   }
+  .clone-task-shell.sidebar-hidden .clone-task-sidebar { display: none; }
   .clone-task-shell:not(.sidebar-hidden) .clone-task-sidebar {
     display: flex;
     min-height: 0;

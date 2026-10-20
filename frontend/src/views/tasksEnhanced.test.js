@@ -206,6 +206,15 @@ test('task row menu exposes contract-backed task operations and accurate metadat
   assert.match(workspaceView, /ListTodo :size="13" \/>子任务/)
 })
 
+test('task navigation collapses inline on narrow screens and persists by account', () => {
+  assert.match(workspaceView, /task_sidebar_collapsed:/)
+  assert.match(workspaceView, /function handleSidebarClick\(event\)/)
+  assert.match(workspaceView, /max-width: 900px\).*event\.target\.closest\("a\[href\]"\)/)
+  assert.match(workspaceView, /clone-task-shell\.sidebar-hidden \.clone-task-sidebar/)
+  assert.match(workspaceView, /@media \(max-width: 900px\)[\s\S]*\.clone-task-shell\.sidebar-hidden \.clone-task-sidebar \{ display: none;/)
+  assert.doesNotMatch(workspaceView, /<Drawer|drawer-backdrop|sidebar-overlay/)
+})
+
 test('task domain exposes a ticktick-style desktop module rail', async () => {
   const rail = await readFile(new URL('../components/tasks/TaskModuleRail.vue', import.meta.url), 'utf8')
   const app = await readFile(new URL('../App.vue', import.meta.url), 'utf8')
