@@ -226,6 +226,16 @@ test('task quick add previews parsed fields and writes only after confirmation',
   assert.match(workspaceView, /async function confirmQuickAdd\(\)[\s\S]*store\.create\(/)
 })
 
+test('task detail checklist supports pointer and keyboard ordering', () => {
+  assert.match(workspaceView, /@dragstart="dragChecklistItem\(index, \$event\)"/)
+  assert.match(workspaceView, /@drop\.prevent="dropChecklistItem\(index\)"/)
+  assert.match(workspaceView, /aria-label="`上移检查项 \$\{index \+ 1\}`"/)
+  assert.match(workspaceView, /aria-label="`下移检查项 \$\{index \+ 1\}`"/)
+  assert.match(workspaceView, /function moveChecklistItem\(from, offset\)/)
+  assert.match(workspaceView, /function dropChecklistItem\(target\)/)
+  assert.match(workspaceView, /sortOrder: index/)
+})
+
 test('task domain exposes a ticktick-style desktop module rail', async () => {
   const rail = await readFile(new URL('../components/tasks/TaskModuleRail.vue', import.meta.url), 'utf8')
   const app = await readFile(new URL('../App.vue', import.meta.url), 'utf8')

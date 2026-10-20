@@ -535,9 +535,12 @@
         </fieldset>
         <section class="clone-checklist-editor" aria-label="检查项">
           <header><strong>检查项</strong><button type="button" aria-label="添加检查项" @click="addChecklistItem"><Plus :size="15" /></button></header>
-          <div v-for="(item, index) in draft.checklistItems" :key="item.id || index" class="clone-checklist-row">
+          <div v-for="(item, index) in draft.checklistItems" :key="item.id || index" class="clone-checklist-row" :class="{ 'drop-target': checklistDropTarget === index }" @dragover.prevent="checklistDropTarget = index" @dragleave="checklistDropTarget = null" @drop.prevent="dropChecklistItem(index)">
+            <button type="button" class="clone-checklist-grip" draggable="true" :aria-label="`拖动检查项 ${index + 1}`" @dragstart="dragChecklistItem(index, $event)" @dragend="checklistDropTarget = null"><GripVertical :size="14" /></button>
             <input v-model="item.completed" type="checkbox" :aria-label="`完成检查项 ${index + 1}`" />
             <input v-model="item.title" :class="{ completed: item.completed }" :aria-label="`检查项 ${index + 1}`" placeholder="添加检查项" />
+            <button type="button" :aria-label="`上移检查项 ${index + 1}`" :disabled="index === 0" @click="moveChecklistItem(index, -1)">↑</button>
+            <button type="button" :aria-label="`下移检查项 ${index + 1}`" :disabled="index === draft.checklistItems.length - 1" @click="moveChecklistItem(index, 1)">↓</button>
             <button type="button" aria-label="删除检查项" @click="removeChecklistItem(index)"><Trash2 :size="14" /></button>
           </div>
           <button v-if="!draft.checklistItems.length" type="button" class="clone-checklist-add" @click="addChecklistItem"><Plus :size="14" />添加检查项</button>
@@ -775,6 +778,7 @@ import TaskRichTextEditor from "../components/tasks/TaskRichTextEditor.vue";
 import Dialog from "../components/ui/Dialog.vue";
 import { moveItem } from "./taskSidebar.js";
 import { groupTaskItems, sortTaskItems } from "./taskList.js";
+import { moveChecklistItem as reorderChecklistItems } from "./taskChecklist.js";
 import { useTasksStore } from "../stores/tasks.js";
 import { useTaskFocusStore } from "../stores/taskFocus.js";
 import { message } from "../services/message.js";
@@ -813,6 +817,8 @@ const quickDraftDue = ref("");
 const quickParseError = ref("");
 const quickParsing = ref(false);
 const quickSaving = ref(false);
+const checklistDragIndex = ref(null);
+const checklistDropTarget = ref(null);
 const sidebarHidden = ref(false);
 const sidebarPreferenceScope = ref("");
 const moreOpen = ref(false);
@@ -1235,6 +1241,24 @@ async function setTaskPriority(value) {
 }
 function addChecklistItem() {
   draft.checklistItems.push({ id: `new-${Date.now()}-${draft.checklistItems.length}`, title: "", completed: false });
+}
+function dragChecklistItem(index, event) {
+  checklistDragIndex.value = index;
+  event.dataTransfer?.setData("text/plain", String(index));
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+}
+function moveChecklistItem(from, offset) {
+  const to = from + offset;
+  if (to < 0 || to >= draft.checklistItems.length) return;
+  draft.checklistItems = reorderChecklistItems(draft.checklistItems, from, to);
+  checklistDropTarget.value = null;
+}
+function dropChecklistItem(target) {
+  const from = checklistDragIndex.value;
+  checklistDragIndex.value = null;
+  checklistDropTarget.value = null;
+  if (from === null || from === target) return;
+  draft.checklistItems = reorderChecklistItems(draft.checklistItems, from, target);
 }
 function removeChecklistItem(index) {
   draft.checklistItems.splice(index, 1);
@@ -2879,6 +2903,9 @@ const SidebarSection = {
 .clone-checklist-editor > header button:hover,
 .clone-detail-tags-row button:hover { background: var(--accent-soft); color: var(--accent); }
 .clone-checklist-row { display: flex; align-items: center; gap: 8px; min-height: 38px; border-bottom: 1px solid color-mix(in srgb, var(--line) 75%, transparent); }
+.clone-checklist-row.drop-target { border-top: 2px solid var(--accent); }
+.clone-checklist-row .clone-checklist-grip { opacity: .55; cursor: grab; touch-action: none; }
+.clone-checklist-row .clone-checklist-grip:active { cursor: grabbing; }
 .clone-checklist-row input[type="checkbox"] { flex: 0 0 auto; width: 15px; min-height: 15px; margin: 0; accent-color: var(--accent); }
 .clone-checklist-row input[type="text"], .clone-checklist-row > input:not([type]) { flex: 1; min-width: 0; min-height: 30px; padding: 4px 0; border: 0; background: transparent; }
 .clone-checklist-row button { display: grid; place-items: center; width: 26px; height: 26px; border: 0; background: transparent; color: var(--muted); opacity: .35; cursor: pointer; }
