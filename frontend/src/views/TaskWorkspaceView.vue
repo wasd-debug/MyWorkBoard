@@ -608,11 +608,18 @@
           >
             <Check v-if="selectedTask.status === 'COMPLETED'" :size="14" />
           </button>
-          <h2>{{ selectedTask.title }}</h2>
+          <h2 v-if="!inlineTitleEditing"><button type="button" aria-label="编辑任务标题" @click="beginInlineTitleEdit">{{ selectedTask.title }}<Pencil :size="13" /></button></h2>
+          <input v-else v-model="inlineTitleDraft" class="clone-inline-title-input" aria-label="任务标题" maxlength="500" autofocus @keydown.enter.prevent="$event.target.blur()" @keydown.esc.prevent="cancelInlineTitleEdit" @blur="saveInlineTitle" />
         </div>
-        <p class="clone-detail-description" :class="{ placeholder: !selectedTask.description }">
-          {{ selectedTask.description || '输入内容或使用 / 快速插入' }}
-        </p>
+        <div v-if="!inlineDescriptionEditing" class="clone-detail-description-block">
+          <TaskRichTextEditor v-if="selectedTask.description" :model-value="selectedTask.description" label="任务描述" preview-only />
+          <p v-else class="clone-detail-description placeholder">输入内容或使用 / 快速插入</p>
+          <button type="button" class="clone-edit-description" aria-label="编辑任务描述" @click="beginInlineDescriptionEdit"><Pencil :size="13" /></button>
+        </div>
+        <div v-else class="clone-inline-description-editor">
+          <TaskRichTextEditor v-model="inlineDescriptionDraft" label="任务描述" placeholder="补充任务描述，输入 / 查看快捷菜单" />
+          <div><button type="button" @click="cancelInlineDescriptionEdit">取消</button><button type="button" class="clone-primary-button" :disabled="inlineDescriptionSaving" @click="saveInlineDescription">保存描述</button></div>
+        </div>
         <section v-if="selectedTask.checklist?.length" class="clone-checklist-read" aria-label="检查项">
           <header><strong>检查项</strong><span>{{ selectedTask.checklist.filter((item) => item.completed).length }}/{{ selectedTask.checklist.length }}</span></header>
           <label v-for="item in selectedTask.checklist" :key="item.publicId || item.title" class="clone-checklist-row">
@@ -667,13 +674,13 @@
             </li>
           </ol>
         </section>
-        <button
-          type="button"
-          class="clone-primary-button full"
-          @click="openEdit(selectedTask)"
-        >
-          <Pencil :size="15" />编辑任务
-        </button>
+        <section class="clone-detail-properties" aria-label="任务属性">
+          <button type="button" @click="openEdit(selectedTask)"><span>开始时间</span><strong>{{ selectedTask.startAt ? formatDate(selectedTask.startAt) : '未设置' }}</strong></button>
+          <button type="button" @click="openEdit(selectedTask)"><span>持续时间</span><strong>{{ selectedTask.durationMinutes ? `${selectedTask.durationMinutes} 分钟` : '未设置' }}</strong></button>
+          <button type="button" @click="openEdit(selectedTask)"><span>父任务</span><strong>{{ selectedTask.parentId ? taskName(selectedTask.parentId) : '无' }}</strong></button>
+          <button type="button" @click="openEdit(selectedTask)"><span>全天</span><strong>{{ selectedTask.allDay ? '是' : '否' }}</strong></button>
+        </section>
+        <button type="button" class="clone-detail-edit-fields" @click="openEdit(selectedTask)"><Pencil :size="14" />编辑更多字段</button>
       </div>
     </aside>
 
@@ -835,6 +842,12 @@ const organizationDialog = reactive({ open: false, kind: "", item: null, name: "
 const selectedTask = ref(null);
 const editorOpen = ref(false);
 const editing = ref(null);
+const inlineTitleEditing = ref(false);
+const inlineTitleDraft = ref("");
+const inlineTitleSaving = ref(false);
+const inlineDescriptionEditing = ref(false);
+const inlineDescriptionDraft = ref("");
+const inlineDescriptionSaving = ref(false);
 const dragged = ref(null);
 const dragOverTask = ref(null);
 const groupBy = ref("time");
@@ -1140,6 +1153,9 @@ function listName(id) {
 function tagName(id) {
   return store.tags.find((item) => item.publicId === id)?.name || "标签";
 }
+function taskName(id) {
+  return store.tasks.find((item) => item.publicId === id)?.title || "任务";
+}
 function priorityLabel(value) {
   return { NONE: "无", LOW: "低", MEDIUM: "中", HIGH: "高" }[value] || value;
 }
@@ -1220,8 +1236,52 @@ function openDetail(task) {
   if (!task) return;
   selectedTask.value = task;
   editorOpen.value = false;
+  inlineTitleEditing.value = false;
+  inlineDescriptionEditing.value = false;
   void loadActivity(task);
   void loadCollaboration(task);
+}
+function beginInlineTitleEdit() {
+  inlineTitleDraft.value = selectedTask.value?.title || "";
+  inlineTitleEditing.value = true;
+}
+function cancelInlineTitleEdit() {
+  inlineTitleEditing.value = false;
+  inlineTitleDraft.value = selectedTask.value?.title || "";
+}
+async function saveInlineTitle() {
+  if (!inlineTitleEditing.value || inlineTitleSaving.value) return;
+  const title = inlineTitleDraft.value.trim();
+  if (!title || title === selectedTask.value?.title) return cancelInlineTitleEdit();
+  inlineTitleSaving.value = true;
+  try {
+    selectedTask.value = await store.update(selectedTask.value, { title });
+    inlineTitleEditing.value = false;
+  } catch (error) {
+    store.error = error?.response?.data?.detail || error?.message || "标题保存失败";
+  } finally {
+    inlineTitleSaving.value = false;
+  }
+}
+function beginInlineDescriptionEdit() {
+  inlineDescriptionDraft.value = selectedTask.value?.description || "";
+  inlineDescriptionEditing.value = true;
+}
+function cancelInlineDescriptionEdit() {
+  inlineDescriptionEditing.value = false;
+  inlineDescriptionDraft.value = selectedTask.value?.description || "";
+}
+async function saveInlineDescription() {
+  if (!selectedTask.value || inlineDescriptionSaving.value) return;
+  inlineDescriptionSaving.value = true;
+  try {
+    selectedTask.value = await store.update(selectedTask.value, { description: inlineDescriptionDraft.value });
+    inlineDescriptionEditing.value = false;
+  } catch (error) {
+    store.error = error?.response?.data?.detail || error?.message || "描述保存失败";
+  } finally {
+    inlineDescriptionSaving.value = false;
+  }
 }
 async function openEdit(task) {
   if (!task) return;
@@ -1326,6 +1386,8 @@ function closeDetail() {
   selectedTask.value = null;
   editing.value = null;
   editorOpen.value = false;
+  inlineTitleEditing.value = false;
+  inlineDescriptionEditing.value = false;
   resetCollaboration();
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
@@ -2633,10 +2695,32 @@ const SidebarSection = {
   gap: 10px;
 }
 .clone-detail-title h2 {
+  min-width: 0;
+  flex: 1;
   margin: 1px 0;
   font-size: 19px;
   line-height: 1.4;
 }
+.clone-detail-title h2 button { display: flex; align-items: flex-start; gap: 7px; width: 100%; padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-weight: 650; line-height: inherit; text-align: left; overflow-wrap: anywhere; cursor: text; }
+.clone-detail-title h2 button svg { flex: 0 0 auto; margin-top: 5px; color: var(--muted); opacity: 0; }
+.clone-detail-title h2 button:hover svg, .clone-detail-title h2 button:focus-visible svg { opacity: 1; }
+.clone-inline-title-input { min-width: 0; flex: 1; padding: 2px 5px; border: 1px solid var(--accent); border-radius: 4px; background: var(--card); color: var(--ink); font: inherit; font-size: 19px; }
+.clone-detail-description-block { position: relative; min-width: 0; padding: 2px 24px 2px 0; }
+.clone-detail-description-block :deep(.task-rich-editor) { border: 0; border-radius: 0; background: transparent; }
+.clone-detail-description-block :deep(.task-rich-preview) { min-height: 0; padding: 0; overflow: visible; color: var(--ink2); font-size: 13px; line-height: 1.7; }
+.clone-detail-description { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: var(--ink2); font: inherit; font-size: 13px; line-height: 1.7; text-align: left; white-space: pre-wrap; cursor: text; }
+.clone-detail-description.placeholder { color: var(--muted); }
+.clone-edit-description { position: absolute; top: 0; right: 0; display: grid; width: 24px; height: 24px; place-items: center; border: 0; border-radius: 4px; background: transparent; color: var(--muted); opacity: 0; cursor: pointer; }
+.clone-detail-description-block:hover .clone-edit-description, .clone-edit-description:focus-visible { opacity: 1; }
+.clone-inline-description-editor { display: grid; gap: 8px; }
+.clone-inline-description-editor > div { display: flex; justify-content: flex-end; gap: 7px; }
+.clone-inline-description-editor > div > button:first-child { min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--ink2); }
+.clone-detail-properties { display: grid; border-top: 1px solid var(--line); }
+.clone-detail-properties button { display: flex; justify-content: space-between; gap: 12px; min-width: 0; padding: 9px 0; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--muted); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.clone-detail-properties button:hover strong { color: var(--accent); }
+.clone-detail-properties strong { min-width: 0; overflow: hidden; color: var(--ink2); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.clone-detail-edit-fields { display: inline-flex; align-items: center; justify-self: start; gap: 6px; min-height: 32px; padding: 0 2px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.clone-detail-edit-fields:hover { color: var(--accent); }
 .clone-checklist-editor,
 .clone-checklist-read { display: grid; gap: 0; border-top: 1px solid var(--line); }
 .clone-checklist-editor > header,

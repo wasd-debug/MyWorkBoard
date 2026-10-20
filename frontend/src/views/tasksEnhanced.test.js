@@ -185,6 +185,16 @@ test('full task page rebuild exposes persistent list grouping and sorting contro
   assert.match(workspaceView, /:draggable="!batchMode && sort === 'manual'"/)
 })
 
+test('task detail allows direct title and Markdown description editing in its pane', () => {
+  assert.match(workspaceView, /aria-label="编辑任务标题"/)
+  assert.match(workspaceView, /async function saveInlineTitle\(\)/)
+  assert.match(workspaceView, /aria-label="编辑任务描述"/)
+  assert.match(workspaceView, /async function saveInlineDescription\(\)/)
+  assert.match(workspaceView, /preview-only/)
+  assert.match(workspaceView, /clone-detail-properties/)
+  assert.match(workspaceView, /clone-detail-edit-fields/)
+})
+
 test('task domain exposes a ticktick-style desktop module rail', async () => {
   const rail = await readFile(new URL('../components/tasks/TaskModuleRail.vue', import.meta.url), 'utf8')
   const app = await readFile(new URL('../App.vue', import.meta.url), 'utf8')
