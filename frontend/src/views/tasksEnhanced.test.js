@@ -236,6 +236,17 @@ test('task detail checklist supports pointer and keyboard ordering', () => {
   assert.match(workspaceView, /sortOrder: index/)
 })
 
+test('task detail width can be resized accessibly and persists per account', () => {
+  assert.match(workspaceView, /role="separator"[\s\S]*aria-label="调整详情栏宽度"/)
+  assert.match(workspaceView, /@pointerdown="startDetailResize"/)
+  assert.match(workspaceView, /@dblclick="resetDetailWidth"/)
+  assert.match(workspaceView, /@keydown="resizeDetailByKey"/)
+  assert.match(workspaceView, /task_detail_width:/)
+  assert.match(workspaceView, /Math\.min\(560, Math\.max\(320/)
+  assert.match(workspaceView, /clone-task-shell\.sidebar-hidden \{ grid-template-columns: 44px minmax\(420px, 1fr\) 5px var\(--clone-detail-width, 342px\); \}/)
+  assert.match(workspaceView, /@media \(max-width: 1279px\)[\s\S]*\.clone-detail-divider \{ display: none;/)
+})
+
 test('task domain exposes a ticktick-style desktop module rail', async () => {
   const rail = await readFile(new URL('../components/tasks/TaskModuleRail.vue', import.meta.url), 'utf8')
   const app = await readFile(new URL('../App.vue', import.meta.url), 'utf8')

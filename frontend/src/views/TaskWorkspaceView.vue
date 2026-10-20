@@ -1,6 +1,7 @@
 <template>
   <section
     class="clone-task-shell"
+    :style="{ '--clone-detail-width': `${detailWidth}px` }"
     :class="{
       'sidebar-hidden': sidebarHidden,
       'detail-open': Boolean(selectedTask),
@@ -350,6 +351,20 @@
         ><button type="button" @click="selectedIds.clear()">取消</button>
       </div>
     </main>
+
+    <div
+      class="clone-detail-divider"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="调整详情栏宽度"
+      :aria-valuemin="320"
+      :aria-valuemax="560"
+      :aria-valuenow="detailWidth"
+      tabindex="0"
+      @pointerdown="startDetailResize"
+      @dblclick="resetDetailWidth"
+      @keydown="resizeDetailByKey"
+    ></div>
 
     <aside
       class="clone-detail-pane"
@@ -821,6 +836,10 @@ const checklistDragIndex = ref(null);
 const checklistDropTarget = ref(null);
 const sidebarHidden = ref(false);
 const sidebarPreferenceScope = ref("");
+const detailWidth = ref(342);
+const detailPreferenceScope = ref("");
+let detailResizeState = null;
+let detailPreviousUserSelect = "";
 const moreOpen = ref(false);
 const datePopoverOpen = ref(false);
 const repeatPopoverOpen = ref(false);
@@ -1188,6 +1207,56 @@ function isActive(to) {
 function toggleSidebar() {
   sidebarHidden.value = !sidebarHidden.value;
 }
+function detailWidthKey() {
+  return `task_detail_width:${store.accountScope || "anonymous"}`;
+}
+function loadDetailWidth() {
+  const scope = store.accountScope || "anonymous";
+  detailPreferenceScope.value = scope;
+  detailWidth.value = 342;
+  try {
+    const value = Number(localStorage.getItem(detailWidthKey()));
+    if (Number.isFinite(value) && value >= 320 && value <= 560) detailWidth.value = value;
+  } catch {}
+}
+function persistDetailWidth() {
+  if (detailPreferenceScope.value !== (store.accountScope || "anonymous")) return;
+  try { localStorage.setItem(detailWidthKey(), String(detailWidth.value)); } catch {}
+}
+function startDetailResize(event) {
+  if (window.innerWidth < 1280 || event.button !== 0) return;
+  detailResizeState = { startX: event.clientX, startWidth: detailWidth.value };
+  detailPreviousUserSelect = document.body.style.userSelect;
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+  document.body.style.userSelect = "none";
+  window.addEventListener("pointermove", updateDetailResize);
+  window.addEventListener("pointerup", stopDetailResize, { once: true });
+  window.addEventListener("pointercancel", stopDetailResize, { once: true });
+  event.preventDefault();
+}
+function updateDetailResize(event) {
+  if (!detailResizeState) return;
+  detailWidth.value = Math.min(560, Math.max(320, detailResizeState.startWidth - (event.clientX - detailResizeState.startX)));
+}
+function stopDetailResize() {
+  if (!detailResizeState) return;
+  detailResizeState = null;
+  document.body.style.userSelect = detailPreviousUserSelect;
+  window.removeEventListener("pointermove", updateDetailResize);
+  window.removeEventListener("pointercancel", stopDetailResize);
+  persistDetailWidth();
+}
+function resetDetailWidth() {
+  detailWidth.value = 342;
+  persistDetailWidth();
+}
+function resizeDetailByKey(event) {
+  if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+  event.preventDefault();
+  const step = event.shiftKey ? 48 : 16;
+  detailWidth.value = Math.min(560, Math.max(320, detailWidth.value + (event.key === 'ArrowLeft' ? step : -step)));
+  persistDetailWidth();
+}
 function sidebarPreferenceKey() {
   return `task_sidebar_collapsed:${store.accountScope || "anonymous"}`;
 }
@@ -1205,6 +1274,7 @@ function handleSidebarClick(event) {
 }
 watch(sidebarHidden, persistSidebarVisibility);
 watch(() => store.accountScope, () => loadSidebarVisibility());
+watch(() => store.accountScope, () => loadDetailWidth());
 function toggleSection(key) {
   sections[key] = !sections[key];
   persistSidebarSections();
@@ -2040,6 +2110,7 @@ watch(
 onMounted(async () => {
   await store.init();
   loadSidebarVisibility();
+  loadDetailWidth();
   loadViewPreferences();
   loadSidebarSections();
   loadListGroupState();
@@ -2048,6 +2119,7 @@ onMounted(async () => {
   window.addEventListener("keydown", onKeydown);
 });
 onBeforeUnmount(() => {
+  stopDetailResize();
   document.removeEventListener("click", closeContext);
   window.removeEventListener("keydown", onKeydown);
 });
@@ -2064,14 +2136,14 @@ const SidebarSection = {
 <style scoped>
 .clone-task-shell {
   display: grid;
-  grid-template-columns: 240px minmax(420px, 1fr) 342px;
+  grid-template-columns: 240px minmax(420px, 1fr) 5px var(--clone-detail-width, 342px);
   height: 100vh;
   margin: 0;
   background: var(--card);
   color: var(--ink);
   overflow: hidden;
 }
-.clone-task-shell.sidebar-hidden { grid-template-columns: 44px minmax(420px, 1fr) 342px; }
+.clone-task-shell.sidebar-hidden { grid-template-columns: 44px minmax(420px, 1fr) 5px var(--clone-detail-width, 342px); }
 .clone-task-shell.sidebar-hidden .clone-task-sidebar { align-items: center; gap: 0; padding: 10px 4px; overflow: hidden; }
 .clone-task-shell.sidebar-hidden .clone-sidebar-head { display: flex; justify-content: center; width: 100%; padding: 0; }
 .clone-task-shell.sidebar-hidden .clone-sidebar-head strong,
@@ -2664,6 +2736,10 @@ const SidebarSection = {
   border-left: 1px solid var(--line);
   background: color-mix(in srgb, var(--card) 98%, var(--paper));
 }
+.clone-detail-divider { position: relative; z-index: 3; cursor: ew-resize; touch-action: none; outline: 0; }
+.clone-detail-divider::after { content: ""; position: absolute; top: 0; bottom: 0; left: 2px; width: 1px; background: var(--line); }
+.clone-detail-divider:hover::after,
+.clone-detail-divider:focus-visible::after { left: 1px; width: 3px; background: var(--accent); }
 .clone-detail-pane > header {
   display: flex;
   align-items: center;
@@ -3113,6 +3189,7 @@ const SidebarSection = {
   color: var(--accent);
 }
 @media (max-width: 1279px) {
+  .clone-detail-divider { display: none; }
   .clone-task-shell {
     grid-template-columns: 220px minmax(420px, 1fr);
   }
