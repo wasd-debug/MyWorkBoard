@@ -1,5 +1,12 @@
 # 部署说明
 
+## 2026-10-20 任务左栏与移动端布局发布
+
+- 应用提交 `785826e`（包含本轮左栏及此前 11 个任务页增量）已推送至远程 `main`。精确提交归档位于服务器 `/home/ubuntu/salary-tracker/releases/785826ee889c4cfa34c8c1e494ecc969ebaf9dc9/source.tar.gz`，SHA-256 为 `6a8634f438d8c7d8f4974cbcb874aff1e433a794de12a0f4036cb6d53030bf78`。
+- 发布前数据库备份 `/home/ubuntu/salary-tracker/backups/salary-before-785826e-20261020-170517.sql.gz` 非空且通过 `gzip -t`；MySQL 容器和数据卷未重建。旧运行镜像保留为 `salary-backend:pre-785826e`（原 `bf012ec`，镜像 ID `sha256:4838d95a6ffe6c954d99b9a4f97b33f911eae90d6c22465d490f39a8fcad9d1f`）与 `salary-frontend:pre-785826e`（原 `b5fd36c`，镜像 ID `sha256:a88e8b7c1c5681c68229a226f6ce16ad40eaa2ab08b5d7b2a33fa8ff55e55290`）；原服务器 Compose 文件保留为 `docker-compose.prod.yml.bak.785826e`。
+- 从该归档构建并部署 `linux/amd64` 镜像 `salary-backend:785826e`（镜像 ID `sha256:704a966e3edeac38bde7c3bcb191635d80113f6732a634b0b8d6dbdc046be234`）和 `salary-frontend:785826e`（镜像 ID `sha256:68b82cc203e4554ffbe2122bafe777f1fcaa0eccfffe57f44662b42391be9d10`）。仅重建 backend/frontend；Flyway 成功应用 V39、V40 并到达 v40，`/api/health`、`/`、`/tasks/all`、`/tasks/today` 在服务器本机均返回 HTTP 200。
+- 公网 `https://jsn1024.cn/api/health` 本轮探测超时，未据此判定公网验收通过。浏览器视觉、移动端抽屉与登录后交互仍待人工验收，步骤见《前端手工检查清单》本轮章节。
+
 ## 2026-10-16 本地前端切换 Vite 热更新
 
 - 本地任务域和前端验收不再运行 `salary-frontend` Docker/Nginx 容器；已停止并删除本机该容器。
