@@ -174,7 +174,8 @@ public class TaskSyncService {
         if (payload == null) throw new IllegalArgumentException("payload 必填");
         if (current == null && (base > 0 || tasks.listExistsForAnotherUser(entityId))) return inaccessible(operation.opId(), "task-list", entityId, "清单不存在或已删除");
         TaskListCommand command = new TaskListCommand(payload.name(), payload.color(), payload.icon(),
-                payload.sortOrder(), payload.archived());
+                payload.sortOrder(), payload.archived(), bool(payload.extra(), "pinned"),
+                string(payload.extra(), "viewType"), string(payload.extra(), "objectType"));
         var saved = current == null ? tasks.createListForSync(command, entityId, operation.opId())
                 : tasks.updateListForSync(entityId, command, base, operation.opId());
         return result(operation.opId(), "task-list", entityId, SyncStatus.APPLIED,
@@ -193,7 +194,7 @@ public class TaskSyncService {
         SyncPayload payload = operation.payload();
         if (payload == null) throw new IllegalArgumentException("payload 必填");
         if (current == null && (base > 0 || tasks.tagExistsForAnotherUser(entityId))) return inaccessible(operation.opId(), "task-tag", entityId, "标签不存在或已删除");
-        TaskTagCommand command = new TaskTagCommand(payload.parentId(), payload.name(), payload.color(), payload.sortOrder());
+        TaskTagCommand command = new TaskTagCommand(payload.parentId(), payload.name(), payload.color(), payload.sortOrder(), payload.icon());
         var saved = current == null ? tasks.createTagForSync(command, entityId, operation.opId())
                 : tasks.updateTagForSync(entityId, command, base, operation.opId());
         return result(operation.opId(), "task-tag", entityId, SyncStatus.APPLIED,
@@ -268,13 +269,13 @@ public class TaskSyncService {
     private Countdown currentCountdown(String id) { try { return efficiency.countdownForSync(id); } catch (NotFoundException exception) { return null; } }
 
     private String string(java.util.Map<String, Object> values, String key) {
-        Object value = values.get(key); return value == null ? null : String.valueOf(value);
+        Object value = values == null ? null : values.get(key); return value == null ? null : String.valueOf(value);
     }
     private Integer integer(java.util.Map<String, Object> values, String key) {
         Object value = values.get(key); return value == null ? null : value instanceof Number number ? number.intValue() : Integer.valueOf(String.valueOf(value));
     }
     private Boolean bool(java.util.Map<String, Object> values, String key) {
-        Object value = values.get(key); return value == null ? null : value instanceof Boolean flag ? flag : Boolean.valueOf(String.valueOf(value));
+        Object value = values == null ? null : values.get(key); return value == null ? null : value instanceof Boolean flag ? flag : Boolean.valueOf(String.valueOf(value));
     }
     private List<Integer> integers(java.util.Map<String, Object> values, String key) {
         Object value = values.get(key); if (!(value instanceof List<?> list)) return null;

@@ -19,6 +19,7 @@ export interface TaskTag {
     'parentId'?: string;
     'name'?: string;
     'color'?: string;
+    'icon'?: string;
     'sortOrder'?: number;
     'revision'?: number;
 }

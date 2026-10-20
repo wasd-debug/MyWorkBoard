@@ -20,4 +20,7 @@ export interface TaskListCommand {
     'icon'?: string;
     'sortOrder'?: number;
     'archived'?: boolean;
+    'pinned'?: boolean;
+    'viewType'?: string;
+    'objectType'?: string;
 }

@@ -5,6 +5,7 @@ import com.alibaba.excel.ExcelReader;
 import com.alibaba.excel.read.metadata.ReadSheet;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.salarytracker.identity.CurrentUserResolver;
 import com.salarytracker.platform.ConflictException;
 import com.salarytracker.platform.NotFoundException;
@@ -66,9 +67,10 @@ public class TaskEnhancementService {
         validateFilterReferences(userId, valid);
         String id = UUID.randomUUID().toString();
         jdbc.update("INSERT INTO task_filter(public_id,user_id,name,list_ids,tag_ids,priorities,task_status,due_range," +
-                        "keyword,include_subtasks,match_all_tags,sort_order,pinned) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "keyword,include_subtasks,match_all_tags,sort_order,pinned,icon,rules_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 id, userId, valid.name, join(valid.listIds), join(valid.tagIds), join(valid.priorities), valid.status,
-                valid.dueRange, valid.keyword, valid.includeSubtasks, valid.matchAllTags, valid.sortOrder, valid.pinned);
+                valid.dueRange, valid.keyword, valid.includeSubtasks, valid.matchAllTags, valid.sortOrder, valid.pinned,
+                valid.icon, valid.rules == null ? null : json(valid.rules));
         return filterForUser(id);
     }
 
@@ -78,10 +80,11 @@ public class TaskEnhancementService {
         ValidFilter valid = validate(command);
         validateFilterReferences(currentUser.id(), valid);
         int changed = jdbc.update("UPDATE task_filter SET name=?,list_ids=?,tag_ids=?,priorities=?,task_status=?," +
-                        "due_range=?,keyword=?,include_subtasks=?,match_all_tags=?,sort_order=?,pinned=?,revision=revision+1 " +
+                        "due_range=?,keyword=?,include_subtasks=?,match_all_tags=?,sort_order=?,pinned=?,icon=?,rules_json=?,revision=revision+1 " +
                         "WHERE public_id=? AND user_id=? AND revision=?",
                 valid.name, join(valid.listIds), join(valid.tagIds), join(valid.priorities), valid.status,
                 valid.dueRange, valid.keyword, valid.includeSubtasks, valid.matchAllTags, valid.sortOrder, valid.pinned,
+                valid.icon, valid.rules == null ? null : json(valid.rules),
                 before.publicId(), currentUser.id(), revision);
         if (changed != 1) throw new ConflictException("智能清单已被其他操作更新", before.revision());
         return filterForUser(id);
@@ -240,10 +243,94 @@ public class TaskEnhancementService {
 
     private List<TaskModels.TaskItem> openTasks(int limit){return jdbc.query("SELECT public_id FROM task WHERE user_id=? AND deleted=FALSE ORDER BY updated_at DESC LIMIT ?",(r,n)->r.getString(1),currentUser.id(),limit).stream().map(tasks::get).toList();}
     private SmartFilter filterForUser(String id){List<SmartFilter> rows=jdbc.query("SELECT * FROM task_filter WHERE public_id=? AND user_id=?",(r,n)->filter(r),id,currentUser.id());if(rows.isEmpty())throw new NotFoundException("智能清单不存在");return rows.get(0);}
-    private SmartFilter filter(java.sql.ResultSet r)throws java.sql.SQLException{return new SmartFilter(r.getString("public_id"),r.getString("name"),split(r.getString("list_ids")),split(r.getString("tag_ids")),split(r.getString("priorities")),r.getString("task_status"),r.getString("due_range"),r.getString("keyword"),r.getBoolean("include_subtasks"),r.getBoolean("match_all_tags"),r.getInt("sort_order"),r.getBoolean("pinned"),r.getLong("revision"));}
-    private boolean matches(SmartFilter f,TaskModels.TaskItem t){if(!f.listIds().isEmpty()&&!f.listIds().contains(t.listId()))return false;if(!f.priorities().isEmpty()&&!f.priorities().contains(t.priority()))return false;if(!"ALL".equals(f.status())&&!f.status().equals(t.status()))return false;if(!f.includeSubtasks()&&t.parentId()!=null)return false;if(!f.keyword().isBlank()&&!contains(t.title()+" "+t.description(),f.keyword()))return false;if(!f.tagIds().isEmpty()&&(f.matchAllTags()?!t.tagIds().containsAll(f.tagIds()):t.tagIds().stream().noneMatch(f.tagIds()::contains)))return false;LocalDate due=t.dueAt()==null?null:Instant.parse(t.dueAt()).atZone(ZoneId.of(t.timezone())).toLocalDate(),today=LocalDate.now(ZoneId.of("Asia/Shanghai"));return switch(f.dueRange()){case"TODAY"->today.equals(due);case"TOMORROW"->today.plusDays(1).equals(due);case"NEXT7"->due!=null&&!due.isBefore(today)&&due.isBefore(today.plusDays(8));case"OVERDUE"->due!=null&&due.isBefore(today)&&"OPEN".equals(t.status());case"NONE"->due==null;default->true;};}
-    private ValidFilter validate(SmartFilterCommand c){if(c==null)throw new IllegalArgumentException("智能清单内容不能为空");return new ValidFilter(required(c.name(),120),clean(c.listIds()),clean(c.tagIds()),cleanEnums(c.priorities(),List.of("NONE","LOW","MEDIUM","HIGH")),enumValue(c.status(),List.of("OPEN","COMPLETED","ALL"),"OPEN"),enumValue(c.dueRange(),List.of("ANY","TODAY","TOMORROW","NEXT7","OVERDUE","NONE"),"ANY"),text(c.keyword()).trim(),!Boolean.FALSE.equals(c.includeSubtasks()),Boolean.TRUE.equals(c.matchAllTags()),c.sortOrder()==null?0:c.sortOrder(),Boolean.TRUE.equals(c.pinned()));}
-    private void validateFilterReferences(long user,ValidFilter v){for(String id:v.listIds)if(count("SELECT COUNT(*) FROM task_list WHERE user_id=? AND public_id=? AND deleted=FALSE",user,id)==0)throw new IllegalArgumentException("清单不存在");for(String id:v.tagIds)if(count("SELECT COUNT(*) FROM task_tag WHERE user_id=? AND public_id=? AND deleted=FALSE",user,id)==0)throw new IllegalArgumentException("标签不存在");}
+    private SmartFilter filter(java.sql.ResultSet r)throws java.sql.SQLException{return new SmartFilter(r.getString("public_id"),r.getString("name"),split(r.getString("list_ids")),split(r.getString("tag_ids")),split(r.getString("priorities")),r.getString("task_status"),r.getString("due_range"),r.getString("keyword"),r.getBoolean("include_subtasks"),r.getBoolean("match_all_tags"),r.getInt("sort_order"),r.getBoolean("pinned"),r.getString("icon"),parseRules(r.getString("rules_json")),r.getLong("revision"));}
+    private boolean matches(SmartFilter f,TaskModels.TaskItem t){if(!f.listIds().isEmpty()&&!f.listIds().contains(t.listId()))return false;if(!f.priorities().isEmpty()&&!f.priorities().contains(t.priority()))return false;if(!"ALL".equals(f.status())&&!f.status().equals(t.status()))return false;if(!f.includeSubtasks()&&t.parentId()!=null)return false;if(!f.keyword().isBlank()&&!contains(t.title()+" "+t.description(),f.keyword()))return false;if(!f.tagIds().isEmpty()&&(f.matchAllTags()?!t.tagIds().containsAll(f.tagIds()):t.tagIds().stream().noneMatch(f.tagIds()::contains)))return false;LocalDate due=t.dueAt()==null?null:Instant.parse(t.dueAt()).atZone(ZoneId.of(t.timezone())).toLocalDate(),today=LocalDate.now(ZoneId.of("Asia/Shanghai"));boolean dueMatches=switch(f.dueRange()){case"TODAY"->today.equals(due);case"TOMORROW"->today.plusDays(1).equals(due);case"NEXT7"->due!=null&&!due.isBefore(today)&&due.isBefore(today.plusDays(8));case"OVERDUE"->due!=null&&due.isBefore(today)&&"OPEN".equals(t.status());case"NONE"->due==null;default->true;};return dueMatches&&(f.rules()==null||evaluateRule(f.rules(),t));}
+    private ValidFilter validate(SmartFilterCommand c){if(c==null)throw new IllegalArgumentException("智能清单内容不能为空");JsonNode rules=validateRules(c.rules());return new ValidFilter(required(c.name(),120),clean(c.listIds()),clean(c.tagIds()),cleanEnums(c.priorities(),List.of("NONE","LOW","MEDIUM","HIGH")),enumValue(c.status(),List.of("OPEN","COMPLETED","ALL"),"OPEN"),enumValue(c.dueRange(),List.of("ANY","TODAY","TOMORROW","NEXT7","OVERDUE","NONE"),"ANY"),text(c.keyword()).trim(),!Boolean.FALSE.equals(c.includeSubtasks()),Boolean.TRUE.equals(c.matchAllTags()),c.sortOrder()==null?0:c.sortOrder(),Boolean.TRUE.equals(c.pinned()),c.icon()==null?null:required(c.icon(),40),rules);}
+    private JsonNode validateRules(JsonNode rules) {
+        if (rules == null || rules.isNull()) return null;
+        int[] count = {0};
+        validateRuleNode(rules, 0, count);
+        return rules;
+    }
+    private void validateRuleNode(JsonNode node, int depth, int[] count) {
+        if (++count[0] > 60 || depth > 5 || !node.isObject()) throw new IllegalArgumentException("筛选条件树超过允许范围");
+        if (node.has("op")) {
+            String op = node.path("op").asText("").toUpperCase(Locale.ROOT);
+            JsonNode children = node.get("children");
+            if (!List.of("AND", "OR").contains(op) || children == null || !children.isArray()
+                    || children.isEmpty() || children.size() > 20) throw new IllegalArgumentException("条件组必须使用 AND/OR 且包含 1-20 条条件");
+            children.forEach(child -> validateRuleNode(child, depth + 1, count));
+            return;
+        }
+        String field = node.path("field").asText("");
+        String operator = node.path("operator").asText("").toUpperCase(Locale.ROOT);
+        if (!List.of("title", "description", "status", "priority", "listId", "tagId", "dueAt", "hasDueDate", "parentId").contains(field)
+                || !List.of("EQ", "NE", "CONTAINS", "NOT_CONTAINS", "IN", "IS_SET", "IS_NOT_SET", "LT", "LTE", "GT", "GTE").contains(operator))
+            throw new IllegalArgumentException("筛选字段或操作符不受支持");
+        if (!List.of("IS_SET", "IS_NOT_SET").contains(operator) && !node.has("value")) throw new IllegalArgumentException("筛选条件缺少值");
+        if ("IN".equals(operator) && (!node.path("value").isArray() || node.path("value").isEmpty() || node.path("value").size() > 20))
+            throw new IllegalArgumentException("IN 条件需要 1-20 个值");
+        JsonNode value = node.get("value");
+        if (value != null && value.isTextual() && value.asText().length() > 500) throw new IllegalArgumentException("筛选条件值不能超过 500 字符");
+        if ("IN".equals(operator)) for (JsonNode item : value) if (!item.isValueNode() || item.asText().length() > 500)
+            throw new IllegalArgumentException("IN 条件值格式无效");
+        if (!List.of("IN", "IS_SET", "IS_NOT_SET").contains(operator) && value != null && !value.isValueNode())
+            throw new IllegalArgumentException("筛选条件值格式无效");
+        if ("hasDueDate".equals(field) && !List.of("EQ", "NE").contains(operator)) throw new IllegalArgumentException("日期存在性只支持 EQ/NE");
+        if (List.of("listId", "tagId").contains(field) && !List.of("EQ", "NE", "IN", "IS_SET", "IS_NOT_SET").contains(operator))
+            throw new IllegalArgumentException("清单/标签条件操作符无效");
+        if ("status".equals(field) && !List.of("IS_SET", "IS_NOT_SET").contains(operator)
+                && !List.of("OPEN", "COMPLETED", "ABANDONED").contains(node.path("value").asText().toUpperCase(Locale.ROOT)))
+            throw new IllegalArgumentException("任务状态条件无效");
+        if ("priority".equals(field) && !List.of("IS_SET", "IS_NOT_SET").contains(operator)
+                && !List.of("NONE", "LOW", "MEDIUM", "HIGH").contains(node.path("value").asText().toUpperCase(Locale.ROOT)))
+            throw new IllegalArgumentException("优先级条件无效");
+        if (List.of("dueAt").contains(field) && List.of("LT", "LTE", "GT", "GTE").contains(operator)) {
+            try { LocalDate.parse(node.path("value").asText()); } catch (Exception exception) { throw new IllegalArgumentException("日期条件需使用 YYYY-MM-DD"); }
+        }
+    }
+    private boolean evaluateRule(JsonNode node, TaskModels.TaskItem task) {
+        if (node.has("op")) {
+            boolean and = "AND".equalsIgnoreCase(node.path("op").asText());
+            for (JsonNode child : node.path("children")) {
+                boolean result = evaluateRule(child, task);
+                if (and && !result) return false;
+                if (!and && result) return true;
+            }
+            return and;
+        }
+        String field = node.path("field").asText();
+        String operator = node.path("operator").asText().toUpperCase(Locale.ROOT);
+        String actual = switch (field) {
+            case "title" -> task.title(); case "description" -> task.description(); case "status" -> task.status();
+            case "priority" -> task.priority(); case "listId" -> task.listId(); case "tagId" -> String.join(",", task.tagIds());
+            case "dueAt" -> task.dueAt() == null ? null : Instant.parse(task.dueAt()).atZone(ZoneId.of(task.timezone())).toLocalDate().toString();
+            case "hasDueDate" -> String.valueOf(task.dueAt() != null); case "parentId" -> task.parentId(); default -> null;
+        };
+        if ("IS_SET".equals(operator)) return actual != null && !actual.isBlank() && !"false".equals(actual);
+        if ("IS_NOT_SET".equals(operator)) return actual == null || actual.isBlank() || "false".equals(actual);
+        String expected = node.path("value").asText("");
+        return switch (operator) {
+            case "EQ" -> actual != null && actual.equalsIgnoreCase(expected);
+            case "NE" -> actual == null || !actual.equalsIgnoreCase(expected);
+            case "CONTAINS" -> actual != null && contains(actual, expected);
+            case "NOT_CONTAINS" -> actual == null || !contains(actual, expected);
+            case "IN" -> { boolean found = false; for (JsonNode value : node.path("value")) if (actual != null && List.of(actual.split(",")).stream().anyMatch(item -> item.equalsIgnoreCase(value.asText()))) found = true; yield found; }
+            case "LT", "LTE", "GT", "GTE" -> compare(actual, expected, operator);
+            default -> false;
+        };
+    }
+    private boolean compare(String actual, String expected, String operator) {
+        if (actual == null) return false;
+        int comparison = actual.compareTo(expected);
+        return switch (operator) { case "LT" -> comparison < 0; case "LTE" -> comparison <= 0; case "GT" -> comparison > 0; case "GTE" -> comparison >= 0; default -> false; };
+    }
+    private JsonNode parseRules(String value) {
+        if (value == null || value.isBlank()) return null;
+        try { return mapper.readTree(value); } catch (Exception exception) { throw new IllegalStateException("筛选条件数据损坏", exception); }
+    }
+    private void validateFilterReferences(long user,ValidFilter v){for(String id:v.listIds)if(count("SELECT COUNT(*) FROM task_list WHERE user_id=? AND public_id=? AND deleted=FALSE",user,id)==0)throw new IllegalArgumentException("清单不存在");for(String id:v.tagIds)if(count("SELECT COUNT(*) FROM task_tag WHERE user_id=? AND public_id=? AND deleted=FALSE",user,id)==0)throw new IllegalArgumentException("标签不存在");validateRuleReferences(user,v.rules);}
+    private void validateRuleReferences(long user,JsonNode node){if(node==null||node.isNull())return;if(node.has("op")){node.path("children").forEach(child->validateRuleReferences(user,child));return;}String field=node.path("field").asText();if(!List.of("listId","tagId").contains(field))return;String table="listId".equals(field)?"task_list":"task_tag";List<String>ids=new ArrayList<>();JsonNode value=node.path("value");if("IN".equalsIgnoreCase(node.path("operator").asText()))value.forEach(item->ids.add(item.asText()));else if(value.isTextual())ids.add(value.asText());for(String id:ids)if(count("SELECT COUNT(*) FROM "+table+" WHERE user_id=? AND public_id=? AND deleted=FALSE",user,id)==0)throw new IllegalArgumentException("筛选规则引用了不存在或不属于当前账号的清单/标签");}
     private Map<String,String> labels(String d){Map<String,String> m=new LinkedHashMap<>();if("LIST".equals(d))tasks.listLists().forEach(v->m.put(v.publicId(),v.name()));else if("TAG".equals(d)){tasks.listTags().forEach(v->m.put(v.publicId(),v.name()));m.put("NONE","无标签");}else{m.put("OPEN","待完成");m.put("COMPLETED","已完成");m.put("HIGH","高");m.put("MEDIUM","中");m.put("LOW","低");m.put("NONE","无优先级");}return m;}
     private List<RawRow> excelRows(byte[] bytes){List<RawRow> out=new ArrayList<>();try(ExcelReader reader=EasyExcel.read(new ByteArrayInputStream(bytes)).build()){List<ReadSheet>sheets=reader.excelExecutor().sheetList();if(sheets.size()>20)throw new IllegalArgumentException("Sheet 数不能超过 20");for(ReadSheet sheet:sheets){List<Map<Integer,String>> data=EasyExcel.read(new ByteArrayInputStream(bytes)).sheet(sheet.getSheetNo()).headRowNumber(0).doReadSync();if(data.isEmpty())continue;Map<Integer,String>head=data.get(0);for(int i=1;i<data.size();i++){Map<String,String>v=new LinkedHashMap<>();for(var cell:data.get(i).entrySet())v.put(text(head.get(cell.getKey())).trim(),text(cell.getValue()).trim());if(v.values().stream().anyMatch(x->!x.isBlank()))out.add(new RawRow(sheet.getSheetName(),i+1,v));}}}return out;}
     private List<RawRow> csvRows(byte[] bytes){String content=decode(bytes);String[]lines=content.replace("\r","").split("\n");if(lines.length<2)return List.of();char sep=lines[0].chars().filter(c->c==';').count()>lines[0].chars().filter(c->c==',').count()?';':',';List<String>head=parseCsv(lines[0],sep);List<RawRow>out=new ArrayList<>();for(int i=1;i<lines.length;i++){List<String>cells=parseCsv(lines[i],sep);Map<String,String>v=new LinkedHashMap<>();for(int j=0;j<head.size();j++)v.put(head.get(j),j<cells.size()?cells.get(j):"");if(v.values().stream().anyMatch(x->!x.isBlank()))out.add(new RawRow("CSV",i+1,v));}return out;}
@@ -274,6 +361,6 @@ public class TaskEnhancementService {
     private boolean contains(String v,String q){return text(v).toLowerCase(Locale.ROOT).contains(q.toLowerCase(Locale.ROOT));}
     private String text(Object v){return v==null?"":String.valueOf(v);}
     private LocalDate parseDate(String v,LocalDate fallback){try{return text(v).isBlank()?fallback:LocalDate.parse(v);}catch(DateTimeParseException e){throw new IllegalArgumentException("日期格式无效");}}
-    private record ValidFilter(String name,List<String>listIds,List<String>tagIds,List<String>priorities,String status,String dueRange,String keyword,boolean includeSubtasks,boolean matchAllTags,int sortOrder,boolean pinned){}
+    private record ValidFilter(String name,List<String>listIds,List<String>tagIds,List<String>priorities,String status,String dueRange,String keyword,boolean includeSubtasks,boolean matchAllTags,int sortOrder,boolean pinned,String icon,JsonNode rules){}
     private record RawRow(String sheet,int row,Map<String,String>values){}
 }

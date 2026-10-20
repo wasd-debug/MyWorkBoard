@@ -27,5 +27,7 @@ export interface TaskSmartFilter {
     'matchAllTags'?: boolean;
     'sortOrder'?: number;
     'pinned'?: boolean;
+    'icon'?: string;
+    'rules'?: object;
     'revision'?: number;
 }

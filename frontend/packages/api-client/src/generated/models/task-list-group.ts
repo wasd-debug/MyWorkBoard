@@ -20,5 +20,6 @@ export interface TaskListGroup {
     'color'?: string;
     'icon'?: string;
     'sortOrder'?: number;
+    'pinned'?: boolean;
     'revision'?: number;
 }

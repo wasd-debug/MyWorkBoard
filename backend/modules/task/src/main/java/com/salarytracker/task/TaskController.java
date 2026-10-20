@@ -5,6 +5,8 @@ import com.salarytracker.platform.Audit;
 import com.salarytracker.task.TaskModels.DeletedResource;
 import com.salarytracker.task.TaskModels.Settings;
 import com.salarytracker.task.TaskModels.SettingsCommand;
+import com.salarytracker.task.TaskModels.SidebarPreferences;
+import com.salarytracker.task.TaskModels.SidebarPreferencesCommand;
 import com.salarytracker.task.TaskModels.TaskCommand;
 import com.salarytracker.task.TaskModels.TaskItem;
 import com.salarytracker.task.TaskModels.TaskList;
@@ -422,6 +424,21 @@ public class TaskController {
     public ApiResponse<Settings> updateSettings(@RequestBody SettingsCommand body,
                                                 @RequestHeader("If-Match") String ifMatch) {
         return ApiResponse.ok(taskService.updateSettings(body, ifMatch));
+    }
+
+    @GetMapping("/sidebar-preferences")
+    @PreAuthorize("hasAuthority('task:read')")
+    @Operation(operationId = "getTaskSidebarPreferences")
+    public ApiResponse<SidebarPreferences> sidebarPreferences() {
+        return ApiResponse.ok(taskService.sidebarPreferences());
+    }
+
+    @PutMapping(value = "/sidebar-preferences", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "updateTaskSidebarPreferences")
+    public ApiResponse<SidebarPreferences> updateSidebarPreferences(@RequestBody SidebarPreferencesCommand body,
+                                                                    @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(taskService.updateSidebarPreferences(body, ifMatch));
     }
 
     @PostMapping(value = "/sync/push", consumes = MediaType.APPLICATION_JSON_VALUE)

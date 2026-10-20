@@ -73,6 +73,35 @@ class TaskOrganizationIntegrationTest extends MySqlIntegrationTestSupport {
         service.deleteListGroup(group.publicId(), String.valueOf(group.revision()));
         assertEquals(null, service.listLists().stream().filter(item -> item.publicId().equals(list.publicId())).findFirst().orElseThrow().groupId());
     }
+
+    @Test
+    void persistsListAppearanceAndAccountScopedSidebarPreferences() {
+        long userId = createUser();
+        TaskService service = service(userId);
+        var list = service.createList(new TaskModels.TaskListCommand("看板笔记", "#123456", "folder", 0,
+                false, true, "KANBAN", "NOTE"), "appearance-list");
+        assertEquals("KANBAN", list.viewType());
+        assertEquals("NOTE", list.objectType());
+        assertTrue(list.pinned());
+        var group = service.createListGroup(new TaskModels.ListGroupCommand("置顶分组", null, "folder", 0, true));
+        assertTrue(group.pinned());
+        var tag = service.createTag(new TaskModels.TaskTagCommand(null, "带图标", null, 0, "tag"));
+        assertEquals("tag", tag.icon());
+
+        var before = service.sidebarPreferences();
+        var updated = service.updateSidebarPreferences(new TaskModels.SidebarPreferencesCommand(List.of("TODAY"),
+                List.of("INBOX"), List.of(list.publicId()), List.of(), List.of(tag.publicId()), List.of(),
+                List.of(), List.of(), java.util.Map.of("lists", true)), String.valueOf(before.revision()));
+        assertEquals(List.of("TODAY"), updated.hiddenSystemViews());
+        assertEquals(List.of(list.publicId()), updated.hiddenListIds());
+        assertEquals(Boolean.TRUE, updated.collapsedSections().get("lists"));
+        assertThrows(ConflictException.class, () -> service.updateSidebarPreferences(
+                new TaskModels.SidebarPreferencesCommand(List.of(), List.of(), List.of(), List.of(), List.of(),
+                        List.of(), List.of(), List.of(), java.util.Map.of()), String.valueOf(before.revision())));
+        assertThrows(IllegalArgumentException.class, () -> service.updateSidebarPreferences(
+                new TaskModels.SidebarPreferencesCommand(List.of("NOT_A_VIEW"), List.of(), List.of(), List.of(),
+                        List.of(), List.of(), List.of(), List.of(), java.util.Map.of()), String.valueOf(updated.revision())));
+    }
     @Test
     void managesListsTagsSubtasksChecklistAndTrash() {
         TaskService service = service(createUser());

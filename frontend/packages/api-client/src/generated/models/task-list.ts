@@ -23,5 +23,8 @@ export interface TaskList {
     'systemKey'?: string;
     'sortOrder'?: number;
     'archived'?: boolean;
+    'pinned'?: boolean;
+    'viewType'?: string;
+    'objectType'?: string;
     'revision'?: number;
 }

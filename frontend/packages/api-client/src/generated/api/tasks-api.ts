@@ -68,6 +68,8 @@ import type { ApiResponseTaskReminder } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskSettings } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseTaskSidebarPreferences } from '../models/index.ts';
+// @ts-ignore
 import type { ApiResponseTaskSyncPullResponse } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskSyncPushResponse } from '../models/index.ts';
@@ -99,6 +101,8 @@ import type { TaskReminderCommand } from '../models/index.ts';
 import type { TaskRescheduleCommand } from '../models/index.ts';
 // @ts-ignore
 import type { TaskSettingsCommand } from '../models/index.ts';
+// @ts-ignore
+import type { TaskSidebarPreferencesCommand } from '../models/index.ts';
 // @ts-ignore
 import type { TaskSortCommand } from '../models/index.ts';
 // @ts-ignore
@@ -973,6 +977,35 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
          */
         getTaskSettings: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/tasks/settings`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getTaskSidebarPreferences: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/tasks/sidebar-preferences`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
@@ -2102,6 +2135,46 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
         },
         /**
          *
+         * @param {string} ifMatch
+         * @param {TaskSidebarPreferencesCommand} taskSidebarPreferencesCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateTaskSidebarPreferences: async (ifMatch: string, taskSidebarPreferencesCommand: TaskSidebarPreferencesCommand, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'ifMatch' is not null or undefined
+            assertParamExists('updateTaskSidebarPreferences', 'ifMatch', ifMatch)
+            // verify required parameter 'taskSidebarPreferencesCommand' is not null or undefined
+            assertParamExists('updateTaskSidebarPreferences', 'taskSidebarPreferencesCommand', taskSidebarPreferencesCommand)
+            const localVarPath = `/api/v1/tasks/sidebar-preferences`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'PUT', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            if (ifMatch != null) {
+                localVarHeaderParameter['If-Match'] = String(ifMatch);
+            }
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(taskSidebarPreferencesCommand, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {TaskTagCommand} taskTagCommand
@@ -2503,6 +2576,17 @@ export const TasksApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
+        async getTaskSidebarPreferences(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskSidebarPreferences>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getTaskSidebarPreferences(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.getTaskSidebarPreferences']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
         async listDeletedTaskLists(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseListTaskList>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.listDeletedTaskLists(options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
@@ -2867,6 +2951,19 @@ export const TasksApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {string} ifMatch
+         * @param {TaskSidebarPreferencesCommand} taskSidebarPreferencesCommand
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async updateTaskSidebarPreferences(ifMatch: string, taskSidebarPreferencesCommand: TaskSidebarPreferencesCommand, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskSidebarPreferences>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.updateTaskSidebarPreferences(ifMatch, taskSidebarPreferencesCommand, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.updateTaskSidebarPreferences']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {string} publicId
          * @param {string} ifMatch
          * @param {TaskTagCommand} taskTagCommand
@@ -3105,6 +3202,14 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
          */
         getTaskSettings(options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskSettings> {
             return localVarFp.getTaskSettings(options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getTaskSidebarPreferences(options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskSidebarPreferences> {
+            return localVarFp.getTaskSidebarPreferences(options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -3352,6 +3457,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
          */
         updateTaskSettings(requestParameters: TasksApiUpdateTaskSettingsRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskSettings> {
             return localVarFp.updateTaskSettings(requestParameters.ifMatch, requestParameters.taskSettingsCommand, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @param {TasksApiUpdateTaskSidebarPreferencesRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateTaskSidebarPreferences(requestParameters: TasksApiUpdateTaskSidebarPreferencesRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskSidebarPreferences> {
+            return localVarFp.updateTaskSidebarPreferences(requestParameters.ifMatch, requestParameters.taskSidebarPreferencesCommand, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -3794,6 +3908,15 @@ export interface TasksApiUpdateTaskSettingsRequest {
 }
 
 /**
+ * Request parameters for updateTaskSidebarPreferences operation in TasksApi.
+ */
+export interface TasksApiUpdateTaskSidebarPreferencesRequest {
+    readonly ifMatch: string
+
+    readonly taskSidebarPreferencesCommand: TaskSidebarPreferencesCommand
+}
+
+/**
  * Request parameters for updateTaskTag operation in TasksApi.
  */
 export interface TasksApiUpdateTaskTagRequest {
@@ -4044,6 +4167,15 @@ export class TasksApi extends BaseAPI {
      */
     public getTaskSettings(options?: RawAxiosRequestConfig) {
         return TasksApiFp(this.configuration).getTaskSettings(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public getTaskSidebarPreferences(options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).getTaskSidebarPreferences(options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -4319,6 +4451,16 @@ export class TasksApi extends BaseAPI {
      */
     public updateTaskSettings(requestParameters: TasksApiUpdateTaskSettingsRequest, options?: RawAxiosRequestConfig) {
         return TasksApiFp(this.configuration).updateTaskSettings(requestParameters.ifMatch, requestParameters.taskSettingsCommand, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {TasksApiUpdateTaskSidebarPreferencesRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public updateTaskSidebarPreferences(requestParameters: TasksApiUpdateTaskSidebarPreferencesRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).updateTaskSidebarPreferences(requestParameters.ifMatch, requestParameters.taskSidebarPreferencesCommand, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

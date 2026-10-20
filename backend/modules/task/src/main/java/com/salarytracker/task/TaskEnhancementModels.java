@@ -1,6 +1,7 @@
 package com.salarytracker.task;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.List;
 import java.util.Map;
@@ -12,13 +13,28 @@ public final class TaskEnhancementModels {
     public record SmartFilter(String publicId, String name, List<String> listIds, List<String> tagIds,
                               List<String> priorities, String status, String dueRange, String keyword,
                               boolean includeSubtasks, boolean matchAllTags, int sortOrder, boolean pinned,
-                              long revision) { }
+                              String icon, JsonNode rules, long revision) {
+        public SmartFilter(String publicId, String name, List<String> listIds, List<String> tagIds,
+                           List<String> priorities, String status, String dueRange, String keyword,
+                           boolean includeSubtasks, boolean matchAllTags, int sortOrder, boolean pinned,
+                           long revision) {
+            this(publicId, name, listIds, tagIds, priorities, status, dueRange, keyword, includeSubtasks,
+                    matchAllTags, sortOrder, pinned, null, null, revision);
+        }
+    }
 
     @Schema(name = "TaskSmartFilterCommand")
     public record SmartFilterCommand(String name, List<String> listIds, List<String> tagIds,
                                      List<String> priorities, String status, String dueRange, String keyword,
                                      Boolean includeSubtasks, Boolean matchAllTags, Integer sortOrder,
-                                     Boolean pinned) { }
+                                     Boolean pinned, String icon, JsonNode rules) {
+        public SmartFilterCommand(String name, List<String> listIds, List<String> tagIds,
+                                  List<String> priorities, String status, String dueRange, String keyword,
+                                  Boolean includeSubtasks, Boolean matchAllTags, Integer sortOrder, Boolean pinned) {
+            this(name, listIds, tagIds, priorities, status, dueRange, keyword, includeSubtasks, matchAllTags,
+                    sortOrder, pinned, null, null);
+        }
+    }
 
     @Schema(name = "TaskBoardColumn")
     public record BoardColumn(String key, String label, List<TaskModels.TaskItem> tasks) { }

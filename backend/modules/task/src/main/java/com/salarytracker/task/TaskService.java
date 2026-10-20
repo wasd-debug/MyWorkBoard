@@ -5,6 +5,8 @@ import com.salarytracker.platform.ConflictException;
 import com.salarytracker.platform.NotFoundException;
 import com.salarytracker.task.TaskModels.DeletedResource;
 import com.salarytracker.task.TaskModels.Settings;
+import com.salarytracker.task.TaskModels.SidebarPreferences;
+import com.salarytracker.task.TaskModels.SidebarPreferencesCommand;
 import com.salarytracker.task.TaskModels.TaskCommand;
 import com.salarytracker.task.TaskModels.TaskItem;
 import com.salarytracker.task.TaskModels.TaskList;
@@ -23,6 +25,8 @@ import com.salarytracker.task.TaskModels.BatchResult;
 import com.salarytracker.task.TaskModels.BatchTarget;
 import com.salarytracker.task.TaskModels.SortCommand;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -44,6 +48,7 @@ import java.util.UUID;
 
 @Service
 public class TaskService {
+    private static final ObjectMapper JSON = new ObjectMapper();
     private static final String TASK_COLUMNS = "t.public_id,t.user_id, l.public_id list_public_id, t.title, t.description, " +
             "t.status, t.priority, t.start_at, t.due_at, t.all_day, t.timezone, t.duration_minutes, " +
             "t.source, t.completed_at, t.revision, t.deleted, t.deleted_at, " +
@@ -65,23 +70,24 @@ public class TaskService {
         long userId = currentUser.id();
         ensureDefaults(userId);
         return jdbcTemplate.query("SELECT l.public_id,(SELECT g.public_id FROM task_list_group g WHERE g.id=l.group_id) group_public_id," +
-                        "l.name,l.color,l.icon,l.system_key,l.sort_order,l.archived,l.revision FROM task_list l " +
+                        "l.name,l.color,l.icon,l.system_key,l.sort_order,l.archived,l.is_pinned,l.view_type,l.object_type,l.revision FROM task_list l " +
                         "WHERE l.user_id = ? AND l.deleted = FALSE ORDER BY l.sort_order, l.id",
                 (result, rowNum) -> new TaskList(result.getString("public_id"), result.getString("group_public_id"), result.getString("name"),
                         result.getString("color"), result.getString("icon"), result.getString("system_key"),
-                        result.getInt("sort_order"), result.getBoolean("archived"), result.getLong("revision")),
+                        result.getInt("sort_order"), result.getBoolean("archived"), result.getBoolean("is_pinned"),
+                        result.getString("view_type"), result.getString("object_type"), result.getLong("revision")),
                 userId);
     }
 
     public List<TaskList> listDeletedLists() {
         return jdbcTemplate.query("SELECT l.public_id,(SELECT g.public_id FROM task_list_group g WHERE g.id=l.group_id) group_public_id," +
-                        "l.name,l.color,l.icon,l.system_key,l.sort_order,l.archived,l.revision FROM task_list l " +
+                        "l.name,l.color,l.icon,l.system_key,l.sort_order,l.archived,l.is_pinned,l.view_type,l.object_type,l.revision FROM task_list l " +
                         "WHERE l.user_id = ? AND l.deleted = TRUE ORDER BY l.deleted_at DESC, l.id DESC",
                 (result, rowNum) -> taskList(result), currentUser.id());
     }
 
     public List<ListGroup> listGroups() {
-        return jdbcTemplate.query("SELECT public_id,name,color,icon,sort_order,revision FROM task_list_group WHERE user_id=? ORDER BY sort_order,id",
+        return jdbcTemplate.query("SELECT public_id,name,color,icon,sort_order,is_pinned,revision FROM task_list_group WHERE user_id=? ORDER BY is_pinned DESC,sort_order,id",
                 (result, rowNum) -> listGroup(result), currentUser.id());
     }
 
@@ -92,8 +98,9 @@ public class TaskService {
         ensureUniqueListGroupName(userId, name, null);
         String publicId = UUID.randomUUID().toString();
         int order = command.sortOrder() == null ? nextOrder("task_list_group", userId) : command.sortOrder();
-        jdbcTemplate.update("INSERT INTO task_list_group(public_id,user_id,name,color,icon,sort_order) VALUES(?,?,?,?,?,?)",
-                publicId, userId, name, optionalText(command.color(), 16), optionalText(command.icon(), 24), order);
+        jdbcTemplate.update("INSERT INTO task_list_group(public_id,user_id,name,color,icon,sort_order,is_pinned) VALUES(?,?,?,?,?,?,?)",
+                publicId, userId, name, optionalText(command.color(), 16), optionalText(command.icon(), 24), order,
+                Boolean.TRUE.equals(command.pinned()));
         return listGroupForUser(userId, publicId);
     }
 
@@ -105,11 +112,12 @@ public class TaskService {
         if (before.revision() != expected) throw new ConflictException("清单分组版本已变化", before.revision());
         String name = command == null || command.name() == null ? before.name() : requiredText(command.name(), "name", 100);
         ensureUniqueListGroupName(userId, name, publicId);
-        int changed = jdbcTemplate.update("UPDATE task_list_group SET name=?,color=?,icon=?,sort_order=?,revision=revision+1 " +
+        int changed = jdbcTemplate.update("UPDATE task_list_group SET name=?,color=?,icon=?,sort_order=?,is_pinned=?,revision=revision+1 " +
                         "WHERE public_id=? AND user_id=? AND revision=?", name,
                 command == null || command.color() == null ? before.color() : optionalText(command.color(), 16),
                 command == null || command.icon() == null ? before.icon() : optionalText(command.icon(), 24),
                 command == null || command.sortOrder() == null ? before.sortOrder() : command.sortOrder(),
+                command == null || command.pinned() == null ? before.pinned() : command.pinned(),
                 validUuid(publicId, "publicId"), userId, expected);
         if (changed == 0) throw new ConflictException("清单分组版本已变化", before.revision());
         return listGroupForUser(userId, publicId);
@@ -276,9 +284,11 @@ public class TaskService {
         if (!replay.isEmpty()) return listForUser(userId, replay.get(0), false);
         String name = requiredText(command == null ? null : command.name(), "name", 120);
         int sortOrder = command.sortOrder() == null ? nextOrder("task_list", userId) : command.sortOrder();
-        jdbcTemplate.update("INSERT INTO task_list(public_id,user_id,name,color,icon,sort_order,archived) VALUES(?,?,?,?,?,?,?)",
+        String viewType = enumValue(command.viewType(), "LIST", List.of("LIST", "KANBAN", "TIMELINE"), "viewType");
+        String objectType = enumValue(command.objectType(), "TASK", List.of("TASK", "NOTE"), "objectType");
+        jdbcTemplate.update("INSERT INTO task_list(public_id,user_id,name,color,icon,sort_order,archived,is_pinned,view_type,object_type) VALUES(?,?,?,?,?,?,?,?,?,?)",
                 publicId, userId, name, optionalText(command.color(), 24), optionalText(command.icon(), 40), sortOrder,
-                Boolean.TRUE.equals(command.archived()));
+                Boolean.TRUE.equals(command.archived()), Boolean.TRUE.equals(command.pinned()), viewType, objectType);
         TaskList created = listForUser(userId, publicId, false);
         changeLog.append(userId, opId, "task-list", publicId, "UPSERT", syncEntity(created, false));
         return created;
@@ -305,13 +315,17 @@ public class TaskService {
         }
         long expected = requiredRevision(ifMatch);
         if (before.revision() != expected) throw new ConflictException("清单版本已变化", before.revision());
-        int updated = jdbcTemplate.update("UPDATE task_list SET name=?,color=?,icon=?,sort_order=?,archived=?,revision=revision+1 " +
+        int updated = jdbcTemplate.update("UPDATE task_list SET name=?,color=?,icon=?,sort_order=?,archived=?,is_pinned=?,view_type=?,object_type=?,revision=revision+1 " +
                         "WHERE public_id=? AND user_id=? AND deleted=FALSE AND revision=?",
                 command.name() == null ? before.name() : requiredText(command.name(), "name", 120),
                 command.color() == null ? before.color() : optionalText(command.color(), 24),
                 command.icon() == null ? before.icon() : optionalText(command.icon(), 40),
                 command.sortOrder() == null ? before.sortOrder() : command.sortOrder(),
-                command.archived() == null ? before.archived() : command.archived(), validUuid(publicId, "publicId"),
+                command.archived() == null ? before.archived() : command.archived(),
+                command.pinned() == null ? before.pinned() : command.pinned(),
+                enumValue(command.viewType(), before.viewType(), List.of("LIST", "KANBAN", "TIMELINE"), "viewType"),
+                enumValue(command.objectType(), before.objectType(), List.of("TASK", "NOTE"), "objectType"),
+                validUuid(publicId, "publicId"),
                 userId, expected);
         if (updated == 0) throw new ConflictException("清单版本已变化", before.revision());
         TaskList changed = listForUser(userId, publicId, false);
@@ -363,7 +377,7 @@ public class TaskService {
 
     public List<TaskTag> listTags() {
         long userId = currentUser.id();
-        return jdbcTemplate.query("SELECT t.public_id,p.public_id parent_public_id,t.name,t.color,t.sort_order,t.revision " +
+        return jdbcTemplate.query("SELECT t.public_id,p.public_id parent_public_id,t.name,t.color,t.icon,t.sort_order,t.revision " +
                         "FROM task_tag t LEFT JOIN task_tag p ON p.id=t.parent_id WHERE t.user_id=? AND t.deleted=FALSE " +
                         "ORDER BY t.sort_order,t.id", (result, rowNum) -> tag(result), userId);
     }
@@ -383,9 +397,9 @@ public class TaskService {
         String name = requiredText(command == null ? null : command.name(), "name", 30);
         ensureUniqueTagName(userId, name, null);
         Long parentId = resolveTagParent(userId, command.parentId(), null);
-        jdbcTemplate.update("INSERT INTO task_tag(public_id,user_id,parent_id,name,normalized_name,color,sort_order) VALUES(?,?,?,?,?,?,?)",
+        jdbcTemplate.update("INSERT INTO task_tag(public_id,user_id,parent_id,name,normalized_name,color,sort_order,icon) VALUES(?,?,?,?,?,?,?,?)",
                 publicId, userId, parentId, name, name.toLowerCase(Locale.ROOT), optionalText(command.color(), 24),
-                command.sortOrder() == null ? nextOrder("task_tag", userId) : command.sortOrder());
+                command.sortOrder() == null ? nextOrder("task_tag", userId) : command.sortOrder(), optionalText(command.icon(), 40));
         TaskTag created = tagForUser(userId, publicId);
         changeLog.append(userId, opId, "task-tag", publicId, "UPSERT", syncEntity(created, false));
         return created;
@@ -410,10 +424,11 @@ public class TaskService {
         ensureUniqueTagName(userId, name, publicId);
         Long parentId = command.parentId() == null ? resolveTagParent(userId, before.parentId(), publicId)
                 : resolveTagParent(userId, command.parentId(), publicId);
-        int updated = jdbcTemplate.update("UPDATE task_tag SET parent_id=?,name=?,normalized_name=?,color=?,sort_order=?,revision=revision+1 " +
+        int updated = jdbcTemplate.update("UPDATE task_tag SET parent_id=?,name=?,normalized_name=?,color=?,sort_order=?,icon=?,revision=revision+1 " +
                         "WHERE public_id=? AND user_id=? AND deleted=FALSE AND revision=?", parentId, name,
                 name.toLowerCase(Locale.ROOT), command.color() == null ? before.color() : optionalText(command.color(), 24),
-                command.sortOrder() == null ? before.sortOrder() : command.sortOrder(), publicId, userId, expected);
+                command.sortOrder() == null ? before.sortOrder() : command.sortOrder(),
+                command.icon() == null ? before.icon() : optionalText(command.icon(), 40), publicId, userId, expected);
         if (updated == 0) throw new ConflictException("标签版本已变化", tagForUser(userId, publicId).revision());
         TaskTag changed = tagForUser(userId, publicId);
         changeLog.append(userId, opId, "task-tag", publicId, "UPSERT", syncEntity(changed, false));
@@ -929,6 +944,84 @@ public class TaskService {
         return settings();
     }
 
+    @Transactional
+    public SidebarPreferences sidebarPreferences() {
+        long userId = currentUser.id();
+        jdbcTemplate.update("INSERT IGNORE INTO task_sidebar_preference(user_id,hidden_system_views_json,pinned_system_views_json," +
+                        "hidden_list_ids_json,pinned_list_ids_json,hidden_tag_ids_json,pinned_tag_ids_json,hidden_filter_ids_json," +
+                        "pinned_filter_ids_json,collapsed_sections_json) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                userId, "[]", "[]", "[]", "[]", "[]", "[]", "[]", "[]", "{}");
+        return jdbcTemplate.queryForObject("SELECT * FROM task_sidebar_preference WHERE user_id=?", (row, n) ->
+                new SidebarPreferences(jsonList(row.getString("hidden_system_views_json")),
+                        jsonList(row.getString("pinned_system_views_json")), jsonList(row.getString("hidden_list_ids_json")),
+                        jsonList(row.getString("pinned_list_ids_json")), jsonList(row.getString("hidden_tag_ids_json")),
+                        jsonList(row.getString("pinned_tag_ids_json")), jsonList(row.getString("hidden_filter_ids_json")),
+                        jsonList(row.getString("pinned_filter_ids_json")), jsonMap(row.getString("collapsed_sections_json")),
+                        row.getLong("revision")), userId);
+    }
+
+    @Transactional
+    public SidebarPreferences updateSidebarPreferences(SidebarPreferencesCommand command, String ifMatch) {
+        if (command == null) throw new IllegalArgumentException("侧栏偏好不能为空");
+        SidebarPreferences before = sidebarPreferences();
+        long expected = requiredRevision(ifMatch);
+        if (before.revision() != expected) throw new ConflictException("侧栏偏好已被其他操作更新", before.revision());
+        List<String> hiddenViews = preferenceIds(command.hiddenSystemViews(), 20);
+        List<String> pinnedViews = preferenceIds(command.pinnedSystemViews(), 20);
+        validateSystemViews(hiddenViews); validateSystemViews(pinnedViews);
+        List<String> hiddenLists = ownedPreferenceIds(command.hiddenListIds(), "task_list");
+        List<String> pinnedLists = ownedPreferenceIds(command.pinnedListIds(), "task_list");
+        List<String> hiddenTags = ownedPreferenceIds(command.hiddenTagIds(), "task_tag");
+        List<String> pinnedTags = ownedPreferenceIds(command.pinnedTagIds(), "task_tag");
+        List<String> hiddenFilters = ownedPreferenceIds(command.hiddenFilterIds(), "task_filter");
+        List<String> pinnedFilters = ownedPreferenceIds(command.pinnedFilterIds(), "task_filter");
+        Map<String, Boolean> collapsed = command.collapsedSections() == null ? Map.of() : command.collapsedSections();
+        if (collapsed.size() > 20 || collapsed.keySet().stream().anyMatch(key -> !key.matches("[A-Za-z0-9_-]{1,40}")))
+            throw new IllegalArgumentException("侧栏分区折叠状态无效");
+        int changed = jdbcTemplate.update("UPDATE task_sidebar_preference SET hidden_system_views_json=?,pinned_system_views_json=?," +
+                        "hidden_list_ids_json=?,pinned_list_ids_json=?,hidden_tag_ids_json=?,pinned_tag_ids_json=?," +
+                        "hidden_filter_ids_json=?,pinned_filter_ids_json=?,collapsed_sections_json=?,revision=revision+1 " +
+                        "WHERE user_id=? AND revision=?",
+                json(hiddenViews), json(pinnedViews), json(hiddenLists), json(pinnedLists), json(hiddenTags), json(pinnedTags),
+                json(hiddenFilters), json(pinnedFilters), json(collapsed), currentUser.id(), expected);
+        if (changed != 1) throw new ConflictException("侧栏偏好已被其他操作更新", before.revision());
+        return sidebarPreferences();
+    }
+
+    private List<String> preferenceIds(List<String> values, int limit) {
+        List<String> normalized = values == null ? List.of() : values.stream().filter(Objects::nonNull).map(String::trim)
+                .filter(value -> !value.isBlank()).distinct().toList();
+        if (normalized.size() > limit) throw new IllegalArgumentException("侧栏偏好项目过多");
+        return normalized;
+    }
+
+    private List<String> ownedPreferenceIds(List<String> values, String table) {
+        if (!List.of("task_list", "task_tag", "task_filter").contains(table)) throw new IllegalArgumentException("侧栏资源无效");
+        List<String> ids = preferenceIds(values, 500);
+        for (String id : ids) {
+            long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE public_id=? AND user_id=?", Long.class, id, currentUser.id());
+            if (count == 0) throw new IllegalArgumentException("侧栏偏好包含不存在或不属于当前账号的对象");
+        }
+        return ids;
+    }
+
+    private void validateSystemViews(List<String> values) {
+        if (!List.of("INBOX", "TODAY", "TOMORROW", "NEXT7", "ALL", "COMPLETED", "ABANDONED", "TRASH", "CALENDAR")
+                .containsAll(values)) throw new IllegalArgumentException("系统视图无效");
+    }
+
+    private String json(Object value) {
+        try { return JSON.writeValueAsString(value); } catch (Exception exception) { throw new IllegalStateException("侧栏偏好序列化失败", exception); }
+    }
+
+    private List<String> jsonList(String value) {
+        try { return JSON.readValue(value, new TypeReference<>() { }); } catch (Exception exception) { throw new IllegalStateException("侧栏偏好数据损坏", exception); }
+    }
+
+    private Map<String, Boolean> jsonMap(String value) {
+        try { return JSON.readValue(value, new TypeReference<>() { }); } catch (Exception exception) { throw new IllegalStateException("侧栏偏好数据损坏", exception); }
+    }
+
     private boolean value(Boolean requested, boolean fallback) { return requested == null ? fallback : requested; }
     private String time(String requested, String fallback, String label) {
         String value = requested == null ? fallback : requested.trim();
@@ -1047,13 +1140,13 @@ public class TaskService {
         return new TaskModels.SyncEntity(item.publicId(), null, null, null, null, null, null, null, false,
                 null, null, null, null, item.revision() + (deleted ? 1 : 0), deleted, null, List.of(), List.of(), null,
                 item.name(), item.color(), item.icon(), item.systemKey(), item.sortOrder(), item.archived(), null, null,
-                null, null, null, null, null);
+                null, null, null, null, java.util.Map.of("pinned", item.pinned(), "viewType", item.viewType(), "objectType", item.objectType()));
     }
 
     static TaskModels.SyncEntity syncEntity(TaskTag item, boolean deleted) {
         return new TaskModels.SyncEntity(item.publicId(), null, null, null, null, null, null, null, false,
                 null, null, null, null, item.revision() + (deleted ? 1 : 0), deleted, item.parentId(), List.of(), List.of(), null,
-                item.name(), item.color(), null, null, item.sortOrder(), null, null, null, null, null, null, null, null);
+                item.name(), item.color(), item.icon(), null, item.sortOrder(), null, null, null, null, null, null, null, null);
     }
 
     TaskList currentListForSync(String publicId) { return listForUser(currentUser.id(), publicId, false); }
@@ -1164,7 +1257,7 @@ public class TaskService {
 
     private TaskList listForUser(long userId, String publicId, boolean deleted) {
         List<TaskList> rows = jdbcTemplate.query("SELECT l.public_id,(SELECT g.public_id FROM task_list_group g WHERE g.id=l.group_id) group_public_id," +
-                        "l.name,l.color,l.icon,l.system_key,l.sort_order,l.archived,l.revision " +
+                        "l.name,l.color,l.icon,l.system_key,l.sort_order,l.archived,l.is_pinned,l.view_type,l.object_type,l.revision " +
                         "FROM task_list l WHERE l.public_id=? AND l.user_id=? AND l.deleted=?",
                 (result, rowNum) -> taskList(result),
                 validUuid(publicId, "publicId"), userId, deleted);
@@ -1175,11 +1268,12 @@ public class TaskService {
     private TaskList taskList(ResultSet result) throws SQLException {
         return new TaskList(result.getString("public_id"), result.getString("group_public_id"), result.getString("name"), result.getString("color"),
                 result.getString("icon"), result.getString("system_key"), result.getInt("sort_order"),
-                result.getBoolean("archived"), result.getLong("revision"));
+                result.getBoolean("archived"), result.getBoolean("is_pinned"), result.getString("view_type"),
+                result.getString("object_type"), result.getLong("revision"));
     }
 
     private ListGroup listGroupForUser(long userId, String publicId) {
-        List<ListGroup> rows = jdbcTemplate.query("SELECT public_id,name,color,icon,sort_order,revision FROM task_list_group " +
+        List<ListGroup> rows = jdbcTemplate.query("SELECT public_id,name,color,icon,sort_order,is_pinned,revision FROM task_list_group " +
                         "WHERE public_id=? AND user_id=?", (result, rowNum) -> listGroup(result),
                 validUuid(publicId, "publicId"), userId);
         if (rows.isEmpty()) throw new NotFoundException("清单分组不存在");
@@ -1188,7 +1282,7 @@ public class TaskService {
 
     private ListGroup listGroup(ResultSet result) throws SQLException {
         return new ListGroup(result.getString("public_id"), result.getString("name"), result.getString("color"),
-                result.getString("icon"), result.getInt("sort_order"),
+                result.getString("icon"), result.getInt("sort_order"), result.getBoolean("is_pinned"),
                 result.getLong("revision"));
     }
 
@@ -1256,7 +1350,7 @@ public class TaskService {
     }
 
     private TaskTag tagForUser(long userId, String publicId) {
-        List<TaskTag> rows = jdbcTemplate.query("SELECT t.public_id,p.public_id parent_public_id,t.name,t.color,t.sort_order,t.revision " +
+        List<TaskTag> rows = jdbcTemplate.query("SELECT t.public_id,p.public_id parent_public_id,t.name,t.color,t.icon,t.sort_order,t.revision " +
                         "FROM task_tag t LEFT JOIN task_tag p ON p.id=t.parent_id WHERE t.public_id=? AND t.user_id=? AND t.deleted=FALSE",
                 (result, rowNum) -> tag(result), validUuid(publicId, "publicId"), userId);
         if (rows.isEmpty()) throw new NotFoundException("任务标签不存在");
@@ -1271,7 +1365,7 @@ public class TaskService {
 
     private TaskTag tag(ResultSet result) throws SQLException {
         return new TaskTag(result.getString("public_id"), result.getString("parent_public_id"), result.getString("name"),
-                result.getString("color"), result.getInt("sort_order"), result.getLong("revision"));
+                result.getString("color"), result.getString("icon"), result.getInt("sort_order"), result.getLong("revision"));
     }
 
     private Long resolveTagParent(long userId, String publicId, String currentPublicId) {

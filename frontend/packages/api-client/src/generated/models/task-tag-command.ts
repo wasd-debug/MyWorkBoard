@@ -19,4 +19,5 @@ export interface TaskTagCommand {
     'name'?: string;
     'color'?: string;
     'sortOrder'?: number;
+    'icon'?: string;
 }

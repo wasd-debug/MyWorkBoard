@@ -11,19 +11,35 @@ public final class TaskModels {
 
     @Schema(name = "TaskList")
     public record TaskList(String publicId, String groupId, String name, String color, String icon, String systemKey,
-                           int sortOrder, boolean archived, long revision) {
+                           int sortOrder, boolean archived, boolean pinned, String viewType, String objectType,
+                           long revision) {
+        public TaskList(String publicId, String groupId, String name, String color, String icon, String systemKey,
+                        int sortOrder, boolean archived, long revision) {
+            this(publicId, groupId, name, color, icon, systemKey, sortOrder, archived, false, "LIST", "TASK", revision);
+        }
     }
 
     @Schema(name = "TaskListCommand")
-    public record TaskListCommand(String name, String color, String icon, Integer sortOrder, Boolean archived) {
+    public record TaskListCommand(String name, String color, String icon, Integer sortOrder, Boolean archived,
+                                  Boolean pinned, String viewType, String objectType) {
+        public TaskListCommand(String name, String color, String icon, Integer sortOrder, Boolean archived) {
+            this(name, color, icon, sortOrder, archived, null, null, null);
+        }
     }
 
     @Schema(name = "TaskListGroup")
-    public record ListGroup(String publicId, String name, String color, String icon, int sortOrder, long revision) {
+    public record ListGroup(String publicId, String name, String color, String icon, int sortOrder,
+                            boolean pinned, long revision) {
+        public ListGroup(String publicId, String name, String color, String icon, int sortOrder, long revision) {
+            this(publicId, name, color, icon, sortOrder, false, revision);
+        }
     }
 
     @Schema(name = "TaskListGroupCommand")
-    public record ListGroupCommand(String name, String color, String icon, Integer sortOrder) {
+    public record ListGroupCommand(String name, String color, String icon, Integer sortOrder, Boolean pinned) {
+        public ListGroupCommand(String name, String color, String icon, Integer sortOrder) {
+            this(name, color, icon, sortOrder, null);
+        }
     }
 
     @Schema(name = "TaskListGroupAssignment")
@@ -63,12 +79,18 @@ public final class TaskModels {
     }
 
     @Schema(name = "TaskTag")
-    public record TaskTag(String publicId, String parentId, String name, String color, int sortOrder,
+    public record TaskTag(String publicId, String parentId, String name, String color, String icon, int sortOrder,
                           long revision) {
+        public TaskTag(String publicId, String parentId, String name, String color, int sortOrder, long revision) {
+            this(publicId, parentId, name, color, null, sortOrder, revision);
+        }
     }
 
     @Schema(name = "TaskTagCommand")
-    public record TaskTagCommand(String parentId, String name, String color, Integer sortOrder) {
+    public record TaskTagCommand(String parentId, String name, String color, Integer sortOrder, String icon) {
+        public TaskTagCommand(String parentId, String name, String color, Integer sortOrder) {
+            this(parentId, name, color, sortOrder, null);
+        }
     }
 
     @Schema(name = "TaskTagMergeCommand")
@@ -185,6 +207,20 @@ public final class TaskModels {
                                   String dailySummaryTime, String quietStart, String quietEnd,
                                   Boolean feedIncludeDescription, String timezone) {
     }
+
+    @Schema(name = "TaskSidebarPreferences")
+    public record SidebarPreferences(List<String> hiddenSystemViews, List<String> pinnedSystemViews,
+                                     List<String> hiddenListIds, List<String> pinnedListIds,
+                                     List<String> hiddenTagIds, List<String> pinnedTagIds,
+                                     List<String> hiddenFilterIds, List<String> pinnedFilterIds,
+                                     Map<String, Boolean> collapsedSections, long revision) { }
+
+    @Schema(name = "TaskSidebarPreferencesCommand")
+    public record SidebarPreferencesCommand(List<String> hiddenSystemViews, List<String> pinnedSystemViews,
+                                           List<String> hiddenListIds, List<String> pinnedListIds,
+                                           List<String> hiddenTagIds, List<String> pinnedTagIds,
+                                           List<String> hiddenFilterIds, List<String> pinnedFilterIds,
+                                           Map<String, Boolean> collapsedSections) { }
 
     @Schema(name = "TaskFeedToken")
     public record FeedToken(boolean active, String tokenHint, String feedUrl, String createdAt,

@@ -19,4 +19,5 @@ export interface TaskListGroupCommand {
     'color'?: string;
     'icon'?: string;
     'sortOrder'?: number;
+    'pinned'?: boolean;
 }

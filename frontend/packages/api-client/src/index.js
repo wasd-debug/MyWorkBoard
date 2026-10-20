@@ -174,6 +174,8 @@ export const apiListTasks = async (params = {}) => data(await api.get('/api/v1/t
 export const apiGetTask = async publicId => data(await tasks.getTask({ publicId }))
 export const apiGetTaskSettings = async () => data(await tasks.getTaskSettings())
 export const apiUpdateTaskSettings = async (payload, currentRevision) => data(await api.put('/api/v1/tasks/settings', payload, { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiGetTaskSidebarPreferences = async () => data(await api.get('/api/v1/tasks/sidebar-preferences'))
+export const apiUpdateTaskSidebarPreferences = async (payload, currentRevision) => data(await api.put('/api/v1/tasks/sidebar-preferences', payload, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiGetTaskFeedToken = async () => data(await api.get('/api/v1/tasks/feed/token'))
 export const apiCreateTaskFeedToken = async () => data(await api.post('/api/v1/tasks/feed/token'))
 export const apiRotateTaskFeedToken = async () => data(await api.put('/api/v1/tasks/feed/token'))

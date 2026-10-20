@@ -45,6 +45,33 @@ class TaskEnhancementIntegrationTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
+    void persistsAndExecutesValidatedAdvancedFilterRules() throws Exception {
+        Services service = services(createUser("rules"));
+        var inbox = service.tasks.listLists().get(0);
+        var high = service.tasks.create(new TaskModels.TaskCommand(inbox.publicId(), "规则命中的任务", "发布说明",
+                "HIGH", null, null, false, "Asia/Shanghai", null), "rules-high");
+        service.tasks.create(new TaskModels.TaskCommand(inbox.publicId(), "另一项", "其他内容", "LOW",
+                null, null, false, "Asia/Shanghai", null), "rules-low");
+        var rules = new ObjectMapper().readTree("{\"op\":\"AND\",\"children\":[{" +
+                "\"field\":\"priority\",\"operator\":\"EQ\",\"value\":\"HIGH\"},{" +
+                "\"op\":\"OR\",\"children\":[{\"field\":\"title\",\"operator\":\"CONTAINS\",\"value\":\"命中\"},{" +
+                "\"field\":\"description\",\"operator\":\"CONTAINS\",\"value\":\"无匹配\"}]}]}");
+        var filter = service.enhancements.createFilter(new TaskEnhancementModels.SmartFilterCommand("规则",
+                List.of(), List.of(), List.of(), "ALL", "ANY", "", true, false, 0, false, "filter", rules));
+        assertEquals("filter", filter.icon());
+        assertEquals(1, service.enhancements.filterTasks(filter.publicId(), 0, 20).total());
+        assertEquals(high.publicId(), service.enhancements.filterTasks(filter.publicId(), 0, 20).items().get(0).publicId());
+        assertThrows(IllegalArgumentException.class, () -> service.enhancements.createFilter(
+                new TaskEnhancementModels.SmartFilterCommand("非法规则", List.of(), List.of(), List.of(), "ALL", "ANY", "",
+                        true, false, 1, false, null, new ObjectMapper().createObjectNode().put("field", "userSql"))));
+        var foreignListRule = new ObjectMapper().readTree("{\"op\":\"AND\",\"children\":[{\"field\":\"listId\",\"operator\":\"EQ\",\"value\":\""
+                + UUID.randomUUID() + "\"}]}");
+        assertThrows(IllegalArgumentException.class, () -> service.enhancements.createFilter(
+                new TaskEnhancementModels.SmartFilterCommand("越权清单", List.of(), List.of(), List.of(), "ALL", "ANY", "",
+                        true, false, 1, false, null, foreignListRule)));
+    }
+
+    @Test
     void previewsCsvWithoutWritesAndCommitsOnlyOnce() throws Exception {
         Services service = services(createUser("import"));
         long before = service.tasks.listTasks(null, null, "ALL", null, 0, 20).total();
