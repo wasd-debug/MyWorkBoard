@@ -25,13 +25,16 @@
         >
       </nav>
       <section class="clone-sidebar-section">
-        <header><button type="button" @click="toggleSection('lists')"><ChevronDown :size="14" :class="{ rotated: !sections.lists }" />清单</button><button class="sidebar-create" type="button" aria-label="新建清单" @click="createList"><Plus :size="14" /></button></header>
-        <div v-show="sections.lists" class="clone-sidebar-items" @dragover.prevent="organizationDrag && (organizationDropTarget = 'list-root')" @drop.prevent="dropOrganizationRoot('list')">
-        <section v-for="group in sortedListGroups" :key="group.publicId" class="clone-list-group clone-sortable-group" :class="{ 'drag-over': organizationDropTarget === `group:${group.publicId}` }" @dragover.prevent="organizationDropTarget = `group:${group.publicId}`" @drop.prevent.stop="dropGroup(group)" @contextmenu.prevent="openOrganizationMenu('group', group, $event)">
-          <header class="clone-list-group-heading" draggable="true" @dragstart="startOrganizationDrag('group', group)"><button type="button" class="clone-group-toggle" :aria-label="`${groupCollapsed[group.publicId] ? '展开' : '折叠'}${group.name}`" @click.stop="toggleListGroupCollapsed(group)"><ChevronDown :size="13" :class="{ rotated: groupCollapsed[group.publicId] }" /></button><span>{{ group.name }}</span><small>{{ listsInGroup(group.publicId).length }}</small><button type="button" :aria-label="`新建清单到${group.name}`" @click.stop="createList(group.publicId)"><Plus :size="13" /></button><button type="button" :aria-label="`${group.name}的更多操作`" @click.stop="openOrganizationMenu('group', group, $event)"><Ellipsis :size="14" /></button></header>
-          <div v-show="!groupCollapsed[group.publicId]" class="clone-group-lists"><RouterLink v-for="list in listsInGroup(group.publicId)" :key="list.publicId" :to="list.systemKey === 'INBOX' ? '/tasks/inbox' : `/tasks/list/${list.publicId}`" class="clone-nav-item clone-sortable-item" :class="{ active: route.params.publicId === list.publicId, 'drag-over': organizationDropTarget === list.publicId }" :draggable="list.systemKey !== 'INBOX'" @dragstart="startOrganizationDrag('list', list)" @dragover.prevent="organizationDropTarget = list.publicId" @drop.prevent.stop="dropOrganization('list', list)" @contextmenu.prevent="openOrganizationMenu('list', list, $event)"><ListTodo :size="15" :style="{ color: list.color || undefined }" /><span>{{ list.name }}</span><small>{{ listOpenCount(list.publicId) }}</small><button v-if="list.systemKey !== 'INBOX'" class="clone-item-menu-trigger" type="button" :aria-label="`${list.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('list', list, $event)"><Ellipsis :size="14" /></button></RouterLink></div>
+        <header><button type="button" :aria-expanded="sections.lists" @click="toggleSection('lists')"><ChevronDown :size="14" :class="{ rotated: !sections.lists }" />清单</button><button class="sidebar-create" type="button" aria-label="新建清单" @click="createList"><Plus :size="14" /></button></header>
+        <div class="clone-collapse-panel" :class="{ 'is-collapsed': !sections.lists }" :aria-hidden="!sections.lists"><div class="clone-sidebar-items clone-collapse-inner" :inert="!sections.lists" @dragover.prevent="organizationDrag && (organizationDropTarget = 'list-root')" @drop.prevent="dropOrganizationRoot('list')">
+        <TransitionGroup name="clone-sort" tag="div" class="clone-sort-stack">
+        <section v-for="group in sortedListGroups" :key="group.publicId" class="clone-list-group clone-sortable-group" :class="{ 'drag-over': organizationDropTarget === `group:${group.publicId}`, 'sorting-dragging': organizationDrag?.kind === 'group' && organizationDrag.item.publicId === group.publicId }" @dragover.prevent="organizationDropTarget = `group:${group.publicId}`" @drop.prevent.stop="dropGroup(group)" @contextmenu.prevent="openOrganizationMenu('group', group, $event)">
+          <header class="clone-list-group-heading" draggable="true" @dragstart="startOrganizationDrag('group', group)"><button type="button" class="clone-group-toggle" :aria-expanded="!groupCollapsed[group.publicId]" :aria-label="`${groupCollapsed[group.publicId] ? '展开' : '折叠'}${group.name}`" @click.stop="toggleListGroupCollapsed(group)"><ChevronDown :size="13" :class="{ rotated: groupCollapsed[group.publicId] }" /></button><span>{{ group.name }}</span><small>{{ listsInGroup(group.publicId).length }}</small><button type="button" :aria-label="`新建清单到${group.name}`" @click.stop="createList(group.publicId)"><Plus :size="13" /></button><button type="button" :aria-label="`${group.name}的更多操作`" @click.stop="openOrganizationMenu('group', group, $event)"><Ellipsis :size="14" /></button></header>
+          <div class="clone-collapse-panel" :class="{ 'is-collapsed': groupCollapsed[group.publicId] }" :aria-hidden="Boolean(groupCollapsed[group.publicId])"><TransitionGroup name="clone-sort" tag="div" class="clone-group-lists clone-collapse-inner" :inert="Boolean(groupCollapsed[group.publicId])"><RouterLink v-for="list in listsInGroup(group.publicId)" :key="list.publicId" :to="list.systemKey === 'INBOX' ? '/tasks/inbox' : `/tasks/list/${list.publicId}`" class="clone-nav-item clone-sortable-item" :class="{ active: route.params.publicId === list.publicId, 'drag-over': organizationDropTarget === list.publicId, 'sorting-dragging': organizationDrag?.kind === 'list' && organizationDrag.item.publicId === list.publicId }" :draggable="list.systemKey !== 'INBOX'" @dragstart="startOrganizationDrag('list', list)" @dragover.prevent="organizationDropTarget = list.publicId" @drop.prevent.stop="dropOrganization('list', list)" @contextmenu.prevent="openOrganizationMenu('list', list, $event)"><ListTodo :size="15" :style="{ color: list.color || undefined }" /><span>{{ list.name }}</span><small>{{ listOpenCount(list.publicId) }}</small><button v-if="list.systemKey !== 'INBOX'" class="clone-item-menu-trigger" type="button" :aria-label="`${list.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('list', list, $event)"><Ellipsis :size="14" /></button></RouterLink></TransitionGroup></div>
         </section>
+        </TransitionGroup>
         <div v-if="ungroupedLists.length" class="clone-ungrouped-heading">未分组</div>
+        <TransitionGroup name="clone-sort" tag="div" class="clone-sort-stack">
         <RouterLink
           v-for="list in ungroupedLists"
           :key="list.publicId"
@@ -41,7 +44,7 @@
               : `/tasks/list/${list.publicId}`
           "
           class="clone-nav-item clone-sortable-item"
-          :class="{ active: route.params.publicId === list.publicId }"
+          :class="{ active: route.params.publicId === list.publicId, 'sorting-dragging': organizationDrag?.kind === 'list' && organizationDrag.item.publicId === list.publicId }"
           :draggable="list.systemKey !== 'INBOX'"
           @dragstart="startOrganizationDrag('list', list)"
           @dragover.prevent="organizationDropTarget = list.publicId"
@@ -49,13 +52,14 @@
           @contextmenu.prevent="openOrganizationMenu('list', list, $event)"
           ><ListTodo :size="15" :style="{ color: list.color || undefined }" /><span>{{ list.name }}</span><small>{{ listOpenCount(list.publicId) }}</small><button class="clone-item-menu-trigger" type="button" :aria-label="`${list.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('list', list, $event)"><Ellipsis :size="14" /></button></RouterLink
         >
+        </TransitionGroup>
         <RouterLink to="/tasks/shortcut/archived" class="clone-nav-item" :class="{ active: route.params.shortcut === 'archived' }"><Archive :size="15" /><span>归档</span><small>{{ archivedTaskCount }}</small></RouterLink>
         <span v-if="!activeLists.length && !archivedLists.length" class="clone-empty-item">暂无清单</span>
-        </div>
+        </div></div>
       </section>
       <section class="clone-sidebar-section">
-        <header><button type="button" @click="toggleSection('filters')"><ChevronDown :size="14" :class="{ rotated: !sections.filters }" />筛选器</button><button class="sidebar-create" type="button" aria-label="管理筛选器" @click="router.push('/tasks/search')">···</button></header>
-        <div v-show="sections.filters" class="clone-sidebar-items">
+        <header><button type="button" :aria-expanded="sections.filters" @click="toggleSection('filters')"><ChevronDown :size="14" :class="{ rotated: !sections.filters }" />筛选器</button><button class="sidebar-create" type="button" aria-label="管理筛选器" @click="router.push('/tasks/search')">···</button></header>
+        <div class="clone-collapse-panel" :class="{ 'is-collapsed': !sections.filters }" :aria-hidden="!sections.filters"><div class="clone-sidebar-items clone-collapse-inner" :inert="!sections.filters">
         <RouterLink
           v-for="item in shortcutViews"
           :key="item.to"
@@ -63,12 +67,13 @@
           class="clone-nav-item"
           ><component :is="item.icon" :size="15" /><span>{{ item.label }}</span></RouterLink
         >
+        <TransitionGroup name="clone-sort" tag="div" class="clone-sort-stack">
         <RouterLink
           v-for="filter in sortedFilters"
           :key="filter.publicId"
           :to="`/tasks/filter/${filter.publicId}`"
           class="clone-nav-item clone-sortable-item"
-          :class="{ 'drag-over': organizationDropTarget === filter.publicId }"
+          :class="{ 'drag-over': organizationDropTarget === filter.publicId, 'sorting-dragging': organizationDrag?.kind === 'filter' && organizationDrag.item.publicId === filter.publicId }"
           draggable="true"
           @dragstart="startOrganizationDrag('filter', filter)"
           @dragover.prevent="organizationDropTarget = filter.publicId"
@@ -78,20 +83,23 @@
             filter.name
           }}</span><button class="clone-item-menu-trigger" type="button" :aria-label="`${filter.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('filter', filter, $event)"><Ellipsis :size="14" /></button></RouterLink
         >
+        </TransitionGroup>
         <span v-if="!filters.length" class="clone-empty-item"
           >暂无自定义筛选器</span
         >
-        </div>
+        </div></div>
       </section>
       <section class="clone-sidebar-section">
-        <header><button type="button" @click="toggleSection('tags')"><ChevronDown :size="14" :class="{ rotated: !sections.tags }" />标签</button><button class="sidebar-create" type="button" aria-label="新建标签" @click="createTag"><Plus :size="14" /></button></header>
-        <div v-show="sections.tags" class="clone-sidebar-items">
+        <header><button type="button" :aria-expanded="sections.tags" @click="toggleSection('tags')"><ChevronDown :size="14" :class="{ rotated: !sections.tags }" />标签</button><button class="sidebar-create" type="button" aria-label="新建标签" @click="createTag"><Plus :size="14" /></button></header>
+        <div class="clone-collapse-panel" :class="{ 'is-collapsed': !sections.tags }" :aria-hidden="!sections.tags"><div class="clone-sidebar-items clone-collapse-inner" :inert="!sections.tags">
+        <TransitionGroup name="clone-sort" tag="div" class="clone-sort-stack">
         <div v-for="tag in rootTags" :key="tag.publicId" class="clone-tag-group">
-          <RouterLink :to="`/tasks/tag/${tag.publicId}`" class="clone-nav-item clone-sortable-item" :class="{ 'drag-over': organizationDropTarget === tag.publicId }" draggable="true" @dragstart="startOrganizationDrag('tag', tag)" @dragover.prevent="organizationDropTarget = tag.publicId" @drop.prevent.stop="dropOrganization('tag', tag)" @contextmenu.prevent="openOrganizationMenu('tag', tag, $event)"><Tag :size="15" :style="{ color: tag.color || undefined }" /><span>#{{ tag.name }}</span><small>{{ tagOpenCount(tag.publicId) }}</small><button class="clone-item-menu-trigger" type="button" :aria-label="`#${tag.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('tag', tag, $event)"><Ellipsis :size="14" /></button></RouterLink>
-          <RouterLink v-for="child in childTags.filter(item => item.parentId === tag.publicId)" :key="child.publicId" :to="`/tasks/tag/${child.publicId}`" class="clone-nav-item clone-child-tag clone-sortable-item" :class="{ 'drag-over': organizationDropTarget === child.publicId }" draggable="true" @dragstart="startOrganizationDrag('tag', child)" @dragover.prevent="organizationDropTarget = child.publicId" @drop.prevent.stop="dropOrganization('tag', child)" @contextmenu.prevent="openOrganizationMenu('tag', child, $event)"><Tag :size="14" :style="{ color: child.color || undefined }" /><span>#{{ child.name }}</span><small>{{ tagOpenCount(child.publicId) }}</small><button class="clone-item-menu-trigger" type="button" :aria-label="`#${child.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('tag', child, $event)"><Ellipsis :size="14" /></button></RouterLink>
+          <RouterLink :to="`/tasks/tag/${tag.publicId}`" class="clone-nav-item clone-sortable-item" :class="{ 'drag-over': organizationDropTarget === tag.publicId, 'sorting-dragging': organizationDrag?.kind === 'tag' && organizationDrag.item.publicId === tag.publicId }" draggable="true" @dragstart="startOrganizationDrag('tag', tag)" @dragover.prevent="organizationDropTarget = tag.publicId" @drop.prevent.stop="dropOrganization('tag', tag)" @contextmenu.prevent="openOrganizationMenu('tag', tag, $event)"><Tag :size="15" :style="{ color: tag.color || undefined }" /><span>#{{ tag.name }}</span><small>{{ tagOpenCount(tag.publicId) }}</small><button class="clone-item-menu-trigger" type="button" :aria-label="`#${tag.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('tag', tag, $event)"><Ellipsis :size="14" /></button></RouterLink>
+          <TransitionGroup name="clone-sort" tag="div" class="clone-sort-stack"><RouterLink v-for="child in childTags.filter(item => item.parentId === tag.publicId)" :key="child.publicId" :to="`/tasks/tag/${child.publicId}`" class="clone-nav-item clone-child-tag clone-sortable-item" :class="{ 'drag-over': organizationDropTarget === child.publicId, 'sorting-dragging': organizationDrag?.kind === 'tag' && organizationDrag.item.publicId === child.publicId }" draggable="true" @dragstart="startOrganizationDrag('tag', child)" @dragover.prevent="organizationDropTarget = child.publicId" @drop.prevent.stop="dropOrganization('tag', child)" @contextmenu.prevent="openOrganizationMenu('tag', child, $event)"><Tag :size="14" :style="{ color: child.color || undefined }" /><span>#{{ child.name }}</span><small>{{ tagOpenCount(child.publicId) }}</small><button class="clone-item-menu-trigger" type="button" :aria-label="`#${child.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('tag', child, $event)"><Ellipsis :size="14" /></button></RouterLink></TransitionGroup>
         </div>
+        </TransitionGroup>
         <span v-if="!store.tags.length" class="clone-empty-item">暂无标签</span>
-        </div>
+        </div></div>
       </section>
       <div class="clone-sidebar-footer">
         <RouterLink to="/tasks/completed"
@@ -228,6 +236,7 @@
           <button
             class="clone-group-heading"
             type="button"
+            :aria-expanded="!collapsed[group.key]"
             @click="collapsed[group.key] = !collapsed[group.key]"
           >
             <ChevronDown
@@ -236,7 +245,7 @@
             /><strong>{{ group.label }}</strong
             ><span>{{ group.tasks.length }}</span>
           </button>
-          <div v-show="!collapsed[group.key]" class="clone-task-rows">
+          <div class="clone-collapse-panel" :class="{ 'is-collapsed': collapsed[group.key] }" :aria-hidden="Boolean(collapsed[group.key])"><TransitionGroup name="clone-sort" tag="div" class="clone-task-rows clone-collapse-inner" :inert="Boolean(collapsed[group.key])">
             <article
               v-for="task in group.tasks"
               :key="task.publicId"
@@ -319,28 +328,28 @@
                 <Ellipsis :size="17" />
               </button>
             </article>
-          </div>
+          </TransitionGroup></div>
         </section>
         <section v-if="todayCountdowns.length || todayHabits.length" class="clone-efficiency-groups">
           <section v-if="todayCountdowns.length" class="clone-task-group clone-efficiency-group">
-            <button class="clone-group-heading" type="button" @click="collapsed.countdowns = !collapsed.countdowns">
+            <button class="clone-group-heading" type="button" :aria-expanded="!collapsed.countdowns" @click="collapsed.countdowns = !collapsed.countdowns">
               <ChevronDown :size="16" :class="{ rotated: collapsed.countdowns }" /><strong>倒数纪念日</strong><span>{{ todayCountdowns.length }}</span>
             </button>
-            <div v-show="!collapsed.countdowns" class="clone-efficiency-rows">
+            <div class="clone-collapse-panel" :class="{ 'is-collapsed': collapsed.countdowns }" :aria-hidden="collapsed.countdowns"><div class="clone-efficiency-rows clone-collapse-inner" :inert="collapsed.countdowns">
               <article v-for="item in todayCountdowns" :key="item.publicId" class="clone-efficiency-row countdown-row">
                 <span class="clone-efficiency-icon">{{ item.icon || '◷' }}</span><strong>{{ item.name || item.title }}</strong><span class="clone-efficiency-meta">{{ countdownLabel(item) }}</span>
               </article>
-            </div>
+            </div></div>
           </section>
           <section v-if="todayHabits.length" class="clone-task-group clone-efficiency-group">
-            <button class="clone-group-heading" type="button" @click="collapsed.habits = !collapsed.habits">
+            <button class="clone-group-heading" type="button" :aria-expanded="!collapsed.habits" @click="collapsed.habits = !collapsed.habits">
               <ChevronDown :size="16" :class="{ rotated: collapsed.habits }" /><strong>习惯</strong><span>{{ todayHabits.length }}</span>
             </button>
-            <div v-show="!collapsed.habits" class="clone-efficiency-rows">
+            <div class="clone-collapse-panel" :class="{ 'is-collapsed': collapsed.habits }" :aria-hidden="collapsed.habits"><div class="clone-efficiency-rows clone-collapse-inner" :inert="collapsed.habits">
               <article v-for="item in todayHabits" :key="item.publicId" class="clone-efficiency-row">
                 <button type="button" class="clone-efficiency-check" :class="{ checked: habitDone(item) }" :aria-label="`${habitDone(item) ? '取消' : '完成'}习惯${item.name}`" @click="toggleHabitToday(item)">{{ habitDone(item) ? '✓' : '' }}</button><strong>{{ item.name }}</strong><span class="clone-efficiency-meta">{{ habitDone(item) ? '已完成' : '今天' }}</span>
               </article>
-            </div>
+            </div></div>
           </section>
         </section>
       </div>
@@ -2318,12 +2327,13 @@ const SidebarSection = {
   background: var(--card);
   color: var(--ink);
   overflow: hidden;
+  transition: grid-template-columns 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .clone-task-shell.sidebar-hidden { grid-template-columns: 44px minmax(420px, 1fr) 5px var(--clone-detail-width, 390px); }
 .clone-task-shell.sidebar-hidden .clone-task-sidebar { align-items: center; gap: 0; padding: 10px 4px; overflow: hidden; }
 .clone-task-shell.sidebar-hidden .clone-sidebar-head { display: flex; justify-content: center; width: 100%; padding: 0; }
-.clone-task-shell.sidebar-hidden .clone-sidebar-head strong,
-.clone-task-shell.sidebar-hidden .clone-task-sidebar > :not(.clone-sidebar-head) { display: none; }
+.clone-task-shell.sidebar-hidden .clone-sidebar-head strong { opacity: 0; }
+.clone-task-shell.sidebar-hidden .clone-task-sidebar > :not(.clone-sidebar-head) { opacity: 0; transform: translateX(-7px); visibility: hidden; pointer-events: none; transition-delay: 0s, 0s, 0.2s; }
 .clone-task-shell.sidebar-hidden .clone-sidebar-head button { width: 34px; height: 34px; }
 .clone-task-sidebar {
   display: flex;
@@ -2334,7 +2344,10 @@ const SidebarSection = {
   border-right: 1px solid var(--line);
   background: color-mix(in srgb, var(--card) 96%, var(--paper));
   overflow: auto;
+  transition: padding 0.24s ease, gap 0.24s ease, opacity 0.18s ease;
 }
+.clone-task-sidebar > :not(.clone-sidebar-head) { transition: opacity 0.16s ease, transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear; }
+.clone-sidebar-head strong { transition: opacity 0.12s ease; }
 .clone-sidebar-head {
   display: flex;
   align-items: center;
@@ -2407,7 +2420,25 @@ const SidebarSection = {
   display: grid;
   gap: 7px;
 }
-.clone-list-group { display: grid; gap: 2px; }
+.clone-collapse-panel {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition: grid-template-rows 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.16s ease;
+}
+.clone-collapse-panel.is-collapsed { grid-template-rows: 0fr; opacity: 0; pointer-events: none; }
+.clone-collapse-inner { min-height: 0; overflow: hidden; }
+.clone-group-lists { display: grid; gap: 3px; }
+.clone-sort-stack { display: grid; min-width: 0; gap: 2px; }
+.clone-sort-move { transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1); }
+.clone-sort-enter-active,
+.clone-sort-leave-active { transition: opacity 0.16s ease, transform 0.2s cubic-bezier(0.22, 1, 0.36, 1); }
+.clone-sort-enter-from,
+.clone-sort-leave-to { opacity: 0; transform: translateY(-5px) scale(0.985); }
+.clone-sortable-item.sorting-dragging,
+.clone-sortable-group.sorting-dragging { opacity: 0.48; transform: scale(0.985); }
+.clone-list-group { display: grid; min-width: 0; gap: 2px; }
 .clone-list-group-heading { display: flex; align-items: center; gap: 4px; min-height: 28px; padding: 0 8px 0 10px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .clone-list-group-heading span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clone-list-group-heading button { display: grid; width: 22px; height: 22px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
@@ -2444,7 +2475,7 @@ const SidebarSection = {
   cursor: pointer;
 }
 .clone-sidebar-section > header svg {
-  transition: transform 0.15s;
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .rotated {
   transform: rotate(-90deg);
@@ -2676,7 +2707,7 @@ const SidebarSection = {
   font-size: 12px;
 }
 .clone-group-heading svg {
-  transition: transform 0.15s;
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .clone-task-rows {
   border-top: 1px solid var(--line);
@@ -3420,15 +3451,32 @@ const SidebarSection = {
     overflow: visible;
   }
   .clone-task-sidebar {
-    display: none;
+    display: flex;
+    min-height: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    overflow: hidden;
+    border-bottom-width: 0;
+    opacity: 0;
+    transform: translateY(-7px);
+    visibility: hidden;
+    pointer-events: none;
+    transition: max-height 0.24s cubic-bezier(0.22, 1, 0.36, 1), padding 0.2s ease, opacity 0.16s ease, transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.24s;
   }
-  .clone-task-shell.sidebar-hidden .clone-task-sidebar { display: none; }
   .clone-task-shell:not(.sidebar-hidden) .clone-task-sidebar {
     display: flex;
     min-height: 0;
     max-height: 340px;
+    padding-top: 14px;
+    padding-bottom: 12px;
     border-right: 0;
     border-bottom: 1px solid var(--line);
+    opacity: 1;
+    transform: translateY(0);
+    visibility: visible;
+    pointer-events: auto;
+    transition-delay: 0s;
   }
   .clone-task-main {
     padding: 16px 14px 100px;
@@ -3461,6 +3509,21 @@ const SidebarSection = {
   }
   .clone-form-grid {
     grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .clone-task-shell,
+  .clone-task-sidebar,
+  .clone-task-sidebar > *,
+  .clone-collapse-panel,
+  .clone-sidebar-section > header svg,
+  .clone-group-heading svg,
+  .clone-sort-move,
+  .clone-sort-enter-active,
+  .clone-sort-leave-active,
+  .clone-task-row {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
   }
 }
 </style>

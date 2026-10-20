@@ -235,8 +235,22 @@ test('task navigation collapses inline on narrow screens and persists by account
   assert.match(workspaceView, /function handleSidebarClick\(event\)/)
   assert.match(workspaceView, /max-width: 900px\).*event\.target\.closest\("a\[href\]"\)/)
   assert.match(workspaceView, /clone-task-shell\.sidebar-hidden \.clone-task-sidebar/)
-  assert.match(workspaceView, /@media \(max-width: 900px\)[\s\S]*\.clone-task-shell\.sidebar-hidden \.clone-task-sidebar \{ display: none;/)
+  assert.match(workspaceView, /@media \(max-width: 900px\)[\s\S]*max-height: 0;[\s\S]*max-height: 340px;/)
+  assert.match(workspaceView, /transition: grid-template-columns 0\.24s/)
+  assert.match(workspaceView, /visibility: hidden; pointer-events: none; transition-delay: 0s, 0s, 0\.2s/)
+  assert.doesNotMatch(workspaceView, /\.clone-task-shell\.sidebar-hidden \.clone-task-sidebar \{ display: none;/)
   assert.doesNotMatch(workspaceView, /<Drawer|drawer-backdrop|sidebar-overlay/)
+})
+
+test('task navigation, collapsible groups and sortable rows expose motion and reduced-motion behavior', () => {
+  assert.match(workspaceView, /class="clone-collapse-panel"[\s\S]*aria-hidden=/)
+  assert.match(workspaceView, /:aria-expanded="sections\.lists"/)
+  assert.match(workspaceView, /:aria-expanded="!groupCollapsed\[group\.publicId\]"/)
+  assert.match(workspaceView, /<TransitionGroup name="clone-sort" tag="div" class="clone-task-rows clone-collapse-inner"/)
+  assert.match(workspaceView, /<TransitionGroup name="clone-sort" tag="div" class="clone-group-lists clone-collapse-inner"/)
+  assert.match(workspaceView, /\.clone-sort-move \{ transition: transform 0\.24s/)
+  assert.match(workspaceView, /prefers-reduced-motion: reduce/)
+  assert.match(workspaceView, /transition-delay: 0s !important/)
 })
 
 test('task quick add previews parsed fields and writes only after confirmation', () => {
