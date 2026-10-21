@@ -135,12 +135,12 @@
             <button type="button" aria-label="下个月" title="下个月" @click="moveMiniMonth(1)"><ChevronRight :size="15" /></button>
           </div>
         </header>
-        <TransitionGroup name="clone-mini-calendar-day" tag="div" class="clone-mini-calendar-grid" :class="{ expanded: miniCalendarExpanded }">
+        <div class="clone-mini-calendar-grid" :class="{ expanded: miniCalendarExpanded }">
           <span v-for="label in weekDayLabels" :key="`weekday-${label}`">{{ label }}</span>
           <RouterLink v-for="cell in visibleMiniCalendarDays" :key="cell.key" :to="{ path: '/tasks/today', query: { date: cell.key } }" :class="{ 'other-month': cell.otherMonth, today: cell.today, selected: cell.selected, 'has-task': cell.hasTask, 'holiday-off': cell.holiday?.off, 'holiday-work': cell.holiday && !cell.holiday.off }" :aria-label="miniCalendarAriaLabel(cell)">
             <em v-if="miniCalendarExpanded && cell.holiday" :title="cell.holiday.name">{{ cell.holiday.off ? '休' : '班' }}</em><span>{{ cell.date.getDate() }}</span><small>{{ cell.lunar }}</small><i v-if="cell.hasTask" aria-hidden="true"></i>
           </RouterLink>
-        </TransitionGroup>
+        </div>
         <p v-if="miniCalendarError" class="clone-mini-calendar-error" role="status">{{ miniCalendarError }}</p>
       </section>
     </aside>
@@ -3566,12 +3566,6 @@ const SidebarSection = {
 .clone-mini-calendar-grid > a > em { position: absolute; top: 0; right: 1px; display: grid; width: 16px; height: 16px; place-items: center; border-radius: 50%; color: #fff; font-size: 9px; font-style: normal; line-height: 1; }
 .clone-mini-calendar-grid > a.holiday-off > em { background: #218c70; }
 .clone-mini-calendar-grid > a.holiday-work > em { background: #c94d57; }
-.clone-mini-calendar-day-move { transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1); }
-.clone-mini-calendar-day-enter-active,
-.clone-mini-calendar-day-leave-active { transition: opacity 120ms ease; }
-.clone-mini-calendar-day-enter-from,
-.clone-mini-calendar-day-leave-to { opacity: 0; }
-.clone-mini-calendar-day-leave-active { position: absolute; }
 .clone-mini-calendar-error { margin: 0; color: var(--muted); font-size: 10px; }
 .clone-sidebar-backdrop { display: none; }
 .clone-task-sidebar.is-editing .clone-item-menu-trigger { opacity: 1; }

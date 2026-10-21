@@ -276,7 +276,8 @@ test('task sidebar has a lunar mini calendar, mobile controls, and no fake aband
 test('mini calendar defaults to the selected week and expands into a marked month grid', () => {
   assert.match(workspaceView, /class="clone-mini-calendar-toggle"[\s\S]*miniCalendarExpanded \? '收起月历' : '展开月历'/)
   assert.match(workspaceView, /<header v-if="miniCalendarExpanded" class="clone-mini-calendar-head">/)
-  assert.match(workspaceView, /TransitionGroup name="clone-mini-calendar-day"/)
+  assert.match(workspaceView, /<div class="clone-mini-calendar-grid" :class="\{ expanded: miniCalendarExpanded \}">/)
+  assert.doesNotMatch(workspaceView, /clone-mini-calendar-day-(move|enter|leave)/)
   assert.match(workspaceView, /miniCalendarExpanded && cell\.holiday[\s\S]*cell\.holiday\.off \? '休' : '班'/)
   assert.match(workspaceView, /\.clone-mini-calendar-grid > a\.selected > span/)
   assert.match(workspaceView, /\.clone-mini-calendar-grid > a > i/)
