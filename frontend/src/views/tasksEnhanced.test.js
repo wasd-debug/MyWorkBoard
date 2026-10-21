@@ -321,6 +321,8 @@ test('task sidebar section controls match the compact visibility menus', () => {
   assert.match(workspaceView, /\.clone-collapse-panel\.is-collapsed \{ grid-template-rows: 0fr; opacity: 0; pointer-events: none; visibility: hidden; transition: grid-template-rows 0\.22s/)
   assert.doesNotMatch(workspaceView, /v-show="isSectionDisplayed\('(filters|tags)'\)"/)
   assert.match(workspaceView, /clone-sidebar-section > header:hover \.clone-sidebar-heading-actions[\s\S]*header:focus-within \.clone-sidebar-heading-actions/)
+  assert.match(workspaceView, /clone-sidebar-section > header > button:first-child \{ gap: 0; padding: 0 0 0 10px; text-align: left; \}/)
+  assert.match(workspaceView, /clone-sidebar-section > header \.clone-section-chevron \{ position: absolute; left: 0; width: 14px; pointer-events: none;/)
   assert.match(workspaceView, /clone-sidebar-section > header:hover,[\s\S]*header:focus-within \{ background: color-mix/)
   assert.match(workspaceView, /<header @click="toggleSection\('filters'\)">/)
   assert.match(workspaceView, /@click\.stop="createFilter"/)

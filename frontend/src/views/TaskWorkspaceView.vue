@@ -3513,6 +3513,8 @@ const SidebarSection = {
   cursor: pointer;
 }
 .clone-sidebar-section > header > button:first-child { flex: 1; min-width: 0; }
+.clone-sidebar-section > header > button:first-child { gap: 0; padding: 0 0 0 10px; text-align: left; }
+.clone-sidebar-section > header .clone-section-chevron { position: absolute; left: 0; width: 14px; pointer-events: none; }
 .clone-sidebar-section > header svg {
   transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
