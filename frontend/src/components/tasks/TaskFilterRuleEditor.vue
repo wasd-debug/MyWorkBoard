@@ -14,7 +14,7 @@
           <select :value="child.field" aria-label="筛选字段" @change="changeField(index, $event.target.value)"><option v-for="field in fields" :key="field.value" :value="field.value">{{ field.label }}</option></select>
           <select :value="child.operator" aria-label="筛选操作符" @change="updateLeaf(index, { operator: $event.target.value })"><option v-for="operator in operatorsForRule(child.field)" :key="operator.value" :value="operator.value">{{ operator.label }}</option></select>
           <fieldset v-if="child.operator === 'IN'" class="rule-values"><label v-for="option in valuesForRule(child.field)" :key="option.value"><input type="checkbox" :checked="(child.value || []).includes(option.value)" @change="toggleInValue(index, option.value, $event.target.checked)" />{{ option.label }}</label></fieldset>
-          <select v-else-if="['status','priority','listId','tagId'].includes(child.field)" :value="child.value" :disabled="['IS_SET','IS_NOT_SET'].includes(child.operator)" aria-label="筛选值" @change="updateLeaf(index, { value: $event.target.value })"><option v-for="option in valuesForRule(child.field)" :key="option.value" :value="option.value">{{ option.label }}</option></select>
+          <select v-else-if="['status','priority','listId','tagId','taskType'].includes(child.field)" :value="child.value" :disabled="['IS_SET','IS_NOT_SET'].includes(child.operator)" aria-label="筛选值" @change="updateLeaf(index, { value: $event.target.value })"><option v-for="option in valuesForRule(child.field)" :key="option.value" :value="option.value">{{ option.label }}</option></select>
           <input v-else-if="['IS_SET','IS_NOT_SET'].includes(child.operator)" disabled aria-label="无需填写值" value="无需填写" />
           <input v-else-if="child.field === 'hasDueDate'" type="checkbox" :checked="Boolean(child.value)" aria-label="是否有截止日期" @change="updateLeaf(index, { value: $event.target.checked })" />
           <input v-else-if="child.field === 'dueAt'" type="date" :value="child.value" aria-label="截止日期" @input="updateLeaf(index, { value: $event.target.value })" />
@@ -51,6 +51,7 @@ function valuesForRule(field) {
   if (field === 'priority') return [{ value: 'NONE', label: '无优先级' }, { value: 'LOW', label: '低' }, { value: 'MEDIUM', label: '中' }, { value: 'HIGH', label: '高' }]
   if (field === 'listId') return props.lists.map(item => ({ value: item.publicId, label: item.name }))
   if (field === 'tagId') return props.tags.map(item => ({ value: item.publicId, label: `#${item.name}` }))
+  if (field === 'taskType') return [{ value: 'TASK', label: '任务' }, { value: 'NOTE', label: '笔记' }]
   return []
 }
 </script>

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { commonTaskColors, isHexColor, taskColorFamilies } from "./taskColors.js";
 
 test("task color palette offers common colors before detailed hue families", () => {
+  assert.equal(commonTaskColors[0].name, "无颜色");
   assert.equal(commonTaskColors[0].value, "");
   assert.equal(commonTaskColors.length, 9);
   assert.equal(taskColorFamilies.length, 9);

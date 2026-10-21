@@ -2,7 +2,7 @@
   <DialogRoot :open="open" @update:open="$emit('update:open', $event)">
     <DialogPortal>
       <DialogOverlay class="ui-dialog-backdrop" />
-      <DialogContent class="ui-dialog" :aria-describedby="undefined">
+      <DialogContent class="ui-dialog" :class="contentClass" :aria-describedby="undefined">
         <header class="ui-dialog-head">
           <DialogTitle as="h2">{{ title }}</DialogTitle>
           <DialogClose class="ui-dialog-close" aria-label="关闭">×</DialogClose>
@@ -17,6 +17,6 @@
 <script setup>
 import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
 
-defineProps({ open: Boolean, title: { type: String, default: '' } })
+defineProps({ open: Boolean, title: { type: String, default: '' }, contentClass: { type: String, default: '' } })
 defineEmits(['update:open'])
 </script>

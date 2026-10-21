@@ -1,5 +1,5 @@
 const ARRAY_FIELDS = [
-  'hiddenSystemViews', 'pinnedSystemViews', 'hiddenListIds', 'pinnedListIds',
+  'hiddenSystemViews', 'pinnedSystemViews', 'conditionalSystemViews', 'hiddenListIds', 'pinnedListIds',
   'hiddenTagIds', 'pinnedTagIds', 'hiddenFilterIds', 'pinnedFilterIds',
 ]
 

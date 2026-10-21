@@ -1,5 +1,5 @@
 export const commonTaskColors = [
-  { name: "默认", value: "" },
+  { name: "无颜色", value: "" },
   { name: "红色", value: "#ef5350" },
   { name: "橙色", value: "#f28c38" },
   { name: "黄色", value: "#e6b933" },

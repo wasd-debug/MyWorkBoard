@@ -3,7 +3,7 @@ export const FILTER_RULE_FIELDS = [
   { value: 'status', label: '状态' }, { value: 'priority', label: '优先级' },
   { value: 'listId', label: '清单' }, { value: 'tagId', label: '标签' },
   { value: 'dueAt', label: '截止日期' }, { value: 'hasDueDate', label: '有无截止日期' },
-  { value: 'parentId', label: '父任务' },
+  { value: 'parentId', label: '父任务' }, { value: 'taskType', label: '任务类型' },
 ]
 
 export const FILTER_RULE_OPERATORS = [
@@ -25,6 +25,7 @@ const OPERATORS_BY_FIELD = {
   dueAt: ['EQ', 'NE', 'IN', 'IS_SET', 'IS_NOT_SET', 'LT', 'LTE', 'GT', 'GTE'],
   hasDueDate: ['EQ', 'NE'],
   parentId: ['EQ', 'NE', 'CONTAINS', 'NOT_CONTAINS', 'IS_SET', 'IS_NOT_SET'],
+  taskType: ['EQ', 'NE', 'IN'],
 }
 
 export function operatorsForRule(field) {
@@ -79,7 +80,7 @@ export function matchesFilterRules(task, root) {
     const due = task.dueAt ? new Date(task.dueAt) : null
     const actual = ({ title: task.title, description: task.description || '', status: task.status, priority: task.priority,
       listId: task.listId, tagId: task.tagIds || [], dueAt: due ? `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')}` : '',
-      hasDueDate: Boolean(due), parentId: task.parentId || '' })[node.field]
+      hasDueDate: Boolean(due), parentId: task.parentId || '', taskType: task.objectType || 'TASK' })[node.field]
     const expected = node.value
     const text = value => String(value ?? '').toLocaleLowerCase()
     switch (node.operator) {

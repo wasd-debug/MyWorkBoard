@@ -27,7 +27,6 @@ export function buildTaskSidebarCounts(tasks, archivedListIds, inboxId, now = ne
   const taggedTasks = new Set();
   const archivedIds = new Set(archivedListIds);
   const today = startOfDay(now);
-    "completed", "abandoned", "trash", "archived", "this-week", "next-week",
   const tomorrow = addDays(today, 1);
   const weekStart = addDays(today, -((today.getDay() + 6) % 7));
   const nextWeekStart = addDays(weekStart, 7);

@@ -30,3 +30,10 @@ test('evaluates nested rules using AND/OR semantics and task fields', () => {
   assert.equal(matchesFilterRules(task, rules), true)
   assert.equal(matchesFilterRules({ ...task, tagIds: [] }, rules), false)
 })
+
+test('supports task type as an advanced rule and rejects unsupported operators', () => {
+  const rule = normalizeFilterRules({ op: 'AND', children: [{ field: 'taskType', operator: 'EQ', value: 'NOTE' }] })
+  assert.equal(matchesFilterRules({ title: 'Memo', objectType: 'NOTE' }, rule), true)
+  assert.equal(matchesFilterRules({ title: 'Task', objectType: 'TASK' }, rule), false)
+  assert.throws(() => serializeFilterRules(normalizeFilterRules({ op: 'AND', children: [{ field: 'taskType', operator: 'CONTAINS', value: 'NOTE' }] })), /操作符/)
+})
