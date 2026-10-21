@@ -1006,7 +1006,9 @@ public class TaskService {
     }
 
     private void validateSystemViews(List<String> values) {
-        if (!List.of("INBOX", "TODAY", "TOMORROW", "NEXT7", "ALL", "COMPLETED", "ABANDONED", "TRASH", "CALENDAR")
+        if (!List.of("INBOX", "TODAY", "TOMORROW", "NEXT7", "ALL", "COMPLETED", "ABANDONED", "TRASH", "CALENDAR",
+                        "all", "today", "tomorrow", "next7", "assigned", "inbox", "summary", "this-week", "next-week",
+                        "no-date", "no-tag", "completed", "abandoned", "trash", "archived")
                 .containsAll(values)) throw new IllegalArgumentException("系统视图无效");
     }
 

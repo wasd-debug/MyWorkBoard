@@ -95,12 +95,19 @@ class TaskOrganizationIntegrationTest extends MySqlIntegrationTestSupport {
         assertEquals(List.of("TODAY"), updated.hiddenSystemViews());
         assertEquals(List.of(list.publicId()), updated.hiddenListIds());
         assertEquals(Boolean.TRUE, updated.collapsedSections().get("lists"));
+        var systemViews = List.of("all", "today", "tomorrow", "next7", "assigned", "inbox", "summary",
+                "this-week", "next-week", "no-date", "no-tag", "completed", "abandoned", "trash", "archived");
+        var withSystemViews = service.updateSidebarPreferences(new TaskModels.SidebarPreferencesCommand(systemViews,
+                List.of("inbox"), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), java.util.Map.of()),
+                String.valueOf(updated.revision()));
+        assertEquals(systemViews, withSystemViews.hiddenSystemViews());
+        assertEquals(List.of("inbox"), withSystemViews.pinnedSystemViews());
         assertThrows(ConflictException.class, () -> service.updateSidebarPreferences(
                 new TaskModels.SidebarPreferencesCommand(List.of(), List.of(), List.of(), List.of(), List.of(),
                         List.of(), List.of(), List.of(), java.util.Map.of()), String.valueOf(before.revision())));
         assertThrows(IllegalArgumentException.class, () -> service.updateSidebarPreferences(
                 new TaskModels.SidebarPreferencesCommand(List.of("NOT_A_VIEW"), List.of(), List.of(), List.of(),
-                        List.of(), List.of(), List.of(), List.of(), java.util.Map.of()), String.valueOf(updated.revision())));
+                        List.of(), List.of(), List.of(), List.of(), java.util.Map.of()), String.valueOf(withSystemViews.revision())));
     }
     @Test
     void managesListsTagsSubtasksChecklistAndTrash() {
