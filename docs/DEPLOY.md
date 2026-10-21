@@ -1,5 +1,12 @@
 # 部署说明
 
+## 2026-10-21 任务侧栏交互增量发布
+
+- 应用提交 `3c01c68` 已推送到远程 `main`，包含 9 个独立提交：移除组织对象“打开新窗口”菜单、统一侧栏区块缩进、稳定 mini 月历翻页、修正展开箭头、按日期筛选任务、支持侧栏宽度调整、将四个快捷筛选与系统集合分离、清单颜色改为独立圆点、补充对象拖放位置反馈。精确源码归档位于 `/home/ubuntu/salary-tracker/releases/3c01c68/source.tar.gz`，SHA-256 为 `ffebf6a5673c9a3960818c05c41a6db076222b565665a7c1069fb7539cd6beb6`。
+- 发布前数据库逻辑备份 `/home/ubuntu/salary-tracker/backups/salary-before-3c01c68-20261021-223019.sql.gz` 大小约 5.4 MB，`gzip -t` 通过。旧后端和前端镜像分别保留为 `salary-backend:pre-3c01c68`、`salary-frontend:pre-3c01c68`，旧 Compose 文件保留为 `docker-compose.prod.yml.bak.3c01c68`。
+- 本次为纯前端变更，仅重建并替换前端容器；运行镜像 `salary-frontend:3c01c68` 的镜像 ID 为 `sha256:86fade4eeea2f767c9490e53e177565590a38fc62d165f4b5cb143a9aff24751`（`linux/amd64`）。后端继续运行 `salary-backend:e8d0131`，其容器未重建；MySQL 容器 ID `eab10f4bfbb0d0821a84e14d3e575ff153cdd3e7ea1951ea96b7713ffa1d008d` 保持不变。无后端或数据库结构变更，Flyway 最新版本为 V45 且成功；核心记录为 `app_user=3`、`work_record=60`、`ledger_book=5`、`ledger_transaction=16633`。
+- 服务器本机 `/api/health` 返回 `{"ok":true}`，`/`、`/tasks/all`、`/tasks/today` 均返回 HTTP 200。前端定向 Node 测试 41 项、生产构建和 `git diff --check` 通过。侧栏拖宽及真实清单/标签对象拖放仍需使用隔离测试数据按《前端手工检查清单》完成浏览器验收；服务器 HTTP 检查不代表这些交互已验收。
+
 ## 2026-10-21 任务侧栏与筛选器增量发布
 
 - 应用提交 `e8d0131` 已推送至远程 `main`。提交包含侧栏图标、文件夹/标签交互、筛选器编辑与预览、高级筛选条件、系统集合菜单及迷你日历样式调整，并更新 Flyway 集成测试的最新版本断言。源码归档位于 `/home/ubuntu/salary-tracker/releases/e8d0131`，上传归档 SHA-256 为 `98066ed2862411fab9b76e2b98562c3ad5234b6a0bfc24c6b55b186369f368c6`。
