@@ -261,9 +261,12 @@ test('task sidebar has a lunar mini calendar, mobile controls, and no fake aband
   assert.match(workspaceView, /clone-sidebar-system[\s\S]*clone-sidebar-organization[\s\S]*clone-sidebar-status[\s\S]*clone-mini-calendar/)
 })
 
-test('task sidebar organization persists account preferences and exposes pin, list-copy, and filter preview actions', () => {
+test('task sidebar organization persists account preferences and exposes pin, list-copy, and filter preview actions', async () => {
+  const sidebarCounts = await readFile(new URL('./taskSidebarCounts.js', import.meta.url), 'utf8')
   assert.match(workspaceView, /function displayOptionsFor\(/)
-  for (const shortcut of ['this-week', 'next-week', 'no-date', 'no-tag']) assert.match(workspaceView, new RegExp(`key === "${shortcut}"`))
+  for (const shortcut of ['this-week', 'next-week', 'no-date', 'no-tag']) assert.match(sidebarCounts, new RegExp(`"${shortcut}"`))
+  assert.match(workspaceView, /const sidebarTaskCounts = computed\(\(\) => buildTaskSidebarCounts\(/)
+  assert.match(workspaceView, /function itemCount\(key\) \{\s*return sidebarTaskCounts\.value\.counts\[key\] \?\? "";/)
   assert.match(workspaceView, /function setDisplayOption\(/)
   assert.match(workspaceView, /apiGetTaskSidebarPreferences\(\)/)
   assert.match(workspaceView, /apiUpdateTaskSidebarPreferences\(payload, sidebarPrefsRevision\.value\)/)

@@ -907,6 +907,7 @@ import { moveItem } from "./taskSidebar.js";
 import { groupTaskItems, sortTaskItems } from "./taskList.js";
 import { moveChecklistItem as reorderChecklistItems } from "./taskChecklist.js";
 import { countFilterRuleNodes, matchesFilterRules, normalizeFilterRules, serializeFilterRules } from "./taskFilterRules.js";
+import { buildTaskSidebarCounts } from "./taskSidebarCounts.js";
 import { mergeSidebarPreferenceChanges } from "./taskSidebarPreferences.js";
 import { useTasksStore } from "../stores/tasks.js";
 import { useTaskFocusStore } from "../stores/taskFocus.js";
@@ -1142,8 +1143,13 @@ const visibleListGroups = computed(() => sortedListGroups.value.filter(group => 
 const activeLists = computed(() => store.lists.filter(item => !item.archived));
 const pinnedLists = computed(() => activeLists.value.filter(item => item.systemKey !== "INBOX" && !isHiddenObject("list", item) && isPinnedObject("list", item)).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
 const archivedLists = computed(() => store.lists.filter(item => item.archived).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
-const archivedTaskCount = computed(() => store.tasks.filter(task => !task.deleted && archivedLists.value.some(list => list.publicId === task.listId)).length);
-const abandonedTaskCount = computed(() => store.tasks.filter(task => !task.deleted && task.status === "ABANDONED").length);
+const sidebarTaskCounts = computed(() => buildTaskSidebarCounts(
+  store.tasks,
+  archivedLists.value.map(list => list.publicId),
+  store.inbox?.publicId,
+));
+const archivedTaskCount = computed(() => sidebarTaskCounts.value.counts.archived);
+const abandonedTaskCount = computed(() => sidebarTaskCounts.value.counts.abandoned);
 const ungroupedLists = computed(() => activeLists.value.filter(item => !item.groupId && !isHiddenObject("list", item) && !isPinnedObject("list", item)).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
 const rootTags = computed(() => store.tags.filter(item => !item.parentId && !isHiddenObject("tag", item) && !isPinnedObject("tag", item)).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
 const childTags = computed(() => store.tags.filter(item => item.parentId && !isHiddenObject("tag", item) && !isPinnedObject("tag", item)).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
@@ -1164,10 +1170,9 @@ const mergeTargets = computed(() => {
   return store.tags.filter(item => item.publicId !== tagMerge.source.publicId && !descendants.has(item.publicId)
     && (!sourceHasChildren || !item.parentId));
 });
-function openCount(predicate) { return store.tasks.filter(task => !task.deleted && !["COMPLETED", "ABANDONED"].includes(task.status) && predicate(task)).length; }
-function listOpenCount(listId) { return openCount(task => task.listId === listId); }
-function tagOpenCount(tagId) { return openCount(task => (task.tagIds || []).includes(tagId)); }
-function tagHasTasks(tagId) { return store.tasks.some(task => !task.deleted && (task.tagIds || []).includes(tagId)); }
+function listOpenCount(listId) { return sidebarTaskCounts.value.openByList.get(listId) || 0; }
+function tagOpenCount(tagId) { return sidebarTaskCounts.value.openByTag.get(tagId) || 0; }
+function tagHasTasks(tagId) { return sidebarTaskCounts.value.taggedTasks.has(tagId); }
 function toggleListGroupCollapsed(group) { groupCollapsed[group.publicId] = !groupCollapsed[group.publicId]; persistListGroupState(); scheduleSidebarPreferencesSave(); }
 function persistListGroupState() { try { localStorage.setItem(`task_sidebar_groups:${store.accountScope || "anonymous"}`, JSON.stringify(groupCollapsed)); } catch {} }
 function loadListGroupState() { try { Object.assign(groupCollapsed, JSON.parse(localStorage.getItem(`task_sidebar_groups:${store.accountScope || "anonymous"}`) || "{}")); } catch {} }
@@ -1197,6 +1202,8 @@ const priorityOptions = [
   { value: "MEDIUM", label: "中优先级" },
   { value: "HIGH", label: "高优先级" },
 ];
+const completedTaskCount = computed(() => sidebarTaskCounts.value.counts.completed);
+const trashedTaskCount = computed(() => sidebarTaskCounts.value.counts.trash);
 const title = computed(() =>
   route.name === "tasks-today"
     ? "今天"
@@ -1435,23 +1442,7 @@ function recurrenceValue(value) {
   return recurrenceOptions.some((option) => option.value === value) ? value : value ? "CUSTOM" : "";
 }
 function itemCount(key) {
-  const tasks = store.tasks.filter(item => !item.deleted && !["COMPLETED", "ABANDONED"].includes(item.status));
-  const today = startOfDay(new Date());
-  const tomorrow = addDays(today, 1);
-  if (key === "all") return tasks.length;
-  if (key === "assigned") return 0;
-  if (key === "summary") return tasks.filter(item => item.dueAt && new Date(item.dueAt) < tomorrow).length;
-  if (key === "inbox") return tasks.filter(item => item.listId === store.inbox?.publicId).length;
-  if (key === "today") return tasks.filter(item => inRange(item.dueAt, today, tomorrow)).length;
-  if (key === "tomorrow") return tasks.filter(item => inRange(item.dueAt, tomorrow, addDays(tomorrow, 1))).length;
-  if (key === "next7") return tasks.filter(item => inRange(item.dueAt, today, addDays(today, 8))).length;
-  const weekStart = addDays(today, -((today.getDay() + 6) % 7));
-  const nextWeekStart = addDays(weekStart, 7);
-  if (key === "this-week") return tasks.filter(item => inRange(item.dueAt, weekStart, nextWeekStart)).length;
-  if (key === "next-week") return tasks.filter(item => inRange(item.dueAt, nextWeekStart, addDays(nextWeekStart, 7))).length;
-  if (key === "no-date") return tasks.filter(item => !item.dueAt).length;
-  if (key === "no-tag") return tasks.filter(item => !(item.tagIds || []).length).length;
-  return "";
+  return sidebarTaskCounts.value.counts[key] ?? "";
 }
 function isActive(to) {
   return route.path === to || route.path.startsWith(`${to}/`);
