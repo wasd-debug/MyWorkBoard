@@ -406,3 +406,15 @@ test('task domain exposes a ticktick-style desktop module rail', async () => {
   assert.match(theme, /workspace-topbar\.task-domain-topbar \{ display:none; \}/)
   assert.match(theme, /margin-left:58px/)
 })
+
+test('task organization icons use categorized Lucide icons and preserve emoji fallback', async () => {
+  const catalog = await readFile(new URL('./taskOrganizationIcons.js', import.meta.url), 'utf8')
+  const iconComponent = await readFile(new URL('../components/tasks/TaskOrganizationIcon.vue', import.meta.url), 'utf8')
+  assert.match(workspaceView, /clone-icon-categories/)
+  assert.match(workspaceView, /searchOrganizationIcons/)
+  assert.match(workspaceView, /TaskOrganizationIcon/)
+  assert.match(iconComponent, /resolveOrganizationIcon/)
+  assert.match(iconComponent, /<span v-else v-bind="\$attrs">\{\{ value \}\}<\/span>/)
+  assert.match(catalog, /export function searchOrganizationIcons/)
+  assert.match(catalog, /value: "work", label: "工作项目"/)
+})
