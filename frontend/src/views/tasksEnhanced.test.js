@@ -201,6 +201,11 @@ test('replacement task sidebar matches the captured navigation and shortcut filt
   assert.match(workspaceView, /shortcut === "assigned"\s*\? false/)
   assert.match(workspaceView, /shortcut === "summary"[\s\S]*tomorrow/)
   assert.match(workspaceView, /shortcut === "archived"[\s\S]*archivedIds\.has/)
+  assert.match(workspaceView, /allSidebarSystemViews = computed\(\(\) => \[\.\.\.primaryViews, completedView, abandonedView, trashView, archivedView\]/)
+  assert.match(workspaceView, /shortcutViews = \[[\s\S]*publicId: "shortcut:this-week"[\s\S]*publicId: "shortcut:no-tag"/)
+  assert.match(workspaceView, /openOrganizationMenu\('quick-filter', item, \$event\)/)
+  assert.match(workspaceView, /task_sidebar_custom_shortcuts:/)
+  assert.match(workspaceView, /hiddenShortcutViews[\s\S]*显示“\{\{ item\.label \}\}”/)
 })
 
 test('completed, abandoned, and trash system views expose only their supported organization actions', () => {
