@@ -10,7 +10,7 @@
     @touchend.passive="finishSidebarSwipe"
   >
     <button v-if="!sidebarHidden && isMobileSidebar" class="clone-sidebar-backdrop" type="button" aria-label="关闭任务侧栏" @click="sidebarHidden = true"></button>
-    <aside class="clone-task-sidebar" :class="{ 'is-editing': sidebarEditing }" aria-label="任务导航" @click="handleSidebarClick">
+    <aside class="clone-task-sidebar" :class="{ 'is-editing': sidebarEditing }" aria-label="任务导航" @click="handleSidebarClick" @dragover.capture="handleOrganizationDragOver" @dragend.capture="endOrganizationDrag">
       <div class="clone-sidebar-scroll">
       <div class="clone-sidebar-head">
         <strong>任务</strong
@@ -1041,6 +1041,7 @@ const sectionDisplayMenu = ref("");
 const groupCollapsed = reactive({});
 const organizationDrag = ref(null);
 const organizationDropTarget = ref("");
+const organizationDropPlacement = ref("");
 const organizationMenuOpen = ref(false);
 const organizationDialogOpen = ref(false);
 const organizationMenu = reactive({ open: false, kind: "", item: null, x: 0, y: 0 });
@@ -3107,18 +3108,90 @@ async function deleteOrganization(kind) {
     else { await apiDeleteTaskFilter(item.publicId, item.revision); await loadFilters(); }
   } catch (error) { store.error = error?.response?.data?.detail || error?.message || "删除失败"; }
 }
-function startOrganizationDrag(kind, item) { organizationDrag.value = { kind, item }; organizationDropTarget.value = ""; }
-function handleListDragOver(target) {
-  organizationDropTarget.value = target.publicId;
+function startOrganizationDrag(kind, item) { endOrganizationDrag(); organizationDrag.value = { kind, item }; }
+function setOrganizationDropPosition(targetKey, event) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  organizationDropTarget.value = targetKey;
+  organizationDropPlacement.value = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+}
+function isDropBefore(targetKey) { return organizationDropTarget.value === targetKey && organizationDropPlacement.value === "before"; }
+function isDropAfter(targetKey) { return organizationDropTarget.value === targetKey && organizationDropPlacement.value === "after"; }
+function handleSortableDragOver(targetKey, event) { setOrganizationDropPosition(targetKey, event); }
+function handleGroupDragOver(group, event) {
+  if (organizationDrag.value?.kind === "list") {
+    organizationDropTarget.value = `group:${group.publicId}`;
+    organizationDropPlacement.value = "merge";
+  } else setOrganizationDropPosition(`group:${group.publicId}`, event);
+}
+function handleListDragOver(target, event) {
   const source = organizationDrag.value;
+  if (source?.kind === "list" && listHoverTarget === target.publicId && organizationDropPlacement.value === "merge") return;
+  setOrganizationDropPosition(target.publicId, event);
   if (!source || source.kind !== "list" || source.item.publicId === target.publicId || listHoverTarget === target.publicId) return;
   clearTimeout(listHoverTimer);
   listHoverTarget = target.publicId;
   listHoverTimer = window.setTimeout(() => {
-    if (organizationDrag.value?.kind === "list" && organizationDrag.value.item.publicId !== target.publicId) organizationDropTarget.value = `new-group:${target.publicId}`;
+    if (organizationDrag.value?.kind === "list" && organizationDrag.value.item.publicId !== target.publicId) {
+      organizationDropTarget.value = `new-group:${target.publicId}`;
+      organizationDropPlacement.value = "merge";
+      if (organizationDropMarkerElement) updateDropMarker(organizationDropMarkerElement, "merge");
+    }
   }, 650);
 }
 let listHoverTarget = "";
+let organizationDropMarkerElement = null;
+function updateDropMarker(element, placement) {
+  if (organizationDropMarkerElement && organizationDropMarkerElement !== element) {
+    organizationDropMarkerElement.classList.remove("drop-before", "drop-after", "drop-merge");
+  }
+  organizationDropMarkerElement = element;
+  element.classList.remove("drop-before", "drop-after", "drop-merge");
+  element.classList.add(placement === "merge" ? "drop-merge" : `drop-${placement}`);
+}
+function clearDropMarker() {
+  organizationDropMarkerElement?.classList.remove("drop-before", "drop-after", "drop-merge");
+  organizationDropMarkerElement = null;
+}
+function handleOrganizationDragOver(event) {
+  if (!organizationDrag.value) return;
+  const row = event.target.closest(".clone-sortable-item");
+  if (row) {
+    const href = row.getAttribute("href") || "";
+    const id = href.split("?")[0].split("/").filter(Boolean).at(-1);
+    if (!id) return;
+    const rect = row.getBoundingClientRect();
+    const edge = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+    if (organizationDrag.value.kind === "list" && href.includes("/tasks/list/") && listHoverTarget === id && organizationDropTarget.value === `new-group:${id}`) {
+      organizationDropPlacement.value = "merge";
+      updateDropMarker(row, "merge");
+      return;
+    }
+    organizationDropTarget.value = id;
+    organizationDropPlacement.value = edge;
+    updateDropMarker(row, edge);
+    return;
+  }
+  const groupRow = event.target.closest(".clone-sortable-group");
+  if (!groupRow) { clearDropMarker(); return; }
+  clearDropMarker();
+  const href = groupRow.querySelector(".clone-group-navigation")?.getAttribute("href") || "";
+  const id = href.split("?")[0].split("/").filter(Boolean).at(-1);
+  if (!id) return;
+  if (organizationDrag.value.kind === "list") {
+    organizationDropTarget.value = `group:${id}`;
+    organizationDropPlacement.value = "merge";
+    groupRow.classList.add("drag-over");
+    groupRow.classList.remove("drop-before", "drop-after");
+    return;
+  }
+  const heading = groupRow.querySelector(".clone-list-group-heading") || groupRow;
+  const rect = heading.getBoundingClientRect();
+  const edge = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+  organizationDropTarget.value = `group:${id}`;
+  organizationDropPlacement.value = edge;
+  groupRow.classList.remove("drag-over");
+  groupRow.classList.add(`drop-${edge}`);
+}
 function handleListDragLeave(target) {
   if (listHoverTarget === target.publicId) { clearTimeout(listHoverTimer); listHoverTarget = ""; }
 }
@@ -3140,7 +3213,7 @@ async function dropOrganization(kind, target) {
   try {
     if (kind === "list" && source.item.groupId !== target.groupId) await store.assignListGroup(source.item, target.groupId || "");
     const collection = kind === "list" ? activeLists.value.filter(value => (value.groupId || "") === (target.groupId || "")) : kind === "tag" ? store.tags.filter(value => (value.parentId || "") === (target.parentId || "")) : filters.value;
-    const ordered = moveItem(collection, source.item.publicId, target.publicId);
+    const ordered = moveItem(collection, source.item.publicId, target.publicId, organizationDropPlacement.value);
     if (kind === "list") for (const value of ordered) await store.updateList(store.lists.find(item => item.publicId === value.publicId), { sortOrder: value.sortOrder });
     else if (kind === "tag") for (const value of ordered) await apiUpdateTaskTag(value.publicId, { name: value.name, color: value.color || "", parentId: value.parentId || "", sortOrder: value.sortOrder }, value.revision);
     else for (const value of ordered) await apiUpdateTaskFilter(value.publicId, { ...value, sortOrder: value.sortOrder }, value.revision);
@@ -3167,14 +3240,23 @@ async function dropGroup(target) {
     if (source.kind === "list") {
       await store.assignListGroup(source.item, target.publicId);
     } else if (source.kind === "group") {
-      const ordered = moveItem(sortedListGroups.value, source.item.publicId, target.publicId);
+      const ordered = moveItem(sortedListGroups.value, source.item.publicId, target.publicId, organizationDropPlacement.value);
       for (const value of ordered) await apiUpdateTaskListGroup(value.publicId, { name: value.name, sortOrder: value.sortOrder }, value.revision);
       await store.refreshServer();
     }
   } catch (error) { store.error = error?.response?.data?.detail || error?.message || "移动失败"; }
   endOrganizationDrag();
 }
-function endOrganizationDrag() { clearTimeout(listHoverTimer); listHoverTarget = ""; organizationDrag.value = null; organizationDropTarget.value = ""; }
+function endOrganizationDrag() {
+  clearTimeout(listHoverTimer);
+  listHoverTarget = "";
+  organizationDrag.value = null;
+  organizationDropTarget.value = "";
+  organizationDropPlacement.value = "";
+  organizationDropMarkerElement?.classList.remove("drop-before", "drop-after", "drop-merge", "drag-over");
+  clearDropMarker();
+  document.querySelectorAll(".clone-sortable-group.drop-before, .clone-sortable-group.drop-after, .clone-sortable-group.drag-over").forEach(element => element.classList.remove("drop-before", "drop-after", "drag-over"));
+}
 async function loadFilters() {
   if (!store.online) return;
   try {
@@ -3400,7 +3482,15 @@ const SidebarSection = {
 .clone-sort-leave-active { transition: opacity 0.16s ease, transform 0.2s cubic-bezier(0.22, 1, 0.36, 1); }
 .clone-sort-enter-from,
 .clone-sort-leave-to { opacity: 0; transform: translateY(-5px) scale(0.985); }
-.clone-sortable-group.drag-over { outline: 1px dashed var(--accent); outline-offset: 2px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.clone-sortable-group.drag-over:not(.drop-before):not(.drop-after) { outline: 1px dashed var(--accent); outline-offset: 2px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.clone-sortable-group.drop-before > .clone-list-group-heading::before,
+.clone-sortable-group.drop-after > .clone-list-group-heading::before { position: absolute; left: 4px; right: 4px; height: 2px; border-radius: 2px; background: var(--accent); content: ""; pointer-events: none; }
+.clone-sortable-group.drop-before > .clone-list-group-heading::before { top: 0; }
+.clone-sortable-group.drop-after > .clone-list-group-heading::before { bottom: 0; }
+.clone-sortable-group.drop-before > .clone-list-group-heading::after,
+.clone-sortable-group.drop-after > .clone-list-group-heading::after { position: absolute; left: 3px; width: 7px; height: 7px; border: 1px solid var(--card); border-radius: 50%; background: var(--accent); content: ""; pointer-events: none; }
+.clone-sortable-group.drop-before > .clone-list-group-heading::after { top: -2px; }
+.clone-sortable-group.drop-after > .clone-list-group-heading::after { bottom: -2px; }
 .clone-sortable-item.sorting-dragging,
 .clone-sortable-group.sorting-dragging { opacity: 0.48; transform: scale(0.985); }
 .clone-list-group { display: grid; min-width: 0; gap: 2px; }
@@ -3423,7 +3513,17 @@ const SidebarSection = {
 .clone-section-display-menu button { display: flex; min-height: 34px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 9px; border: 0; border-radius: 5px; background: transparent; color: var(--ink2); font: inherit; text-align: left; cursor: pointer; }
 .clone-section-display-menu button:hover, .clone-section-display-menu button:focus-visible { background: var(--paper); color: var(--ink); }
 .clone-sortable-item { position: relative; }
-.clone-sortable-item.drag-over { outline: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--card)); }
+.clone-sortable-item { isolation: isolate; }
+.clone-sortable-item.drag-over:not(.drop-merge) { outline: 0; background: transparent; }
+.clone-sortable-item.drop-merge { outline: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line)); background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+.clone-sortable-item.drop-before::before,
+.clone-sortable-item.drop-after::before { position: absolute; z-index: 2; left: 5px; right: 5px; height: 2px; border-radius: 2px; background: var(--accent); content: ""; pointer-events: none; }
+.clone-sortable-item.drop-before::before { top: 1px; }
+.clone-sortable-item.drop-after::before { bottom: 1px; }
+.clone-sortable-item.drop-before::after,
+.clone-sortable-item.drop-after::after { position: absolute; z-index: 3; left: 4px; width: 6px; height: 6px; border: 1px solid var(--card); border-radius: 50%; background: var(--accent); content: ""; pointer-events: none; }
+.clone-sortable-item.drop-before::after { top: -1px; }
+.clone-sortable-item.drop-after::after { bottom: -1px; }
 .clone-item-menu-trigger { display: grid; flex: none; width: 24px; height: 24px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); opacity: 0; cursor: pointer; }
 .clone-sortable-item > small { transition: opacity 120ms ease; }
 .clone-sortable-item:hover > small, .clone-sortable-item:focus-within > small { opacity: 0; }

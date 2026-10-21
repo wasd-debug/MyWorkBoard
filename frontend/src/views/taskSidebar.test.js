@@ -18,3 +18,9 @@ test('moveItem leaves the list unchanged when either item is missing', () => {
   assert.equal(moveItem(items, 'missing', 'a'), items)
   assert.equal(moveItem(items, 'a', 'missing'), items)
 })
+
+test('moveItem supports before and after drop positions', () => {
+  const items = [{ publicId: 'a' }, { publicId: 'b' }, { publicId: 'c' }]
+  assert.deepEqual(moveItem(items, 'a', 'b', 'after').map(item => item.publicId), ['b', 'a', 'c'])
+  assert.deepEqual(moveItem(items, 'c', 'a', 'after').map(item => item.publicId), ['a', 'c', 'b'])
+})
