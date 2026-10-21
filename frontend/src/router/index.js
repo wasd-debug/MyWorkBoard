@@ -35,7 +35,6 @@ const routes = [
   { path: '/tasks/trash', name: 'tasks-trash', component: () => import('../views/TaskWorkspaceView.vue'), meta: { title: '任务垃圾桶' } },
   { path: '/tasks/list/:publicId', name: 'tasks-list', component: () => import('../views/TaskWorkspaceView.vue'), meta: { title: '任务清单' } },
   { path: '/tasks/group/:publicId', name: 'tasks-group', component: () => import('../views/TaskWorkspaceView.vue'), meta: { title: '清单分组' } },
-  { path: '/tasks/group/:publicId', name: 'tasks-group', component: () => import('../views/TaskWorkspaceView.vue'), meta: { title: '清单分组' } },
   { path: '/tasks/tag/:publicId', name: 'tasks-tag', component: () => import('../views/TaskWorkspaceView.vue'), meta: { title: '任务标签' } },
   { path: '/ledger', name: 'ledger', component: () => import('../views/LedgerView.vue'), meta: { title: '账本' } },
   { path: '/ledger/transactions', name: 'ledger-transactions', component: () => import('../views/LedgerTransactionsView.vue'), meta: { title: '流水' } },

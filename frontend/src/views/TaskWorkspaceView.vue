@@ -45,11 +45,11 @@
       <section class="clone-sidebar-section">
         <header @click="toggleSection('lists')"><button type="button" :aria-expanded="sections.lists"><ChevronDown :size="14" class="clone-section-chevron" :class="{ rotated: !sections.lists }" />清单</button><div class="clone-sidebar-heading-actions"><button class="sidebar-create" type="button" aria-label="新建清单" title="新建清单" @click.stop="createList()"><Plus :size="14" /></button></div></header>
         <div class="clone-collapse-panel" :class="{ 'is-collapsed': !sections.lists }" :aria-hidden="!sections.lists"><div class="clone-sidebar-items clone-collapse-inner" :inert="!sections.lists" @dragover.prevent="organizationDrag && (organizationDropTarget = 'list-root')" @drop.prevent="dropOrganizationRoot('list')">
-        <section v-if="pinnedListGroups.length" class="clone-pinned-zone" aria-label="置顶分组"><div class="clone-pinned-title">置顶分组</div><section v-for="group in pinnedListGroups" :key="`pinned-group-${group.publicId}`" class="clone-list-group"><header class="clone-list-group-heading"><TaskOrganizationIcon v-if="group.icon" class="clone-list-group-icon" :value="group.icon" :style="{ color: group.color || undefined }" /><span :style="{ color: group.color || undefined }">{{ group.name }}</span><small>{{ listsInGroup(group.publicId).length }}</small><button type="button" :aria-label="`${group.name}的更多操作`" @click.stop="openOrganizationMenu('group', group, $event)"><Ellipsis :size="14" /></button></header><RouterLink v-for="list in listsInGroup(group.publicId)" :key="`pinned-group-list-${list.publicId}`" :to="`/tasks/list/${list.publicId}`" class="clone-nav-item" :class="{ active: route.params.publicId === list.publicId }"><ListTodo :size="15" /><span>{{ list.name }}</span><small>{{ listOpenCount(list.publicId) }}</small></RouterLink></section></section>
+        <section v-if="pinnedListGroups.length" class="clone-pinned-zone" aria-label="置顶分组"><div class="clone-pinned-title">置顶分组</div><section v-for="group in pinnedListGroups" :key="`pinned-group-${group.publicId}`" class="clone-list-group"><header class="clone-list-group-heading"><button type="button" class="clone-group-toggle" :aria-expanded="!groupCollapsed[group.publicId]" :aria-label="`${groupCollapsed[group.publicId] ? '展开' : '折叠'}${group.name}`" @click.stop="toggleListGroupCollapsed(group)"><ChevronDown :size="13" :class="{ rotated: groupCollapsed[group.publicId] }" /></button><RouterLink class="clone-group-navigation" :class="{ active: route.name === 'tasks-group' && route.params.publicId === group.publicId }" :to="`/tasks/group/${group.publicId}`"><TaskOrganizationIcon v-if="group.icon" class="clone-list-group-icon" :value="group.icon" /><Folder v-else class="clone-list-group-icon" :size="15" /><span>{{ group.name }}</span><small>{{ groupOpenCount(group.publicId) }}</small></RouterLink><button class="clone-group-menu" type="button" :aria-label="`${group.name}的更多操作`" @click.stop="openOrganizationMenu('group', group, $event)"><Ellipsis :size="14" /></button></header><div class="clone-collapse-panel" :class="{ 'is-collapsed': groupCollapsed[group.publicId] }" :aria-hidden="Boolean(groupCollapsed[group.publicId])"><div class="clone-group-lists clone-collapse-inner" :inert="Boolean(groupCollapsed[group.publicId])"><RouterLink v-for="list in listsInGroup(group.publicId)" :key="`pinned-group-list-${list.publicId}`" :to="`/tasks/list/${list.publicId}`" class="clone-nav-item" :class="{ active: route.params.publicId === list.publicId }"><ListTodo :size="15" /><span>{{ list.name }}</span><small>{{ listOpenCount(list.publicId) }}</small></RouterLink></div></div></section></section>
         <section v-if="pinnedLists.length" class="clone-pinned-zone" aria-label="置顶清单"><div class="clone-pinned-title">置顶</div><RouterLink v-for="list in pinnedLists" :key="`pinned-${list.publicId}`" :to="`/tasks/list/${list.publicId}`" class="clone-nav-item clone-sortable-item" :class="{ active: route.params.publicId === list.publicId }" @contextmenu.prevent="openOrganizationMenu('list', list, $event)"><TaskOrganizationIcon v-if="list.icon" class="clone-object-icon" :value="list.icon" :style="{ color: list.color || undefined }" /><ListTodo v-else :size="15" :style="{ color: list.color || undefined }" /><span>{{ list.name }}</span><small>{{ listOpenCount(list.publicId) }}</small><button class="clone-item-menu-trigger" type="button" :aria-label="`${list.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('list', list, $event)"><Ellipsis :size="14" /></button></RouterLink></section>
         <TransitionGroup name="clone-sort" tag="div" class="clone-sort-stack">
         <section v-for="group in visibleListGroups" :key="group.publicId" class="clone-list-group clone-sortable-group" :class="{ 'drag-over': organizationDropTarget === `group:${group.publicId}`, 'sorting-dragging': organizationDrag?.kind === 'group' && organizationDrag.item.publicId === group.publicId }" @dragover.prevent="organizationDropTarget = `group:${group.publicId}`" @drop.prevent.stop="dropGroup(group)" @contextmenu.prevent="openOrganizationMenu('group', group, $event)">
-          <header class="clone-list-group-heading" draggable="true" @dragstart="startOrganizationDrag('group', group)"><button type="button" class="clone-group-toggle" :aria-expanded="!groupCollapsed[group.publicId]" :aria-label="`${groupCollapsed[group.publicId] ? '展开' : '折叠'}${group.name}`" @click.stop="toggleListGroupCollapsed(group)"><ChevronDown :size="13" :class="{ rotated: groupCollapsed[group.publicId] }" /></button><TaskOrganizationIcon v-if="group.icon" class="clone-list-group-icon" :value="group.icon" :style="{ color: group.color || undefined }" /><button type="button" class="clone-group-title" :style="{ color: group.color || undefined }" @click.stop="router.push(`/tasks/group/${group.publicId}`)">{{ group.name }}</button><small>{{ listsInGroup(group.publicId).length }}</small><button type="button" :aria-label="`新建清单到${group.name}`" @click.stop="createList(group.publicId)"><Plus :size="13" /></button><button type="button" :aria-label="`${group.name}的更多操作`" @click.stop="openOrganizationMenu('group', group, $event)"><Ellipsis :size="14" /></button></header>
+          <header class="clone-list-group-heading" draggable="true" @dragstart="startOrganizationDrag('group', group)"><button type="button" class="clone-group-toggle" :aria-expanded="!groupCollapsed[group.publicId]" :aria-label="`${groupCollapsed[group.publicId] ? '展开' : '折叠'}${group.name}`" @click.stop="toggleListGroupCollapsed(group)"><ChevronDown :size="13" :class="{ rotated: groupCollapsed[group.publicId] }" /></button><RouterLink class="clone-group-navigation" :class="{ active: route.name === 'tasks-group' && route.params.publicId === group.publicId }" :to="`/tasks/group/${group.publicId}`"><TaskOrganizationIcon v-if="group.icon" class="clone-list-group-icon" :value="group.icon" /><Folder v-else class="clone-list-group-icon" :size="15" /><span>{{ group.name }}</span><small>{{ groupOpenCount(group.publicId) }}</small></RouterLink><button class="clone-group-menu" type="button" :aria-label="`${group.name}的更多操作`" @click.stop="openOrganizationMenu('group', group, $event)"><Ellipsis :size="14" /></button></header>
           <div class="clone-collapse-panel" :class="{ 'is-collapsed': groupCollapsed[group.publicId] }" :aria-hidden="Boolean(groupCollapsed[group.publicId])"><TransitionGroup name="clone-sort" tag="div" class="clone-group-lists clone-collapse-inner" :inert="Boolean(groupCollapsed[group.publicId])"><RouterLink v-for="list in listsInGroup(group.publicId)" :key="list.publicId" :to="list.systemKey === 'INBOX' ? '/tasks/inbox' : `/tasks/list/${list.publicId}`" class="clone-nav-item clone-sortable-item" :class="{ active: route.params.publicId === list.publicId, 'drag-over': organizationDropTarget === list.publicId || organizationDropTarget === `new-group:${list.publicId}`, 'sorting-dragging': organizationDrag?.kind === 'list' && organizationDrag.item.publicId === list.publicId }" :draggable="list.systemKey !== 'INBOX'" @dragstart="startOrganizationDrag('list', list)" @dragover.prevent="handleListDragOver(list)" @dragleave="handleListDragLeave(list)" @drop.prevent.stop="dropListOnList(list)" @contextmenu.prevent="openOrganizationMenu('list', list, $event)"><TaskOrganizationIcon v-if="list.icon" class="clone-object-icon" :value="list.icon" :style="{ color: list.color || undefined }" /><ListTodo v-else :size="15" :style="{ color: list.color || undefined }" /><span>{{ list.name }}</span><small>{{ listOpenCount(list.publicId) }}</small><button class="clone-item-menu-trigger" type="button" :aria-label="`${list.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('list', list, $event)"><Ellipsis :size="14" /></button></RouterLink></TransitionGroup></div>
         </section>
         </TransitionGroup>
@@ -804,11 +804,11 @@
       <template v-else-if="organizationMenu.kind === 'system'"><button type="button" @click="togglePinnedObject('system', organizationMenu.item)"><Pin :size="14" />{{ isPinnedObject('system', organizationMenu.item) ? '取消置顶' : '置顶' }}</button><button type="button" @click="organizationMenu.submenu = organizationMenu.submenu === 'display' ? '' : 'display'"><Eye :size="14" />显示选项<ChevronDown :size="13" /></button><div v-if="organizationMenu.submenu === 'display'" class="clone-context-submenu"><button v-for="option in displayOptionsFor('system', organizationMenu.item)" :key="option.value" type="button" @click="setDisplayOption('system', organizationMenu.item, option.value)">{{ option.label }}<Check v-if="getDisplayOption('system', organizationMenu.item) === option.value" :size="14" /></button></div></template>
       <template v-else-if="organizationMenu.kind === 'list'">
         <button v-if="isInboxColorList(organizationMenu.item)" type="button" @click="editOrganization('list')"><Pencil :size="14" />编辑</button>
-        <template v-else><button type="button" @click="togglePinnedObject('list', organizationMenu.item)"><Pin :size="14" />{{ isPinnedObject('list', organizationMenu.item) ? '取消置顶' : '置顶' }}</button><button type="button" @click="editOrganization('list')"><Pencil :size="14" />编辑清单</button><button type="button" @click="openListCopy"><Copy :size="14" />复制清单…</button><button type="button" @click="shareOrganization('list')"><Copy :size="14" />共享（复制链接）</button><button type="button" @click="openOrganizationInWindow('list')"><ExternalLink :size="14" />打开新窗口</button><button type="button" @click="createListGroupForItem"><Plus :size="14" />新建分组</button><button v-if="sortedListGroups.length" type="button" @click="toggleListGroupAssignment"><ListTodo :size="14" />{{ organizationMenu.item.groupId ? '移出分组' : '加入分组' }}</button><button type="button" @click="archiveList">{{ organizationMenu.item.archived ? '取消归档' : '归档清单' }}</button><button type="button" class="danger" @click="deleteOrganization('list')"><Trash2 :size="14" />删除清单</button><button type="button" @click="toggleHiddenObject('list', organizationMenu.item)"><EyeOff :size="14" />{{ isHiddenObject('list', organizationMenu.item) ? '显示此清单' : '隐藏此清单' }}</button></template>
+        <template v-else><button type="button" @click="editOrganization('list')"><Pencil :size="14" />编辑</button><button type="button" @click="togglePinnedObject('list', organizationMenu.item)"><Pin :size="14" />{{ isPinnedObject('list', organizationMenu.item) ? '取消置顶' : '置顶' }}</button><button type="button" @click="openListCopy"><Copy :size="14" />复制</button><button type="button" @click="shareOrganization('list')"><Copy :size="14" />共享</button><button type="button" @click="openOrganizationInWindow('list')"><ExternalLink :size="14" />打开新窗口</button><button type="button" @click="requestArchiveList"><Archive :size="14" />{{ organizationMenu.item.archived ? '取消归档' : '归档' }}</button><button type="button" class="danger" @click="requestDeleteOrganization('list')"><Trash2 :size="14" />删除</button></template>
       </template>
       <template v-else-if="organizationMenu.kind === 'tag'"><button type="button" @click="togglePinnedObject('tag', organizationMenu.item)"><Pin :size="14" />{{ isPinnedObject('tag', organizationMenu.item) ? '取消置顶' : '置顶' }}</button><button type="button" @click="editOrganization('tag')"><Pencil :size="14" />编辑标签</button><button type="button" @click="createChildTag"><Plus :size="14" />新建子标签</button><button type="button" @click="openTagMerge"><Merge :size="14" />合并到…</button><button type="button" @click="openOrganizationInWindow('tag')"><ExternalLink :size="14" />打开新窗口</button><button type="button" @click="organizationMenu.submenu = organizationMenu.submenu === 'display' ? '' : 'display'"><Eye :size="14" />显示选项<ChevronDown :size="13" /></button><div v-if="organizationMenu.submenu === 'display'" class="clone-context-submenu"><button v-for="option in displayOptionsFor('tag', organizationMenu.item)" :key="option.value" type="button" @click="setDisplayOption('tag', organizationMenu.item, option.value)">{{ option.label }}<Check v-if="getDisplayOption('tag', organizationMenu.item) === option.value" :size="14" /></button></div><button type="button" class="danger" @click="deleteOrganization('tag')"><Trash2 :size="14" />删除标签</button></template>
       <template v-else-if="organizationMenu.kind === 'filter'"><button type="button" @click="toggleFilterPinned"><Pin :size="14" />{{ isPinnedObject('filter', organizationMenu.item) ? '取消置顶' : '置顶' }}</button><button type="button" @click="editOrganization('filter')"><Pencil :size="14" />编辑条件</button><button type="button" @click="previewSavedFilter"><Eye :size="14" />预览结果</button><button type="button" @click="duplicateFilter"><Copy :size="14" />复制筛选器</button><button type="button" @click="openOrganizationInWindow('filter')"><ExternalLink :size="14" />打开新窗口</button><button type="button" @click="organizationMenu.submenu = organizationMenu.submenu === 'display' ? '' : 'display'"><Eye :size="14" />显示选项<ChevronDown :size="13" /></button><div v-if="organizationMenu.submenu === 'display'" class="clone-context-submenu"><button v-for="option in displayOptionsFor('filter', organizationMenu.item)" :key="option.value" type="button" @click="setDisplayOption('filter', organizationMenu.item, option.value)">{{ option.label }}<Check v-if="getDisplayOption('filter', organizationMenu.item) === option.value" :size="14" /></button></div><button type="button" class="danger" @click="deleteOrganization('filter')"><Trash2 :size="14" />删除筛选器</button></template>
-      <template v-else><button type="button" @click="createList(organizationMenu.item.publicId)"><Plus :size="14" />添加清单</button><button type="button" @click="togglePinnedObject('group', organizationMenu.item)"><Pin :size="14" />{{ organizationMenu.item.pinned ? '取消置顶' : '置顶' }}</button><button type="button" @click="editListGroup"><Pencil :size="14" />编辑分组</button><button type="button" @click="openOrganizationInWindow('group')"><ExternalLink :size="14" />打开新窗口</button><button type="button" class="danger" @click="dissolveListGroup"><Ungroup :size="14" />解散分组</button></template>
+      <template v-else><button type="button" @click="createList(organizationMenu.item.publicId)"><Plus :size="14" />添加清单</button><button type="button" @click="editListGroup"><Pencil :size="14" />编辑</button><button type="button" @click="togglePinnedObject('group', organizationMenu.item)"><Pin :size="14" />{{ organizationMenu.item.pinned ? '取消置顶' : '置顶' }}</button><button type="button" @click="openOrganizationInWindow('group')"><ExternalLink :size="14" />打开新窗口</button><button type="button" class="danger" @click="requestDissolveListGroup"><Ungroup :size="14" />解散</button></template>
     </div>
     <Dialog v-model:open="organizationDialogOpen" :title="organizationDialogTitle" :content-class="organizationDialog.kind === 'list' && !isInboxColorEditor ? 'task-list-dialog' : ''">
       <form class="clone-organization-form" :class="{ 'clone-inbox-color-form': isInboxColorEditor, 'clone-list-form': organizationDialog.kind === 'list' && !isInboxColorEditor }" @submit.prevent="saveOrganization">
@@ -816,17 +816,18 @@
           <button type="button" class="clone-list-icon-button" aria-label="选择清单图标" @click="openOrganizationIconPicker('list')"><TaskOrganizationIcon v-if="organizationDialog.icon" :value="organizationDialog.icon" :size="18" /><ListTodo v-else :size="16" /></button>
           <input v-model.trim="organizationDialog.name" aria-label="清单名称" placeholder="名称" required maxlength="120" autofocus />
         </div>
-        <label v-else-if="!isInboxColorEditor">名称<input v-model.trim="organizationDialog.name" required maxlength="120" autofocus /></label>
+        <label v-else-if="!isInboxColorEditor && !['tag','filter','group'].includes(organizationDialog.kind)">名称<input v-model.trim="organizationDialog.name" required maxlength="120" autofocus /></label>
         <div v-if="isInboxColorEditor" class="clone-inbox-color-row"><span>颜色</span><TaskColorPicker v-model="organizationDialog.color" inline /></div>
         <div v-else-if="organizationDialog.kind === 'list' && !isInboxColorEditor" class="clone-list-setting-row clone-list-color-row"><span>颜色</span><TaskColorPicker v-model="organizationDialog.color" inline /></div>
-        <label v-else-if="['tag','group'].includes(organizationDialog.kind)">颜色<TaskColorPicker v-model="organizationDialog.color" /></label>
-        <div v-if="['tag','group','filter'].includes(organizationDialog.kind) && !isInboxColorEditor" class="clone-icon-setting-row"><span>图标</span><button type="button" class="clone-list-icon-button" :aria-label="`选择${organizationDialog.kind === 'group' ? '分组' : organizationDialog.kind === 'tag' ? '标签' : '筛选器'}图标`" @click="openOrganizationIconPicker(organizationDialog.kind)"><TaskOrganizationIcon v-if="organizationDialog.icon" :value="organizationDialog.icon" :size="18" /><Folder v-else-if="organizationDialog.kind === 'group'" :size="18" /><Tag v-else-if="organizationDialog.kind === 'tag'" :size="18" /><SlidersHorizontal v-else :size="18" /></button><button v-if="organizationDialog.icon" type="button" class="clone-icon-clear" @click="organizationDialog.icon = ''">使用默认</button></div>
+        <label v-else-if="organizationDialog.kind === 'tag'">颜色<TaskColorPicker v-model="organizationDialog.color" /></label>
+        <div v-if="organizationDialog.kind === 'group' && !isInboxColorEditor" class="clone-list-name-row"><button type="button" class="clone-list-icon-button" aria-label="选择文件夹图标" @click="openOrganizationIconPicker('group')"><TaskOrganizationIcon v-if="organizationDialog.icon" :value="organizationDialog.icon" :size="18" /><Folder v-else :size="18" /></button><input v-model.trim="organizationDialog.name" aria-label="文件夹名称" placeholder="名称" required maxlength="100" /></div>
+        <label v-else-if="organizationDialog.kind === 'filter' || organizationDialog.kind === 'tag'">名称<input v-model.trim="organizationDialog.name" required maxlength="120" autofocus /></label>
+        <div v-if="['tag','filter'].includes(organizationDialog.kind) && !isInboxColorEditor" class="clone-icon-setting-row"><span>图标</span><button type="button" class="clone-list-icon-button" :aria-label="`选择${organizationDialog.kind === 'tag' ? '标签' : '筛选器'}图标`" @click="openOrganizationIconPicker(organizationDialog.kind)"><TaskOrganizationIcon v-if="organizationDialog.icon" :value="organizationDialog.icon" :size="18" /><Tag v-else-if="organizationDialog.kind === 'tag'" :size="18" /><SlidersHorizontal v-else :size="18" /></button><button v-if="organizationDialog.icon" type="button" class="clone-icon-clear" @click="organizationDialog.icon = ''">使用默认</button></div>
         <div v-if="organizationDialog.kind === 'list' && !isInboxColorEditor" class="clone-list-setting-row"><span>视图</span><div class="clone-list-view-picker" role="group" aria-label="默认视图"><button v-for="view in listViewOptions" :key="view.value" type="button" :aria-pressed="organizationDialog.viewType === view.value" :aria-label="view.label" :title="view.label" @click="organizationDialog.viewType = view.value"><component :is="view.icon" :size="17" /><span>{{ view.label }}</span></button></div></div>
         <label v-if="organizationDialog.kind === 'list' && !isInboxColorEditor" class="clone-list-setting-row"><span>文件夹</span><select :value="organizationDialog.groupId" aria-label="文件夹" @change="handleListFolderChange($event.target.value)"><option value="" :selected="organizationDialog.groupId === ''">无</option><option v-for="group in sortedListGroups" :key="group.publicId" :value="group.publicId" :selected="organizationDialog.groupId === group.publicId">{{ group.icon ? `${group.icon} ` : '' }}{{ group.name }}</option><option value="__CREATE_GROUP__" :selected="organizationDialog.groupId === '__CREATE_GROUP__'">{{ organizationDialog.newGroupName ? `新建文件夹：${organizationDialog.newGroupName}` : '＋ 添加文件夹…' }}</option></select></label>
         <label v-if="organizationDialog.kind === 'list' && !isInboxColorEditor" class="clone-list-setting-row"><span>类型</span><select v-model="organizationDialog.objectType" aria-label="清单类型"><option value="TASK">任务清单</option><option value="NOTE">笔记清单</option></select></label>
         <label v-if="organizationDialog.kind === 'list' && !isInboxColorEditor" class="clone-list-setting-row"><span>在智能清单中显示</span><select v-model="organizationDialog.showInSmartLists" aria-label="在智能清单中显示"><option :value="true">所有任务</option><option :value="false">不显示</option></select></label>
         <label v-if="organizationDialog.kind === 'tag'">父标签<select v-model="organizationDialog.parentId"><option value="">无</option><option v-for="tag in rootTags.filter(item => item.publicId !== organizationDialog.item?.publicId)" :key="tag.publicId" :value="tag.publicId">{{ tag.name }}</option></select></label>
-        <label v-if="organizationDialog.kind === 'group'" class="clone-inline-choice"><input v-model="organizationDialog.pinned" type="checkbox" />置顶分组</label>
         <template v-if="organizationDialog.kind === 'filter'">
           <div class="clone-filter-mode" role="tablist" aria-label="筛选器模式"><button type="button" role="tab" :aria-selected="organizationDialog.filter.mode === 'BASIC'" @click="organizationDialog.filter.mode = 'BASIC'">普通</button><button type="button" role="tab" :aria-selected="organizationDialog.filter.mode === 'ADVANCED'" @click="organizationDialog.filter.mode = 'ADVANCED'">高级</button></div>
           <template v-if="organizationDialog.filter.mode === 'BASIC'">
@@ -857,7 +858,8 @@
       <div class="clone-icon-picker"><input v-model.trim="organizationIconSearch" aria-label="搜索图标" placeholder="搜索中文名称或图标名" /><div class="clone-icon-categories" role="tablist" aria-label="图标分类"><button v-for="category in organizationIconCategories" :key="category.value" type="button" role="tab" :aria-selected="organizationIconCategory === category.value" @click="organizationIconCategory = category.value">{{ category.label }}</button></div><div class="clone-icon-grid" role="listbox" aria-label="可选图标"><button v-for="icon in filteredOrganizationIcons" :key="icon.value" type="button" role="option" :aria-selected="currentOrganizationIcon === icon.value" :aria-label="icon.label" :title="`${icon.label} · ${icon.value}`" @click="selectOrganizationIcon(icon.value)"><component :is="icon.component" v-if="icon.component" :size="19" :stroke-width="2" aria-hidden="true" /><span v-else>{{ icon.value }}</span></button><p v-if="!filteredOrganizationIcons.length" class="clone-icon-empty">没有匹配的图标</p></div><small class="clone-icon-count">{{ filteredOrganizationIcons.length }} 个可选图标</small></div>
     </Dialog>
     <Dialog v-model:open="filterPreviewOpen" :title="`筛选器预览：${filterPreviewTitle}`"><div class="clone-filter-preview clone-filter-preview-modal"><strong>匹配 {{ filterPreviewTotal }} 条任务</strong><RouterLink v-for="task in filterPreview" :key="task.publicId" :to="`/tasks/list/${task.listId}`" @click="filterPreviewOpen = false">{{ task.title }}</RouterLink><span v-if="!filterPreview.length">当前没有匹配任务</span><footer><button type="button" @click="filterPreviewOpen = false">关闭</button><button type="button" @click="router.push(`/tasks/filter/${filterPreviewFilterId}`); filterPreviewOpen = false">打开筛选列表</button></footer></div></Dialog>
-    <Dialog v-model:open="listCopyOpen" title="复制清单"><form class="clone-organization-form" @submit.prevent="confirmListCopy"><label>新清单名称<input v-model.trim="listCopy.name" required maxlength="120" /></label><fieldset><legend>复制任务</legend><label><input v-model="listCopy.mode" type="radio" value="OPEN_ONLY" />仅复制未完成任务</label><label><input v-model="listCopy.mode" type="radio" value="ALL_PRESERVE" />复制全部任务并保留已完成状态</label><label><input v-model="listCopy.mode" type="radio" value="ALL_OPEN" />复制全部任务为未完成</label></fieldset><p v-if="listCopy.mode !== 'NONE'" class="clone-dialog-note">描述、日期、优先级、标签、检查项、重复规则和父子关系会复制；提醒不会复制。</p><footer><button type="button" :disabled="listCopy.busy" @click="listCopyOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="listCopy.busy">{{ listCopy.busy ? '复制中…' : '复制' }}</button></footer></form></Dialog>
+    <Dialog v-model:open="listCopyOpen" title="复制清单"><form class="clone-organization-form" @submit.prevent="confirmListCopy"><fieldset><legend>复制任务</legend><label><input v-model="listCopy.mode" type="radio" value="OPEN_ONLY" />只复制未完成任务</label><label><input v-model="listCopy.mode" type="radio" value="ALL_PRESERVE" />复制全部任务，保留已完成状态</label><label><input v-model="listCopy.mode" type="radio" value="ALL_OPEN" />复制全部任务，并将任务设为未完成</label></fieldset><p class="clone-dialog-note">新清单将命名为“{{ listCopy.name }}”。</p><footer><button type="button" :disabled="listCopy.busy" @click="listCopyOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="listCopy.busy">{{ listCopy.busy ? '复制中…' : '复制' }}</button></footer></form></Dialog>
+    <Dialog v-model:open="organizationConfirmOpen" :title="organizationConfirmation.title"><template #title v-if="organizationConfirmation.action === 'delete-list'">删除清单“<TaskOrganizationIcon v-if="organizationConfirmation.item?.icon" class="clone-confirmation-title-icon" :value="organizationConfirmation.item.icon" :size="16" /><ListTodo v-else class="clone-confirmation-title-icon" :size="16" /> {{ organizationConfirmation.item?.name }}”？</template><div class="clone-confirmation"><p v-if="organizationConfirmation.action === 'dissolve-group'">解散后，文件夹（<TaskOrganizationIcon v-if="organizationConfirmation.item?.icon" class="clone-confirmation-title-icon" :value="organizationConfirmation.item.icon" :size="16" /><Folder v-else class="clone-confirmation-title-icon" :size="16" /> {{ organizationConfirmation.item?.name }}）中的清单将直接显示在侧边栏。</p><p v-else>{{ organizationConfirmation.message }}</p><footer><button type="button" :disabled="organizationConfirmation.busy" @click="organizationConfirmOpen = false">取消</button><button type="button" class="clone-danger-button" :disabled="organizationConfirmation.busy" @click="confirmOrganizationAction">{{ organizationConfirmation.busy ? '处理中…' : organizationConfirmation.confirmLabel }}</button></footer></div></Dialog>
     <Dialog v-model:open="tagMergeOpen" title="合并标签"><form class="clone-organization-form" @submit.prevent="confirmTagMerge"><p>将“#{{ tagMerge.source?.name }}”关联的任务和子标签迁移到目标标签。操作一次提交，失败时不会留下部分变更。</p><label>目标标签<select v-model="tagMerge.targetId" required><option value="" disabled>选择目标标签</option><option v-for="tag in mergeTargets" :key="tag.publicId" :value="tag.publicId">#{{ tag.name }}</option></select></label><footer><button type="button" :disabled="tagMerge.busy" @click="tagMergeOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="tagMerge.busy || !mergeTargets.length">{{ tagMerge.busy ? '合并中…' : '合并' }}</button></footer></form></Dialog>
   </section>
 </template>
@@ -1050,6 +1052,8 @@ let sidebarPrefsPendingSave = false;
 let sidebarPrefsMutationVersion = 0;
 const listCopyOpen = ref(false);
 const listCopy = reactive({ source: null, name: "", mode: "ALL_PRESERVE", busy: false });
+const organizationConfirmOpen = ref(false);
+const organizationConfirmation = reactive({ action: "", item: null, title: "", message: "", confirmLabel: "确认", busy: false });
 const tagMergeOpen = ref(false);
 const tagMerge = reactive({ source: null, targetId: "", busy: false });
 let listHoverTimer = 0;
@@ -1189,6 +1193,7 @@ const sidebarTaskCounts = computed(() => buildTaskSidebarCounts(
   store.tasks,
   archivedLists.value.map(list => list.publicId),
   store.inbox?.publicId,
+  new Map(activeLists.value.filter(list => list.groupId).map(list => [list.publicId, list.groupId])),
 ));
 const archivedTaskCount = computed(() => sidebarTaskCounts.value.counts.archived);
 const abandonedTaskCount = computed(() => sidebarTaskCounts.value.counts.abandoned);
@@ -1215,13 +1220,14 @@ const mergeTargets = computed(() => {
     && (!sourceHasChildren || !item.parentId));
 });
 function listOpenCount(listId) { return sidebarTaskCounts.value.openByList.get(listId) || 0; }
+function groupOpenCount(groupId) { return sidebarTaskCounts.value.openByGroup.get(groupId) || 0; }
 function tagOpenCount(tagId) { return sidebarTaskCounts.value.openByTag.get(tagId) || 0; }
 function tagHasTasks(tagId) { return sidebarTaskCounts.value.taggedTasks.has(tagId); }
 function toggleListGroupCollapsed(group) { groupCollapsed[group.publicId] = !groupCollapsed[group.publicId]; persistListGroupState(); scheduleSidebarPreferencesSave(); }
 function persistListGroupState() { try { localStorage.setItem(`task_sidebar_groups:${store.accountScope || "anonymous"}`, JSON.stringify(groupCollapsed)); } catch {} }
 function loadListGroupState() { try { Object.assign(groupCollapsed, JSON.parse(localStorage.getItem(`task_sidebar_groups:${store.accountScope || "anonymous"}`) || "{}")); } catch {} }
 const isInboxColorEditor = computed(() => organizationDialog.kind === "list" && organizationDialog.item?.systemKey === "INBOX");
-const organizationDialogTitle = computed(() => isInboxColorEditor.value ? '编辑“收集箱”' : `${organizationDialog.item ? "编辑" : "新建"}${({ list: "清单", tag: "标签", filter: "筛选器", group: "清单分组" })[organizationDialog.kind] || "项目"}`);
+const organizationDialogTitle = computed(() => isInboxColorEditor.value ? '编辑“收集箱”' : `${organizationDialog.item ? "编辑" : "新建"}${({ list: "清单", tag: "标签", filter: "筛选器", group: "文件夹" })[organizationDialog.kind] || "项目"}`);
 const shortcutViews = [
   { key: "this-week", label: "本周", to: "/tasks/shortcut/this-week", icon: CalendarClock },
   { key: "next-week", label: "下周", to: "/tasks/shortcut/next-week", icon: CalendarClock },
@@ -1260,7 +1266,7 @@ const title = computed(() =>
           : route.name === "tasks-list"
             ? listName(route.params.publicId)
             : route.name === "tasks-group"
-              ? store.listGroups.find(group => group.publicId === route.params.publicId)?.name || "清单分组"
+              ? store.listGroups.find(group => group.publicId === route.params.publicId)?.name || "文件夹"
             : route.name === "tasks-tag"
               ? `#${tagName(route.params.publicId)}`
               : route.name === "tasks-filter"
@@ -2680,7 +2686,6 @@ async function shareOrganization(kind) {
   try { await navigator.clipboard.writeText(url); message.success("清单链接已复制"); }
   catch { window.prompt("复制清单链接", url); }
 }
-function createListGroupForItem() { const list = organizationMenu.item; openOrganizationDialog("group", null, { groupListIds: [list.publicId], name: `${list.name}分组` }); }
 function editListGroup() { openOrganizationDialog("group", organizationMenu.item); organizationMenuOpen.value = false; }
 function createChildTag() { const tag = organizationMenu.item; openOrganizationDialog("tag", null, { parentId: tag.publicId }); }
 function createFilter() { openOrganizationDialog("filter"); }
@@ -2691,7 +2696,7 @@ function openListCopy() {
   listCopyOpen.value = true;
 }
 async function confirmListCopy() {
-  if (!listCopy.source || !listCopy.name.trim() || listCopy.busy) return;
+  if (!listCopy.source || listCopy.busy) return;
   listCopy.busy = true;
   try {
     const source = listCopy.source;
@@ -2884,10 +2889,46 @@ async function saveOrganization() {
     await store.refreshServer();
   } catch (error) { store.error = error?.response?.data?.detail || error?.message || "保存失败"; }
 }
-async function archiveList() {
-  const item = organizationMenu.item;
+function requestOrganizationConfirmation(action, item, title, message, confirmLabel) {
+  Object.assign(organizationConfirmation, { action, item, title, message, confirmLabel, busy: false });
   organizationMenuOpen.value = false;
-  try { await store.updateList(item, { archived: !item.archived }); await store.refreshServer(); } catch (error) { store.error = error?.message || "归档清单失败"; }
+  organizationConfirmOpen.value = true;
+}
+function requestArchiveList() {
+  const item = organizationMenu.item;
+  requestOrganizationConfirmation("archive-list", item, item.archived ? `取消归档“${item.name}”？` : `归档清单“${item.name}”？`, item.archived ? "取消归档后，清单将重新显示在侧边栏中。" : "归档后，该清单将放入文件夹‘已归档的清单’中。清单中的任务或笔记将在智能清单中不再显示，到期也不提醒。", item.archived ? "取消归档" : "归档");
+}
+function requestDeleteOrganization(kind) {
+  const item = organizationMenu.item;
+  if (kind !== "list") return deleteOrganization(kind);
+  requestOrganizationConfirmation("delete-list", item, `删除清单“${item.name}”？`, "清单内的所有任务也将被删除。", "删除");
+}
+function requestDissolveListGroup() {
+  const group = organizationMenu.item;
+  requestOrganizationConfirmation("dissolve-group", group, `解散文件夹“${group.name}”？`, "", "解散");
+}
+async function confirmOrganizationAction() {
+  const { action, item } = organizationConfirmation;
+  if (!item || organizationConfirmation.busy) return;
+  organizationConfirmation.busy = true;
+  try {
+    if (action === "archive-list") {
+      await store.updateList(item, { archived: !item.archived });
+      await store.refreshServer();
+    } else if (action === "delete-list") {
+      await store.deleteList(item);
+      await store.refreshServer();
+    } else if (action === "dissolve-group") {
+      const members = activeLists.value.filter(list => list.groupId === item.publicId);
+      for (const list of members) await store.assignListGroup(list, "");
+      await store.deleteListGroup(item);
+      if (route.name === "tasks-group" && route.params.publicId === item.publicId) await router.push("/tasks/all");
+    }
+    organizationConfirmOpen.value = false;
+  } catch (error) {
+    store.error = error?.response?.data?.detail || error?.message || "操作失败";
+    await store.refreshServer();
+  } finally { organizationConfirmation.busy = false; }
 }
 async function deleteOrganization(kind) {
   const item = organizationMenu.item;
@@ -2898,33 +2939,6 @@ async function deleteOrganization(kind) {
     else if (kind === "tag") { await apiDeleteTaskTag(item.publicId, item.revision); await store.refreshServer(); }
     else { await apiDeleteTaskFilter(item.publicId, item.revision); await loadFilters(); }
   } catch (error) { store.error = error?.response?.data?.detail || error?.message || "删除失败"; }
-}
-async function toggleListGroupAssignment() {
-  const item = organizationMenu.item; organizationMenuOpen.value = false;
-  try {
-    if (item.groupId) await store.assignListGroup(item, "");
-    else {
-      let group = sortedListGroups.value[0];
-      if (!group) { const name = window.prompt("新建清单分组"); if (!name?.trim()) return; await apiCreateTaskListGroup({ name: name.trim(), sortOrder: 0 }); await store.refreshServer(); group = store.listGroups[0]; }
-      if (group) await store.assignListGroup(item, group.publicId);
-    }
-  } catch (error) { store.error = error?.message || "更新清单分组失败"; }
-}
-async function deleteListGroup() {
-  const item = organizationMenu.item; organizationMenuOpen.value = false;
-  if (!window.confirm(`删除分组“${item.name}”？分组中的清单将保留。`)) return;
-  try { await store.deleteListGroup(item); } catch (error) { store.error = error?.message || "删除分组失败"; }
-}
-async function dissolveListGroup() {
-  const group = organizationMenu.item;
-  organizationMenuOpen.value = false;
-  if (!window.confirm(`解散分组“${group.name}”？清单将保留并移至未分组。`)) return;
-  try {
-    const members = activeLists.value.filter(list => list.groupId === group.publicId);
-    for (const list of members) await store.assignListGroup(list, "");
-    await store.deleteListGroup(group);
-    if (route.name === "tasks-group" && route.params.publicId === group.publicId) await router.push("/tasks/all");
-  } catch (error) { store.error = error?.message || "解散分组失败"; await store.refreshServer(); }
 }
 function startOrganizationDrag(kind, item) { organizationDrag.value = { kind, item }; organizationDropTarget.value = ""; }
 function handleListDragOver(target) {
@@ -3219,6 +3233,12 @@ const SidebarSection = {
 .clone-list-group-heading button { display: grid; width: 22px; height: 22px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-list-group-heading button:hover, .clone-item-menu-trigger:hover { background: var(--paper); color: var(--ink); }
 .clone-list-group-heading .clone-list-group-icon { flex: none; width: 15px; text-align: center; }
+.clone-group-toggle { flex: 0 0 22px; }
+.clone-group-navigation { display: flex; min-width: 0; min-height: 28px; flex: 1; align-items: center; gap: 7px; color: var(--muted); text-decoration: none; }
+.clone-group-navigation:hover, .clone-group-navigation.active { color: var(--ink); }
+.clone-group-navigation .clone-list-group-icon { color: inherit; }
+.clone-group-navigation small { flex: none; margin-left: auto; color: var(--muted); font-size: 10px; }
+.clone-group-menu { flex: 0 0 22px; }
 .clone-group-lists { padding-left: 0; }
 .clone-sidebar-heading-actions { position: relative; display: flex; flex: none; align-items: center; gap: 2px; white-space: nowrap; opacity: 0; visibility: hidden; transition: opacity 120ms ease, visibility 120ms ease; }
 .clone-sidebar-section > header:hover .clone-sidebar-heading-actions,
@@ -3274,6 +3294,12 @@ const SidebarSection = {
 .clone-inbox-color-form footer.clone-inbox-color-actions { padding-top: 0; }
 .clone-inbox-color-form footer.clone-inbox-color-actions > button { min-width: 88px; min-height: 36px; }
 .clone-organization-form footer > button:first-child { min-height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink2); }
+.clone-confirmation { display: grid; gap: 18px; color: var(--ink2); font-size: 14px; line-height: 1.6; }
+.clone-confirmation p { margin: 0; }
+.clone-confirmation-title-icon { display: inline-block; vertical-align: -3px; color: var(--muted); }
+.clone-confirmation footer { display: flex; justify-content: flex-end; gap: 8px; }
+.clone-confirmation footer button { min-height: 36px; padding: 0 13px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink2); cursor: pointer; }
+.clone-confirmation footer .clone-danger-button { border-color: #c43d3d; background: #c43d3d; color: #fff; }
 .clone-list-form { gap: 15px; min-width: 0; }
 .clone-list-name-row { position: relative; display: flex; min-width: 0; align-items: center; gap: 0; }
 .clone-list-name-row > input { flex: 1; width: 100%; min-width: 0; }

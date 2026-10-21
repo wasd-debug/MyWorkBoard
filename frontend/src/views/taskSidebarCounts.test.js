@@ -44,5 +44,19 @@ test("counts tasks without list or tags without creating empty map entries", () 
   assert.equal(counts.counts["no-date"], 1);
   assert.equal(counts.counts["no-tag"], 1);
   assert.equal(counts.openByList.size, 0);
+  assert.equal(counts.openByGroup.size, 0);
   assert.equal(counts.openByTag.size, 0);
+});
+
+test("aggregates open tasks by folder while excluding completed, abandoned, and deleted tasks", () => {
+  const counts = buildTaskSidebarCounts([
+    { listId: "list-a", status: "OPEN" },
+    { listId: "list-b", status: "OPEN" },
+    { listId: "list-a", status: "COMPLETED" },
+    { listId: "list-a", status: "ABANDONED" },
+    { listId: "list-b", status: "OPEN", deleted: true },
+  ], [], "inbox", new Map([["list-a", "folder"], ["list-b", "folder"]]), new Date(2026, 9, 21));
+
+  assert.equal(counts.openByGroup.get("folder"), 2);
+  assert.equal(counts.openByGroup.has("missing-folder"), false);
 });

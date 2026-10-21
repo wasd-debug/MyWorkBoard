@@ -4,7 +4,7 @@
       <DialogOverlay class="ui-dialog-backdrop" />
       <DialogContent class="ui-dialog" :class="contentClass" :aria-describedby="undefined">
         <header class="ui-dialog-head">
-          <DialogTitle as="h2">{{ title }}</DialogTitle>
+          <DialogTitle as="h2"><slot name="title">{{ title }}</slot></DialogTitle>
           <DialogClose class="ui-dialog-close" aria-label="关闭">×</DialogClose>
         </header>
         <div class="ui-dialog-body"><slot /></div>

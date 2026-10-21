@@ -16,13 +16,18 @@ function inRange(value, start, end) {
   return value && new Date(value) >= start && new Date(value) < end;
 }
 
-export function buildTaskSidebarCounts(tasks, archivedListIds, inboxId, now = new Date()) {
+export function buildTaskSidebarCounts(tasks, archivedListIds, inboxId, groupByList = new Map(), now = new Date()) {
+  if (!(groupByList instanceof Map)) {
+    now = groupByList;
+    groupByList = new Map();
+  }
   const counts = Object.fromEntries([
     "all", "today", "tomorrow", "next7", "assigned", "inbox", "summary",
     "completed", "abandoned", "trash", "archived", "this-week", "next-week",
     "no-date", "no-tag",
   ].map(key => [key, 0]));
   const openByList = new Map();
+  const openByGroup = new Map();
   const openByTag = new Map();
   const taggedTasks = new Set();
   const archivedIds = new Set(archivedListIds);
@@ -46,7 +51,11 @@ export function buildTaskSidebarCounts(tasks, archivedListIds, inboxId, now = ne
     if (OPEN_EXCLUDED_STATUSES.has(task.status)) continue;
 
     counts.all += 1;
-    if (task.listId) openByList.set(task.listId, (openByList.get(task.listId) || 0) + 1);
+    if (task.listId) {
+      openByList.set(task.listId, (openByList.get(task.listId) || 0) + 1);
+      const groupId = groupByList.get(task.listId);
+      if (groupId) openByGroup.set(groupId, (openByGroup.get(groupId) || 0) + 1);
+    }
     for (const tagId of task.tagIds || []) openByTag.set(tagId, (openByTag.get(tagId) || 0) + 1);
     if (task.dueAt) {
       if (new Date(task.dueAt) < tomorrow) counts.summary += 1;
@@ -62,5 +71,5 @@ export function buildTaskSidebarCounts(tasks, archivedListIds, inboxId, now = ne
     if (task.listId === inboxId) counts.inbox += 1;
   }
 
-  return { counts, openByList, openByTag, taggedTasks };
+  return { counts, openByList, openByGroup, openByTag, taggedTasks };
 }
