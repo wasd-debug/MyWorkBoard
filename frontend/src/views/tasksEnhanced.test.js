@@ -281,7 +281,7 @@ test('task sidebar organization persists account preferences and exposes pin, li
   assert.match(workspaceView, /sourceHasChildren \|\| !item\.parentId/)
   assert.match(workspaceView, /async function previewSavedFilter\(/)
   assert.match(workspaceView, /function setFilterPinned\(/)
-  assert.match(workspaceView, /await loadSidebarPreferences\(\)/)
+  assert.match(workspaceView, /const filtersLoad = loadFilters\(\);[\s\S]*const sidebarPreferencesLoad = loadSidebarPreferences\(filtersLoad\);[\s\S]*await store\.init\(\)/)
   assert.match(workspaceView, /clearTimeout\(listHoverTimer\)/)
 })
 

@@ -907,6 +907,7 @@ import { moveItem } from "./taskSidebar.js";
 import { groupTaskItems, sortTaskItems } from "./taskList.js";
 import { moveChecklistItem as reorderChecklistItems } from "./taskChecklist.js";
 import { countFilterRuleNodes, matchesFilterRules, normalizeFilterRules, serializeFilterRules } from "./taskFilterRules.js";
+import { mergeSidebarPreferenceChanges } from "./taskSidebarPreferences.js";
 import { useTasksStore } from "../stores/tasks.js";
 import { useTaskFocusStore } from "../stores/taskFocus.js";
 import { message } from "../services/message.js";
@@ -1007,6 +1008,9 @@ const sidebarPrefsRevision = ref(0);
 let sidebarPrefsSave = Promise.resolve();
 let sidebarPrefsSaveTimer;
 let sidebarPrefsScope = "";
+let sidebarPrefsLoading = false;
+let sidebarPrefsPendingSave = false;
+let sidebarPrefsMutationVersion = 0;
 const sidebarVisibilityOpen = ref(false);
 const listCopyOpen = ref(false);
 const listCopy = reactive({ source: null, name: "", mode: "ALL_PRESERVE", busy: false });
@@ -2362,10 +2366,10 @@ async function createTag() {
   openOrganizationDialog("tag");
 }
 function listsInGroup(groupId) { return activeLists.value.filter(item => item.groupId === groupId && !isHiddenObject("list", item) && !isPinnedObject("list", item)).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)); }
-function persistSidebarSections() { try { localStorage.setItem(`task_sidebar_sections:${store.accountScope || "anonymous"}`, JSON.stringify(sections)); } catch {} scheduleSidebarPreferencesSave(); }
+function persistSidebarSections() { try { localStorage.setItem(`task_sidebar_sections:${store.accountScope || "anonymous"}`, JSON.stringify(sections)); } catch {} sidebarPrefsMutationVersion += 1; scheduleSidebarPreferencesSave(); }
 function loadSidebarSections() { try { Object.assign(sections, JSON.parse(localStorage.getItem(`task_sidebar_sections:${store.accountScope || "anonymous"}`) || "{}")); } catch {} }
 function sidebarObjectPrefsKey() { return `task_sidebar_objects:${store.accountScope || "anonymous"}`; }
-function persistSidebarObjectPrefs() { try { localStorage.setItem(sidebarObjectPrefsKey(), JSON.stringify(sidebarObjectPrefs)); } catch {} scheduleSidebarPreferencesSave(); }
+function persistSidebarObjectPrefs() { try { localStorage.setItem(sidebarObjectPrefsKey(), JSON.stringify(sidebarObjectPrefs)); } catch {} sidebarPrefsMutationVersion += 1; scheduleSidebarPreferencesSave(); }
 function loadSidebarObjectPrefs() {
   const empty = { pinnedSystem: [], hiddenSystem: [], pinnedLists: [], hiddenLists: [], pinnedTags: [], hiddenTags: [], pinnedFilters: [], hiddenFilters: [], displayModes: {} };
   try { Object.assign(sidebarObjectPrefs, empty, JSON.parse(localStorage.getItem(sidebarObjectPrefsKey()) || "{}")); }
@@ -2399,7 +2403,12 @@ function persistLocalSidebarPreferences() {
   persistListGroupState();
 }
 function scheduleSidebarPreferencesSave() {
-  if (!store.accountScope || sidebarPrefsScope !== store.accountScope || !store.online) return;
+  if (!store.accountScope || !store.online) return;
+  if (sidebarPrefsLoading || sidebarPrefsScope !== store.accountScope) {
+    sidebarPrefsPendingSave = true;
+    return;
+  }
+  sidebarPrefsPendingSave = false;
   clearTimeout(sidebarPrefsSaveTimer);
   sidebarPrefsSaveTimer = setTimeout(() => {
     const expectedScope = store.accountScope;
@@ -2425,10 +2434,13 @@ function scheduleSidebarPreferencesSave() {
     });
   }, 180);
 }
-async function loadSidebarPreferences() {
+async function loadSidebarPreferences(filtersReady = Promise.resolve()) {
   const scope = store.accountScope;
   sidebarPrefsScope = scope;
   if (!scope || !store.online) return loadSidebarObjectPrefs();
+  const mutationVersion = sidebarPrefsMutationVersion;
+  const localSnapshot = sidebarPreferencesPayload();
+  sidebarPrefsLoading = true;
   try {
     const saved = await apiGetTaskSidebarPreferences();
     if (scope !== store.accountScope) return;
@@ -2436,17 +2448,32 @@ async function loadSidebarPreferences() {
       saved?.hiddenTagIds, saved?.pinnedTagIds, saved?.hiddenFilterIds, saved?.pinnedFilterIds].some(values => values?.length)
       || Object.keys(saved?.collapsedSections || {}).length > 0;
     if (!serverHasPreferences && Number(saved?.revision) <= 1) {
+      await filtersReady;
+      if (scope !== store.accountScope) return;
       const legacy = sidebarPreferencesPayload();
       legacy.pinnedFilterIds = [...new Set([...legacy.pinnedFilterIds, ...filters.value.filter(item => item.pinned).map(item => item.publicId)])];
       const migrated = await apiUpdateTaskSidebarPreferences(legacy, Number(saved?.revision || 0));
-      if (scope === store.accountScope) applySidebarPreferences(migrated);
+      if (scope === store.accountScope) {
+        applySidebarPreferences(migrated);
+        sidebarPrefsPendingSave = false;
+      }
       return;
     }
-    applySidebarPreferences(saved);
+    const changedDuringLoad = mutationVersion !== sidebarPrefsMutationVersion;
+    const preferences = changedDuringLoad
+      ? mergeSidebarPreferenceChanges(saved, localSnapshot, sidebarPreferencesPayload())
+      : saved;
+    applySidebarPreferences(preferences);
+    if (changedDuringLoad || sidebarPrefsPendingSave) scheduleSidebarPreferencesSave();
   } catch (error) {
     loadSidebarObjectPrefs();
     loadSidebarSections();
     store.error = error?.response?.data?.detail || error?.message || "侧栏偏好读取失败，使用当前设备缓存";
+  } finally {
+    if (scope === store.accountScope) {
+      sidebarPrefsLoading = false;
+      if (sidebarPrefsPendingSave && sidebarPrefsScope === scope) scheduleSidebarPreferencesSave();
+    }
   }
 }
 function objectPreferenceKey(kind, pinned = false) {
@@ -2833,15 +2860,16 @@ watch(
   { deep: true },
 );
 onMounted(async () => {
-  await store.init();
   loadSidebarVisibility();
   loadSidebarObjectPrefs();
   loadDetailWidth();
   loadViewPreferences();
   loadSidebarSections();
   loadListGroupState();
-  await loadFilters();
-  await loadSidebarPreferences();
+  const filtersLoad = loadFilters();
+  const sidebarPreferencesLoad = loadSidebarPreferences(filtersLoad);
+  await store.init();
+  await Promise.all([filtersLoad, sidebarPreferencesLoad]);
   miniCalendarMonth.value = new Date(selectedDate.value.getFullYear(), selectedDate.value.getMonth(), 1);
   await loadMiniCalendar();
   document.addEventListener("click", closeContext);
