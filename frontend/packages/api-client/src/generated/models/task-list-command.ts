@@ -23,4 +23,5 @@ export interface TaskListCommand {
     'pinned'?: boolean;
     'viewType'?: string;
     'objectType'?: string;
+    'showInSmartLists'?: boolean;
 }

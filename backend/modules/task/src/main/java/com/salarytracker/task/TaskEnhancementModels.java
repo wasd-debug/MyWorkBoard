@@ -10,29 +10,39 @@ public final class TaskEnhancementModels {
     private TaskEnhancementModels() { }
 
     @Schema(name = "TaskSmartFilter")
-    public record SmartFilter(String publicId, String name, List<String> listIds, List<String> tagIds,
-                              List<String> priorities, String status, String dueRange, String keyword,
+    public record SmartFilter(String publicId, String name, String mode, List<String> listIds, List<String> tagIds,
+                              String tagMode, List<String> taskTypes, List<String> priorities, String status, String dueRange,
+                              String dueStart, String dueEnd, String keyword,
                               boolean includeSubtasks, boolean matchAllTags, int sortOrder, boolean pinned,
                               String icon, JsonNode rules, long revision) {
         public SmartFilter(String publicId, String name, List<String> listIds, List<String> tagIds,
                            List<String> priorities, String status, String dueRange, String keyword,
                            boolean includeSubtasks, boolean matchAllTags, int sortOrder, boolean pinned,
                            long revision) {
-            this(publicId, name, listIds, tagIds, priorities, status, dueRange, keyword, includeSubtasks,
+            this(publicId, name, "BASIC", listIds, tagIds, "SELECTED", List.of(), priorities, status, dueRange,
+                    null, null, keyword, includeSubtasks,
                     matchAllTags, sortOrder, pinned, null, null, revision);
         }
     }
 
     @Schema(name = "TaskSmartFilterCommand")
-    public record SmartFilterCommand(String name, List<String> listIds, List<String> tagIds,
-                                     List<String> priorities, String status, String dueRange, String keyword,
+    public record SmartFilterCommand(String name, String mode, List<String> listIds, List<String> tagIds,
+                                     String tagMode, List<String> taskTypes, List<String> priorities, String status,
+                                     String dueRange, String dueStart, String dueEnd, String keyword,
                                      Boolean includeSubtasks, Boolean matchAllTags, Integer sortOrder,
                                      Boolean pinned, String icon, JsonNode rules) {
         public SmartFilterCommand(String name, List<String> listIds, List<String> tagIds,
                                   List<String> priorities, String status, String dueRange, String keyword,
                                   Boolean includeSubtasks, Boolean matchAllTags, Integer sortOrder, Boolean pinned) {
-            this(name, listIds, tagIds, priorities, status, dueRange, keyword, includeSubtasks, matchAllTags,
-                    sortOrder, pinned, null, null);
+            this(name, "BASIC", listIds, tagIds, "SELECTED", List.of(), priorities, status, dueRange, null, null,
+                    keyword, includeSubtasks, matchAllTags, sortOrder, pinned, null, null);
+        }
+        public SmartFilterCommand(String name, List<String> listIds, List<String> tagIds,
+                                  List<String> priorities, String status, String dueRange, String keyword,
+                                  Boolean includeSubtasks, Boolean matchAllTags, Integer sortOrder, Boolean pinned,
+                                  String icon, JsonNode rules) {
+            this(name, "BASIC", listIds, tagIds, "SELECTED", List.of(), priorities, status, dueRange, null, null,
+                    keyword, includeSubtasks, matchAllTags, sortOrder, pinned, icon, rules);
         }
     }
 

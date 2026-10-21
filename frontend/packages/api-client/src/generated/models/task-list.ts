@@ -27,4 +27,5 @@ export interface TaskList {
     'viewType'?: string;
     'objectType'?: string;
     'revision'?: number;
+    'showInSmartLists'?: boolean;
 }

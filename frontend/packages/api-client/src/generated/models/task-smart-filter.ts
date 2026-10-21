@@ -30,4 +30,9 @@ export interface TaskSmartFilter {
     'icon'?: string;
     'rules'?: object;
     'revision'?: number;
+    'mode'?: string;
+    'tagMode'?: string;
+    'taskTypes'?: Array<string>;
+    'dueStart'?: string | null;
+    'dueEnd'?: string | null;
 }

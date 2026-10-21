@@ -12,18 +12,27 @@ public final class TaskModels {
     @Schema(name = "TaskList")
     public record TaskList(String publicId, String groupId, String name, String color, String icon, String systemKey,
                            int sortOrder, boolean archived, boolean pinned, String viewType, String objectType,
+                           boolean showInSmartLists,
                            long revision) {
         public TaskList(String publicId, String groupId, String name, String color, String icon, String systemKey,
                         int sortOrder, boolean archived, long revision) {
-            this(publicId, groupId, name, color, icon, systemKey, sortOrder, archived, false, "LIST", "TASK", revision);
+            this(publicId, groupId, name, color, icon, systemKey, sortOrder, archived, false, "LIST", "TASK", true, revision);
+        }
+        public TaskList(String publicId, String groupId, String name, String color, String icon, String systemKey,
+                        int sortOrder, boolean archived, boolean pinned, String viewType, String objectType, long revision) {
+            this(publicId, groupId, name, color, icon, systemKey, sortOrder, archived, pinned, viewType, objectType, true, revision);
         }
     }
 
     @Schema(name = "TaskListCommand")
     public record TaskListCommand(String name, String color, String icon, Integer sortOrder, Boolean archived,
-                                  Boolean pinned, String viewType, String objectType) {
+                                  Boolean pinned, String viewType, String objectType, Boolean showInSmartLists) {
         public TaskListCommand(String name, String color, String icon, Integer sortOrder, Boolean archived) {
-            this(name, color, icon, sortOrder, archived, null, null, null);
+            this(name, color, icon, sortOrder, archived, null, null, null, null);
+        }
+        public TaskListCommand(String name, String color, String icon, Integer sortOrder, Boolean archived,
+                               Boolean pinned, String viewType, String objectType) {
+            this(name, color, icon, sortOrder, archived, pinned, viewType, objectType, null);
         }
     }
 
@@ -210,6 +219,7 @@ public final class TaskModels {
 
     @Schema(name = "TaskSidebarPreferences")
     public record SidebarPreferences(List<String> hiddenSystemViews, List<String> pinnedSystemViews,
+                                    List<String> conditionalSystemViews,
                                      List<String> hiddenListIds, List<String> pinnedListIds,
                                      List<String> hiddenTagIds, List<String> pinnedTagIds,
                                      List<String> hiddenFilterIds, List<String> pinnedFilterIds,
@@ -217,6 +227,7 @@ public final class TaskModels {
 
     @Schema(name = "TaskSidebarPreferencesCommand")
     public record SidebarPreferencesCommand(List<String> hiddenSystemViews, List<String> pinnedSystemViews,
+                                           List<String> conditionalSystemViews,
                                            List<String> hiddenListIds, List<String> pinnedListIds,
                                            List<String> hiddenTagIds, List<String> pinnedTagIds,
                                            List<String> hiddenFilterIds, List<String> pinnedFilterIds,

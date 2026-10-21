@@ -28,4 +28,9 @@ export interface TaskSmartFilterCommand {
     'pinned'?: boolean;
     'icon'?: string;
     'rules'?: object;
+    'mode'?: string;
+    'tagMode'?: string;
+    'taskTypes'?: Array<string>;
+    'dueStart'?: string | null;
+    'dueEnd'?: string | null;
 }

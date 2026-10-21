@@ -72,6 +72,49 @@ class TaskEnhancementIntegrationTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
+    void persistsAndExecutesBasicFilterModesDateRangesTagsAndObjectTypes() {
+        Services service = services(createUser("basic-filter"));
+        var noteList = service.tasks.createList(new TaskModels.TaskListCommand("笔记", null, null, 1,
+                false, false, "LIST", "NOTE"), "basic-filter-note-list");
+        var taskList = service.tasks.createList(new TaskModels.TaskListCommand("任务", null, null, 2,
+                false, false, "LIST", "TASK"), "basic-filter-task-list");
+        var tagged = service.tasks.createTag(new TaskModels.TaskTagCommand(null, "有标签", null, 0));
+        var due = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).plusDays(3)
+                .atTime(10, 0).atZone(java.time.ZoneId.of("Asia/Shanghai")).toInstant().toString();
+        var note = service.tasks.create(new TaskModels.TaskCommand(noteList.publicId(), "计划笔记", null, "HIGH",
+                null, due, false, "Asia/Shanghai", null, null, List.of(tagged.publicId()), List.of()), "basic-note");
+        service.tasks.create(new TaskModels.TaskCommand(taskList.publicId(), "普通任务", null, "HIGH",
+                null, due, false, "Asia/Shanghai", null), "basic-task");
+
+        var filter = service.enhancements.createFilter(new TaskEnhancementModels.SmartFilterCommand("笔记筛选",
+                "BASIC", List.of(), List.of(tagged.publicId()), "SELECTED", List.of("NOTE"), List.of("HIGH"),
+                "OPEN", "CUSTOM", java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).plusDays(2).toString(),
+                java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).plusDays(5).toString(), "计划", true, false,
+                0, false, "book", null));
+        assertEquals("BASIC", filter.mode());
+        assertEquals(List.of("NOTE"), filter.taskTypes());
+        assertEquals(note.publicId(), service.enhancements.filterTasks(filter.publicId(), 0, 20).items().get(0).publicId());
+
+        var excludedList = service.tasks.createList(new TaskModels.TaskListCommand("不进智能清单", null, null, 3,
+                false, false, "LIST", "TASK", false), "basic-filter-excluded-list");
+        service.tasks.create(new TaskModels.TaskCommand(excludedList.publicId(), "排除任务", null, "HIGH",
+                null, due, false, "Asia/Shanghai", null), "basic-filter-excluded-task");
+        var allTasks = service.enhancements.createFilter(new TaskEnhancementModels.SmartFilterCommand("所有任务",
+                "BASIC", List.of(), List.of(), "ALL", List.of("TASK"), List.of(), "ALL", "ANY", null, null,
+                "", true, false, 4, false, null, null));
+        assertEquals(1, service.enhancements.filterTasks(allTasks.publicId(), 0, 20).total());
+
+        var noTags = service.enhancements.createFilter(new TaskEnhancementModels.SmartFilterCommand("無标签",
+                "BASIC", List.of(taskList.publicId()), List.of(), "NO_TAGS", List.of("TASK"), List.of(),
+                "ALL", "ANY", null, null, "", true, false, 1, false, null, null));
+        assertEquals(1, service.enhancements.filterTasks(noTags.publicId(), 0, 20).total());
+        assertThrows(IllegalArgumentException.class, () -> service.enhancements.createFilter(
+                new TaskEnhancementModels.SmartFilterCommand("无效日期", "BASIC", List.of(), List.of(), "SELECTED",
+                        List.of(), List.of(), "ALL", "CUSTOM", "2026-10-22", "2026-10-22", "", true, false,
+                        2, false, null, null)));
+    }
+
+    @Test
     void previewsCsvWithoutWritesAndCommitsOnlyOnce() throws Exception {
         Services service = services(createUser("import"));
         long before = service.tasks.listTasks(null, null, "ALL", null, 0, 20).total();

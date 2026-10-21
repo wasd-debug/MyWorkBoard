@@ -175,7 +175,9 @@ public class TaskSyncService {
         if (current == null && (base > 0 || tasks.listExistsForAnotherUser(entityId))) return inaccessible(operation.opId(), "task-list", entityId, "清单不存在或已删除");
         TaskListCommand command = new TaskListCommand(payload.name(), payload.color(), payload.icon(),
                 payload.sortOrder(), payload.archived(), bool(payload.extra(), "pinned"),
-                string(payload.extra(), "viewType"), string(payload.extra(), "objectType"));
+                string(payload.extra(), "viewType"), string(payload.extra(), "objectType"),
+                payload.extra() != null && payload.extra().containsKey("showInSmartLists")
+                        ? bool(payload.extra(), "showInSmartLists") : null);
         var saved = current == null ? tasks.createListForSync(command, entityId, operation.opId())
                 : tasks.updateListForSync(entityId, command, base, operation.opId());
         return result(operation.opId(), "task-list", entityId, SyncStatus.APPLIED,

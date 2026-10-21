@@ -17,6 +17,7 @@
 export interface TaskSidebarPreferencesCommand {
     'hiddenSystemViews'?: Array<string>;
     'pinnedSystemViews'?: Array<string>;
+    'conditionalSystemViews'?: Array<string>;
     'hiddenListIds'?: Array<string>;
     'pinnedListIds'?: Array<string>;
     'hiddenTagIds'?: Array<string>;

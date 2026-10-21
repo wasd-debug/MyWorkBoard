@@ -70,18 +70,18 @@ public class TaskService {
         long userId = currentUser.id();
         ensureDefaults(userId);
         return jdbcTemplate.query("SELECT l.public_id,(SELECT g.public_id FROM task_list_group g WHERE g.id=l.group_id) group_public_id," +
-                        "l.name,l.color,l.icon,l.system_key,l.sort_order,l.archived,l.is_pinned,l.view_type,l.object_type,l.revision FROM task_list l " +
+                        "l.name,l.color,l.icon,l.system_key,l.sort_order,l.archived,l.is_pinned,l.view_type,l.object_type,l.show_in_smart_lists,l.revision FROM task_list l " +
                         "WHERE l.user_id = ? AND l.deleted = FALSE ORDER BY l.sort_order, l.id",
                 (result, rowNum) -> new TaskList(result.getString("public_id"), result.getString("group_public_id"), result.getString("name"),
                         result.getString("color"), result.getString("icon"), result.getString("system_key"),
                         result.getInt("sort_order"), result.getBoolean("archived"), result.getBoolean("is_pinned"),
-                        result.getString("view_type"), result.getString("object_type"), result.getLong("revision")),
+                        result.getString("view_type"), result.getString("object_type"), result.getBoolean("show_in_smart_lists"), result.getLong("revision")),
                 userId);
     }
 
     public List<TaskList> listDeletedLists() {
         return jdbcTemplate.query("SELECT l.public_id,(SELECT g.public_id FROM task_list_group g WHERE g.id=l.group_id) group_public_id," +
-                        "l.name,l.color,l.icon,l.system_key,l.sort_order,l.archived,l.is_pinned,l.view_type,l.object_type,l.revision FROM task_list l " +
+                        "l.name,l.color,l.icon,l.system_key,l.sort_order,l.archived,l.is_pinned,l.view_type,l.object_type,l.show_in_smart_lists,l.revision FROM task_list l " +
                         "WHERE l.user_id = ? AND l.deleted = TRUE ORDER BY l.deleted_at DESC, l.id DESC",
                 (result, rowNum) -> taskList(result), currentUser.id());
     }
@@ -143,7 +143,7 @@ public class TaskService {
         long expected = requiredRevision(ifMatch);
         if (before.revision() != expected) throw new ConflictException("清单版本已变化", before.revision());
         if (before.systemKey() != null && groupPublicId != null && !groupPublicId.isBlank()) {
-            throw new ConflictException("系统收件箱不能加入分组", before.revision());
+            throw new ConflictException("系统收集箱不能加入分组", before.revision());
         }
         Long groupId = null;
         if (groupPublicId != null && !groupPublicId.isBlank()) {
@@ -286,9 +286,10 @@ public class TaskService {
         int sortOrder = command.sortOrder() == null ? nextOrder("task_list", userId) : command.sortOrder();
         String viewType = enumValue(command.viewType(), "LIST", List.of("LIST", "KANBAN", "TIMELINE"), "viewType");
         String objectType = enumValue(command.objectType(), "TASK", List.of("TASK", "NOTE"), "objectType");
-        jdbcTemplate.update("INSERT INTO task_list(public_id,user_id,name,color,icon,sort_order,archived,is_pinned,view_type,object_type) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        jdbcTemplate.update("INSERT INTO task_list(public_id,user_id,name,color,icon,sort_order,archived,is_pinned,view_type,object_type,show_in_smart_lists) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 publicId, userId, name, optionalText(command.color(), 24), optionalText(command.icon(), 40), sortOrder,
-                Boolean.TRUE.equals(command.archived()), Boolean.TRUE.equals(command.pinned()), viewType, objectType);
+                Boolean.TRUE.equals(command.archived()), Boolean.TRUE.equals(command.pinned()), viewType, objectType,
+                !Boolean.FALSE.equals(command.showInSmartLists()));
         TaskList created = listForUser(userId, publicId, false);
         changeLog.append(userId, opId, "task-list", publicId, "UPSERT", syncEntity(created, false));
         return created;
@@ -308,14 +309,14 @@ public class TaskService {
         long userId = currentUser.id();
         TaskList before = listForUser(userId, publicId, false);
         if ("INBOX".equals(before.systemKey()) && Boolean.TRUE.equals(command.archived())) {
-            throw new ConflictException("收件箱不可归档", before.revision());
+            throw new ConflictException("收集箱不可归档", before.revision());
         }
         if ("INBOX".equals(before.systemKey()) && command.name() != null && !before.name().equals(command.name().trim())) {
-            throw new ConflictException("收件箱不可重命名", before.revision());
+            throw new ConflictException("收集箱不可重命名", before.revision());
         }
         long expected = requiredRevision(ifMatch);
         if (before.revision() != expected) throw new ConflictException("清单版本已变化", before.revision());
-        int updated = jdbcTemplate.update("UPDATE task_list SET name=?,color=?,icon=?,sort_order=?,archived=?,is_pinned=?,view_type=?,object_type=?,revision=revision+1 " +
+        int updated = jdbcTemplate.update("UPDATE task_list SET name=?,color=?,icon=?,sort_order=?,archived=?,is_pinned=?,view_type=?,object_type=?,show_in_smart_lists=?,revision=revision+1 " +
                         "WHERE public_id=? AND user_id=? AND deleted=FALSE AND revision=?",
                 command.name() == null ? before.name() : requiredText(command.name(), "name", 120),
                 command.color() == null ? before.color() : optionalText(command.color(), 24),
@@ -325,6 +326,7 @@ public class TaskService {
                 command.pinned() == null ? before.pinned() : command.pinned(),
                 enumValue(command.viewType(), before.viewType(), List.of("LIST", "KANBAN", "TIMELINE"), "viewType"),
                 enumValue(command.objectType(), before.objectType(), List.of("TASK", "NOTE"), "objectType"),
+                command.showInSmartLists() == null ? before.showInSmartLists() : command.showInSmartLists(),
                 validUuid(publicId, "publicId"),
                 userId, expected);
         if (updated == 0) throw new ConflictException("清单版本已变化", before.revision());
@@ -346,7 +348,7 @@ public class TaskService {
     private DeletedResource deleteList(String publicId, String ifMatch, String opId) {
         long userId = currentUser.id();
         TaskList list = listForUser(userId, publicId, false);
-        if ("INBOX".equals(list.systemKey())) throw new ConflictException("收件箱不可删除", list.revision());
+        if ("INBOX".equals(list.systemKey())) throw new ConflictException("收集箱不可删除", list.revision());
         long expected = requiredRevision(ifMatch);
         if (list.revision() != expected) throw new ConflictException("清单版本已变化", list.revision());
         Long listId = jdbcTemplate.queryForObject("SELECT id FROM task_list WHERE public_id=? AND user_id=?", Long.class,
@@ -948,12 +950,13 @@ public class TaskService {
     public SidebarPreferences sidebarPreferences() {
         long userId = currentUser.id();
         jdbcTemplate.update("INSERT IGNORE INTO task_sidebar_preference(user_id,hidden_system_views_json,pinned_system_views_json," +
-                        "hidden_list_ids_json,pinned_list_ids_json,hidden_tag_ids_json,pinned_tag_ids_json,hidden_filter_ids_json," +
-                        "pinned_filter_ids_json,collapsed_sections_json) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                userId, "[]", "[]", "[]", "[]", "[]", "[]", "[]", "[]", "{}");
+                        "conditional_system_views_json,hidden_list_ids_json,pinned_list_ids_json,hidden_tag_ids_json,pinned_tag_ids_json,hidden_filter_ids_json," +
+                        "pinned_filter_ids_json,collapsed_sections_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                userId, "[]", "[]", "[]", "[]", "[]", "[]", "[]", "[]", "[]", "{}");
         return jdbcTemplate.queryForObject("SELECT * FROM task_sidebar_preference WHERE user_id=?", (row, n) ->
                 new SidebarPreferences(jsonList(row.getString("hidden_system_views_json")),
-                        jsonList(row.getString("pinned_system_views_json")), jsonList(row.getString("hidden_list_ids_json")),
+                        jsonList(row.getString("pinned_system_views_json")), jsonList(row.getString("conditional_system_views_json")),
+                        jsonList(row.getString("hidden_list_ids_json")),
                         jsonList(row.getString("pinned_list_ids_json")), jsonList(row.getString("hidden_tag_ids_json")),
                         jsonList(row.getString("pinned_tag_ids_json")), jsonList(row.getString("hidden_filter_ids_json")),
                         jsonList(row.getString("pinned_filter_ids_json")), jsonMap(row.getString("collapsed_sections_json")),
@@ -968,7 +971,9 @@ public class TaskService {
         if (before.revision() != expected) throw new ConflictException("侧栏偏好已被其他操作更新", before.revision());
         List<String> hiddenViews = preferenceIds(command.hiddenSystemViews(), 20);
         List<String> pinnedViews = preferenceIds(command.pinnedSystemViews(), 20);
+        List<String> conditionalViews = preferenceIds(command.conditionalSystemViews(), 20);
         validateSystemViews(hiddenViews); validateSystemViews(pinnedViews);
+        validateConditionalSystemViews(conditionalViews);
         List<String> hiddenLists = ownedPreferenceIds(command.hiddenListIds(), "task_list");
         List<String> pinnedLists = ownedPreferenceIds(command.pinnedListIds(), "task_list");
         List<String> hiddenTags = ownedPreferenceIds(command.hiddenTagIds(), "task_tag");
@@ -979,10 +984,10 @@ public class TaskService {
         if (collapsed.size() > 20 || collapsed.keySet().stream().anyMatch(key -> !key.matches("[A-Za-z0-9_-]{1,40}")))
             throw new IllegalArgumentException("侧栏分区折叠状态无效");
         int changed = jdbcTemplate.update("UPDATE task_sidebar_preference SET hidden_system_views_json=?,pinned_system_views_json=?," +
-                        "hidden_list_ids_json=?,pinned_list_ids_json=?,hidden_tag_ids_json=?,pinned_tag_ids_json=?," +
+                        "conditional_system_views_json=?,hidden_list_ids_json=?,pinned_list_ids_json=?,hidden_tag_ids_json=?,pinned_tag_ids_json=?," +
                         "hidden_filter_ids_json=?,pinned_filter_ids_json=?,collapsed_sections_json=?,revision=revision+1 " +
                         "WHERE user_id=? AND revision=?",
-                json(hiddenViews), json(pinnedViews), json(hiddenLists), json(pinnedLists), json(hiddenTags), json(pinnedTags),
+                json(hiddenViews), json(pinnedViews), json(conditionalViews), json(hiddenLists), json(pinnedLists), json(hiddenTags), json(pinnedTags),
                 json(hiddenFilters), json(pinnedFilters), json(collapsed), currentUser.id(), expected);
         if (changed != 1) throw new ConflictException("侧栏偏好已被其他操作更新", before.revision());
         return sidebarPreferences();
@@ -1010,6 +1015,12 @@ public class TaskService {
                         "all", "today", "tomorrow", "next7", "assigned", "inbox", "summary", "this-week", "next-week",
                         "no-date", "no-tag", "completed", "abandoned", "trash", "archived")
                 .containsAll(values)) throw new IllegalArgumentException("系统视图无效");
+    }
+
+    private void validateConditionalSystemViews(List<String> values) {
+        if (!List.of("all", "today", "tomorrow", "next7", "assigned", "inbox", "this-week", "next-week",
+                        "no-date", "no-tag", "completed", "abandoned", "trash", "archived")
+                .containsAll(values)) throw new IllegalArgumentException("按内容显示的系统视图无效");
     }
 
     private String json(Object value) {
@@ -1142,7 +1153,7 @@ public class TaskService {
         return new TaskModels.SyncEntity(item.publicId(), null, null, null, null, null, null, null, false,
                 null, null, null, null, item.revision() + (deleted ? 1 : 0), deleted, null, List.of(), List.of(), null,
                 item.name(), item.color(), item.icon(), item.systemKey(), item.sortOrder(), item.archived(), null, null,
-                null, null, null, null, java.util.Map.of("pinned", item.pinned(), "viewType", item.viewType(), "objectType", item.objectType()));
+                null, null, null, null, java.util.Map.of("pinned", item.pinned(), "viewType", item.viewType(), "objectType", item.objectType(), "showInSmartLists", item.showInSmartLists()));
     }
 
     static TaskModels.SyncEntity syncEntity(TaskTag item, boolean deleted) {
@@ -1164,7 +1175,7 @@ public class TaskService {
 
     private void ensureDefaults(long userId) {
         jdbcTemplate.update("INSERT IGNORE INTO task_list (public_id, user_id, name, system_key, sort_order) " +
-                "VALUES (?, ?, '收件箱', 'INBOX', 0)", UUID.randomUUID().toString(), userId);
+                "VALUES (?, ?, '收集箱', 'INBOX', 0)", UUID.randomUUID().toString(), userId);
         Long inboxId = jdbcTemplate.queryForObject(
                 "SELECT id FROM task_list WHERE user_id = ? AND system_key = 'INBOX'", Long.class, userId);
         String timezone = jdbcTemplate.queryForObject("SELECT timezone FROM app_user WHERE id = ?", String.class, userId);
@@ -1259,7 +1270,7 @@ public class TaskService {
 
     private TaskList listForUser(long userId, String publicId, boolean deleted) {
         List<TaskList> rows = jdbcTemplate.query("SELECT l.public_id,(SELECT g.public_id FROM task_list_group g WHERE g.id=l.group_id) group_public_id," +
-                        "l.name,l.color,l.icon,l.system_key,l.sort_order,l.archived,l.is_pinned,l.view_type,l.object_type,l.revision " +
+                        "l.name,l.color,l.icon,l.system_key,l.sort_order,l.archived,l.is_pinned,l.view_type,l.object_type,l.show_in_smart_lists,l.revision " +
                         "FROM task_list l WHERE l.public_id=? AND l.user_id=? AND l.deleted=?",
                 (result, rowNum) -> taskList(result),
                 validUuid(publicId, "publicId"), userId, deleted);
@@ -1271,7 +1282,7 @@ public class TaskService {
         return new TaskList(result.getString("public_id"), result.getString("group_public_id"), result.getString("name"), result.getString("color"),
                 result.getString("icon"), result.getString("system_key"), result.getInt("sort_order"),
                 result.getBoolean("archived"), result.getBoolean("is_pinned"), result.getString("view_type"),
-                result.getString("object_type"), result.getLong("revision"));
+                result.getString("object_type"), result.getBoolean("show_in_smart_lists"), result.getLong("revision"));
     }
 
     private ListGroup listGroupForUser(long userId, String publicId) {

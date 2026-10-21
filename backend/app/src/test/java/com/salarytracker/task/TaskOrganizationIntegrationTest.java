@@ -79,10 +79,11 @@ class TaskOrganizationIntegrationTest extends MySqlIntegrationTestSupport {
         long userId = createUser();
         TaskService service = service(userId);
         var list = service.createList(new TaskModels.TaskListCommand("看板笔记", "#123456", "folder", 0,
-                false, true, "KANBAN", "NOTE"), "appearance-list");
+                false, true, "KANBAN", "NOTE", false), "appearance-list");
         assertEquals("KANBAN", list.viewType());
         assertEquals("NOTE", list.objectType());
         assertTrue(list.pinned());
+        assertTrue(!list.showInSmartLists());
         var group = service.createListGroup(new TaskModels.ListGroupCommand("置顶分组", null, "folder", 0, true));
         assertTrue(group.pinned());
         var tag = service.createTag(new TaskModels.TaskTagCommand(null, "带图标", null, 0, "tag"));
@@ -90,35 +91,49 @@ class TaskOrganizationIntegrationTest extends MySqlIntegrationTestSupport {
 
         var before = service.sidebarPreferences();
         var updated = service.updateSidebarPreferences(new TaskModels.SidebarPreferencesCommand(List.of("TODAY"),
-                List.of("INBOX"), List.of(list.publicId()), List.of(), List.of(tag.publicId()), List.of(),
+                List.of("INBOX"), List.of("today"), List.of(list.publicId()), List.of(), List.of(tag.publicId()), List.of(),
                 List.of(), List.of(), java.util.Map.of("lists", true)), String.valueOf(before.revision()));
         assertEquals(List.of("TODAY"), updated.hiddenSystemViews());
         assertEquals(List.of(list.publicId()), updated.hiddenListIds());
         assertEquals(Boolean.TRUE, updated.collapsedSections().get("lists"));
+        assertEquals(List.of("today"), updated.conditionalSystemViews());
         var systemViews = List.of("all", "today", "tomorrow", "next7", "assigned", "inbox", "summary",
                 "this-week", "next-week", "no-date", "no-tag", "completed", "abandoned", "trash", "archived");
         var withSystemViews = service.updateSidebarPreferences(new TaskModels.SidebarPreferencesCommand(systemViews,
-                List.of("inbox"), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), java.util.Map.of()),
+                List.of("inbox"), List.of("this-week", "no-date"), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), java.util.Map.of()),
                 String.valueOf(updated.revision()));
         assertEquals(systemViews, withSystemViews.hiddenSystemViews());
         assertEquals(List.of("inbox"), withSystemViews.pinnedSystemViews());
+        assertEquals(List.of("this-week", "no-date"), withSystemViews.conditionalSystemViews());
         assertThrows(ConflictException.class, () -> service.updateSidebarPreferences(
                 new TaskModels.SidebarPreferencesCommand(List.of(), List.of(), List.of(), List.of(), List.of(),
-                        List.of(), List.of(), List.of(), java.util.Map.of()), String.valueOf(before.revision())));
+                        List.of(), List.of(), List.of(), List.of(), java.util.Map.of()), String.valueOf(before.revision())));
         assertThrows(IllegalArgumentException.class, () -> service.updateSidebarPreferences(
                 new TaskModels.SidebarPreferencesCommand(List.of("NOT_A_VIEW"), List.of(), List.of(), List.of(),
+                        List.of(), List.of(), List.of(), List.of(), List.of(), java.util.Map.of()), String.valueOf(withSystemViews.revision())));
+        assertThrows(IllegalArgumentException.class, () -> service.updateSidebarPreferences(
+                new TaskModels.SidebarPreferencesCommand(List.of(), List.of(), List.of("summary"), List.of(), List.of(),
                         List.of(), List.of(), List.of(), List.of(), java.util.Map.of()), String.valueOf(withSystemViews.revision())));
     }
     @Test
     void managesListsTagsSubtasksChecklistAndTrash() {
         TaskService service = service(createUser());
         var inbox = service.listLists().get(0);
+        assertEquals("收集箱", inbox.name());
         assertThrows(ConflictException.class, () -> service.deleteList(inbox.publicId(), "1"));
+        assertThrows(ConflictException.class, () -> service.updateList(inbox.publicId(),
+                new TaskListCommand(null, null, null, null, true), String.valueOf(inbox.revision())));
+        assertThrows(ConflictException.class, () -> service.updateList(inbox.publicId(),
+                new TaskListCommand("改名收集箱", null, null, null, null), String.valueOf(inbox.revision())));
+        var recoloredInbox = service.updateList(inbox.publicId(),
+                new TaskListCommand(null, "#7259d9", null, null, null), String.valueOf(inbox.revision()));
+        assertEquals("#7259d9", recoloredInbox.color());
+        assertEquals(inbox.revision() + 1, recoloredInbox.revision());
+        assertEquals("#7259d9", service.listLists().stream()
+                .filter(item -> item.publicId().equals(inbox.publicId())).findFirst().orElseThrow().color());
 
         var work = service.createList(new TaskListCommand("工作", "#2563eb", "briefcase", 1, false), "list-1");
         assertEquals(work.publicId(), service.createList(new TaskListCommand("重试", null, null, null, false), "list-1").publicId());
-        assertThrows(ConflictException.class, () -> service.updateList(inbox.publicId(),
-                new TaskListCommand(null, null, null, null, true), "1"));
         var tag = service.createTag(new TaskTagCommand(null, "项目A", "#16a34a", 0));
         assertThrows(ConflictException.class, () -> service.createTag(new TaskTagCommand(null, "项目a", null, 1)));
 
