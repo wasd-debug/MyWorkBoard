@@ -807,7 +807,7 @@
         <template v-else><button type="button" @click="editOrganization('list')"><Pencil :size="14" />编辑</button><button type="button" @click="togglePinnedObject('list', organizationMenu.item)"><Pin :size="14" />{{ isPinnedObject('list', organizationMenu.item) ? '取消置顶' : '置顶' }}</button><button type="button" @click="openListCopy"><Copy :size="14" />复制</button><button type="button" @click="shareOrganization('list')"><Copy :size="14" />共享</button><button type="button" @click="openOrganizationInWindow('list')"><ExternalLink :size="14" />打开新窗口</button><button type="button" @click="requestArchiveList"><Archive :size="14" />{{ organizationMenu.item.archived ? '取消归档' : '归档' }}</button><button type="button" class="danger" @click="requestDeleteOrganization('list')"><Trash2 :size="14" />删除</button></template>
       </template>
       <template v-else-if="organizationMenu.kind === 'tag'"><button type="button" @click="editOrganization('tag')"><Pencil :size="14" />编辑</button><button type="button" @click="togglePinnedObject('tag', organizationMenu.item)"><Pin :size="14" />{{ isPinnedObject('tag', organizationMenu.item) ? '取消置顶' : '置顶' }}</button><button type="button" @click="createChildTag"><Plus :size="14" />添加子标签</button><button type="button" @click="openTagMerge"><Merge :size="14" />合并标签到…</button><button type="button" @click="openOrganizationInWindow('tag')"><ExternalLink :size="14" />打开新窗口</button><button type="button" class="danger" @click="deleteOrganization('tag')"><Trash2 :size="14" />删除</button></template>
-      <template v-else-if="organizationMenu.kind === 'filter'"><button type="button" @click="toggleFilterPinned"><Pin :size="14" />{{ isPinnedObject('filter', organizationMenu.item) ? '取消置顶' : '置顶' }}</button><button type="button" @click="editOrganization('filter')"><Pencil :size="14" />编辑条件</button><button type="button" @click="previewSavedFilter"><Eye :size="14" />预览结果</button><button type="button" @click="duplicateFilter"><Copy :size="14" />复制筛选器</button><button type="button" @click="openOrganizationInWindow('filter')"><ExternalLink :size="14" />打开新窗口</button><button type="button" @click="organizationMenu.submenu = organizationMenu.submenu === 'display' ? '' : 'display'"><Eye :size="14" />显示选项<ChevronDown :size="13" /></button><div v-if="organizationMenu.submenu === 'display'" class="clone-context-submenu"><button v-for="option in displayOptionsFor('filter', organizationMenu.item)" :key="option.value" type="button" @click="setDisplayOption('filter', organizationMenu.item, option.value)">{{ option.label }}<Check v-if="getDisplayOption('filter', organizationMenu.item) === option.value" :size="14" /></button></div><button type="button" class="danger" @click="deleteOrganization('filter')"><Trash2 :size="14" />删除筛选器</button></template>
+      <template v-else-if="organizationMenu.kind === 'filter'"><button type="button" @click="editOrganization('filter')"><Pencil :size="14" />编辑</button><button type="button" @click="toggleFilterPinned"><Pin :size="14" />{{ isPinnedObject('filter', organizationMenu.item) ? '取消置顶' : '置顶' }}</button><button type="button" @click="duplicateFilter"><Copy :size="14" />复制</button><button type="button" @click="openOrganizationInWindow('filter')"><ExternalLink :size="14" />打开新窗口</button><button type="button" class="danger" @click="deleteOrganization('filter')"><Trash2 :size="14" />删除</button></template>
       <template v-else><button type="button" @click="createList(organizationMenu.item.publicId)"><Plus :size="14" />添加清单</button><button type="button" @click="editListGroup"><Pencil :size="14" />编辑</button><button type="button" @click="togglePinnedObject('group', organizationMenu.item)"><Pin :size="14" />{{ organizationMenu.item.pinned ? '取消置顶' : '置顶' }}</button><button type="button" @click="openOrganizationInWindow('group')"><ExternalLink :size="14" />打开新窗口</button><button type="button" class="danger" @click="requestDissolveListGroup"><Ungroup :size="14" />解散</button></template>
     </div>
     <Dialog v-model:open="organizationDialogOpen" :title="organizationDialogTitle" :content-class="organizationDialog.kind === 'filter' ? 'task-filter-dialog' : organizationDialog.kind === 'list' && !isInboxColorEditor ? 'task-list-dialog' : ''">
@@ -853,7 +853,7 @@
               <label class="clone-filter-field"><span>内容包含</span><input v-model.trim="organizationDialog.filter.keyword" maxlength="200" placeholder="输入任务关键词" /></label>
               <fieldset class="clone-filter-task-types"><legend>任务类型</legend><label><input type="radio" name="filter-task-type-all" :checked="organizationDialog.filter.taskTypes.length === 0" @change="organizationDialog.filter.taskTypes = []" />所有</label><label><input v-model="organizationDialog.filter.taskTypes" type="checkbox" value="TASK" />任务</label><label><input v-model="organizationDialog.filter.taskTypes" type="checkbox" value="NOTE" />笔记</label></fieldset>
             </template>
-            <TaskFilterRuleEditor v-if="organizationDialog.filter.mode === 'ADVANCED'" v-model="organizationDialog.filter.rules" :lists="activeLists" :tags="sortedTags" :node-count="countFilterRuleNodes(organizationDialog.filter.rules)" />
+            <TaskFilterRuleEditor v-if="organizationDialog.filter.mode === 'ADVANCED'" v-model="organizationDialog.filter.advanced" :lists="activeLists" :groups="sortedListGroups" :tags="sortedTags" />
           </template>
         </template>
         <footer :class="{ 'clone-inbox-color-actions': isInboxColorEditor, 'clone-filter-preview-actions': organizationDialog.kind === 'filter' && organizationDialog.filter.previewed }"><template v-if="isInboxColorEditor"><button type="submit" class="clone-primary-button">保存</button><button type="button" @click="organizationDialogOpen = false">取消</button></template><template v-else-if="organizationDialog.kind === 'filter' && organizationDialog.filter.previewed"><button type="button" @click="organizationDialog.filter.previewed = false">取消</button><button type="submit" class="clone-primary-button" :disabled="!filterDraftValid">保存</button></template><template v-else-if="organizationDialog.kind === 'filter'"><button type="button" class="clone-filter-preview-button" :disabled="!filterDraftValid" @click="previewFilterDraft"><Eye :size="14" />预览</button><button type="button" @click="organizationDialogOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="!filterDraftValid">保存</button></template><template v-else><button type="button" @click="organizationDialogOpen = false">取消</button><button type="submit" class="clone-primary-button">保存</button></template></footer>
@@ -868,7 +868,6 @@
     <Dialog v-model:open="organizationIconPickerOpen" title="选择图标" content-class="task-icon-dialog">
       <div class="clone-icon-picker"><input v-model.trim="organizationIconSearch" aria-label="搜索图标" placeholder="搜索中文名称或图标名" /><div class="clone-icon-categories" role="tablist" aria-label="图标分类"><button v-for="category in organizationIconCategories" :key="category.value" type="button" role="tab" :aria-selected="organizationIconCategory === category.value" @click="organizationIconCategory = category.value">{{ category.label }}</button></div><div class="clone-icon-grid" role="listbox" aria-label="可选图标"><button v-for="icon in filteredOrganizationIcons" :key="icon.value" type="button" role="option" :aria-selected="currentOrganizationIcon === icon.value" :aria-label="icon.label" :title="`${icon.label} · ${icon.value}`" @click="selectOrganizationIcon(icon.value)"><component :is="icon.component" v-if="icon.component" :size="19" :stroke-width="2" aria-hidden="true" /><span v-else>{{ icon.value }}</span></button><p v-if="!filteredOrganizationIcons.length" class="clone-icon-empty">没有匹配的图标</p></div><small class="clone-icon-count">{{ filteredOrganizationIcons.length }} 个可选图标</small></div>
     </Dialog>
-    <Dialog v-model:open="filterPreviewOpen" :title="`筛选器预览：${filterPreviewTitle}`"><div class="clone-filter-preview clone-filter-preview-modal"><strong>匹配 {{ filterPreviewTotal }} 条任务</strong><RouterLink v-for="task in filterPreview" :key="task.publicId" :to="`/tasks/list/${task.listId}`" @click="filterPreviewOpen = false">{{ task.title }}</RouterLink><span v-if="!filterPreview.length">当前没有匹配任务</span><footer><button type="button" @click="filterPreviewOpen = false">关闭</button><button type="button" @click="router.push(`/tasks/filter/${filterPreviewFilterId}`); filterPreviewOpen = false">打开筛选列表</button></footer></div></Dialog>
     <Dialog v-model:open="listCopyOpen" title="复制清单"><form class="clone-organization-form" @submit.prevent="confirmListCopy"><fieldset><legend>复制任务</legend><label><input v-model="listCopy.mode" type="radio" value="OPEN_ONLY" />只复制未完成任务</label><label><input v-model="listCopy.mode" type="radio" value="ALL_PRESERVE" />复制全部任务，保留已完成状态</label><label><input v-model="listCopy.mode" type="radio" value="ALL_OPEN" />复制全部任务，并将任务设为未完成</label></fieldset><p class="clone-dialog-note">新清单将命名为“{{ listCopy.name }}”。</p><footer><button type="button" :disabled="listCopy.busy" @click="listCopyOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="listCopy.busy">{{ listCopy.busy ? '复制中…' : '复制' }}</button></footer></form></Dialog>
     <Dialog v-model:open="organizationConfirmOpen" :title="organizationConfirmation.title"><template #title v-if="organizationConfirmation.action === 'delete-list'">删除清单“<TaskOrganizationIcon v-if="organizationConfirmation.item?.icon" class="clone-confirmation-title-icon" :value="organizationConfirmation.item.icon" :size="16" /><ListTodo v-else class="clone-confirmation-title-icon" :size="16" /> {{ organizationConfirmation.item?.name }}”？</template><div class="clone-confirmation"><p v-if="organizationConfirmation.action === 'dissolve-group'">解散后，文件夹（<TaskOrganizationIcon v-if="organizationConfirmation.item?.icon" class="clone-confirmation-title-icon" :value="organizationConfirmation.item.icon" :size="16" /><Folder v-else class="clone-confirmation-title-icon" :size="16" /> {{ organizationConfirmation.item?.name }}）中的清单将直接显示在侧边栏。</p><p v-else>{{ organizationConfirmation.message }}</p><footer><button type="button" :disabled="organizationConfirmation.busy" @click="organizationConfirmOpen = false">取消</button><button type="button" class="clone-danger-button" :disabled="organizationConfirmation.busy" @click="confirmOrganizationAction">{{ organizationConfirmation.busy ? '处理中…' : organizationConfirmation.confirmLabel }}</button></footer></div></Dialog>
     <Dialog v-model:open="tagMergeOpen" title="合并标签到…"><form class="clone-organization-form" @submit.prevent="confirmTagMerge"><p>你可以将标签“{{ tagMerge.source?.name }}”下的任务合并到另一个标签。合并后，标签“{{ tagMerge.source?.name }}”将被删除；其子标签会迁移至目标标签层级。</p><label>选择标签<select v-model="tagMerge.targetId" required><option value="" disabled>选择标签</option><option v-for="tag in mergeTargets" :key="tag.publicId" :value="tag.publicId">{{ tag.name }}</option></select></label><footer><button type="button" :disabled="tagMerge.busy" @click="tagMergeOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="tagMerge.busy || !mergeTargets.length">{{ tagMerge.busy ? '合并中…' : '确定' }}</button></footer></form></Dialog>
@@ -941,7 +940,8 @@ import { organizationIconCategories, searchOrganizationIcons } from "./taskOrgan
 import { moveItem } from "./taskSidebar.js";
 import { groupTaskItems, sortTaskItems } from "./taskList.js";
 import { moveChecklistItem as reorderChecklistItems } from "./taskChecklist.js";
-import { countFilterRuleNodes, matchesFilterRules, normalizeFilterRules, serializeFilterRules } from "./taskFilterRules.js";
+import { matchesFilterRules, serializeFilterRules } from "./taskFilterRules.js";
+import { advancedFilterConditionsFromRules, advancedFilterConditionsValid, buildAdvancedFilterRules } from "./taskAdvancedFilter.js";
 import { buildTaskSidebarCounts } from "./taskSidebarCounts.js";
 import { mergeSidebarPreferenceChanges } from "./taskSidebarPreferences.js";
 import { useTasksStore } from "../stores/tasks.js";
@@ -961,7 +961,6 @@ import {
   apiListTaskAttachments,
   apiListTaskComments,
   apiListTaskFilters,
-  apiListTaskFilterTasks,
   apiListTaskReminders,
   apiCreateTaskFilter,
   apiUpdateTaskFilter,
@@ -1069,10 +1068,6 @@ const tagMergeOpen = ref(false);
 const tagMerge = reactive({ source: null, targetId: "", busy: false });
 let listHoverTimer = 0;
 const filterPreview = ref([]);
-const filterPreviewOpen = ref(false);
-const filterPreviewTitle = ref("");
-const filterPreviewFilterId = ref("");
-const filterPreviewTotal = ref(0);
 const filterPreviewGroups = computed(() => {
   const folders = new Map();
   for (const task of filterPreview.value) {
@@ -1090,8 +1085,7 @@ const filterPreviewGroups = computed(() => {
 });
 const filterDraftValid = computed(() => {
   if (organizationDialog.filter.mode === "ADVANCED") {
-    try { return Boolean(serializeFilterRules(organizationDialog.filter.rules)); }
-    catch { return false; }
+    return advancedFilterConditionsValid(organizationDialog.filter.advanced.conditions, organizationDialog.filter.advanced.joins);
   }
   return organizationDialog.filter.dueRange !== "CUSTOM" || Boolean(organizationDialog.filter.dueStart && organizationDialog.filter.dueEnd && organizationDialog.filter.dueEnd > organizationDialog.filter.dueStart);
 });
@@ -2680,7 +2674,7 @@ function togglePinnedObject(kind, item) {
 watch(() => store.accountScope, () => { loadSidebarObjectPrefs(); loadSidebarSections(); loadSectionDisplayModes(); void loadSidebarPreferences(); });
 function openOrganizationDialog(kind, item = null, overrides = {}) {
   const defaults = { list: { color: "#2563eb", icon: "", groupId: "" }, tag: { color: "#2f746f", parentId: "" }, filter: {}, group: { color: "#64748b", icon: "📁" } }[kind] || {};
-  const filter = kind === "filter" ? { mode: item?.mode || "BASIC", listIds: [...(item?.listIds || [])], tagIds: [...(item?.tagIds || [])], tagMode: item?.tagMode || (item?.tagIds?.length ? "SELECTED" : "ALL"), taskTypes: [...(item?.taskTypes || [])], priorities: [...(item?.priorities || [])], status: item?.status || "OPEN", dueRange: item?.dueRange || "ANY", dueStart: item?.dueStart || "", dueEnd: item?.dueEnd || "", keyword: item?.keyword || "", includeSubtasks: item?.includeSubtasks !== false, matchAllTags: Boolean(item?.matchAllTags), pinned: isPinnedObject("filter", item), rules: normalizeFilterRules(item?.rules), previewed: false } : {};
+  const filter = kind === "filter" ? { mode: item?.mode || "BASIC", listIds: [...(item?.listIds || [])], tagIds: [...(item?.tagIds || [])], tagMode: item?.tagMode || (item?.tagIds?.length ? "SELECTED" : "ALL"), taskTypes: [...(item?.taskTypes || [])], priorities: [...(item?.priorities || [])], status: item?.status || "OPEN", dueRange: item?.dueRange || "ANY", dueStart: item?.dueStart || "", dueEnd: item?.dueEnd || "", keyword: item?.keyword || "", includeSubtasks: item?.includeSubtasks !== false, matchAllTags: Boolean(item?.matchAllTags), pinned: isPinnedObject("filter", item), rules: item?.rules || null, advanced: advancedFilterConditionsFromRules(item?.rules), previewed: false } : {};
   Object.assign(organizationDialog, { open: true, kind, item, name: item?.name || overrides.name || "", color: item?.color || defaults.color || "#2563eb", icon: item?.icon || defaults.icon || "", parentId: item?.parentId || overrides.parentId || defaults.parentId || "", groupId: item?.groupId || overrides.groupId || "", newGroupName: "", newGroupIcon: "📁", newGroupColor: "#64748b", groupListIds: [...(overrides.groupListIds || [])], viewType: item?.viewType || "LIST", objectType: item?.objectType || "TASK", showInSmartLists: item?.showInSmartLists !== false, pinned: Boolean(item?.pinned), filter });
   filterPreview.value = [];
   organizationDialogOpen.value = true;
@@ -2807,16 +2801,16 @@ async function confirmTagMerge() {
     await store.refreshServer();
   } finally { tagMerge.busy = false; }
 }
-function filterPayload(item, overrides = {}) {
-  const source = item || organizationDialog.filter;
+function filterPayload(item, overrides = {}, useDraft = false) {
+  const source = useDraft ? organizationDialog.filter : item || organizationDialog.filter;
   const basic = source.mode !== "ADVANCED";
-  return { name: item ? source.name : organizationDialog.name.trim(), mode: source.mode || "BASIC", listIds: basic ? [...(source.listIds || [])] : [], tagIds: basic ? [...(source.tagIds || [])] : [],
+  return { name: useDraft || !item ? organizationDialog.name.trim() : source.name, mode: source.mode || "BASIC", listIds: basic ? [...(source.listIds || [])] : [], tagIds: basic ? [...(source.tagIds || [])] : [],
     tagMode: basic ? source.tagMode || "SELECTED" : "SELECTED", taskTypes: basic ? [...(source.taskTypes || [])] : [],
     priorities: [...(source.priorities || [])], status: source.status || "OPEN", dueRange: source.dueRange || "ANY", keyword: source.keyword || "",
     dueStart: basic ? source.dueStart || null : null, dueEnd: basic ? source.dueEnd || null : null,
     includeSubtasks: source.includeSubtasks !== false, matchAllTags: Boolean(source.matchAllTags), sortOrder: source.sortOrder ?? filters.value.length,
-    pinned: false, icon: item ? source.icon || null : organizationDialog.icon || null,
-    rules: source.mode === "ADVANCED" ? serializeFilterRules(source.rules) : null, ...overrides };
+    pinned: false, icon: useDraft || !item ? organizationDialog.icon || null : source.icon || null,
+    rules: source.mode === "ADVANCED" ? serializeFilterRules(useDraft ? buildAdvancedFilterRules(source.advanced.conditions, source.advanced.joins) : source.rules) : null, ...overrides };
 }
 function groupListSelected(groupId) {
   const ids = activeLists.value.filter(list => list.groupId === groupId).map(list => list.publicId);
@@ -2876,22 +2870,13 @@ async function duplicateFilter() {
   try { await apiCreateTaskFilter(filterPayload(item, { name: `${item.name} 副本`, sortOrder: filters.value.length })); await loadFilters(); message.success("已复制筛选器"); }
   catch (error) { store.error = error?.response?.data?.detail || error?.message || "复制筛选器失败"; }
 }
-async function previewSavedFilter() {
-  const item = organizationMenu.item;
-  organizationMenuOpen.value = false;
-  try {
-    const result = await apiListTaskFilterTasks(item.publicId, { page: 0, size: 50 });
-    filterPreview.value = result?.items || [];
-    filterPreviewTotal.value = Number(result?.total || filterPreview.value.length);
-    filterPreviewTitle.value = item.name;
-    filterPreviewFilterId.value = item.publicId;
-    filterPreviewOpen.value = true;
-  } catch (error) { store.error = error?.response?.data?.detail || error?.message || "筛选器预览失败"; }
-}
 function matchesFilterDraft(task, filter) {
   if (task.deleted) return false;
   const objectType = store.lists.find(list => list.publicId === task.listId)?.objectType || "TASK";
-  if (filter.mode === "ADVANCED") return Boolean(filter.rules?.children?.length) && matchesFilterRules({ ...task, objectType }, filter.rules);
+  if (filter.mode === "ADVANCED") {
+    try { return matchesFilterRules({ ...task, objectType }, buildAdvancedFilterRules(filter.advanced.conditions, filter.advanced.joins)); }
+    catch { return false; }
+  }
   if (filter.status !== "ALL" && task.status !== filter.status) return false;
   if (!filter.includeSubtasks && task.parentId) return false;
   if (filter.listIds.length && !filter.listIds.includes(task.listId)) return false;
@@ -2960,7 +2945,7 @@ async function saveOrganization() {
       if (item) await store.updateTag(item, payload); else await store.createTag(payload);
       await store.refreshServer();
     } else if (kind === "filter") {
-      const payload = filterPayload(item, { name, sortOrder: item?.sortOrder ?? filters.value.length });
+      const payload = filterPayload(item, { name, sortOrder: item?.sortOrder ?? filters.value.length }, true);
       if (item) await apiUpdateTaskFilter(item.publicId, payload, item.revision);
       else await apiCreateTaskFilter(payload);
       await loadFilters();

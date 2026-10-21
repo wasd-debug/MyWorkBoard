@@ -353,6 +353,17 @@ public class TaskEnhancementService {
             case "hasDueDate" -> String.valueOf(task.dueAt() != null); case "parentId" -> task.parentId();
             case "taskType" -> objectTypes.getOrDefault(task.listId(), "TASK"); default -> null;
         };
+        if ("tagId".equals(field)) {
+            List<String> actualTags = task.tagIds();
+            if ("IS_SET".equals(operator)) return !actualTags.isEmpty();
+            if ("IS_NOT_SET".equals(operator)) return actualTags.isEmpty();
+            if ("EQ".equals(operator)) return actualTags.stream().anyMatch(value -> value.equalsIgnoreCase(node.path("value").asText()));
+            if ("NE".equals(operator)) return actualTags.stream().noneMatch(value -> value.equalsIgnoreCase(node.path("value").asText()));
+            if ("IN".equals(operator)) {
+                for (JsonNode value : node.path("value")) if (actualTags.stream().anyMatch(tag -> tag.equalsIgnoreCase(value.asText()))) return true;
+                return false;
+            }
+        }
         if ("IS_SET".equals(operator)) return actual != null && !actual.isBlank() && !"false".equals(actual);
         if ("IS_NOT_SET".equals(operator)) return actual == null || actual.isBlank() || "false".equals(actual);
         String expected = node.path("value").asText("");

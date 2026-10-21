@@ -72,6 +72,50 @@ class TaskEnhancementIntegrationTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
+    void advancedTagAndLogicMatchesEverySelectedTag() throws Exception {
+        Services service = services(createUser("tag-and"));
+        var inbox = service.tasks.listLists().get(0);
+        var first = service.tasks.createTag(new TaskModels.TaskTagCommand(null, "标签一", null, 0));
+        var second = service.tasks.createTag(new TaskModels.TaskTagCommand(null, "标签二", null, 1));
+        var both = service.tasks.create(new TaskModels.TaskCommand(inbox.publicId(), "同时含两个标签", null, "NONE",
+                null, null, false, "Asia/Shanghai", null, null, List.of(first.publicId(), second.publicId()), List.of()), "tag-and-both");
+        service.tasks.create(new TaskModels.TaskCommand(inbox.publicId(), "只含第一个标签", null, "NONE",
+                null, null, false, "Asia/Shanghai", null, null, List.of(first.publicId()), List.of()), "tag-and-first");
+        var rules = new ObjectMapper().readTree("{\"op\":\"AND\",\"children\":[" +
+                "{\"field\":\"tagId\",\"operator\":\"EQ\",\"value\":\"" + first.publicId() + "\"}," +
+                "{\"field\":\"tagId\",\"operator\":\"EQ\",\"value\":\"" + second.publicId() + "\"}]}");
+        var filter = service.enhancements.createFilter(new TaskEnhancementModels.SmartFilterCommand("标签且",
+                List.of(), List.of(), List.of(), "ALL", "ANY", "", true, false, 0, false, null, rules));
+        var result = service.enhancements.filterTasks(filter.publicId(), 0, 20);
+        assertEquals(1, result.total());
+        assertEquals(both.publicId(), result.items().get(0).publicId());
+    }
+
+    @Test
+    void advancedDateExclusionIncludesTasksWithoutDueDates() throws Exception {
+        Services service = services(createUser("date-not"));
+        var inbox = service.tasks.listLists().get(0);
+        var inside = service.tasks.create(new TaskModels.TaskCommand(inbox.publicId(), "区间内", null, "NONE",
+                null, "2026-10-22T12:00:00Z", false, "Asia/Shanghai", null), "date-not-inside");
+        var outside = service.tasks.create(new TaskModels.TaskCommand(inbox.publicId(), "区间外", null, "NONE",
+                null, "2026-10-28T12:00:00Z", false, "Asia/Shanghai", null), "date-not-outside");
+        var noDate = service.tasks.create(new TaskModels.TaskCommand(inbox.publicId(), "无日期", null, "NONE",
+                null, null, false, "Asia/Shanghai", null), "date-not-empty");
+        var rules = new ObjectMapper().readTree("{\"op\":\"OR\",\"children\":[" +
+                "{\"field\":\"hasDueDate\",\"operator\":\"EQ\",\"value\":false}," +
+                "{\"field\":\"dueAt\",\"operator\":\"LT\",\"value\":\"2026-10-21\"}," +
+                "{\"field\":\"dueAt\",\"operator\":\"GT\",\"value\":\"2026-10-25\"}]} ");
+        var filter = service.enhancements.createFilter(new TaskEnhancementModels.SmartFilterCommand("日期排除",
+                List.of(), List.of(), List.of(), "ALL", "ANY", "", true, false, 0, false, null, rules));
+
+        var result = service.enhancements.filterTasks(filter.publicId(), 0, 20);
+        assertEquals(2, result.total());
+        assertTrue(result.items().stream().anyMatch(task -> task.publicId().equals(outside.publicId())));
+        assertTrue(result.items().stream().anyMatch(task -> task.publicId().equals(noDate.publicId())));
+        assertFalse(result.items().stream().anyMatch(task -> task.publicId().equals(inside.publicId())));
+    }
+
+    @Test
     void persistsAndExecutesBasicFilterModesDateRangesTagsAndObjectTypes() {
         Services service = services(createUser("basic-filter"));
         var noteList = service.tasks.createList(new TaskModels.TaskListCommand("笔记", null, null, 1,
