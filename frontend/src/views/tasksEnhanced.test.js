@@ -267,6 +267,8 @@ test('task sidebar has a lunar mini calendar, mobile controls, and no fake aband
   assert.match(workspaceView, /function moveMiniMonth\(offset\)/)
   assert.match(workspaceView, /selected\.getFullYear\(\) === month\.getFullYear\(\) && selected\.getMonth\(\) === month\.getMonth\(\)[\s\S]*new Date\(month\.getFullYear\(\), month\.getMonth\(\), 1\)/)
   assert.match(workspaceView, /aria-expanded="miniCalendarExpanded"/)
+  assert.match(workspaceView, /const calendarDate = computed\(\(\) =>[\s\S]*dateKey\(value\) === match\[0\] \? value : null/)
+  assert.match(workspaceView, /route\.name === "tasks-today"\) \{\s*const dayStart = calendarDate\.value \? startOfDay\(calendarDate\.value\) : today;\s*values = values\.filter\(\(task\) => inRange\(task\.dueAt, dayStart, addDays\(dayStart, 1\)\)\);/)
   assert.match(workspaceView, /新增任务/)
   assert.match(workspaceView, /aria-pressed="sidebarEditing"/)
   assert.doesNotMatch(workspaceView, /需要后端增加 ABANDONED 状态/)

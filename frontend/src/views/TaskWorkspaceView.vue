@@ -1300,7 +1300,9 @@ const filterPriorityOptions = [
 ];
 const title = computed(() =>
   route.name === "tasks-today"
-    ? "今天"
+    ? calendarDate.value && dateKey(calendarDate.value) !== dateKey(new Date())
+      ? new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" }).format(calendarDate.value)
+      : "今天"
     : route.name === "tasks-tomorrow"
       ? "明天"
       : route.name === "tasks-next7"
@@ -1331,10 +1333,13 @@ const title = computed(() =>
                     }[route.params.shortcut] || "任务"
                   : "所有",
 );
-const selectedDate = computed(() => {
+const calendarDate = computed(() => {
   const match = String(route.query.date || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : startOfDay(new Date());
+  if (!match) return null;
+  const value = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return dateKey(value) === match[0] ? value : null;
 });
+const selectedDate = computed(() => calendarDate.value || startOfDay(new Date()));
 const weekDayLabels = ["一", "二", "三", "四", "五", "六", "日"];
 const miniMonthLabel = computed(() => new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long" }).format(miniCalendarMonth.value));
 const miniCalendarRange = computed(() => {
@@ -1446,8 +1451,10 @@ const visibleTasks = computed(() => {
     );
   else if (route.name === "tasks-inbox")
     values = values.filter((task) => task.listId === store.inbox?.publicId);
-  else if (route.name === "tasks-today")
-    values = values.filter((task) => inRange(task.dueAt, today, tomorrow));
+  else if (route.name === "tasks-today") {
+    const dayStart = calendarDate.value ? startOfDay(calendarDate.value) : today;
+    values = values.filter((task) => inRange(task.dueAt, dayStart, addDays(dayStart, 1)));
+  }
   else if (route.name === "tasks-tomorrow")
     values = values.filter((task) =>
       inRange(task.dueAt, tomorrow, addDays(tomorrow, 1)),
