@@ -261,11 +261,15 @@ test('task sidebar has a lunar mini calendar, mobile controls, and no fake aband
   assert.match(workspaceView, /clone-sidebar-system[\s\S]*clone-sidebar-organization[\s\S]*clone-sidebar-status[\s\S]*clone-mini-calendar/)
 })
 
-test('task sidebar organization exposes display modes, pin recovery, list-copy modes, and filter preview actions', () => {
+test('task sidebar organization persists account preferences and exposes pin, list-copy, and filter preview actions', () => {
   assert.match(workspaceView, /function displayOptionsFor\(/)
   for (const shortcut of ['this-week', 'next-week', 'no-date', 'no-tag']) assert.match(workspaceView, new RegExp(`key === "${shortcut}"`))
-  assert.match(workspaceView, /有内容时显示/)
   assert.match(workspaceView, /function setDisplayOption\(/)
+  assert.match(workspaceView, /apiGetTaskSidebarPreferences\(\)/)
+  assert.match(workspaceView, /apiUpdateTaskSidebarPreferences\(payload, sidebarPrefsRevision\.value\)/)
+  assert.match(workspaceView, /hiddenSystemViews: \[\.\.\.sidebarObjectPrefs\.hiddenSystem\]/)
+  assert.match(workspaceView, /sidebarPrefsRevision\.value = Number\(preferences\?\.revision \|\| 0\)/)
+  assert.match(workspaceView, /function isPinnedObject\(/)
   assert.match(workspaceView, /置顶区|clone-pinned-zone/)
   assert.match(workspaceView, /value="OPEN_ONLY"/)
   assert.match(workspaceView, /value="ALL_PRESERVE"/)
@@ -277,7 +281,7 @@ test('task sidebar organization exposes display modes, pin recovery, list-copy m
   assert.match(workspaceView, /sourceHasChildren \|\| !item\.parentId/)
   assert.match(workspaceView, /async function previewSavedFilter\(/)
   assert.match(workspaceView, /function setFilterPinned\(/)
-  assert.match(workspaceView, /loadSidebarObjectPrefs\(\)/)
+  assert.match(workspaceView, /await loadSidebarPreferences\(\)/)
   assert.match(workspaceView, /clearTimeout\(listHoverTimer\)/)
 })
 
@@ -334,8 +338,13 @@ test('first-time mobile task navigation starts collapsed and uses a swipeable dr
 test('task sidebar groups have durable appearance, flat list alignment, and a fixed footer calendar', () => {
   assert.match(workspaceView, /group: \{ color: "#64748b", icon: "📁" \}/)
   assert.match(workspaceView, /\['list','tag','group'\]\.includes\(organizationDialog\.kind\)/)
-  assert.match(workspaceView, /\['list','group'\]\.includes\(organizationDialog\.kind\)/)
-  assert.match(workspaceView, /updateListGroup\(item, \{ name, color: organizationDialog\.color, icon: organizationDialog\.icon/)
+  assert.match(workspaceView, /viewType: organizationDialog\.viewType, objectType: organizationDialog\.objectType/)
+  assert.match(workspaceView, /icon: organizationDialog\.icon \|\| null/)
+  assert.match(workspaceView, /pinned: organizationDialog\.pinned/)
+  assert.match(workspaceView, /updateListGroup\(item, \{ name, color: organizationDialog\.color, icon: organizationDialog\.icon \|\| "", sortOrder: item\.sortOrder, pinned: organizationDialog\.pinned \}\)/)
+  assert.match(workspaceView, /pinnedFilters = computed\(\(\) => sortedFilters\.value\.filter\(item => !isHiddenObject\("filter", item\) && isPinnedObject\("filter", item\)\)\)/)
+  assert.match(workspaceView, /<TaskFilterRuleEditor v-model="organizationDialog\.filter\.rules"/)
+  assert.match(workspaceView, /serializeFilterRules\(source\.rules\)/)
   assert.match(workspaceView, /flex: 1 1 0; min-height: 0; align-content: start;[\s\S]*overflow-y: auto/)
   assert.match(workspaceView, /\.clone-group-lists \{ padding-left: 0; \}/)
   assert.match(workspaceView, /\.clone-sidebar-system \{ max-height: min\(28vh, 230px\); overflow-y: auto; \}/)
