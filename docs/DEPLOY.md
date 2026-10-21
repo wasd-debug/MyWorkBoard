@@ -1,5 +1,13 @@
 # 部署说明
 
+## 2026-10-21 任务侧栏与筛选器增量发布
+
+- 应用提交 `e8d0131` 已推送至远程 `main`。提交包含侧栏图标、文件夹/标签交互、筛选器编辑与预览、高级筛选条件、系统集合菜单及迷你日历样式调整，并更新 Flyway 集成测试的最新版本断言。源码归档位于 `/home/ubuntu/salary-tracker/releases/e8d0131`，上传归档 SHA-256 为 `98066ed2862411fab9b76e2b98562c3ad5234b6a0bfc24c6b55b186369f368c6`。
+- 发布前数据库逻辑备份 `/home/ubuntu/salary-tracker/backups/salary-before-e8d0131-20261021-2108.sql.gz` 为 4.2 MB，`gzip -t` 通过；旧应用镜像保留为 `salary-backend:pre-e8d0131`、`salary-frontend:pre-e8d0131`，其镜像 ID 分别为 `sha256:0f6c259a3ce984fc178512f99d9efbeacbaf7e672a9b3fe8ea2f441e4924589c` 与 `sha256:d8b8624fa85ba97386ea531928c3cebe920af1fdb3e3014db101542b51d5f6a3`；旧 Compose 配置保留为 `docker-compose.prod.yml.bak.e8d0131`。
+- 从精确归档构建并部署 `linux/amd64` 镜像 `salary-backend:e8d0131`（镜像 ID `sha256:aa484eb1f6ecd704d44354a80bb05d5f76f64e6f78fba4b708856ba0f2fb1711`）和 `salary-frontend:e8d0131`（镜像 ID `sha256:24bb915e29a8224c328706b8d27d8226bf37c36c67d432b34832c1a5c8f22848`）。生产 Compose 固定标签与实际运行容器一致；仅重建 backend/frontend，MySQL 容器 ID `eab10f4bfbb0d0821a84e14d3e575ff153cdd3e7ea1951ea96b7713ffa1d008d` 保持不变。
+- Flyway 已成功迁移至 V45，无失败迁移；核心记录检查为 `app_user=3`、`work_record=59`、`ledger_book=5`、`ledger_transaction=16633`。服务器本机 `/api/health` 返回 `{"ok":true}`，首页、`/tasks/all`、`/tasks/today` 均返回 HTTP 200。
+- 前端 `npm test`、`npm run build` 通过；后端全量测试首次运行有 2 个迁移版本断言仍写 V38，更新到 V45 后 `FlywayMigrationIntegrationTest` 通过，首次运行其余 105 项通过。迷你日历视觉、移动端布局及暗色主题仍需按《前端手工检查清单》进行浏览器人工验收；服务器 HTTP 检查不作为视觉验收结论。
+
 ## 2026-10-20 任务左栏后端契约发布
 
 - 应用提交 `1b7d5a3`（包含本地原先未推送的 `5e53553`、`cf18edb`、`515ec68` 和本轮实现）已推送至远程 `main`。精确提交归档位于 `/home/ubuntu/salary-tracker/releases/1b7d5a3/source.tar.gz`，SHA-256 为 `08a17173589fed7aff612d1ee903afbc50bd43fb03aaa017b132f1b12c98538c`。
