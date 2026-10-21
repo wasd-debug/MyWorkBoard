@@ -293,7 +293,7 @@ test('task sidebar section controls match the compact visibility menus', () => {
   assert.doesNotMatch(workspaceView.match(/<header @click="toggleSection\('lists'\)">([\s\S]*?)<\/header>/)?.[1] || '', /显示选项|管理清单显示/)
   assert.match(workspaceView, /<header @click="toggleSection\('filters'\)">[\s\S]*?新建筛选器[\s\S]*?筛选器显示选项[\s\S]*?<\/header>/)
   assert.match(workspaceView, /<header @click="toggleSection\('tags'\)">[\s\S]*?新建标签[\s\S]*?标签显示选项[\s\S]*?<\/header>/)
-  assert.match(workspaceView, /function sectionDisplayOptions\(section\)[\s\S]*if \(section === "tags"\) options\.push\(\{ value: "WHEN_HAS_CONTENT", label: "有内容时显示" \}\)/)
+  assert.match(workspaceView, /function sectionDisplayOptions\(section\)[\s\S]*value: "WHEN_HAS_CONTENT", label: "显示（非空标签）"/)
   assert.match(workspaceView, /function isSectionDisplayed\(section\)[\s\S]*store\.tags\.some\(tag => tagOpenCount\(tag\.publicId\) > 0\)/)
   assert.match(workspaceView, /\.clone-collapse-panel\.is-collapsed \{ grid-template-rows: 0fr; opacity: 0; pointer-events: none; visibility: hidden; transition: grid-template-rows 0\.22s/)
   assert.doesNotMatch(workspaceView, /v-show="isSectionDisplayed\('(filters|tags)'\)"/)
@@ -303,6 +303,26 @@ test('task sidebar section controls match the compact visibility menus', () => {
   assert.match(workspaceView, /@click\.stop="createFilter"/)
   assert.match(workspaceView, /@click\.stop="createTag"/)
   assert.match(workspaceView, /@media \(max-width: 900px\)[\s\S]*\.clone-sidebar-heading-actions \{ opacity: 1; visibility: visible; \}/)
+})
+
+test('task sidebar tags and all organization objects expose the captured menus and drag targets', () => {
+  const tagSection = workspaceView.match(/<header @click="toggleSection\('tags'\)">([\s\S]*?)<\/header>/)?.[1] || ''
+  assert.match(tagSection, /标签显示选项[\s\S]*<Ellipsis[\s\S]*新建标签[\s\S]*<Plus/)
+  assert.match(workspaceView, /value: "WHEN_HAS_CONTENT", label: "显示（非空标签）"[\s\S]*value: "SHOW", label: "显示"[\s\S]*value: "HIDE", label: "隐藏"/)
+  assert.match(workspaceView, /organizationMenu\.kind === 'tag'[\s\S]*编辑[\s\S]*置顶[\s\S]*添加子标签[\s\S]*合并标签到…[\s\S]*打开新窗口[\s\S]*删除/)
+  assert.match(workspaceView, /clone-tag-name-row[\s\S]*选择标签图标[\s\S]*标签名称/)
+  assert.match(workspaceView, /clone-list-color-row[\s\S]*organizationDialog\.kind === 'tag'[\s\S]*TaskColorPicker v-model="organizationDialog\.color" inline/)
+  assert.match(workspaceView, /organizationDialog\.kind === 'tag'[\s\S]*父标签<select v-model="organizationDialog\.parentId"[\s\S]*value="">无<\/option>/)
+  assert.match(workspaceView, /parentId: item\?\.parentId \|\| overrides\.parentId \|\| defaults\.parentId/)
+  assert.match(workspaceView, /createChildTag\(\) \{ const tag = organizationMenu\.item; openOrganizationDialog\("tag", null, \{ parentId: tag\.publicId \}\); \}/)
+  assert.match(workspaceView, /你可以将标签“\{\{ tagMerge\.source\?\.name \}\}”下的任务合并到另一个标签。合并后，标签“\{\{ tagMerge\.source\?\.name \}\}”将被删除/)
+  assert.match(workspaceView, /class="clone-tag-color-dot"[\s\S]*tagOpenCount\(tag\.publicId\)/)
+  assert.match(workspaceView, /@dragstart="startOrganizationDrag\('list', list\)"[\s\S]*@dragover\.prevent="handleListDragOver\(list\)"[\s\S]*@drop\.prevent\.stop="dropListOnList\(list\)"/)
+  assert.match(workspaceView, /function dropListOnList\(target\)[\s\S]*openOrganizationDialog\("group", null, \{ groupListIds:/)
+  assert.match(workspaceView, /pinnedListGroups\.length[\s\S]*draggable="true" @dragstart="startOrganizationDrag\('group', group\)"/)
+  assert.match(workspaceView, /pinnedLists\.length[\s\S]*draggable="true" @dragstart="startOrganizationDrag\('list', list\)"/)
+  assert.match(workspaceView, /pinnedFilters\.length[\s\S]*draggable="true" @dragstart="startOrganizationDrag\('filter', filter\)"/)
+  assert.match(workspaceView, /pinnedTags\.length[\s\S]*draggable="true" @dragstart="startOrganizationDrag\('tag', tag\)"/)
 })
 
 test('task navigation, collapsible groups and sortable rows expose motion and reduced-motion behavior', () => {
