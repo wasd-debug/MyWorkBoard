@@ -125,22 +125,22 @@
         <div v-if="!isHiddenObject('system', trashView) && !isPinnedObject('system', trashView)" class="clone-sidebar-object-row" @contextmenu.prevent="openOrganizationMenu('system', trashView, $event)"><RouterLink to="/tasks/trash" class="clone-nav-item" :class="{ active: isActive('/tasks/trash') }"><Trash2 :size="15" /><span>垃圾桶</span><small>{{ trashedTaskCount }}</small></RouterLink><button class="clone-item-menu-trigger" type="button" aria-label="垃圾桶的更多操作" @click.stop="openOrganizationMenu('system', trashView, $event)"><Ellipsis :size="14" /></button></div>
       </section>
       </div>
-      <section class="clone-sidebar-block clone-mini-calendar" aria-label="迷你日历">
-        <header class="clone-mini-calendar-head">
+      <section class="clone-sidebar-block clone-mini-calendar" :class="{ 'is-expanded': miniCalendarExpanded }" aria-label="迷你日历">
+        <button type="button" class="clone-mini-calendar-toggle" :aria-label="miniCalendarExpanded ? '收起月历' : '展开月历'" :aria-expanded="miniCalendarExpanded" :title="miniCalendarExpanded ? '收起月历' : '展开月历'" @click="miniCalendarExpanded = !miniCalendarExpanded"><ChevronDown :size="14" /></button>
+        <header v-if="miniCalendarExpanded" class="clone-mini-calendar-head">
           <strong>{{ miniMonthLabel }}</strong>
           <div>
             <button type="button" aria-label="上个月" title="上个月" @click="moveMiniMonth(-1)"><ChevronLeft :size="15" /></button>
-            <button type="button" aria-label="今天" title="回到今天" @click="goMiniCalendarToday"><CalendarDays :size="15" /></button>
+            <button type="button" aria-label="今天" title="回到今天" @click="goMiniCalendarToday"><Circle :size="13" /></button>
             <button type="button" aria-label="下个月" title="下个月" @click="moveMiniMonth(1)"><ChevronRight :size="15" /></button>
-            <button type="button" :aria-label="miniCalendarExpanded ? '收起月历' : '展开月历'" :aria-expanded="miniCalendarExpanded" :title="miniCalendarExpanded ? '收起月历' : '展开月历'" @click="miniCalendarExpanded = !miniCalendarExpanded"><ChevronDown :size="15" :class="{ rotated: !miniCalendarExpanded }" /></button>
           </div>
         </header>
-        <div class="clone-mini-calendar-grid" :class="{ expanded: miniCalendarExpanded }">
-          <span v-for="label in weekDayLabels" :key="label">{{ label }}</span>
-          <RouterLink v-for="cell in visibleMiniCalendarDays" :key="cell.key" :to="{ path: '/tasks/today', query: { date: cell.key } }" :class="{ 'other-month': cell.otherMonth, today: cell.today, selected: cell.selected, 'has-task': cell.hasTask }" :aria-label="miniCalendarAriaLabel(cell)">
-            <span>{{ cell.date.getDate() }}</span><small>{{ cell.lunar }}</small><i v-if="cell.hasTask" aria-hidden="true"></i>
+        <TransitionGroup name="clone-mini-calendar-day" tag="div" class="clone-mini-calendar-grid" :class="{ expanded: miniCalendarExpanded }">
+          <span v-for="label in weekDayLabels" :key="`weekday-${label}`">{{ label }}</span>
+          <RouterLink v-for="cell in visibleMiniCalendarDays" :key="cell.key" :to="{ path: '/tasks/today', query: { date: cell.key } }" :class="{ 'other-month': cell.otherMonth, today: cell.today, selected: cell.selected, 'has-task': cell.hasTask, 'holiday-off': cell.holiday?.off, 'holiday-work': cell.holiday && !cell.holiday.off }" :aria-label="miniCalendarAriaLabel(cell)">
+            <em v-if="miniCalendarExpanded && cell.holiday" :title="cell.holiday.name">{{ cell.holiday.off ? '休' : '班' }}</em><span>{{ cell.date.getDate() }}</span><small>{{ cell.lunar }}</small><i v-if="cell.hasTask" aria-hidden="true"></i>
           </RouterLink>
-        </div>
+        </TransitionGroup>
         <p v-if="miniCalendarError" class="clone-mini-calendar-error" role="status">{{ miniCalendarError }}</p>
       </section>
     </aside>
@@ -894,6 +894,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Circle,
   CalendarDays,
   Columns3,
   ClipboardList,
@@ -995,7 +996,7 @@ const isMobileSidebar = ref(typeof window !== "undefined" && window.matchMedia("
 let sidebarTouchStart = null;
 const miniCalendarExpanded = ref(false);
 const miniCalendarMonth = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-const miniCalendarResponse = ref({ tasks: [], lunar: [] });
+const miniCalendarResponse = ref({ tasks: [], lunar: [], holidays: [] });
 const miniCalendarError = ref("");
 let miniCalendarRequest = 0;
 const sidebarPreferenceScope = ref("");
@@ -1348,13 +1349,14 @@ const miniCalendarDays = computed(() => {
   const selected = dateKey(selectedDate.value);
   const currentMonth = miniCalendarMonth.value.getMonth();
   const lunarByDate = new Map((miniCalendarResponse.value.lunar || []).map(item => [item.date, item]));
+  const holidayByDate = new Map((miniCalendarResponse.value.holidays || []).map(item => [item.date, item]));
   const taskById = new Map([...store.tasks, ...(miniCalendarResponse.value.tasks || [])].map(task => [task.publicId, task]));
   const taskDates = new Set([...taskById.values()].filter(task => !task.deleted && task.status !== "COMPLETED").flatMap(task => [task.startAt, task.dueAt].filter(Boolean).map(value => dateKey(new Date(value)))));
   return Array.from({ length: 42 }, (_, index) => {
     const date = addDays(miniCalendarRange.value.from, index);
     const key = dateKey(date);
     const lunar = lunarByDate.get(key);
-    return { date, key, otherMonth: date.getMonth() !== currentMonth, today: key === today, selected: key === selected, hasTask: taskDates.has(key), lunar: lunar ? (lunar.festival || lunar.solarTerm || lunarDayLabel(lunar.lunarDate) || "") : "" };
+    return { date, key, otherMonth: date.getMonth() !== currentMonth, today: key === today, selected: key === selected, hasTask: taskDates.has(key), holiday: holidayByDate.get(key) || null, lunar: lunar ? (lunar.festival || lunar.solarTerm || lunarDayLabel(lunar.lunarDate) || "") : "" };
   });
 });
 function lunarDayLabel(value) {
@@ -1373,7 +1375,7 @@ const visibleMiniCalendarDays = computed(() => miniCalendarExpanded.value ? mini
   const start = addDays(anchor, -weekday);
   return cell.key >= dateKey(start) && cell.key < dateKey(addDays(start, 7));
 }));
-function miniCalendarAriaLabel(cell) { return `${cell.date.getMonth() + 1}月${cell.date.getDate()}日${cell.lunar ? `，${cell.lunar}` : ""}${cell.hasTask ? "，有待办任务" : ""}`; }
+function miniCalendarAriaLabel(cell) { return `${cell.date.getMonth() + 1}月${cell.date.getDate()}日${cell.lunar ? `，${cell.lunar}` : ""}${cell.holiday ? `，${cell.holiday.name}${cell.holiday.off ? "休息" : "调休上班"}` : ""}${cell.hasTask ? "，有待办任务" : ""}`; }
 function moveMiniMonth(offset) { miniCalendarMonth.value = new Date(miniCalendarMonth.value.getFullYear(), miniCalendarMonth.value.getMonth() + offset, 1); }
 function goMiniCalendarToday() { const today = new Date(); miniCalendarMonth.value = new Date(today.getFullYear(), today.getMonth(), 1); router.push({ path: "/tasks/today", query: { date: dateKey(today) } }); }
 async function loadMiniCalendar() {
@@ -1381,11 +1383,11 @@ async function loadMiniCalendar() {
   miniCalendarError.value = "";
   try {
     const { from, to } = miniCalendarRange.value;
-    const result = await apiGetTaskCalendar({ from: dateKey(from), to: dateKey(to), layers: "", lunar: 1 });
-    if (request === miniCalendarRequest) miniCalendarResponse.value = result || { tasks: [], lunar: [] };
+    const result = await apiGetTaskCalendar({ from: dateKey(from), to: dateKey(to), layers: "holiday", lunar: 1 });
+    if (request === miniCalendarRequest) miniCalendarResponse.value = result || { tasks: [], lunar: [], holidays: [] };
   } catch (error) {
     if (request === miniCalendarRequest) {
-      miniCalendarResponse.value = { tasks: [], lunar: [] };
+      miniCalendarResponse.value = { tasks: [], lunar: [], holidays: [] };
       miniCalendarError.value = error?.response?.data?.detail || "月历信息暂不可用";
     }
   }
@@ -3541,22 +3543,39 @@ const SidebarSection = {
   color: var(--muted);
   font-size: 12px;
 }
-.clone-mini-calendar { display: grid; flex: none; gap: 6px; padding: 9px 4px 0; border-top: 1px solid var(--line); }
+.clone-mini-calendar { position: relative; display: grid; flex: none; gap: 4px; padding: 12px 6px 0; border-top: 1px solid var(--line); }
+.clone-mini-calendar-toggle { position: absolute; z-index: 1; top: -1px; left: 50%; display: grid; width: 42px; height: 16px; place-items: center; transform: translateX(-50%); border: 0; border-radius: 0 0 7px 7px; background: var(--line); color: var(--muted); opacity: 0; cursor: pointer; transition: opacity 120ms ease, background-color 120ms ease; }
+.clone-mini-calendar:hover .clone-mini-calendar-toggle,
+.clone-mini-calendar:focus-within .clone-mini-calendar-toggle,
+.clone-mini-calendar-toggle:focus-visible { opacity: 1; }
+.clone-mini-calendar.is-expanded .clone-mini-calendar-toggle svg { transform: rotate(180deg); }
+.clone-mini-calendar-toggle:hover { background: var(--line2); color: var(--ink); }
 .clone-mini-calendar-head { display: flex; min-height: 28px; align-items: center; justify-content: space-between; gap: 4px; padding: 0 5px; }
-.clone-mini-calendar-head strong { color: var(--ink2); font-size: 12px; font-weight: 650; }
+.clone-mini-calendar-head strong { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--ink2); font-size: 14px; font-weight: 650; text-overflow: clip; white-space: nowrap; }
 .clone-mini-calendar-head > div { display: flex; align-items: center; gap: 1px; }
-.clone-mini-calendar-head button { display: grid; width: 25px; height: 25px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-mini-calendar-head button { display: grid; flex: 0 0 23px; width: 23px; height: 25px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-mini-calendar-head button:hover { background: var(--paper); color: var(--ink); }
 .clone-mini-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; text-align: center; }
-.clone-mini-calendar-grid > span { padding: 2px 0 4px; color: var(--muted); font-size: 9px; }
-.clone-mini-calendar-grid > a { position: relative; display: grid; min-width: 0; min-height: 34px; align-content: center; justify-items: center; gap: 0; border-radius: 6px; color: var(--ink2); text-decoration: none; }
-.clone-mini-calendar-grid > a > span { font-size: 11px; line-height: 14px; font-variant-numeric: tabular-nums; }
-.clone-mini-calendar-grid > a > small { max-width: 100%; overflow: hidden; color: var(--ink2); font-size: 8px; line-height: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.clone-mini-calendar-grid > span { padding: 2px 0 4px; color: var(--muted); font-size: 10px; font-weight: 600; }
+.clone-mini-calendar-grid > a { position: relative; display: grid; min-width: 0; min-height: 54px; align-content: center; justify-items: center; gap: 0; border-radius: 6px; color: var(--ink2); text-decoration: none; }
+.clone-mini-calendar-grid.expanded > a { min-height: 56px; }
+.clone-mini-calendar-grid > a > span { display: grid; min-width: 28px; height: 28px; padding: 0 4px; place-items: center; border-radius: 50%; font-size: 15px; line-height: 18px; font-variant-numeric: tabular-nums; }
+.clone-mini-calendar-grid > a > small { max-width: 100%; overflow: hidden; color: var(--ink2); font-size: 10px; line-height: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .clone-mini-calendar-grid > a.other-month { color: var(--muted); opacity: .5; }
-.clone-mini-calendar-grid > a.today > span { display: grid; width: 21px; height: 21px; place-items: center; border-radius: 50%; background: var(--accent); color: white; }
-.clone-mini-calendar-grid > a.selected:not(.today) { background: color-mix(in srgb, var(--accent) 12%, var(--card)); color: var(--accent); }
+.clone-mini-calendar-grid > a.today:not(.selected) > span { background: var(--accent); color: white; }
+.clone-mini-calendar-grid > a.selected { color: #4d78db; }
+.clone-mini-calendar-grid > a.selected > span { width: 30px; height: 30px; background: color-mix(in srgb, #4d78db 16%, var(--card)); color: #4d78db; }
 .clone-mini-calendar-grid > a:hover { background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
-.clone-mini-calendar-grid > a > i { position: absolute; bottom: 1px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.clone-mini-calendar-grid > a > i { position: absolute; bottom: 3px; width: 6px; height: 6px; border-radius: 50%; background: #4d78db; }
+.clone-mini-calendar-grid > a > em { position: absolute; top: 0; right: 1px; display: grid; width: 16px; height: 16px; place-items: center; border-radius: 50%; color: #fff; font-size: 9px; font-style: normal; line-height: 1; }
+.clone-mini-calendar-grid > a.holiday-off > em { background: #218c70; }
+.clone-mini-calendar-grid > a.holiday-work > em { background: #c94d57; }
+.clone-mini-calendar-day-move { transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1); }
+.clone-mini-calendar-day-enter-active,
+.clone-mini-calendar-day-leave-active { transition: opacity 120ms ease; }
+.clone-mini-calendar-day-enter-from,
+.clone-mini-calendar-day-leave-to { opacity: 0; }
+.clone-mini-calendar-day-leave-active { position: absolute; }
 .clone-mini-calendar-error { margin: 0; color: var(--muted); font-size: 10px; }
 .clone-sidebar-backdrop { display: none; }
 .clone-task-sidebar.is-editing .clone-item-menu-trigger { opacity: 1; }
@@ -4552,7 +4571,8 @@ const SidebarSection = {
   .clone-task-sidebar .clone-item-menu-trigger { opacity: 0; }
   .clone-task-sidebar.is-editing .clone-item-menu-trigger,
   .clone-task-sidebar .clone-item-menu-trigger:focus-visible { opacity: 1; }
-  .clone-mini-calendar-grid > a { min-height: 38px; }
+  .clone-mini-calendar-grid > a { min-height: 52px; }
+  .clone-mini-calendar-grid.expanded > a { min-height: 54px; }
   .clone-sidebar-organization { gap: 7px; }
   .clone-sidebar-heading-actions { opacity: 1; visibility: visible; }
   .clone-sidebar-section > header .clone-section-chevron { opacity: 1; }

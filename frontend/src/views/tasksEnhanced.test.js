@@ -261,8 +261,9 @@ test('task navigation collapses inline on narrow screens and persists by account
 })
 
 test('task sidebar has a lunar mini calendar, mobile controls, and no fake abandoned-task action', () => {
-  assert.match(workspaceView, /apiGetTaskCalendar\(\{ from: dateKey\(from\), to: dateKey\(to\), layers: "", lunar: 1 \}\)/)
+  assert.match(workspaceView, /apiGetTaskCalendar\(\{ from: dateKey\(from\), to: dateKey\(to\), layers: "holiday", lunar: 1 \}\)/)
   assert.match(workspaceView, /miniCalendarResponse\.value\.lunar/)
+  assert.match(workspaceView, /miniCalendarResponse\.value\.holidays/)
   assert.match(workspaceView, /\[\.\.\.store\.tasks, \.\.\.\(miniCalendarResponse\.value\.tasks \|\| \[\]\)\]/)
   assert.match(workspaceView, /function moveMiniMonth\(offset\)/)
   assert.match(workspaceView, /selected\.getFullYear\(\) === month\.getFullYear\(\) && selected\.getMonth\(\) === month\.getMonth\(\)[\s\S]*new Date\(month\.getFullYear\(\), month\.getMonth\(\), 1\)/)
@@ -271,6 +272,16 @@ test('task sidebar has a lunar mini calendar, mobile controls, and no fake aband
   assert.match(workspaceView, /aria-pressed="sidebarEditing"/)
   assert.doesNotMatch(workspaceView, /需要后端增加 ABANDONED 状态/)
   assert.match(workspaceView, /clone-sidebar-system[\s\S]*clone-sidebar-organization[\s\S]*clone-sidebar-status[\s\S]*clone-mini-calendar/)
+})
+
+test('mini calendar defaults to the selected week and expands into a marked month grid', () => {
+  assert.match(workspaceView, /class="clone-mini-calendar-toggle"[\s\S]*miniCalendarExpanded \? '收起月历' : '展开月历'/)
+  assert.match(workspaceView, /<header v-if="miniCalendarExpanded" class="clone-mini-calendar-head">/)
+  assert.match(workspaceView, /TransitionGroup name="clone-mini-calendar-day"/)
+  assert.match(workspaceView, /miniCalendarExpanded && cell\.holiday[\s\S]*cell\.holiday\.off \? '休' : '班'/)
+  assert.match(workspaceView, /\.clone-mini-calendar-grid > a\.selected > span/)
+  assert.match(workspaceView, /\.clone-mini-calendar-grid > a > i/)
+  assert.match(workspaceView, /\.clone-mini-calendar-grid\.expanded > a \{ min-height:/)
 })
 
 test('task sidebar organization persists account preferences and exposes pin, list-copy, and filter preview actions', async () => {
