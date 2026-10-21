@@ -209,10 +209,9 @@ test('completed, abandoned, and trash system views expose only their supported o
   assert.match(statusBlock, /已放弃的更多操作[\s\S]*openOrganizationMenu\('system', abandonedView/)
   assert.match(statusBlock, /垃圾桶的更多操作[\s\S]*openOrganizationMenu\('system', trashView/)
   assert.doesNotMatch(statusBlock, /draggable=|@dragstart|@drop/)
-  assert.match(workspaceView, /\['completed', 'abandoned', 'trash'\]\.includes\(organizationMenu\.item\.key\)[\s\S]*openOrganizationInWindow\('system'\)/)
+  assert.doesNotMatch(workspaceView, /打开新窗口|openOrganizationInWindow|window\.open/)
   assert.match(workspaceView, /item\?\.key === "abandoned"[\s\S]*value: "WHEN_HAS_CONTENT"/)
   assert.match(workspaceView, /!\["summary", "completed", "trash"\]\.includes\(item\?\.key\)/)
-  assert.match(workspaceView, /if \(kind === "system"\) return item\.to/)
 })
 
 test('full task page rebuild exposes persistent list grouping and sorting controls', () => {
@@ -305,7 +304,7 @@ test('task sidebar organization persists account preferences and exposes pin, li
   assert.match(client, /tasks\.mergeTaskTag\(/)
   assert.match(client, /taskTagMergeCommand: \{ targetTagId, targetRevision \}/)
   assert.match(workspaceView, /sourceHasChildren \|\| !item\.parentId/)
-  assert.match(workspaceView, /organizationMenu\.kind === 'filter'[\s\S]*编辑[\s\S]*置顶[\s\S]*复制[\s\S]*打开新窗口[\s\S]*删除/)
+  assert.match(workspaceView, /organizationMenu\.kind === 'filter'[\s\S]*编辑[\s\S]*置顶[\s\S]*复制[\s\S]*删除/)
   assert.match(workspaceView, /async function duplicateFilter\([\s\S]*name: `\$\{item\.name\} 副本`/)
   assert.match(workspaceView, /function setFilterPinned\(/)
   assert.match(workspaceView, /const filtersLoad = loadFilters\(\);[\s\S]*const sidebarPreferencesLoad = loadSidebarPreferences\(filtersLoad\);[\s\S]*await store\.init\(\)/)
@@ -333,7 +332,7 @@ test('task sidebar tags and all organization objects expose the captured menus a
   const tagSection = workspaceView.match(/<header @click="toggleSection\('tags'\)">([\s\S]*?)<\/header>/)?.[1] || ''
   assert.match(tagSection, /标签显示选项[\s\S]*<Ellipsis[\s\S]*新建标签[\s\S]*<Plus/)
   assert.match(workspaceView, /value: "WHEN_HAS_CONTENT", label: "显示（非空标签）"[\s\S]*value: "SHOW", label: "显示"[\s\S]*value: "HIDE", label: "隐藏"/)
-  assert.match(workspaceView, /organizationMenu\.kind === 'tag'[\s\S]*编辑[\s\S]*置顶[\s\S]*添加子标签[\s\S]*合并标签到…[\s\S]*打开新窗口[\s\S]*删除/)
+  assert.match(workspaceView, /organizationMenu\.kind === 'tag'[\s\S]*编辑[\s\S]*置顶[\s\S]*添加子标签[\s\S]*合并标签到…[\s\S]*删除/)
   assert.match(workspaceView, /clone-tag-name-row[\s\S]*选择标签图标[\s\S]*标签名称/)
   assert.match(workspaceView, /clone-list-color-row[\s\S]*organizationDialog\.kind === 'tag'[\s\S]*TaskColorPicker v-model="organizationDialog\.color" inline/)
   assert.match(workspaceView, /organizationDialog\.kind === 'tag'[\s\S]*父标签<select v-model="organizationDialog\.parentId"[\s\S]*value="">无<\/option>/)
