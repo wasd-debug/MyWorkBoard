@@ -203,6 +203,18 @@ test('replacement task sidebar matches the captured navigation and shortcut filt
   assert.match(workspaceView, /shortcut === "archived"[\s\S]*archivedIds\.has/)
 })
 
+test('completed, abandoned, and trash system views expose only their supported organization actions', () => {
+  const statusBlock = workspaceView.match(/<section class="clone-sidebar-block clone-sidebar-status"[\s\S]*?<\/section>/)?.[0] || ''
+  assert.match(statusBlock, /已完成的更多操作[\s\S]*openOrganizationMenu\('system', completedView/)
+  assert.match(statusBlock, /已放弃的更多操作[\s\S]*openOrganizationMenu\('system', abandonedView/)
+  assert.match(statusBlock, /垃圾桶的更多操作[\s\S]*openOrganizationMenu\('system', trashView/)
+  assert.doesNotMatch(statusBlock, /draggable=|@dragstart|@drop/)
+  assert.match(workspaceView, /\['completed', 'abandoned', 'trash'\]\.includes\(organizationMenu\.item\.key\)[\s\S]*openOrganizationInWindow\('system'\)/)
+  assert.match(workspaceView, /item\?\.key === "abandoned"[\s\S]*value: "WHEN_HAS_CONTENT"/)
+  assert.match(workspaceView, /!\["summary", "completed", "trash"\]\.includes\(item\?\.key\)/)
+  assert.match(workspaceView, /if \(kind === "system"\) return item\.to/)
+})
+
 test('full task page rebuild exposes persistent list grouping and sorting controls', () => {
   for (const token of ['分组', '排序', '顺序', '恢复默认时间顺序', '隐藏已完成', '显示详细', '显示检查事项']) {
     assert.ok(workspaceView.includes(token), `missing list view control ${token}`)
@@ -422,7 +434,8 @@ test('task sidebar uses one scroll region and keeps the mini calendar fixed at t
   assert.match(workspaceView, /\.clone-sidebar-system \{ max-height: none; overflow: visible; \}/)
   assert.match(workspaceView, /\.clone-sidebar-status,[\s\S]*\.clone-mini-calendar \{ flex: none; \}/)
   assert.match(workspaceView, /conditionalSystemViews/)
-  assert.match(workspaceView, /item\?\.key !== "summary"/)
+  assert.match(workspaceView, /item\?\.key === "abandoned"[\s\S]*value: "WHEN_HAS_CONTENT"/)
+  assert.match(workspaceView, /!\["summary", "completed", "trash"\]\.includes\(item\?\.key\)/)
   assert.match(workspaceView, /organizationMenu\.item\.key === 'inbox'[\s\S]*编辑/)
   assert.match(workspaceView, /label: "收集箱", to: "\/tasks\/inbox"/)
   assert.match(workspaceView, /sidebarLists = computed\(\(\) => activeLists\.value\.filter\(item => item\.systemKey !== "INBOX"\)\)/)
