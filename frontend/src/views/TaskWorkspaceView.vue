@@ -1,7 +1,7 @@
 <template>
   <section
     class="clone-task-shell"
-    :style="{ '--clone-detail-width': `${detailWidth}px` }"
+    :style="{ '--clone-detail-width': `${detailWidth}px`, '--clone-sidebar-width': `${sidebarWidth}px` }"
     :class="{
       'sidebar-hidden': sidebarHidden,
       'detail-open': Boolean(selectedTask),
@@ -143,6 +143,7 @@
         </div>
         <p v-if="miniCalendarError" class="clone-mini-calendar-error" role="status">{{ miniCalendarError }}</p>
       </section>
+      <button v-if="!isMobileSidebar && !sidebarHidden" class="clone-sidebar-resize" type="button" role="separator" aria-label="调整任务侧栏宽度" aria-orientation="vertical" :aria-valuemin="184" :aria-valuemax="420" :aria-valuenow="sidebarWidth" @pointerdown="startSidebarResize" @keydown="resizeSidebarByKey"></button>
     </aside>
 
     <main class="clone-task-main">
@@ -990,9 +991,12 @@ const quickSaving = ref(false);
 const checklistDragIndex = ref(null);
 const checklistDropTarget = ref(null);
 const sidebarHidden = ref(false);
+const sidebarWidth = ref(248);
 const sidebarEditing = ref(false);
 const isMobileSidebar = ref(typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches);
 let sidebarTouchStart = null;
+let sidebarResizeState = null;
+let sidebarPreviousUserSelect = "";
 const miniCalendarExpanded = ref(false);
 const miniCalendarMonth = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 const miniCalendarResponse = ref({ tasks: [], lunar: [], holidays: [] });
@@ -1557,6 +1561,57 @@ function isActive(to) {
 function toggleSidebar() {
   sidebarHidden.value = !sidebarHidden.value;
 }
+function sidebarWidthKey() { return `task_sidebar_width:${store.accountScope || "anonymous"}`; }
+function loadSidebarWidth() {
+  sidebarWidth.value = 248;
+  try {
+    const value = Number(localStorage.getItem(sidebarWidthKey()));
+    if (Number.isFinite(value) && value >= 184 && value <= 420) sidebarWidth.value = value;
+  } catch {}
+}
+function persistSidebarWidth() {
+  try { localStorage.setItem(sidebarWidthKey(), String(sidebarWidth.value)); } catch {}
+}
+function startSidebarResize(event) {
+  if (isMobileSidebar.value || event.button !== 0) return;
+  sidebarResizeState = { startX: event.clientX, startWidth: sidebarWidth.value };
+  sidebarPreviousUserSelect = document.body.style.userSelect;
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+  document.body.style.userSelect = "none";
+  window.addEventListener("pointermove", updateSidebarResize);
+  window.addEventListener("pointerup", stopSidebarResize, { once: true });
+  window.addEventListener("pointercancel", stopSidebarResize, { once: true });
+  event.preventDefault();
+}
+function updateSidebarResize(event) {
+  if (!sidebarResizeState) return;
+  const maxWidth = Math.min(420, Math.max(184, window.innerWidth - 620));
+  const width = Math.min(maxWidth, Math.max(160, sidebarResizeState.startWidth + event.clientX - sidebarResizeState.startX));
+  if (width < 184) {
+    sidebarWidth.value = 184;
+    sidebarHidden.value = true;
+    stopSidebarResize();
+    return;
+  }
+  sidebarWidth.value = width;
+}
+function stopSidebarResize() {
+  if (!sidebarResizeState) return;
+  sidebarResizeState = null;
+  document.body.style.userSelect = sidebarPreviousUserSelect;
+  window.removeEventListener("pointermove", updateSidebarResize);
+  window.removeEventListener("pointercancel", stopSidebarResize);
+  persistSidebarWidth();
+}
+function resizeSidebarByKey(event) {
+  if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+  event.preventDefault();
+  const delta = event.key === "ArrowLeft" ? -16 : 16;
+  const width = sidebarWidth.value + delta;
+  if (width < 184) sidebarHidden.value = true;
+  else sidebarWidth.value = Math.min(420, width);
+  persistSidebarWidth();
+}
 function startSidebarSwipe(event) {
   const touch = event.changedTouches?.[0];
   if (touch) sidebarTouchStart = { x: touch.clientX, y: touch.clientY };
@@ -1777,6 +1832,7 @@ function handleSidebarClick(event) {
 watch(sidebarHidden, persistSidebarVisibility);
 watch(isMobileSidebar, (mobile) => { if (mobile) sidebarHidden.value = true; }, { immediate: true });
 watch(() => store.accountScope, () => loadSidebarVisibility());
+watch(() => store.accountScope, () => loadSidebarWidth());
 watch(() => store.accountScope, () => loadDetailWidth());
 function toggleSection(key) {
   sections[key] = !sections[key];
@@ -3139,6 +3195,7 @@ watch(
 );
 onMounted(async () => {
   loadSidebarVisibility();
+  loadSidebarWidth();
   loadSidebarObjectPrefs();
   loadDetailWidth();
   loadViewPreferences();
@@ -3157,6 +3214,7 @@ onMounted(async () => {
 });
 onBeforeUnmount(() => {
   stopDetailResize();
+  stopSidebarResize();
   clearTimeout(listHoverTimer);
   document.removeEventListener("pointerdown", closeContext);
   window.removeEventListener("keydown", onKeydown);
@@ -3175,7 +3233,7 @@ const SidebarSection = {
 <style scoped>
 .clone-task-shell {
   display: grid;
-  grid-template-columns: 248px minmax(420px, 1fr) 5px var(--clone-detail-width, 390px);
+  grid-template-columns: var(--clone-sidebar-width, 248px) minmax(420px, 1fr) 5px var(--clone-detail-width, 390px);
   height: 100vh;
   margin: 0;
   background: var(--card);
@@ -3190,6 +3248,7 @@ const SidebarSection = {
 .clone-task-shell.sidebar-hidden .clone-task-sidebar > :not(.clone-sidebar-head) { opacity: 0; transform: translateX(-7px); visibility: hidden; pointer-events: none; transition-delay: 0s, 0s, 0.2s; }
 .clone-task-shell.sidebar-hidden .clone-sidebar-head button { width: 34px; height: 34px; }
 .clone-task-sidebar {
+  position: relative;
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -3201,6 +3260,9 @@ const SidebarSection = {
   transition: padding 0.24s ease, gap 0.24s ease, opacity 0.18s ease;
 }
 .clone-task-sidebar > :not(.clone-sidebar-head) { transition: opacity 0.16s ease, transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear; }
+.clone-sidebar-resize { position: absolute; z-index: 5; top: 0; right: 0; bottom: 0; width: 8px; padding: 0; border: 0; background: transparent; cursor: ew-resize; touch-action: none; }
+.clone-sidebar-resize::after { position: absolute; inset: 0 3px; background: transparent; content: ""; transition: background-color 120ms ease; }
+.clone-sidebar-resize:hover::after, .clone-sidebar-resize:focus-visible::after { background: color-mix(in srgb, var(--accent) 40%, transparent); }
 .clone-sidebar-head strong { transition: opacity 0.12s ease; }
 .clone-sidebar-head {
   display: flex;
@@ -4497,7 +4559,7 @@ const SidebarSection = {
 @media (max-width: 1279px) {
   .clone-detail-divider { display: none; }
   .clone-task-shell {
-    grid-template-columns: 220px minmax(420px, 1fr);
+    grid-template-columns: var(--clone-sidebar-width, 248px) minmax(420px, 1fr);
   }
   .clone-task-shell.sidebar-hidden { grid-template-columns: 44px minmax(420px, 1fr); }
   .clone-detail-pane {
@@ -4556,6 +4618,7 @@ const SidebarSection = {
     transition-delay: 0s;
   }
   .clone-sidebar-backdrop { position: fixed; z-index: 79; inset: 72px 0 0; display: block; border: 0; background: rgb(15 23 42 / 34%); }
+  .clone-sidebar-resize { display: none; }
   .clone-sidebar-head { display: flex; }
   .clone-task-sidebar { gap: 0; }
   .clone-sidebar-scroll { gap: 8px; }

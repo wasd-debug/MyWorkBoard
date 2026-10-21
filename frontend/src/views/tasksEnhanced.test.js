@@ -257,6 +257,10 @@ test('task navigation collapses inline on narrow screens and persists by account
   assert.match(workspaceView, /clone-sidebar-backdrop/)
   assert.match(workspaceView, /function startSidebarSwipe\(event\)/)
   assert.match(workspaceView, /function finishSidebarSwipe\(event\)/)
+  assert.match(workspaceView, /class="clone-sidebar-resize"[\s\S]*aria-valuemin="184"[\s\S]*@pointerdown="startSidebarResize"/)
+  assert.match(workspaceView, /function updateSidebarResize\(event\)[\s\S]*width < 184[\s\S]*sidebarHidden\.value = true/)
+  assert.match(workspaceView, /task_sidebar_width:\$\{store\.accountScope \|\| "anonymous"\}/)
+  assert.match(workspaceView, /\.clone-sidebar-resize \{ display: none; \}/)
 })
 
 test('task sidebar has a lunar mini calendar, mobile controls, and no fake abandoned-task action', () => {
