@@ -291,7 +291,7 @@ test('task sidebar organization persists account preferences and exposes pin, li
 test('task sidebar section controls match the compact visibility menus', () => {
   assert.match(workspaceView, /<header @click="toggleSection\('lists'\)">[\s\S]*?aria-label="新建清单"[\s\S]*?<\/header>/)
   assert.doesNotMatch(workspaceView.match(/<header @click="toggleSection\('lists'\)">([\s\S]*?)<\/header>/)?.[1] || '', /显示选项|管理清单显示/)
-  assert.match(workspaceView, /<header @click="toggleSection\('filters'\)">[\s\S]*?新建筛选器[\s\S]*?筛选器显示选项[\s\S]*?<\/header>/)
+  assert.match(workspaceView, /<header @click="toggleSection\('filters'\)">[\s\S]*?新建筛选器[\s\S]*?筛选器显示选项[\s\S]*?<Ellipsis[\s\S]*?<\/header>/)
   assert.match(workspaceView, /<header @click="toggleSection\('tags'\)">[\s\S]*?新建标签[\s\S]*?标签显示选项[\s\S]*?<\/header>/)
   assert.match(workspaceView, /function sectionDisplayOptions\(section\)[\s\S]*value: "WHEN_HAS_CONTENT", label: "显示（非空标签）"/)
   assert.match(workspaceView, /function isSectionDisplayed\(section\)[\s\S]*store\.tags\.some\(tag => tagOpenCount\(tag\.publicId\) > 0\)/)
@@ -323,6 +323,25 @@ test('task sidebar tags and all organization objects expose the captured menus a
   assert.match(workspaceView, /pinnedLists\.length[\s\S]*draggable="true" @dragstart="startOrganizationDrag\('list', list\)"/)
   assert.match(workspaceView, /pinnedFilters\.length[\s\S]*draggable="true" @dragstart="startOrganizationDrag\('filter', filter\)"/)
   assert.match(workspaceView, /pinnedTags\.length[\s\S]*draggable="true" @dragstart="startOrganizationDrag\('tag', tag\)"/)
+})
+
+test('task filter editor matches the basic and advanced filter workflow', () => {
+  const filterHeader = workspaceView.match(/<header @click="toggleSection\('filters'\)">([\s\S]*?)<\/header>/)?.[1] || ''
+  assert.match(filterHeader, /新建筛选器[\s\S]*筛选器显示选项[\s\S]*<Ellipsis/)
+  assert.match(workspaceView, /function sectionDisplayOptions\(section\)[\s\S]*return \[\{ value: "SHOW", label: "显示" \}, \{ value: "HIDE", label: "隐藏" \}\]/)
+  assert.match(workspaceView, /class="clone-filter-name-row"[\s\S]*选择筛选器图标[\s\S]*aria-label="筛选器名称"/)
+  assert.match(workspaceView, /role="tab"[\s\S]*>普通<\/button>[\s\S]*>高级<\/button>/)
+  assert.match(workspaceView, /aria-label="清单范围"[\s\S]*所有清单[\s\S]*sortedListGroups[\s\S]*activeLists/)
+  assert.match(workspaceView, /aria-label="标签范围"[\s\S]*value="ALL"[\s\S]*value="HAS_TAGS"[\s\S]*value="NO_TAGS"[\s\S]*sortedTags/)
+  assert.match(workspaceView, /filterDateOptions = computed\(\(\) => Array\.from\(\{ length: 61 \}/)
+  assert.match(workspaceView, /aria-label="开始日期"[\s\S]*aria-label="结束日期"[\s\S]*option\.value <= organizationDialog\.filter\.dueStart/)
+  assert.match(workspaceView, /filterPriorityOptions = \[[\s\S]*label: "高"[\s\S]*label: "中"[\s\S]*label: "低"[\s\S]*label: "无"/)
+  assert.match(workspaceView, /placeholder="输入任务关键词"[\s\S]*value="TASK"[\s\S]*value="NOTE"/)
+  assert.match(workspaceView, /function previewFilterDraft\(\)[\s\S]*organizationDialog\.filter\.previewed = true/)
+  assert.match(workspaceView, /class="clone-filter-preview-screen"[\s\S]*filterPreviewGroups/)
+  assert.match(workspaceView, /organizationDialog\.filter\.previewed = false[\s\S]*保存[\s\S]*:disabled="!filterDraftValid"/)
+  assert.match(workspaceView, /filterDraftValid = computed\(\(\) => \{[\s\S]*serializeFilterRules\(organizationDialog\.filter\.rules\)[\s\S]*organizationDialog\.filter\.dueEnd > organizationDialog\.filter\.dueStart/)
+  assert.match(workspaceView, /function toggleFilterTag\([\s\S]*if \(!organizationDialog\.filter\.tagIds\.length\) organizationDialog\.filter\.tagMode = "ALL"/)
 })
 
 test('task navigation, collapsible groups and sortable rows expose motion and reduced-motion behavior', () => {

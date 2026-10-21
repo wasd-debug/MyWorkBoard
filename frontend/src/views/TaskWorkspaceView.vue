@@ -78,7 +78,7 @@
         </div></div>
       </section>
       <section class="clone-sidebar-section">
-        <header @click="toggleSection('filters')"><button type="button" :aria-expanded="sections.filters"><ChevronDown :size="14" class="clone-section-chevron" :class="{ rotated: !sections.filters }" />筛选器</button><div class="clone-sidebar-heading-actions"><button class="sidebar-create" type="button" aria-label="新建筛选器" title="新建筛选器" @click.stop="createFilter"><Plus :size="14" /></button><button class="sidebar-create" type="button" aria-label="筛选器显示选项" title="筛选器显示选项" :aria-expanded="sectionDisplayMenu === 'filters'" @click.stop="toggleSectionDisplayMenu('filters')"><SlidersHorizontal :size="14" /></button><div v-if="sectionDisplayMenu === 'filters'" class="clone-section-display-menu" role="menu" aria-label="筛选器显示选项" @pointerdown.stop @click.stop><button v-for="option in sectionDisplayOptions('filters')" :key="option.value" type="button" role="menuitemradio" :aria-checked="sectionDisplayModes.filters === option.value" @click.stop="setSectionDisplayMode('filters', option.value)">{{ option.label }}<Check v-if="sectionDisplayModes.filters === option.value" :size="14" /></button></div></div></header>
+        <header @click="toggleSection('filters')"><button type="button" :aria-expanded="sections.filters"><ChevronDown :size="14" class="clone-section-chevron" :class="{ rotated: !sections.filters }" />筛选器</button><div class="clone-sidebar-heading-actions"><button class="sidebar-create" type="button" aria-label="新建筛选器" title="新建筛选器" @click.stop="createFilter"><Plus :size="14" /></button><button class="sidebar-create" type="button" aria-label="筛选器显示选项" title="筛选器显示选项" :aria-expanded="sectionDisplayMenu === 'filters'" @click.stop="toggleSectionDisplayMenu('filters')"><Ellipsis :size="14" /></button><div v-if="sectionDisplayMenu === 'filters'" class="clone-section-display-menu" role="menu" aria-label="筛选器显示选项" @pointerdown.stop @click.stop><button v-for="option in sectionDisplayOptions('filters')" :key="option.value" type="button" role="menuitemradio" :aria-checked="sectionDisplayModes.filters === option.value" @click.stop="setSectionDisplayMode('filters', option.value)">{{ option.label }}<Check v-if="sectionDisplayModes.filters === option.value" :size="14" /></button></div></div></header>
         <div class="clone-collapse-panel" :class="{ 'is-collapsed': !sections.filters || !isSectionDisplayed('filters') }" :aria-hidden="!sections.filters || !isSectionDisplayed('filters')"><div class="clone-sidebar-items clone-collapse-inner" :inert="!sections.filters || !isSectionDisplayed('filters')">
         <section v-if="pinnedFilters.length" class="clone-pinned-zone" aria-label="置顶筛选器"><div class="clone-pinned-title">置顶</div><RouterLink v-for="filter in pinnedFilters" :key="`pinned-${filter.publicId}`" :to="`/tasks/filter/${filter.publicId}`" class="clone-nav-item clone-sortable-item" :class="{ 'drag-over': organizationDropTarget === filter.publicId, 'sorting-dragging': organizationDrag?.kind === 'filter' && organizationDrag.item.publicId === filter.publicId }" draggable="true" @dragstart="startOrganizationDrag('filter', filter)" @dragover.prevent="organizationDropTarget = filter.publicId" @drop.prevent.stop="dropOrganization('filter', filter)" @contextmenu.prevent="openOrganizationMenu('filter', filter, $event)"><TaskOrganizationIcon v-if="filter.icon" class="clone-object-icon" :value="filter.icon" /><SlidersHorizontal v-else :size="15" /><span>{{ filter.name }}</span><button class="clone-item-menu-trigger" type="button" :aria-label="`${filter.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('filter', filter, $event)"><Ellipsis :size="14" /></button></RouterLink></section>
         <div v-for="item in visibleShortcutViews" :key="item.to" class="clone-sidebar-object-row" @contextmenu.prevent="openOrganizationMenu('system', item, $event)"><RouterLink :to="item.to" class="clone-nav-item" :class="{ active: isActive(item.to) }"><component :is="item.icon" :size="15" /><span>{{ item.label }}</span><small>{{ itemCount(item.key) }}</small></RouterLink><button class="clone-item-menu-trigger" type="button" :aria-label="`${item.label}的更多操作`" @click.stop="openOrganizationMenu('system', item, $event)"><Ellipsis :size="14" /></button></div>
@@ -810,8 +810,8 @@
       <template v-else-if="organizationMenu.kind === 'filter'"><button type="button" @click="toggleFilterPinned"><Pin :size="14" />{{ isPinnedObject('filter', organizationMenu.item) ? '取消置顶' : '置顶' }}</button><button type="button" @click="editOrganization('filter')"><Pencil :size="14" />编辑条件</button><button type="button" @click="previewSavedFilter"><Eye :size="14" />预览结果</button><button type="button" @click="duplicateFilter"><Copy :size="14" />复制筛选器</button><button type="button" @click="openOrganizationInWindow('filter')"><ExternalLink :size="14" />打开新窗口</button><button type="button" @click="organizationMenu.submenu = organizationMenu.submenu === 'display' ? '' : 'display'"><Eye :size="14" />显示选项<ChevronDown :size="13" /></button><div v-if="organizationMenu.submenu === 'display'" class="clone-context-submenu"><button v-for="option in displayOptionsFor('filter', organizationMenu.item)" :key="option.value" type="button" @click="setDisplayOption('filter', organizationMenu.item, option.value)">{{ option.label }}<Check v-if="getDisplayOption('filter', organizationMenu.item) === option.value" :size="14" /></button></div><button type="button" class="danger" @click="deleteOrganization('filter')"><Trash2 :size="14" />删除筛选器</button></template>
       <template v-else><button type="button" @click="createList(organizationMenu.item.publicId)"><Plus :size="14" />添加清单</button><button type="button" @click="editListGroup"><Pencil :size="14" />编辑</button><button type="button" @click="togglePinnedObject('group', organizationMenu.item)"><Pin :size="14" />{{ organizationMenu.item.pinned ? '取消置顶' : '置顶' }}</button><button type="button" @click="openOrganizationInWindow('group')"><ExternalLink :size="14" />打开新窗口</button><button type="button" class="danger" @click="requestDissolveListGroup"><Ungroup :size="14" />解散</button></template>
     </div>
-    <Dialog v-model:open="organizationDialogOpen" :title="organizationDialogTitle" :content-class="organizationDialog.kind === 'list' && !isInboxColorEditor ? 'task-list-dialog' : ''">
-      <form class="clone-organization-form" :class="{ 'clone-inbox-color-form': isInboxColorEditor, 'clone-list-form': organizationDialog.kind === 'list' && !isInboxColorEditor, 'clone-tag-form': organizationDialog.kind === 'tag' }" @submit.prevent="saveOrganization">
+    <Dialog v-model:open="organizationDialogOpen" :title="organizationDialogTitle" :content-class="organizationDialog.kind === 'filter' ? 'task-filter-dialog' : organizationDialog.kind === 'list' && !isInboxColorEditor ? 'task-list-dialog' : ''">
+      <form class="clone-organization-form" :class="{ 'clone-inbox-color-form': isInboxColorEditor, 'clone-list-form': organizationDialog.kind === 'list' && !isInboxColorEditor, 'clone-tag-form': organizationDialog.kind === 'tag', 'clone-filter-form': organizationDialog.kind === 'filter' }" @submit.prevent="saveOrganization">
         <div v-if="organizationDialog.kind === 'list' && !isInboxColorEditor" class="clone-list-name-row">
           <button type="button" class="clone-list-icon-button" aria-label="选择清单图标" @click="openOrganizationIconPicker('list')"><TaskOrganizationIcon v-if="organizationDialog.icon" :value="organizationDialog.icon" :size="18" /><ListTodo v-else :size="16" /></button>
           <input v-model.trim="organizationDialog.name" aria-label="清单名称" placeholder="名称" required maxlength="120" autofocus />
@@ -822,31 +822,41 @@
         <div v-if="organizationDialog.kind === 'tag'" class="clone-list-name-row clone-tag-name-row"><button type="button" class="clone-list-icon-button" aria-label="选择标签图标" @click="openOrganizationIconPicker('tag')"><TaskOrganizationIcon v-if="organizationDialog.icon" :value="organizationDialog.icon" :size="18" /><Tag v-else :size="18" /></button><input v-model.trim="organizationDialog.name" aria-label="标签名称" placeholder="名称" required maxlength="30" autofocus /></div>
         <div v-if="organizationDialog.kind === 'tag'" class="clone-list-setting-row clone-list-color-row"><span>颜色</span><TaskColorPicker v-model="organizationDialog.color" inline /></div>
         <div v-if="organizationDialog.kind === 'group' && !isInboxColorEditor" class="clone-list-name-row"><button type="button" class="clone-list-icon-button" aria-label="选择文件夹图标" @click="openOrganizationIconPicker('group')"><TaskOrganizationIcon v-if="organizationDialog.icon" :value="organizationDialog.icon" :size="18" /><Folder v-else :size="18" /></button><input v-model.trim="organizationDialog.name" aria-label="文件夹名称" placeholder="名称" required maxlength="100" /></div>
-        <label v-else-if="organizationDialog.kind === 'filter'">名称<input v-model.trim="organizationDialog.name" required maxlength="120" autofocus /></label>
-        <div v-if="organizationDialog.kind === 'filter' && !isInboxColorEditor" class="clone-icon-setting-row"><span>图标</span><button type="button" class="clone-list-icon-button" aria-label="选择筛选器图标" @click="openOrganizationIconPicker('filter')"><TaskOrganizationIcon v-if="organizationDialog.icon" :value="organizationDialog.icon" :size="18" /><SlidersHorizontal v-else :size="18" /></button><button v-if="organizationDialog.icon" type="button" class="clone-icon-clear" @click="organizationDialog.icon = ''">使用默认</button></div>
         <div v-if="organizationDialog.kind === 'list' && !isInboxColorEditor" class="clone-list-setting-row"><span>视图</span><div class="clone-list-view-picker" role="group" aria-label="默认视图"><button v-for="view in listViewOptions" :key="view.value" type="button" :aria-pressed="organizationDialog.viewType === view.value" :aria-label="view.label" :title="view.label" @click="organizationDialog.viewType = view.value"><component :is="view.icon" :size="17" /><span>{{ view.label }}</span></button></div></div>
         <label v-if="organizationDialog.kind === 'list' && !isInboxColorEditor" class="clone-list-setting-row"><span>文件夹</span><select :value="organizationDialog.groupId" aria-label="文件夹" @change="handleListFolderChange($event.target.value)"><option value="" :selected="organizationDialog.groupId === ''">无</option><option v-for="group in sortedListGroups" :key="group.publicId" :value="group.publicId" :selected="organizationDialog.groupId === group.publicId">{{ group.icon ? `${group.icon} ` : '' }}{{ group.name }}</option><option value="__CREATE_GROUP__" :selected="organizationDialog.groupId === '__CREATE_GROUP__'">{{ organizationDialog.newGroupName ? `新建文件夹：${organizationDialog.newGroupName}` : '＋ 添加文件夹…' }}</option></select></label>
         <label v-if="organizationDialog.kind === 'list' && !isInboxColorEditor" class="clone-list-setting-row"><span>类型</span><select v-model="organizationDialog.objectType" aria-label="清单类型"><option value="TASK">任务清单</option><option value="NOTE">笔记清单</option></select></label>
         <label v-if="organizationDialog.kind === 'list' && !isInboxColorEditor" class="clone-list-setting-row"><span>在智能清单中显示</span><select v-model="organizationDialog.showInSmartLists" aria-label="在智能清单中显示"><option :value="true">所有任务</option><option :value="false">不显示</option></select></label>
         <label v-if="organizationDialog.kind === 'tag'">父标签<select v-model="organizationDialog.parentId"><option value="">无</option><option v-for="tag in store.tags.filter(item => !item.parentId && item.publicId !== organizationDialog.item?.publicId)" :key="tag.publicId" :value="tag.publicId">{{ tag.name }}</option></select></label>
         <template v-if="organizationDialog.kind === 'filter'">
-          <div class="clone-filter-mode" role="tablist" aria-label="筛选器模式"><button type="button" role="tab" :aria-selected="organizationDialog.filter.mode === 'BASIC'" @click="organizationDialog.filter.mode = 'BASIC'">普通</button><button type="button" role="tab" :aria-selected="organizationDialog.filter.mode === 'ADVANCED'" @click="organizationDialog.filter.mode = 'ADVANCED'">高级</button></div>
-          <template v-if="organizationDialog.filter.mode === 'BASIC'">
-            <fieldset><legend>清单范围</legend><label><input type="checkbox" :checked="organizationDialog.filter.listIds.length === 0" @change="organizationDialog.filter.listIds = []" />所有清单</label><label v-for="group in sortedListGroups" :key="group.publicId"><input type="checkbox" :checked="groupListSelected(group.publicId)" @change="toggleFilterGroup(group.publicId, $event.target.checked)" />{{ group.name }}（文件夹）</label><label v-for="list in activeLists" :key="list.publicId"><input v-model="organizationDialog.filter.listIds" type="checkbox" :value="list.publicId" />{{ list.name }}</label></fieldset>
-            <fieldset><legend>标签</legend><label><input v-model="organizationDialog.filter.tagMode" type="radio" value="ALL" />所有</label><label><input v-model="organizationDialog.filter.tagMode" type="radio" value="SELECTED" />指定标签</label><label><input v-model="organizationDialog.filter.tagMode" type="radio" value="HAS_TAGS" />有标签</label><label><input v-model="organizationDialog.filter.tagMode" type="radio" value="NO_TAGS" />无标签</label><template v-if="organizationDialog.filter.tagMode === 'SELECTED'"><label v-for="tag in sortedTags" :key="tag.publicId"><input v-model="organizationDialog.filter.tagIds" type="checkbox" :value="tag.publicId" />#{{ tag.name }}</label></template></fieldset>
-            <label>日期<select v-model="organizationDialog.filter.dueRange"><option value="ANY">所有</option><option value="NONE">无日期</option><option value="OVERDUE">已过期</option><option value="REPEATING">重复日期</option><option value="TODAY">今天</option><option value="TOMORROW">明天</option><option value="THIS_WEEK">本周</option><option value="NEXT_WEEK">下周</option><option value="THIS_MONTH">本月</option><option value="NEXT_MONTH">下月</option><option value="CUSTOM">时间段</option></select></label>
-            <div v-if="organizationDialog.filter.dueRange === 'CUSTOM'" class="clone-filter-date-range"><label>开始<input v-model="organizationDialog.filter.dueStart" type="date" :min="filterDateMin" :max="filterDateMax" /></label><label>结束<input v-model="organizationDialog.filter.dueEnd" type="date" :min="filterDateMin" :max="filterDateMax" /></label></div>
-            <fieldset><legend>优先级</legend><label v-for="option in priorityOptions" :key="option.value"><input v-model="organizationDialog.filter.priorities" type="checkbox" :value="option.value" />{{ option.label }}</label></fieldset>
-            <label>包含关键词<input v-model.trim="organizationDialog.filter.keyword" maxlength="200" /></label>
-            <fieldset><legend>任务类型</legend><label><input type="checkbox" :checked="organizationDialog.filter.taskTypes.length === 0" @change="organizationDialog.filter.taskTypes = []" />所有</label><label><input v-model="organizationDialog.filter.taskTypes" type="checkbox" value="TASK" />任务</label><label><input v-model="organizationDialog.filter.taskTypes" type="checkbox" value="NOTE" />笔记</label></fieldset>
-            <label class="clone-inline-choice"><input v-model="organizationDialog.filter.includeSubtasks" type="checkbox" />包含子任务</label>
+          <template v-if="organizationDialog.filter.previewed">
+            <section class="clone-filter-preview-screen" aria-label="筛选器预览结果">
+              <strong>预览 · {{ filterPreview.length }} 项</strong>
+              <section v-for="group in filterPreviewGroups" :key="group.key" class="clone-filter-preview-group">
+                <strong><Folder v-if="group.isFolder" :size="13" /><ListTodo v-else :size="13" />{{ group.name }} <small>{{ group.items.length }}</small></strong>
+                <div v-for="list in group.lists" :key="list.key" class="clone-filter-preview-list">
+                  <strong v-if="group.isFolder"><ListTodo :size="12" />{{ list.name }} <small>{{ list.items.length }}</small></strong>
+                  <span v-for="task in list.items" :key="task.publicId"><span class="clone-filter-preview-check" aria-hidden="true"></span>{{ task.title }}<small>{{ task.dueAt ? formatDate(task.dueAt) : '' }}</small></span>
+                </div>
+              </section>
+              <span v-if="!filterPreview.length">当前没有匹配任务</span>
+            </section>
           </template>
-          <label class="clone-inline-choice"><input v-model="organizationDialog.filter.pinned" type="checkbox" />置顶筛选器</label>
-          <TaskFilterRuleEditor v-if="organizationDialog.filter.mode === 'ADVANCED'" v-model="organizationDialog.filter.rules" :lists="activeLists" :tags="sortedTags" :node-count="countFilterRuleNodes(organizationDialog.filter.rules)" />
-          <button type="button" @click="previewFilterDraft"><Eye :size="14" />预览条件</button>
-          <div v-if="organizationDialog.filter.previewed" class="clone-filter-preview" role="status"><strong>匹配 {{ filterPreview.length }} 条任务</strong><span v-for="task in filterPreview.slice(0, 5)" :key="task.publicId">{{ task.title }}</span><span v-if="!filterPreview.length">当前没有匹配任务</span></div>
+          <template v-else>
+            <div class="clone-filter-name-row"><button type="button" class="clone-list-icon-button" aria-label="选择筛选器图标" @click="openOrganizationIconPicker('filter')"><TaskOrganizationIcon v-if="organizationDialog.icon" :value="organizationDialog.icon" :size="18" /><SlidersHorizontal v-else :size="18" /></button><input v-model.trim="organizationDialog.name" aria-label="筛选器名称" placeholder="名称" required maxlength="120" autofocus /><button v-if="organizationDialog.icon" type="button" class="clone-icon-clear" @click="organizationDialog.icon = ''">使用默认</button></div>
+            <div class="clone-filter-mode" role="tablist" aria-label="筛选器模式"><button type="button" role="tab" :aria-selected="organizationDialog.filter.mode === 'BASIC'" @click="organizationDialog.filter.mode = 'BASIC'">普通</button><button type="button" role="tab" :aria-selected="organizationDialog.filter.mode === 'ADVANCED'" @click="organizationDialog.filter.mode = 'ADVANCED'">高级</button></div>
+            <template v-if="organizationDialog.filter.mode === 'BASIC'">
+              <div class="clone-filter-field"><span>清单</span><details class="clone-filter-select"><summary @click="closeOtherFilterSelect('list')">{{ filterListSummary }}<ChevronDown :size="14" /></summary><div class="clone-filter-select-menu" role="group" aria-label="清单范围" @click.stop><label><input type="checkbox" :checked="filterListAllSelected" @change="organizationDialog.filter.listIds = []" />所有清单</label><hr /><label v-for="group in sortedListGroups" :key="group.publicId"><input type="checkbox" :checked="groupListSelected(group.publicId)" @change="toggleFilterGroup(group.publicId, $event.target.checked)" />{{ group.name }}（文件夹）</label><label v-for="list in activeLists" :key="list.publicId" :class="{ 'is-child-list': list.groupId }"><input type="checkbox" :checked="filterListAllSelected || organizationDialog.filter.listIds.includes(list.publicId)" @change="toggleFilterList(list.publicId, $event.target.checked)" />{{ list.name }}</label></div></details></div>
+              <div class="clone-filter-field"><span>标签</span><details class="clone-filter-select"><summary @click="closeOtherFilterSelect('tag')">{{ filterTagSummary }}<ChevronDown :size="14" /></summary><div class="clone-filter-select-menu" role="group" aria-label="标签范围" @click.stop><label><input type="radio" v-model="organizationDialog.filter.tagMode" value="ALL" @change="organizationDialog.filter.tagIds = []" />所有</label><hr /><label><input type="radio" v-model="organizationDialog.filter.tagMode" value="HAS_TAGS" @change="organizationDialog.filter.tagIds = []" />有标签</label><label><input type="radio" v-model="organizationDialog.filter.tagMode" value="NO_TAGS" @change="organizationDialog.filter.tagIds = []" />无标签</label><hr /><label v-for="tag in sortedTags" :key="tag.publicId" class="clone-filter-tag-option"><input type="checkbox" :checked="organizationDialog.filter.tagMode === 'SELECTED' && organizationDialog.filter.tagIds.includes(tag.publicId)" @change="toggleFilterTag(tag.publicId, $event.target.checked)" />#{{ tag.name }}</label></div></details></div>
+              <label class="clone-filter-field"><span>日期</span><select v-model="organizationDialog.filter.dueRange" @change="setFilterDueRange"><option value="ANY">所有</option><option value="NONE">无日期</option><option value="OVERDUE">已过期</option><option value="REPEATING">重复日期</option><option value="TODAY">今天</option><option value="TOMORROW">明天</option><option value="THIS_WEEK">本周</option><option value="NEXT_WEEK">下周</option><option value="THIS_MONTH">本月</option><option value="NEXT_MONTH">下月</option><option value="CUSTOM">时间段</option></select></label>
+              <div v-if="organizationDialog.filter.dueRange === 'CUSTOM'" class="clone-filter-date-range"><label><span><CalendarClock :size="14" />时间段</span><select aria-label="开始日期" :value="organizationDialog.filter.dueStart" @change="setFilterDateEndpoint('start', $event.target.value)"><option v-for="option in filterDateOptions" :key="option.value" :value="option.value" :disabled="option.offset === 30">{{ option.label }}</option></select></label><label class="clone-filter-date-separator">~</label><label><select aria-label="结束日期" :value="organizationDialog.filter.dueEnd" @change="setFilterDateEndpoint('end', $event.target.value)"><option v-for="option in filterDateOptions" :key="option.value" :value="option.value" :disabled="option.value <= organizationDialog.filter.dueStart">{{ option.label }}</option></select></label></div>
+              <fieldset class="clone-filter-priorities"><legend>优先级</legend><label><input type="radio" name="filter-priority-all" :checked="organizationDialog.filter.priorities.length === 0" @change="organizationDialog.filter.priorities = []" />所有</label><label v-for="option in filterPriorityOptions" :key="option.value"><input v-model="organizationDialog.filter.priorities" type="checkbox" :value="option.value" />{{ option.label }}</label></fieldset>
+              <label class="clone-filter-field"><span>内容包含</span><input v-model.trim="organizationDialog.filter.keyword" maxlength="200" placeholder="输入任务关键词" /></label>
+              <fieldset class="clone-filter-task-types"><legend>任务类型</legend><label><input type="radio" name="filter-task-type-all" :checked="organizationDialog.filter.taskTypes.length === 0" @change="organizationDialog.filter.taskTypes = []" />所有</label><label><input v-model="organizationDialog.filter.taskTypes" type="checkbox" value="TASK" />任务</label><label><input v-model="organizationDialog.filter.taskTypes" type="checkbox" value="NOTE" />笔记</label></fieldset>
+            </template>
+            <TaskFilterRuleEditor v-if="organizationDialog.filter.mode === 'ADVANCED'" v-model="organizationDialog.filter.rules" :lists="activeLists" :tags="sortedTags" :node-count="countFilterRuleNodes(organizationDialog.filter.rules)" />
+          </template>
         </template>
-        <footer :class="{ 'clone-inbox-color-actions': isInboxColorEditor }"><template v-if="isInboxColorEditor"><button type="submit" class="clone-primary-button">保存</button><button type="button" @click="organizationDialogOpen = false">取消</button></template><template v-else><button type="button" @click="organizationDialogOpen = false">取消</button><button type="submit" class="clone-primary-button">保存</button></template></footer>
+        <footer :class="{ 'clone-inbox-color-actions': isInboxColorEditor, 'clone-filter-preview-actions': organizationDialog.kind === 'filter' && organizationDialog.filter.previewed }"><template v-if="isInboxColorEditor"><button type="submit" class="clone-primary-button">保存</button><button type="button" @click="organizationDialogOpen = false">取消</button></template><template v-else-if="organizationDialog.kind === 'filter' && organizationDialog.filter.previewed"><button type="button" @click="organizationDialog.filter.previewed = false">取消</button><button type="submit" class="clone-primary-button" :disabled="!filterDraftValid">保存</button></template><template v-else-if="organizationDialog.kind === 'filter'"><button type="button" class="clone-filter-preview-button" :disabled="!filterDraftValid" @click="previewFilterDraft"><Eye :size="14" />预览</button><button type="button" @click="organizationDialogOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="!filterDraftValid">保存</button></template><template v-else><button type="button" @click="organizationDialogOpen = false">取消</button><button type="submit" class="clone-primary-button">保存</button></template></footer>
       </form>
     </Dialog>
     <Dialog v-model:open="folderDialogOpen" title="添加文件夹" content-class="task-folder-dialog">
@@ -1063,6 +1073,28 @@ const filterPreviewOpen = ref(false);
 const filterPreviewTitle = ref("");
 const filterPreviewFilterId = ref("");
 const filterPreviewTotal = ref(0);
+const filterPreviewGroups = computed(() => {
+  const folders = new Map();
+  for (const task of filterPreview.value) {
+    const list = store.lists.find(item => item.publicId === task.listId);
+    const folder = list?.groupId ? store.listGroups.find(item => item.publicId === list.groupId) : null;
+    const key = folder ? `folder:${folder.publicId}` : `list:${list?.publicId || "inbox"}`;
+    if (!folders.has(key)) folders.set(key, { key, name: folder?.name || list?.name || "收集箱", isFolder: Boolean(folder), items: [], lists: new Map() });
+    const section = folders.get(key);
+    section.items.push(task);
+    const listKey = list?.publicId || "inbox";
+    if (!section.lists.has(listKey)) section.lists.set(listKey, { key: listKey, name: list?.name || "收集箱", items: [] });
+    section.lists.get(listKey).items.push(task);
+  }
+  return [...folders.values()].map(section => ({ ...section, lists: [...section.lists.values()] }));
+});
+const filterDraftValid = computed(() => {
+  if (organizationDialog.filter.mode === "ADVANCED") {
+    try { return Boolean(serializeFilterRules(organizationDialog.filter.rules)); }
+    catch { return false; }
+  }
+  return organizationDialog.filter.dueRange !== "CUSTOM" || Boolean(organizationDialog.filter.dueStart && organizationDialog.filter.dueEnd && organizationDialog.filter.dueEnd > organizationDialog.filter.dueStart);
+});
 const selectedTask = ref(null);
 const editorOpen = ref(false);
 const editing = ref(null);
@@ -1182,8 +1214,11 @@ const allSidebarSystemViews = computed(() => [...primaryViews, ...shortcutViews,
 const visiblePrimaryViews = computed(() => primaryViews.filter(item => !isHiddenObject("system", item) && !isPinnedObject("system", item)));
 const pinnedPrimaryViews = computed(() => primaryViews.filter(item => !isHiddenObject("system", item) && isPinnedObject("system", item)));
 const sortedListGroups = computed(() => [...store.listGroups].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)));
-const filterDateMin = computed(() => { const date = new Date(); date.setDate(date.getDate() - 30); return dateKey(date); });
-const filterDateMax = computed(() => { const date = new Date(); date.setDate(date.getDate() + 30); return dateKey(date); });
+const filterDateOptions = computed(() => Array.from({ length: 61 }, (_, index) => {
+  const offset = index - 30;
+  const value = dateKey(addDays(new Date(), offset));
+  return { value, offset, label: offset === 0 ? "今天" : offset < 0 ? `往前第${Math.abs(offset)}天` : `往后第${offset}天` };
+}));
 const pinnedListGroups = computed(() => sortedListGroups.value.filter(group => group.pinned));
 const visibleListGroups = computed(() => sortedListGroups.value.filter(group => !group.pinned));
 const activeLists = computed(() => store.lists.filter(item => !item.archived));
@@ -1208,6 +1243,16 @@ const sortedFilters = computed(() => [...filters.value].sort((a, b) => Number(a.
 const pinnedTags = computed(() => sortedTags.value.filter(item => !isHiddenObject("tag", item) && isPinnedObject("tag", item)));
 const visibleFilters = computed(() => sortedFilters.value.filter(item => !isHiddenObject("filter", item) && !isPinnedObject("filter", item)));
 const pinnedFilters = computed(() => sortedFilters.value.filter(item => !isHiddenObject("filter", item) && isPinnedObject("filter", item)));
+const filterListAllSelected = computed(() => organizationDialog.filter.listIds.length === 0 || (activeLists.value.length > 0 && activeLists.value.every(list => organizationDialog.filter.listIds.includes(list.publicId))));
+const filterListSummary = computed(() => filterListAllSelected.value ? "所有" : `已选 ${organizationDialog.filter.listIds.length} 项`);
+const filterTagSummary = computed(() => {
+  const { tagMode, tagIds } = organizationDialog.filter;
+  if (tagMode === "HAS_TAGS") return "有标签";
+  if (tagMode === "NO_TAGS") return "无标签";
+  if (tagMode !== "SELECTED" || !tagIds.length) return "所有";
+  const names = tagIds.map(id => store.tags.find(tag => tag.publicId === id)?.name).filter(Boolean);
+  return names.length <= 2 ? names.map(name => `#${name}`).join("、") : `已选 ${names.length} 个标签`;
+});
 const mergeTargets = computed(() => {
   if (!tagMerge.source) return [];
   const sourceHasChildren = store.tags.some(item => item.parentId === tagMerge.source.publicId);
@@ -1252,6 +1297,12 @@ const priorityOptions = [
   { value: "LOW", label: "低优先级" },
   { value: "MEDIUM", label: "中优先级" },
   { value: "HIGH", label: "高优先级" },
+];
+const filterPriorityOptions = [
+  { value: "HIGH", label: "高" },
+  { value: "MEDIUM", label: "中" },
+  { value: "LOW", label: "低" },
+  { value: "NONE", label: "无" },
 ];
 const title = computed(() =>
   route.name === "tasks-today"
@@ -2629,7 +2680,7 @@ function togglePinnedObject(kind, item) {
 watch(() => store.accountScope, () => { loadSidebarObjectPrefs(); loadSidebarSections(); loadSectionDisplayModes(); void loadSidebarPreferences(); });
 function openOrganizationDialog(kind, item = null, overrides = {}) {
   const defaults = { list: { color: "#2563eb", icon: "", groupId: "" }, tag: { color: "#2f746f", parentId: "" }, filter: {}, group: { color: "#64748b", icon: "📁" } }[kind] || {};
-  const filter = kind === "filter" ? { mode: item?.mode || "BASIC", listIds: [...(item?.listIds || [])], tagIds: [...(item?.tagIds || [])], tagMode: item?.tagMode || "SELECTED", taskTypes: [...(item?.taskTypes || [])], priorities: [...(item?.priorities || [])], status: item?.status || "OPEN", dueRange: item?.dueRange || "ANY", dueStart: item?.dueStart || "", dueEnd: item?.dueEnd || "", keyword: item?.keyword || "", includeSubtasks: item?.includeSubtasks !== false, matchAllTags: Boolean(item?.matchAllTags), pinned: isPinnedObject("filter", item), rules: normalizeFilterRules(item?.rules), previewed: false } : {};
+  const filter = kind === "filter" ? { mode: item?.mode || "BASIC", listIds: [...(item?.listIds || [])], tagIds: [...(item?.tagIds || [])], tagMode: item?.tagMode || (item?.tagIds?.length ? "SELECTED" : "ALL"), taskTypes: [...(item?.taskTypes || [])], priorities: [...(item?.priorities || [])], status: item?.status || "OPEN", dueRange: item?.dueRange || "ANY", dueStart: item?.dueStart || "", dueEnd: item?.dueEnd || "", keyword: item?.keyword || "", includeSubtasks: item?.includeSubtasks !== false, matchAllTags: Boolean(item?.matchAllTags), pinned: isPinnedObject("filter", item), rules: normalizeFilterRules(item?.rules), previewed: false } : {};
   Object.assign(organizationDialog, { open: true, kind, item, name: item?.name || overrides.name || "", color: item?.color || defaults.color || "#2563eb", icon: item?.icon || defaults.icon || "", parentId: item?.parentId || overrides.parentId || defaults.parentId || "", groupId: item?.groupId || overrides.groupId || "", newGroupName: "", newGroupIcon: "📁", newGroupColor: "#64748b", groupListIds: [...(overrides.groupListIds || [])], viewType: item?.viewType || "LIST", objectType: item?.objectType || "TASK", showInSmartLists: item?.showInSmartLists !== false, pinned: Boolean(item?.pinned), filter });
   filterPreview.value = [];
   organizationDialogOpen.value = true;
@@ -2769,13 +2820,50 @@ function filterPayload(item, overrides = {}) {
 }
 function groupListSelected(groupId) {
   const ids = activeLists.value.filter(list => list.groupId === groupId).map(list => list.publicId);
-  return ids.length > 0 && ids.every(id => organizationDialog.filter.listIds.includes(id));
+  return filterListAllSelected.value || (ids.length > 0 && ids.every(id => organizationDialog.filter.listIds.includes(id)));
+}
+function closeOtherFilterSelect(active) {
+  const details = [...document.querySelectorAll("[role=dialog] .clone-filter-select")];
+  details.forEach((item, index) => { if ((active === "list" ? index !== 0 : index !== 1)) item.open = false; });
 }
 function toggleFilterGroup(groupId, checked) {
   const ids = activeLists.value.filter(list => list.groupId === groupId).map(list => list.publicId);
+  const selected = filterListAllSelected.value ? activeLists.value.map(list => list.publicId) : organizationDialog.filter.listIds;
   organizationDialog.filter.listIds = checked
-    ? [...new Set([...organizationDialog.filter.listIds, ...ids])]
-    : organizationDialog.filter.listIds.filter(id => !ids.includes(id));
+    ? [...new Set([...selected, ...ids])]
+    : selected.filter(id => !ids.includes(id));
+}
+function toggleFilterList(listId, checked) {
+  const selected = filterListAllSelected.value ? activeLists.value.map(list => list.publicId) : organizationDialog.filter.listIds;
+  organizationDialog.filter.listIds = checked
+    ? [...new Set([...selected, listId])]
+    : selected.filter(id => id !== listId);
+}
+function toggleFilterTag(tagId, checked) {
+  organizationDialog.filter.tagMode = "SELECTED";
+  organizationDialog.filter.tagIds = checked
+    ? [...new Set([...organizationDialog.filter.tagIds, tagId])]
+    : organizationDialog.filter.tagIds.filter(id => id !== tagId);
+  if (!organizationDialog.filter.tagIds.length) organizationDialog.filter.tagMode = "ALL";
+}
+function setFilterDueRange() {
+  if (organizationDialog.filter.dueRange !== "CUSTOM") return;
+  const options = filterDateOptions.value;
+  const today = options.find(option => option.offset === 0)?.value || dateKey(new Date());
+  if (!options.some(option => option.value === organizationDialog.filter.dueStart)) organizationDialog.filter.dueStart = today;
+  if (!options.some(option => option.value === organizationDialog.filter.dueEnd && option.value > organizationDialog.filter.dueStart)) {
+    organizationDialog.filter.dueEnd = options.find(option => option.offset === 7)?.value || options.find(option => option.value > organizationDialog.filter.dueStart)?.value || "";
+  }
+}
+function setFilterDateEndpoint(endpoint, value) {
+  if (endpoint === "start") {
+    organizationDialog.filter.dueStart = value;
+    if (!organizationDialog.filter.dueEnd || organizationDialog.filter.dueEnd <= value) {
+      organizationDialog.filter.dueEnd = filterDateOptions.value.find(option => option.value > value)?.value || "";
+    }
+    return;
+  }
+  if (value > organizationDialog.filter.dueStart) organizationDialog.filter.dueEnd = value;
 }
 async function toggleFilterPinned() {
   const item = organizationMenu.item;
@@ -3295,6 +3383,56 @@ const SidebarSection = {
 .clone-filter-preview footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px; }
 .clone-organization-form footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 6px; }
 .clone-organization-form footer.clone-inbox-color-actions { justify-content: center; gap: 10px; }
+.clone-filter-form { gap: 11px; width: 100%; }
+.clone-filter-name-row { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.clone-filter-name-row input { min-width: 0; }
+.clone-filter-mode { width: 136px; margin: 0 auto; }
+.clone-filter-field { display: grid !important; grid-template-columns: 68px minmax(0, 1fr); align-items: center; gap: 8px !important; min-width: 0; color: var(--ink2) !important; }
+.clone-filter-field > span { color: var(--ink2); }
+.clone-filter-field > input,
+.clone-filter-field > select { width: 100%; min-width: 0; }
+.clone-filter-select { position: relative; min-width: 0; }
+.clone-filter-select > summary { display: flex; align-items: center; justify-content: space-between; min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); cursor: pointer; list-style: none; }
+.clone-filter-select > summary::-webkit-details-marker { display: none; }
+.clone-filter-select[open] > summary { border-color: var(--accent); }
+.clone-filter-select-menu { position: absolute; z-index: 25; top: calc(100% + 4px); right: 0; left: 0; display: grid; gap: 2px; max-height: min(250px, 36vh); overflow: auto; padding: 7px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); box-shadow: 0 12px 28px rgb(0 0 0 / 20%); }
+.clone-filter-select-menu label { display: flex !important; align-items: center; gap: 8px; min-height: 30px; margin: 0; padding: 3px 5px; border-radius: 4px; color: var(--ink) !important; cursor: pointer; }
+.clone-filter-select-menu label:hover { background: var(--accent-soft); }
+.clone-filter-select-menu label input { flex: 0 0 15px; width: 15px; min-height: 15px; margin: 0; accent-color: var(--accent); }
+.clone-filter-select-menu label.is-child-list { padding-left: 23px; }
+.clone-filter-select-menu hr { width: 100%; margin: 3px 0; border: 0; border-top: 1px solid var(--line); }
+.clone-filter-date-range { display: grid; grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr); align-items: end; gap: 6px; }
+.clone-filter-date-range label { display: grid; gap: 5px; min-width: 0; color: var(--ink2); font-size: 12px; }
+.clone-filter-date-range label > span { display: flex; align-items: center; gap: 5px; }
+.clone-filter-date-range select { width: 100%; min-width: 0; padding: 6px; }
+.clone-filter-date-separator { align-self: center; padding-top: 21px; text-align: center; }
+.clone-filter-priorities,
+.clone-filter-task-types { display: flex !important; flex-wrap: wrap; align-items: center; gap: 8px 12px !important; min-width: 0; padding: 0 !important; border: 0 !important; }
+.clone-filter-priorities legend,
+.clone-filter-task-types legend { flex: 0 0 68px; float: left; padding: 0 !important; color: var(--ink2) !important; }
+.clone-filter-priorities label,
+.clone-filter-task-types label { display: flex !important; align-items: center; gap: 5px !important; margin: 0; color: var(--ink) !important; white-space: nowrap; }
+.clone-filter-priorities input,
+.clone-filter-task-types input { flex: 0 0 14px !important; width: 14px !important; min-height: 14px !important; margin: 0; accent-color: var(--accent); }
+.clone-filter-preview-button { display: inline-flex; align-items: center; gap: 5px; margin-right: auto; padding: 5px 0; border: 0; background: transparent; color: var(--accent); cursor: pointer; }
+.clone-organization-form footer.clone-filter-preview-actions { justify-content: flex-end; }
+.clone-filter-preview-screen { display: grid; gap: 10px; max-height: min(55vh, 460px); overflow: auto; padding: 8px 3px; }
+.clone-filter-preview-screen > strong { color: var(--ink2); font-size: 13px; }
+.clone-filter-preview-group { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; }
+.clone-filter-preview-group > strong,
+.clone-filter-preview-list > strong { display: flex; align-items: center; gap: 6px; color: var(--ink2); font-size: 12px; }
+.clone-filter-preview-group small,
+.clone-filter-preview-list small { margin-left: auto; color: var(--muted); font-size: 11px; }
+.clone-filter-preview-list { display: grid; gap: 4px; padding-left: 12px; }
+.clone-filter-preview-list > span { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 5px; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); color: var(--ink); font-size: 12px; }
+.clone-filter-preview-list > span:last-child { border-bottom: 0; }
+.clone-filter-preview-check { flex: 0 0 13px; width: 13px; height: 13px; border: 1px solid var(--muted); border-radius: 50%; }
+.clone-filter-preview-list > span:not(:has(small:empty)) small { white-space: nowrap; }
+.clone-filter-preview-actions .clone-primary-button { min-width: 112px; }
+:global(.task-filter-dialog) { width: min(540px, calc(100vw - 32px)); max-width: 540px; }
+:global(.task-filter-dialog .ui-dialog-head) { position: relative; justify-content: flex-start; padding-right: 52px; }
+:global(.task-filter-dialog .ui-dialog-close) { position: absolute; top: 12px; right: 12px; }
+:global(.task-filter-dialog .ui-dialog-body) { padding: 16px 20px; }
 .clone-inbox-color-form { gap: 20px; width: min(390px, 100%); min-width: 0; padding: 2px 2px 0; }
 .clone-inbox-color-form .clone-inbox-color-row { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 4px 4px 10px; color: var(--ink2); font-size: 13px; }
 .clone-inbox-color-form .clone-inbox-color-row > span { flex: none; }
