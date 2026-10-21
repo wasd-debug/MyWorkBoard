@@ -3544,7 +3544,8 @@ const SidebarSection = {
 .clone-mini-calendar:hover .clone-mini-calendar-toggle,
 .clone-mini-calendar:focus-within .clone-mini-calendar-toggle,
 .clone-mini-calendar-toggle:focus-visible { opacity: 1; }
-.clone-mini-calendar.is-expanded .clone-mini-calendar-toggle svg { transform: rotate(180deg); }
+.clone-mini-calendar-toggle svg { transform: rotate(180deg); }
+.clone-mini-calendar.is-expanded .clone-mini-calendar-toggle svg { transform: rotate(0deg); }
 .clone-mini-calendar-toggle:hover { background: var(--line2); color: var(--ink); }
 .clone-mini-calendar-head { display: flex; min-height: 28px; align-items: center; justify-content: space-between; gap: 4px; padding: 0 5px; }
 .clone-mini-calendar-head strong { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--ink2); font-size: 14px; font-weight: 650; text-overflow: clip; white-space: nowrap; }
