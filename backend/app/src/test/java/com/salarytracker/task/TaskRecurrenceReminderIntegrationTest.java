@@ -51,6 +51,26 @@ class TaskRecurrenceReminderIntegrationTest extends MySqlIntegrationTestSupport 
     }
 
     @Test
+    void monthlyLastWorkdayRulePersistsAndGeneratesNextDatabaseInstance() {
+        long userId = createUser();
+        CurrentUserResolver current = current(userId);
+        TaskService tasks = new TaskService(jdbc, current, new TaskChangeLog(jdbc,
+                new ObjectMapper().findAndRegisterModules()));
+        String rule = "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1";
+        var task = tasks.create(new TaskCommand(null, "月末工作日", "", "NONE", null,
+                "2026-10-30T09:00:00Z", false, "UTC", null, null, null, null, rule, "DUE_DATE"), "monthly-workday");
+
+        assertEquals(rule, jdbc.queryForObject("SELECT rrule FROM task WHERE public_id=?", String.class, task.publicId()));
+        tasks.complete(task.publicId(), String.valueOf(task.revision()));
+
+        var next = tasks.listTasks(null, null, "ALL", null, 0, 20).items().stream()
+                .filter(item -> item.seriesSequence() != null && item.seriesSequence() == 2)
+                .findFirst().orElseThrow();
+        assertEquals(Instant.parse("2026-11-30T09:00:00Z"), Instant.parse(next.plannedDueAt()));
+        assertEquals(rule, next.rrule());
+    }
+
+    @Test
     void reminderFireIsIdempotentAndUnreadCountBalances() {
         long userId = createUser();
         CurrentUserResolver current = current(userId);

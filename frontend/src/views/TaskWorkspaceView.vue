@@ -141,7 +141,7 @@
       <button v-if="!isMobileSidebar && !sidebarHidden" class="clone-sidebar-resize" type="button" role="separator" aria-label="调整任务侧栏宽度" aria-orientation="vertical" :aria-valuemin="184" :aria-valuemax="420" :aria-valuenow="sidebarWidth" @pointerdown="startSidebarResize" @keydown="resizeSidebarByKey"></button>
     </aside>
 
-    <main class="clone-task-main">
+    <main class="clone-task-main" :class="{ 'quick-action-open': Boolean(quickAction) }">
       <header class="clone-task-header">
         <div class="clone-title-block">
           <button
@@ -264,10 +264,10 @@
             <header><strong>重复</strong><button type="button" aria-label="关闭重复设置" @click="quickAction = ''"><X :size="14" /></button></header>
             <div class="clone-quick-repeat-presets"><button v-for="option in quickRepeatPresets" :key="option.value" type="button" :class="{ active: quickRepeat.preset === option.value }" @click="quickRepeat.preset = option.value; quickRepeatError = ''">{{ option.label }}</button></div>
             <template v-if="quickRepeat.preset === 'CUSTOM'">
-              <div class="clone-quick-repeat-grid"><label>重复方式<select v-model="quickRepeat.mode"><option value="DUE_DATE">到期重复</option><option value="COMPLETION_DATE">完成重复</option><option value="CUSTOM">自选重复</option></select></label><label>频率<select v-model="quickRepeat.frequency"><option value="DAILY">每天</option><option value="WEEKLY">每周</option><option value="MONTHLY">每月</option><option value="YEARLY">每年</option></select></label><label>间隔<input v-model.number="quickRepeat.interval" type="number" min="1" max="365" /></label></div>
+              <div class="clone-quick-repeat-grid"><label>重复方式<select v-model="quickRepeat.mode"><option value="DUE_DATE">到期重复</option><option value="COMPLETION_DATE">完成重复</option><option value="CUSTOM">自选重复</option></select></label><label>频率<select :value="quickRepeat.frequency" @change="setQuickRepeatFrequency"><option value="DAILY">每天</option><option value="WEEKLY">每周</option><option value="MONTHLY">每月</option><option value="YEARLY">每年</option></select></label><label>间隔<input v-model.number="quickRepeat.interval" type="number" min="1" max="365" /></label></div>
               <div v-if="quickRepeat.frequency === 'WEEKLY'" class="clone-quick-repeat-days"><span>每周</span><label v-for="day in DAY_CODES" :key="day"><input v-model="quickRepeat.weekdays" type="checkbox" :value="day" />{{ { MO: '一', TU: '二', WE: '三', TH: '四', FR: '五', SA: '六', SU: '日' }[day] }}</label></div>
-              <div v-if="['MONTHLY', 'YEARLY'].includes(quickRepeat.frequency)" class="clone-quick-repeat-grid"><label>重复日期<select v-model="quickRepeat.monthMode"><option value="DATE">按日期</option><option value="WEEKDAY">按星期</option><option value="WORKDAY">按工作日</option></select></label><label v-if="quickRepeat.monthMode === 'DATE'">日期<input v-model.number="quickRepeat.monthDay" type="number" min="1" max="31" /></label></div>
-              <label class="clone-quick-repeat-check"><input v-model="quickRepeat.skipHolidays" type="checkbox" />跳过法定节假日</label><label class="clone-quick-repeat-check"><input v-model="quickRepeat.skipWeekends" type="checkbox" />跳过双休日</label>
+              <div v-if="['MONTHLY', 'YEARLY'].includes(quickRepeat.frequency)" class="clone-quick-repeat-grid"><label>重复日期<select v-model="quickRepeat.monthMode"><option value="DATE">按日期</option><option value="WEEKDAY">按星期</option><option v-if="quickRepeat.frequency === 'MONTHLY'" value="WORKDAY">按工作日</option></select></label><label v-if="quickRepeat.frequency === 'YEARLY'">月份<select v-model.number="quickRepeat.month"><option v-for="month in 12" :key="month" :value="month">{{ month }} 月</option></select></label><label v-if="quickRepeat.monthMode === 'DATE'">日期<input v-model.number="quickRepeat.monthDay" type="number" min="1" max="31" /></label><template v-if="quickRepeat.monthMode === 'WEEKDAY'"><label>第几周<select v-model.number="quickRepeat.ordinal"><option v-for="ordinal in 5" :key="ordinal" :value="ordinal">第 {{ ordinal }} 个</option><option :value="-1">最后一个</option></select></label><label>星期<select v-model="quickRepeat.weekday"><option v-for="day in DAY_CODES" :key="day" :value="day">{{ { MO: '周一', TU: '周二', WE: '周三', TH: '周四', FR: '周五', SA: '周六', SU: '周日' }[day] }}</option></select></label></template><label v-if="quickRepeat.monthMode === 'WORKDAY'">工作日<select v-model.number="quickRepeat.workdayPosition"><option :value="1">第一个工作日</option><option :value="-1">最后一个工作日</option></select></label></div>
+              <label v-if="quickRepeat.frequency !== 'WEEKLY' && quickRepeat.monthMode !== 'WORKDAY'" class="clone-quick-repeat-check"><input v-model="quickRepeat.skipWeekends" type="checkbox" />跳过双休日</label>
               <div class="clone-quick-repeat-end"><span>结束条件</span><label><input v-model="quickRepeat.endMode" type="radio" value="NEVER" />永不结束</label><label><input v-model="quickRepeat.endMode" type="radio" value="UNTIL" />按日期结束</label><input v-if="quickRepeat.endMode === 'UNTIL'" v-model="quickRepeat.until" type="date" /><label><input v-model="quickRepeat.endMode" type="radio" value="COUNT" />按次数结束</label><input v-if="quickRepeat.endMode === 'COUNT'" v-model.number="quickRepeat.count" type="number" min="1" /></div>
             </template>
             <p v-if="quickRepeatError" class="clone-error" role="alert">{{ quickRepeatError }}</p>
@@ -2398,6 +2398,11 @@ function applyQuickRepeat() {
   quickAction.value = "";
 }
 
+function setQuickRepeatFrequency(event) {
+  quickRepeat.frequency = event.target.value;
+  if (quickRepeat.frequency === "YEARLY" && quickRepeat.monthMode === "WORKDAY") quickRepeat.monthMode = "DATE";
+}
+
 function resetQuickRepeat() {
   Object.assign(quickRepeat, createQuickRepeatState());
   quickRepeatError.value = "";
@@ -4282,6 +4287,7 @@ const SidebarSection = {
 .clone-quick-action-panel button.active { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
 .clone-quick-action-panel label:has(input[type="checkbox"]) { padding: 3px 5px; border-radius: 4px; color: var(--ink); }
 .clone-quick-action-panel.is-date { display: block; width: min(420px, calc(100vw - 36px)); max-height: min(660px, calc(100dvh - 210px)); overflow: auto; padding: 0; }
+.clone-quick-action-panel.is-repeat { display: block; width: min(410px, calc(100vw - 36px)); max-width: calc(100vw - 36px); box-sizing: border-box; overflow: auto; }
 .clone-quick-date-panel { display: grid; gap: 10px; padding: 12px; }
 .clone-quick-date-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; border-radius: 6px; background: var(--paper); }
 .clone-quick-action-panel .clone-quick-date-tabs button { min-height: 29px; color: var(--muted); }
@@ -4315,24 +4321,27 @@ const SidebarSection = {
 .clone-quick-action-panel .clone-quick-reminder-custom input { width: 72px; }
 .clone-quick-action-panel .clone-quick-reminder-custom select { min-width: 88px; }
 .clone-quick-action-panel .clone-quick-reminder-repeat { display: flex; justify-content: flex-start; color: var(--ink2); }
-.clone-quick-repeat-panel { display: grid; gap: 10px; min-width: min(410px, calc(100vw - 50px)); }
+.clone-quick-repeat-panel { display: grid; gap: 10px; width: 100%; min-width: 0; box-sizing: border-box; }
 .clone-quick-repeat-panel > header { display: flex; align-items: center; justify-content: space-between; }
 .clone-quick-repeat-panel > header button { width: 26px; min-height: 26px; padding: 0; }
 .clone-quick-repeat-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
 .clone-quick-repeat-presets button { border: 1px solid var(--line); }
 .clone-quick-repeat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
-.clone-quick-repeat-grid label { display: grid; gap: 4px; }
-.clone-quick-repeat-grid input, .clone-quick-repeat-grid select, .clone-quick-repeat-end input[type="date"], .clone-quick-repeat-end input[type="number"] { width: 100%; }
+.clone-quick-repeat-grid label { display: grid; min-width: 0; gap: 4px; }
+.clone-quick-repeat-grid input, .clone-quick-repeat-grid select, .clone-quick-repeat-end input[type="date"], .clone-quick-repeat-end input[type="number"] { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
 .clone-quick-repeat-days, .clone-quick-repeat-end { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; color: var(--ink2); font-size: 11px; }
 .clone-quick-repeat-days label, .clone-quick-repeat-check, .clone-quick-repeat-end label { display: inline-flex; align-items: center; gap: 4px; }
 .clone-quick-repeat-check { color: var(--ink2); }
 .clone-quick-repeat-end > span { flex-basis: 100%; color: var(--muted); }
 .clone-quick-repeat-end input[type="date"] { max-width: 135px; }
 .clone-quick-repeat-end input[type="number"] { max-width: 70px; }
+.clone-quick-repeat-panel > footer { position: sticky; bottom: 0; z-index: 1; padding-block: 4px; background: var(--card); }
 .clone-quick-action-panel .clone-quick-date-footer { display: flex; justify-content: space-between; padding-top: 4px; border-top: 1px solid var(--line); }
 .clone-quick-action-panel .clone-quick-date-footer .clone-quick-date-apply { padding-inline: 14px; background: var(--accent); color: var(--accent-contrast, #fff); }
 @media (max-width: 600px) {
   .clone-quick-action-panel.is-date { position: fixed; z-index: 250; top: 72px; right: 8px; bottom: auto; left: 8px; width: auto; max-height: calc(100dvh - 316px); margin: 0; }
+  .clone-quick-action-panel.is-repeat { position: fixed; z-index: 250; top: 72px; right: 8px; bottom: auto; left: 8px; width: auto; max-width: none; max-height: calc(100dvh - 280px); margin: 0; }
+  .clone-quick-repeat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .clone-quick-date-footer { position: sticky; bottom: 0; z-index: 1; background: var(--card); }
 .clone-quick-draft {
@@ -5223,6 +5232,7 @@ const SidebarSection = {
   .clone-task-main {
     padding: 16px 14px 100px;
   }
+  .clone-task-main.quick-action-open { z-index: 250; overflow: visible; }
   .clone-task-header {
     align-items: flex-start;
   }

@@ -28,7 +28,7 @@ final class TaskRecurrence {
             throw new IllegalArgumentException("RRULE FREQ 仅支持 DAILY/WEEKLY/MONTHLY/YEARLY");
         }
         for (String key : rule.keySet()) {
-            if (!Set.of("FREQ", "INTERVAL", "BYDAY", "BYMONTHDAY", "BYMONTH", "COUNT", "UNTIL").contains(key)) {
+            if (!Set.of("FREQ", "INTERVAL", "BYDAY", "BYMONTHDAY", "BYMONTH", "BYSETPOS", "COUNT", "UNTIL").contains(key)) {
                 throw new IllegalArgumentException("RRULE 字段不支持: " + key);
             }
         }
@@ -37,6 +37,7 @@ final class TaskRecurrence {
         if (rule.containsKey("BYDAY")) for (String day : rule.get("BYDAY").split(",")) parseDay(day);
         integers(rule, "BYMONTHDAY", -31, 31, false);
         integers(rule, "BYMONTH", 1, 12, true);
+        integers(rule, "BYSETPOS", -366, 366, false);
         until(rule.get("UNTIL"));
         return rule.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue()).collect(Collectors.joining(";"));
     }
@@ -70,6 +71,19 @@ final class TaskRecurrence {
             default -> java.time.temporal.ChronoUnit.YEARS.between(origin.withDayOfYear(1), date.withDayOfYear(1));
         };
         if (units < interval || units % interval != 0) return false;
+        if (!matchesBase(rule, origin, date)) return false;
+        Set<String> days = values(rule.get("BYDAY"));
+        Set<Integer> monthDays = ints(rule.get("BYMONTHDAY"));
+        if (days.isEmpty() && monthDays.isEmpty()) {
+            if ("WEEKLY".equals(rule.get("FREQ")) && date.getDayOfWeek() != origin.getDayOfWeek()) return false;
+            if (("MONTHLY".equals(rule.get("FREQ")) || "YEARLY".equals(rule.get("FREQ")))
+                    && date.getDayOfMonth() != Math.min(origin.getDayOfMonth(), date.lengthOfMonth())) return false;
+        }
+        if ("YEARLY".equals(rule.get("FREQ")) && !rule.containsKey("BYMONTH") && date.getMonth() != origin.getMonth()) return false;
+        return matchesSetPosition(rule, origin, date);
+    }
+
+    private static boolean matchesBase(Map<String, String> rule, LocalDate origin, LocalDate date) {
         Set<String> days = values(rule.get("BYDAY"));
         if (!days.isEmpty() && days.stream().noneMatch(value -> matchesDay(value, date))) return false;
         Set<Integer> monthDays = ints(rule.get("BYMONTHDAY"));
@@ -77,12 +91,34 @@ final class TaskRecurrence {
                 ? date.getDayOfMonth() == value : date.getDayOfMonth() == date.lengthOfMonth() + value + 1)) return false;
         Set<Integer> months = ints(rule.get("BYMONTH"));
         if (!months.isEmpty() && !months.contains(date.getMonthValue())) return false;
-        if (days.isEmpty() && monthDays.isEmpty()) {
-            if ("WEEKLY".equals(rule.get("FREQ")) && date.getDayOfWeek() != origin.getDayOfWeek()) return false;
-            if (("MONTHLY".equals(rule.get("FREQ")) || "YEARLY".equals(rule.get("FREQ")))
-                    && date.getDayOfMonth() != Math.min(origin.getDayOfMonth(), date.lengthOfMonth())) return false;
-        }
         return !"YEARLY".equals(rule.get("FREQ")) || rule.containsKey("BYMONTH") || date.getMonth() == origin.getMonth();
+    }
+
+    private static boolean matchesSetPosition(Map<String, String> rule, LocalDate origin, LocalDate date) {
+        Set<Integer> positions = ints(rule.get("BYSETPOS"));
+        if (positions.isEmpty()) return true;
+        LocalDate start = switch (rule.get("FREQ")) {
+            case "MONTHLY" -> date.withDayOfMonth(1);
+            case "YEARLY" -> date.withDayOfYear(1);
+            default -> date;
+        };
+        LocalDate end = switch (rule.get("FREQ")) {
+            case "MONTHLY" -> date.withDayOfMonth(date.lengthOfMonth());
+            case "YEARLY" -> date.withDayOfYear(date.lengthOfYear());
+            default -> date;
+        };
+        int position = 0;
+        int matchPosition = 0;
+        for (LocalDate candidate = start; !candidate.isAfter(end); candidate = candidate.plusDays(1)) {
+            if (matchesBase(rule, origin, candidate)) {
+                position++;
+                if (candidate.equals(date)) matchPosition = position;
+            }
+        }
+        if (matchPosition == 0) return false;
+        int total = position;
+        int target = matchPosition;
+        return positions.stream().anyMatch(value -> value > 0 ? value == target : total + value + 1 == target);
     }
 
     private static boolean matchesDay(String value, LocalDate date) {
