@@ -1575,6 +1575,8 @@ export function useViewport() {
 | 禁用 | 功能开关关闭时入口不渲染（不是置灰），避免用户点不动 |
 | 删除确认 | 单条：`⋮` → 删除 → Toast 撤销；永久清除：Dialog 二次确认并列出影响 |
 
+选择“保留本地”重提冲突时，以冲突响应中的服务端实体和 revision 为基底，叠加 oplog 中该实体**最新**的本地操作 payload；同时更新 IndexedDB 实体投影与待同步操作的 `baseRevision`。不得直接重放冲突快照里可能已过时的本地 payload，也不得丢弃服务端新增字段。
+
 ### 8.10 主题与无障碍
 
 - 颜色只走语义 token（`--card`、`--ink`、`--ink2`、`--muted`、`--line`、`--accent`、`--accent-soft` 等），**禁止硬编码颜色**。

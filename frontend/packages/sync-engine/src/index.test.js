@@ -160,6 +160,45 @@ test('冲突保留待处理操作，权限撤销写入可导出队列', async ()
   assert.match(await engine.exportRejected('book-a'), /op-a/)
 })
 
+test('解决排序冲突时基于最新服务器版本保留队列中的最后一次本地意图', async () => {
+  let round = 0
+  const engine = new SyncEngine({
+    entityPrefix: 'task',
+    stores: ['task-lists', 'task-tags', 'tasks', 'habits', 'habit-checkins', 'countdowns'],
+    transport: {
+      push: async (_bookId, operations) => ({ results: operations.map(operation => round++ === 0
+        ? { opId: operation.opId, status: 'CONFLICT', serverRevision: 10, serverEntity: {
+          id: operation.entityId, name: '服务器名称', color: '#2563eb', sortOrder: 4,
+          revision: 10, extra: { viewType: 'LIST', objectType: 'TASK' }
+        } }
+        : { opId: operation.opId, status: 'APPLIED', entity: { ...operation.payload, revision: 11 } }) }),
+      pull: async (_bookId, cursor) => ({ cursor, operations: [] })
+    }
+  })
+  const options = { bookId: 'tasks', opId: 'list-order', baseRevision: 9 }
+  await engine.put('task-list', { id: 'list-a', name: '服务器名称', sortOrder: 1, revision: 9 }, options)
+  await engine.sync('tasks')
+  await engine.put('task-list', { id: 'list-a', name: '本地名称', sortOrder: 0, revision: 9 }, options)
+
+  await engine.resolveConflict('list-order', 'local')
+
+  const [operation] = await engine.pendingOperations('tasks')
+  const cached = await engine.get('task-list', 'list-a', { bookId: 'tasks' })
+  assert.equal(operation.baseRevision, 10)
+  assert.equal(operation.payload.revision, 10)
+  assert.equal(operation.payload.name, '本地名称')
+  assert.equal(operation.payload.sortOrder, 0)
+  assert.equal(operation.payload.color, '#2563eb')
+  assert.equal(operation.payload.viewType, 'LIST')
+  assert.equal(cached.name, '本地名称')
+  assert.equal(cached.sortOrder, 0)
+  assert.equal(cached.revision, 10)
+
+  await engine.sync('tasks')
+  assert.equal((await engine.pendingOperations('tasks')).length, 0)
+  assert.equal((await engine.conflicts('tasks')).length, 0)
+})
+
 test('服务端校验拒绝移出待同步队列并保留可定位信息', async () => {
   const engine = new SyncEngine({
     transport: {

@@ -268,22 +268,42 @@ export class SyncEngine {
   async resolveConflict(opId, strategy, mergedPayload) {
     const conflict = await this.read('conflicts', String(opId))
     if (!conflict) return null
+    const original = conflict.operation
+    const pending = await this.read('oplog', String(opId))
+    const operation = pending || original
+    const server = conflict.result?.serverEntity
+    const serverRevision = Number(conflict.result?.serverRevision ?? server?.revision ?? 0)
     if (strategy === 'server') {
-      const server = conflict.result?.serverEntity
       if (server) {
-        await this.put(conflict.operation.entityType, server, {
+        await this.put(operation.entityType, {
+          ...server,
+          ...(this.entityPrefix === 'task' ? server.extra || {} : {}),
+          id: operation.entityId,
+          revision: serverRevision
+        }, {
           bookId: conflict.bookId,
           recordOp: false
         })
       }
       await this.removeStore('oplog', opId)
     } else {
-      const payload = strategy === 'merged' ? mergedPayload : conflict.operation.payload
+      const localPayload = operation.payload || original.payload || {}
+      const payload = strategy === 'merged'
+        ? { ...server, ...(this.entityPrefix === 'task' ? server?.extra || {} : {}), ...mergedPayload }
+        : { ...server, ...(this.entityPrefix === 'task' ? server?.extra || {} : {}), ...localPayload }
+      payload.id = operation.entityId
+      if (serverRevision) payload.revision = serverRevision
+      if (server) {
+        await this.put(operation.entityType, payload, {
+          bookId: conflict.bookId,
+          recordOp: false
+        })
+      }
       await this.write('oplog', {
-        ...conflict.operation,
-        key: conflict.operation.opId,
+        ...operation,
+        key: operation.opId,
         payload,
-        baseRevision: conflict.result?.serverRevision || 0
+        baseRevision: serverRevision
       })
     }
     await this.removeStore('conflicts', opId)
