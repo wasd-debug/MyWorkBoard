@@ -237,15 +237,22 @@
       <div v-if="store.error" class="clone-error" role="alert">
         {{ store.error }}
       </div>
+      <div v-if="store.conflicts.length" class="clone-error" role="alert">
+        {{ store.conflicts.length }} 项变更需要处理冲突；本地数据已保留。
+      </div>
       <div
-        v-if="store.pending || !store.online"
+        v-if="store.pending || !store.online || store.syncing || store.syncError"
         class="clone-status"
         role="status"
       >
         <WifiOff v-if="!store.online" :size="15" />{{
-          store.online
-            ? `${store.pending} 项变更等待同步`
-            : "当前离线，变更会在联网后同步"
+          !store.online
+            ? "当前离线，变更已保存在本机"
+            : store.syncing
+              ? `正在后台同步${store.pending ? ` ${store.pending} 项变更` : ""}`
+              : store.syncError
+                ? `${store.syncError}${store.pending ? `（${store.pending} 项待同步）` : ""}`
+                : `${store.pending} 项待同步`
         }}
       </div>
       <div class="clone-list-toolbar">
@@ -2864,7 +2871,6 @@ async function confirmListCopy() {
       }
     }
     listCopyOpen.value = false;
-    await store.refreshServer();
     message.success(listCopy.mode !== "NONE" ? `已复制清单和 ${copiedCount} 条任务` : "已复制清单设置");
   } catch (error) {
     store.error = `${error?.response?.data?.detail || error?.message || "复制清单失败"}；已创建的内容会保留，请检查后再继续`;
@@ -3010,7 +3016,7 @@ async function saveOrganization() {
     try {
       await store.updateList(item, { color: organizationDialog.color });
       organizationDialogOpen.value = false;
-      await store.refreshServer();
+      void store.refreshServer();
     } catch (error) { store.error = error?.response?.data?.detail || error?.message || "保存收集箱颜色失败"; }
     return;
   }
@@ -3023,7 +3029,6 @@ async function saveOrganization() {
         const folderName = organizationDialog.newGroupName.trim();
         if (!folderName) return;
         const created = await apiCreateTaskListGroup({ name: folderName, color: organizationDialog.newGroupColor, icon: organizationDialog.newGroupIcon, sortOrder: store.listGroups.length, pinned: false });
-        await store.refreshServer();
         groupId = created?.publicId || store.listGroups.find(group => group.name === folderName)?.publicId || "";
         if (!groupId) throw new Error("文件夹已创建，请刷新后重新选择");
         organizationDialog.groupId = groupId;
@@ -3034,7 +3039,7 @@ async function saveOrganization() {
     } else if (kind === "tag") {
       const payload = { name, color: organizationDialog.color, icon: organizationDialog.icon || null, parentId: organizationDialog.parentId || null, sortOrder: item?.sortOrder ?? store.tags.length };
       if (item) await store.updateTag(item, payload); else await store.createTag(payload);
-      await store.refreshServer();
+      void store.refreshServer();
     } else if (kind === "filter") {
       const payload = filterPayload(item, { name, sortOrder: item?.sortOrder ?? filters.value.length }, true);
       if (item) await apiUpdateTaskFilter(item.publicId, payload, item.revision);
@@ -3044,8 +3049,8 @@ async function saveOrganization() {
       if (item) await store.updateListGroup(item, { name, color: organizationDialog.color, icon: organizationDialog.icon || "", sortOrder: item.sortOrder, pinned: organizationDialog.pinned });
       else {
         const group = await apiCreateTaskListGroup({ name, color: organizationDialog.color, icon: organizationDialog.icon || "", sortOrder: store.listGroups.length, pinned: organizationDialog.pinned });
-        await store.refreshServer();
-        const createdGroup = store.listGroups.find(value => value.publicId === group?.publicId || value.name === name);
+        if (group?.publicId) store.listGroups = [...store.listGroups.filter(value => value.publicId !== group.publicId), group];
+        const createdGroup = group?.publicId ? group : store.listGroups.find(value => value.name === name);
         const ids = organizationDialog.groupListIds.length ? organizationDialog.groupListIds : organizationDialog.groupId ? [organizationDialog.groupId] : [];
         if (createdGroup) for (const id of ids) {
           const list = store.lists.find(value => value.publicId === id);
@@ -3054,7 +3059,7 @@ async function saveOrganization() {
       }
     }
     organizationDialogOpen.value = false;
-    await store.refreshServer();
+    void store.refreshServer();
   } catch (error) { store.error = error?.response?.data?.detail || error?.message || "保存失败"; }
 }
 function requestOrganizationConfirmation(action, item, title, message, confirmLabel) {
@@ -3082,10 +3087,8 @@ async function confirmOrganizationAction() {
   try {
     if (action === "archive-list") {
       await store.updateList(item, { archived: !item.archived });
-      await store.refreshServer();
     } else if (action === "delete-list") {
       await store.deleteList(item);
-      await store.refreshServer();
     } else if (action === "dissolve-group") {
       const members = activeLists.value.filter(list => list.groupId === item.publicId);
       for (const list of members) await store.assignListGroup(list, "");
@@ -3095,7 +3098,7 @@ async function confirmOrganizationAction() {
     organizationConfirmOpen.value = false;
   } catch (error) {
     store.error = error?.response?.data?.detail || error?.message || "操作失败";
-    await store.refreshServer();
+    void store.refreshServer();
   } finally { organizationConfirmation.busy = false; }
 }
 async function deleteOrganization(kind) {
@@ -3217,20 +3220,20 @@ async function dropOrganization(kind, target) {
     if (kind === "list") for (const value of ordered) await store.updateList(store.lists.find(item => item.publicId === value.publicId), { sortOrder: value.sortOrder });
     else if (kind === "tag") for (const value of ordered) await apiUpdateTaskTag(value.publicId, { name: value.name, color: value.color || "", parentId: value.parentId || "", sortOrder: value.sortOrder }, value.revision);
     else for (const value of ordered) await apiUpdateTaskFilter(value.publicId, { ...value, sortOrder: value.sortOrder }, value.revision);
-    await store.refreshServer(); await loadFilters();
+    if (kind !== "list") { await store.refreshServer(); await loadFilters(); }
   } catch (error) { store.error = error?.response?.data?.detail || error?.message || "排序保存失败"; }
   endOrganizationDrag();
 }
 async function dropOrganizationRoot(kind) {
   if (kind === "list" && organizationDrag.value?.kind === "list" && organizationDrag.value.item.groupId) {
-    try { await store.assignListGroup(organizationDrag.value.item, ""); await store.refreshServer(); } catch (error) { store.error = error?.message || "移出分组失败"; }
+    try { await store.assignListGroup(organizationDrag.value.item, ""); } catch (error) { store.error = error?.message || "移出分组失败"; }
   }
   endOrganizationDrag();
 }
 async function dropListGroup(group) {
   const source = organizationDrag.value;
   if (!source || source.kind !== "list") return endOrganizationDrag();
-  try { await store.assignListGroup(source.item, group.publicId); await store.refreshServer(); } catch (error) { store.error = error?.message || "移动清单失败"; }
+  try { await store.assignListGroup(source.item, group.publicId); } catch (error) { store.error = error?.message || "移动清单失败"; }
   endOrganizationDrag();
 }
 async function dropGroup(target) {
@@ -3242,7 +3245,7 @@ async function dropGroup(target) {
     } else if (source.kind === "group") {
       const ordered = moveItem(sortedListGroups.value, source.item.publicId, target.publicId, organizationDropPlacement.value);
       for (const value of ordered) await apiUpdateTaskListGroup(value.publicId, { name: value.name, sortOrder: value.sortOrder }, value.revision);
-      await store.refreshServer();
+      void store.refreshServer();
     }
   } catch (error) { store.error = error?.response?.data?.detail || error?.message || "移动失败"; }
   endOrganizationDrag();

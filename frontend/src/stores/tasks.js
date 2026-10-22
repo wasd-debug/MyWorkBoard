@@ -3,20 +3,27 @@ import { createTaskSyncEngine } from '../../packages/sync-engine/src/index.js'
 import { apiListDeletedTaskLists, apiListTaskLists, apiListTaskTags, apiListTasks, apiPullTaskSync,
   apiGetHabitStats, apiListCountdowns, apiListHabits, apiPurgeTask, apiPushTaskSync, apiRestoreTask,
   apiRestoreTaskList, apiListTaskListGroups, apiCreateTaskListGroup, apiUpdateTaskListGroup,
-  apiDeleteTaskListGroup, apiAssignTaskListGroup, apiBatchTasks, apiSortTask, apiAbandonTask,
-  apiRestoreAbandonedTask } from '../../packages/api-client/src/index.js'
+  apiDeleteTaskListGroup, apiAssignTaskListGroup, apiBatchTasks } from '../../packages/api-client/src/index.js'
 import { accountScopeFor, taskDatabaseName } from '../utils/accountScope.js'
 import { createClientId } from '../utils/clientId.js'
 
 const SCOPE = 'tasks'
+const GROUP_ASSIGNMENTS_META_KEY = 'pending-list-group-assignments'
+const LIST_GROUPS_CACHE_META_KEY = 'task-list-groups-cache'
 const transport = {
-  push: (_scope, operations) => apiPushTaskSync([...operations].sort((a, b) => Number(a.operation === 'DELETE') - Number(b.operation === 'DELETE')).map(({ bookId, payload, ...operation }) => {
-    const clean = payload ? Object.fromEntries(Object.entries(payload).filter(([key]) => !['bookId', 'updatedAt'].includes(key))) : payload
+  push: async (_scope, operations) => {
+    const blockedIds = new Set((await engine.conflicts(SCOPE)).map(item => item.operation?.opId || item.id))
+    const ready = operations.filter(operation => !blockedIds.has(operation.opId))
+    if (!ready.length) return { results: [] }
+    return apiPushTaskSync([...ready].sort((a, b) => Number(a.operation === 'DELETE') - Number(b.operation === 'DELETE')).map(({ bookId, payload, ...operation }) => {
+    const excluded = ['bookId', 'updatedAt', ...(operation.entityType === 'task-list' ? ['groupId'] : [])]
+    const clean = payload ? Object.fromEntries(Object.entries(payload).filter(([key]) => !excluded.includes(key))) : payload
     if (clean && ['habit', 'habit-checkin', 'countdown'].includes(operation.entityType)) {
       return { ...operation, payload: { id: clean.id, revision: clean.revision, extra: Object.fromEntries(Object.entries(clean).filter(([key]) => !['id', 'revision', 'deleted', 'deletedAt', 'extra'].includes(key))) } }
     }
     return { ...operation, payload: clean }
-  })),
+    }))
+  },
   pull: (_scope, cursor) => apiPullTaskSync(cursor)
 }
 
@@ -24,12 +31,14 @@ let engine = createTaskSyncEngine({ dbName: taskDatabaseName(''), transport })
 let sessionEpoch = 0
 let listenersInstalled = false
 let syncTimer
+let syncRetryTimer
+let syncRetryAttempt = 0
 let activeSyncPromise
 let activeRefreshPromise
 
 function clearState(store) {
   Object.assign(store, { ready: false, loading: false, syncing: false, listGroups: [], lists: [], deletedLists: [], tags: [], tasks: [], total: 0, undoStack: [],
-    habits: [], habitCheckins: [], countdowns: [], conflicts: [], rejected: [], pending: 0, error: '' })
+    habits: [], habitCheckins: [], countdowns: [], conflicts: [], rejected: [], pending: 0, error: '', syncError: '' })
 }
 
 function localTask(value) {
@@ -38,9 +47,70 @@ function localTask(value) {
 }
 
 async function replaceRemoteCollection(scoped, type, records) {
-  const pending = new Set((await scoped.pendingOperations(SCOPE)).filter(item => item.entityType === type).map(item => item.entityId))
+  const groupAssignments = type === 'task-list' ? await readGroupAssignments(scoped) : []
+  const pending = new Set([
+    ...(await scoped.pendingOperations(SCOPE)).filter(item => item.entityType === type).map(item => item.entityId),
+    ...groupAssignments.map(item => item.listId)
+  ])
   const local = (await scoped.list(type, { bookId: SCOPE, includeDeleted: true })).filter(item => pending.has(item.id))
   await scoped.replace(type, [...records.filter(item => !pending.has(item.publicId)).map(item => ({ ...item, id: item.publicId })), ...local], { bookId: SCOPE })
+}
+
+async function readGroupAssignments(scoped = engine) {
+  return await scoped.meta(GROUP_ASSIGNMENTS_META_KEY) || []
+}
+
+async function writeGroupAssignments(assignments, scoped = engine) {
+  await scoped.setMeta(GROUP_ASSIGNMENTS_META_KEY, assignments)
+}
+
+function conflictListView(entity) {
+  return { ...(entity || {}), ...(entity?.extra || {}) }
+}
+
+async function reconcileSafeListConflicts(scoped) {
+  const conflicts = await scoped.conflicts(SCOPE)
+  let requeued = false
+  for (const conflict of conflicts) {
+    const operation = conflict.operation
+    const result = conflict.result
+    if (operation?.entityType !== 'task-list' || !result?.serverEntity) continue
+    const local = operation.payload || {}
+    const server = conflictListView(result.serverEntity)
+    const fields = ['name', 'color', 'icon', 'systemKey', 'sortOrder', 'archived', 'pinned', 'viewType', 'objectType', 'showInSmartLists']
+    const matchesServer = fields.every(field => local[field] === undefined || local[field] === server[field])
+    if (matchesServer) {
+      await scoped.resolveConflict(operation.opId, 'server')
+      continue
+    }
+    if (server.systemKey === 'INBOX' && result.message === '收集箱不可重命名') {
+      const merged = {
+        ...local,
+        name: server.name,
+        systemKey: server.systemKey,
+        revision: Number(result.serverRevision || server.revision || 0)
+      }
+      await scoped.put('task-list', { ...merged, id: operation.entityId, publicId: undefined }, { bookId: SCOPE, recordOp: false })
+      await scoped.resolveConflict(operation.opId, 'merged', merged)
+      requeued = true
+    }
+  }
+  return { resolved: conflicts.length > (await scoped.conflicts(SCOPE)).length, requeued }
+}
+
+function scheduleSyncRetry(store, epoch) {
+  clearTimeout(syncRetryTimer)
+  const delay = Math.min(60_000, [1_000, 2_500, 5_000, 10_000, 20_000, 60_000][Math.min(syncRetryAttempt, 5)])
+  syncRetryAttempt += 1
+  syncRetryTimer = setTimeout(() => {
+    if (epoch === sessionEpoch && store.online) void store.syncNow()
+  }, delay)
+}
+
+function syncFailureMessage(error) {
+  if (error?.response?.status === 401) return '登录已过期，变更已保存在本机；重新登录后会继续同步'
+  if (error?.response?.status === 403) return '当前账号无权同步部分变更；本机数据仍已保留'
+  return error?.response?.data?.detail || error?.message || '后台同步失败，变更已保存在本机并将重试'
 }
 
 async function organizationOptions(type, item) {
@@ -53,7 +123,7 @@ export const useTasksStore = defineStore('tasks', {
     ready: false, loading: false, saving: false, syncing: false,
     online: typeof navigator === 'undefined' ? true : navigator.onLine,
     accountScope: '', listGroups: [], lists: [], deletedLists: [], tags: [], tasks: [], habits: [], habitCheckins: [], countdowns: [],
-    total: 0, conflicts: [], rejected: [], pending: 0, error: '', undoStack: []
+    total: 0, conflicts: [], rejected: [], pending: 0, error: '', syncError: '', undoStack: []
   }),
   getters: {
     inbox: state => state.lists.find(item => item.systemKey === 'INBOX') || state.lists[0],
@@ -68,7 +138,10 @@ export const useTasksStore = defineStore('tasks', {
       const previous = engine
       sessionEpoch += 1
       clearTimeout(syncTimer)
+      clearTimeout(syncRetryTimer)
       syncTimer = undefined
+      syncRetryTimer = undefined
+      syncRetryAttempt = 0
       activeSyncPromise = null
       activeRefreshPromise = null
       clearState(this)
@@ -80,7 +153,7 @@ export const useTasksStore = defineStore('tasks', {
     installListeners() {
       if (listenersInstalled || typeof window === 'undefined') return
       listenersInstalled = true
-      window.addEventListener('online', () => { this.online = true; this.refreshServer() })
+      window.addEventListener('online', () => { this.online = true; void this.refreshServer() })
       window.addEventListener('offline', () => { this.online = false })
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && navigator.onLine) this.refreshServer()
@@ -105,13 +178,14 @@ export const useTasksStore = defineStore('tasks', {
     async hydrate() {
       const epoch = sessionEpoch
       const scoped = engine
-      const [lists, tags, tasks, habits, habitCheckins, countdowns, conflicts, rejected, pending] = await Promise.all([
+      const [lists, tags, tasks, habits, habitCheckins, countdowns, conflicts, rejected, pending, cachedListGroups, groupAssignments] = await Promise.all([
         scoped.list('task-list', { bookId: SCOPE, includeDeleted: true }), scoped.list('task-tag', { bookId: SCOPE }),
         scoped.list('task', { bookId: SCOPE, includeDeleted: true }),
         scoped.list('habit', { bookId: SCOPE, includeDeleted: true }),
         scoped.list('habit-checkin', { bookId: SCOPE, includeDeleted: true }),
         scoped.list('countdown', { bookId: SCOPE, includeDeleted: true }),
-        scoped.conflicts(SCOPE), scoped.rejected(SCOPE), scoped.pendingOperations(SCOPE)
+        scoped.conflicts(SCOPE), scoped.rejected(SCOPE), scoped.pendingOperations(SCOPE),
+        scoped.meta(LIST_GROUPS_CACHE_META_KEY), readGroupAssignments(scoped)
       ])
       if (epoch !== sessionEpoch || scoped !== engine) return
       this.lists = lists.filter(item => !item.deleted).map(item => ({ ...item, publicId: item.id })).sort((a, b) => a.sortOrder - b.sortOrder)
@@ -124,7 +198,12 @@ export const useTasksStore = defineStore('tasks', {
       this.total = this.tasks.length
       this.conflicts = conflicts
       this.rejected = rejected
-      this.pending = pending.length
+      this.listGroups = cachedListGroups || []
+      for (const assignment of groupAssignments) {
+        const list = this.lists.find(item => item.publicId === assignment.listId)
+        if (list) list.groupId = assignment.groupId || null
+      }
+      this.pending = pending.length + groupAssignments.length
     },
     async refreshServer() {
       if (!this.online || !this.accountScope) return
@@ -140,6 +219,7 @@ export const useTasksStore = defineStore('tasks', {
           ])
           if (epoch !== sessionEpoch || scoped !== engine) return
           this.listGroups = listGroups || []
+          await scoped.setMeta(LIST_GROUPS_CACHE_META_KEY, this.listGroups)
           await replaceRemoteCollection(scoped, 'task-list', [...(lists || []), ...(deletedLists || []).map(item => ({ ...item, deleted: true }))])
           await replaceRemoteCollection(scoped, 'task-tag', tags || [])
           await replaceRemoteCollection(scoped, 'habit', habits || [])
@@ -228,6 +308,7 @@ export const useTasksStore = defineStore('tasks', {
       this.saving = true
       try {
         return await this.saveLocal({ ...payload, publicId: createClientId(), listId: payload.listId || this.inbox?.publicId || '',
+          sortOrder: payload.sortOrder ?? this.tasks.filter(item => item.listId === (payload.listId || this.inbox?.publicId || '') && item.status === 'OPEN' && !item.deleted).length,
           status: 'OPEN', source: 'WEB', revision: 0, completedAt: null })
       } finally { this.saving = false }
     },
@@ -252,12 +333,6 @@ export const useTasksStore = defineStore('tasks', {
     async complete(item) { this.undoStack.push({ item: { ...item }, label: '完成任务' }); return this.saveLocal({ ...item, status: 'COMPLETED', completedAt: new Date().toISOString() }) },
     async abandon(item) {
       if (item.status === 'ABANDONED') return item
-      if (this.online && item.publicId && Number(item.revision) > 0) {
-        const changed = await apiAbandonTask(item.publicId, item.revision)
-        await engine.put('task', { ...changed, id: changed.publicId }, { bookId: SCOPE, recordOp: false })
-        await this.hydrate()
-        return changed
-      }
       this.undoStack.push({ item: { ...item }, label: '放弃任务' })
       return this.saveLocal({ ...item, status: 'ABANDONED', completedAt: null })
     },
@@ -265,12 +340,6 @@ export const useTasksStore = defineStore('tasks', {
       this.undoStack.push({ item: { ...item }, label: '重新打开任务' })
       if (item.rrule && item.seriesId && this.tasks.some(value => value.seriesId === item.seriesId && value.seriesSequence > (item.seriesSequence || 0) && value.status === 'OPEN' && !value.deleted)) {
         throw new Error('周期任务的下一实例已生成，无法重开当前实例')
-      }
-      if (item.status === 'ABANDONED' && this.online && item.publicId && Number(item.revision) > 0) {
-        const changed = await apiRestoreAbandonedTask(item.publicId, item.revision)
-        await engine.put('task', { ...changed, id: changed.publicId }, { bookId: SCOPE, recordOp: false })
-        await this.hydrate()
-        return changed
       }
       return this.saveLocal({ ...item, status: 'OPEN', completedAt: null })
     },
@@ -318,41 +387,97 @@ export const useTasksStore = defineStore('tasks', {
     },
     async createListGroup(payload) {
       if (!this.online) throw new Error('清单分组需要联网保存')
-      await apiCreateTaskListGroup(payload)
-      await this.refreshServer()
+      const created = await apiCreateTaskListGroup(payload)
+      if (created?.publicId) {
+        this.listGroups = [...this.listGroups.filter(item => item.publicId !== created.publicId), created]
+        await engine.setMeta(LIST_GROUPS_CACHE_META_KEY, this.listGroups)
+      }
+      return created
     },
     async updateListGroup(item, payload) {
       if (!this.online) throw new Error('清单分组需要联网保存')
-      await apiUpdateTaskListGroup(item.publicId, payload, item.revision)
-      await this.refreshServer()
+      const updated = await apiUpdateTaskListGroup(item.publicId, payload, item.revision)
+      this.listGroups = this.listGroups.map(value => value.publicId === item.publicId ? { ...value, ...payload, ...(updated || {}) } : value)
+      await engine.setMeta(LIST_GROUPS_CACHE_META_KEY, this.listGroups)
+      return updated
     },
     async deleteListGroup(item) {
       if (!this.online) throw new Error('清单分组需要联网删除')
       await apiDeleteTaskListGroup(item.publicId, item.revision)
-      await this.refreshServer()
+      this.listGroups = this.listGroups.filter(value => value.publicId !== item.publicId)
+      await engine.setMeta(LIST_GROUPS_CACHE_META_KEY, this.listGroups)
+      for (const list of this.lists.filter(value => value.groupId === item.publicId)) {
+        await engine.put('task-list', { ...list, id: list.publicId, groupId: null }, { bookId: SCOPE, recordOp: false })
+      }
+      await this.hydrate()
     },
     async assignListGroup(item, groupId) {
-      if (!this.online) throw new Error('清单分组需要联网保存')
-      await this.syncNow()
-      const current = this.lists.find(value => value.publicId === item.publicId) || item
-      await apiAssignTaskListGroup(item.publicId, groupId || null, current.revision)
-      await this.refreshServer()
+      const id = item.publicId || item.id
+      const normalizedGroupId = groupId || null
+      const assignments = await readGroupAssignments()
+      const next = [...assignments.filter(value => value.listId !== id), { listId: id, groupId: normalizedGroupId }]
+      await writeGroupAssignments(next)
+      const current = this.lists.find(value => value.publicId === id) || item
+      await engine.put('task-list', { ...current, id, groupId: normalizedGroupId }, { bookId: SCOPE, recordOp: false })
+      await this.hydrate()
+      this.scheduleSync()
     },
     async batchTasks(items, action, values = {}) {
-      if (!this.online) throw new Error('批量操作需要联网执行')
-      await this.syncNow()
-      const current = items.map(item => this.tasks.find(value => value.publicId === item.publicId) || item)
-      const result = await apiBatchTasks({ targets: current.map(item => ({ publicId: item.publicId, revision: item.revision })), action, ...values })
-      await this.refreshServer()
-      return result
+      const current = items.map(item => this.tasks.find(value => value.publicId === item.publicId) || item).filter(Boolean)
+      if (action === 'REMINDER') {
+        if (!this.online) throw new Error('批量提醒需要联网执行')
+        await this.syncNow()
+        const result = await apiBatchTasks({ targets: current.map(item => ({ publicId: item.publicId, revision: item.revision })), action, ...values })
+        void this.refreshServer()
+        return result
+      }
+      if (!current.length) return { affected: 0, items: [] }
+      const pendingOperations = await engine.pendingOperations(SCOPE)
+      const changed = []
+      for (const item of current) {
+        const pending = pendingOperations.find(value => value.entityType === 'task' && value.entityId === item.publicId)
+        const options = { bookId: SCOPE, opId: pending?.opId, baseRevision: pending?.baseRevision ?? item.revision ?? 0 }
+        if (action === 'DELETE') {
+          if (pending && Number(pending.baseRevision || 0) === 0) {
+            await engine.removeStore('oplog', pending.opId)
+            await engine.removeStore('tasks', `${SCOPE}:${item.publicId}`)
+          } else await engine.remove('task', item.publicId, options)
+          changed.push({ ...item, deleted: true })
+          continue
+        }
+        const payload = action === 'COMPLETE' ? { ...item, status: 'COMPLETED', completedAt: new Date().toISOString() }
+          : action === 'MOVE' ? { ...item, listId: values.listId }
+            : action === 'PRIORITY' ? { ...item, priority: values.priority }
+              : action === 'RESCHEDULE' ? { ...item, dueAt: values.dueAt || null }
+              : action === 'TAGS' ? { ...item, tagIds: [...new Set([...(item.tagIds || []), ...(values.tagIds || [])])] }
+                  : null
+        if (!payload) throw new Error(`不支持的批量操作：${action}`)
+        changed.push(await engine.put('task', { ...payload, id: item.publicId, publicId: undefined }, options))
+      }
+      await this.hydrate()
+      this.scheduleSync()
+      return { affected: changed.length, items: changed.map(localTask) }
     },
     async sortTask(item, sortOrder) {
-      if (!this.online) throw new Error('手动排序需要联网执行')
-      await this.syncNow()
       const current = this.tasks.find(value => value.publicId === item.publicId) || item
-      const result = await apiSortTask(current.publicId, sortOrder, current.revision)
-      await this.refreshServer()
-      return result
+      const siblings = this.tasks.filter(value => value.listId === current.listId && value.status === current.status && !value.deleted)
+        .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+      const currentIndex = siblings.findIndex(value => value.publicId === current.publicId)
+      if (currentIndex < 0) return current
+      siblings.splice(currentIndex, 1)
+      siblings.splice(Math.max(0, Math.min(Number(sortOrder) || 0, siblings.length)), 0, current)
+      const pendingOperations = await engine.pendingOperations(SCOPE)
+      for (let index = 0; index < siblings.length; index += 1) {
+        const sibling = siblings[index]
+        if (sibling.sortOrder !== undefined && sibling.sortOrder !== null && Number(sibling.sortOrder) === index) continue
+        const pending = pendingOperations.find(value => value.entityType === 'task' && value.entityId === sibling.publicId)
+        await engine.put('task', { ...sibling, id: sibling.publicId, sortOrder: index }, {
+          bookId: SCOPE, opId: pending?.opId, baseRevision: pending?.baseRevision ?? sibling.revision ?? 0
+        })
+      }
+      await this.hydrate()
+      this.scheduleSync()
+      return this.tasks.find(value => value.publicId === current.publicId) || current
     },
     async purge(item) {
       if (!this.online) throw new Error('永久清除需要联网执行')
@@ -369,12 +494,8 @@ export const useTasksStore = defineStore('tasks', {
       const created = await engine.put('task-list', { ...listPayload, id: createClientId(), revision: 0,
         archived: Boolean(payload.archived), sortOrder: payload.sortOrder ?? this.lists.length }, { bookId: SCOPE })
       await this.hydrate()
-      if (groupId && this.online) {
-        await this.syncNow()
-        await this.refreshServer()
-        const saved = this.lists.find(item => item.publicId === created.id)
-        if (saved) await this.assignListGroup(saved, groupId)
-      } else this.scheduleSync()
+      if (groupId) await this.assignListGroup({ ...created, publicId: created.id }, groupId)
+      this.scheduleSync()
       return created
     },
     async updateList(item, payload) {
@@ -429,7 +550,7 @@ export const useTasksStore = defineStore('tasks', {
     scheduleSync() {
       clearTimeout(syncTimer)
       const epoch = sessionEpoch
-      syncTimer = setTimeout(() => { if (epoch === sessionEpoch) this.syncNow() }, 250)
+      syncTimer = setTimeout(() => { if (epoch === sessionEpoch) void this.syncNow() }, 120)
     },
     async syncNow() {
       if (!this.online || !this.accountScope) return
@@ -443,21 +564,66 @@ export const useTasksStore = defineStore('tasks', {
       const promise = Promise.resolve().then(async () => {
         try {
           let result
+          let reconcilePass = 0
           do {
             if (activeSyncPromise?.promise === promise) activeSyncPromise.rerun = false
+            await reconcileSafeListConflicts(scoped)
             result = await scoped.sync(SCOPE)
             if (result?.resetRequired) result = await scoped.sync(SCOPE)
+            const reconciliation = await reconcileSafeListConflicts(scoped)
+            if (reconciliation.requeued && reconcilePass < 1) {
+              reconcilePass += 1
+              if (activeSyncPromise?.promise === promise) activeSyncPromise.rerun = true
+              continue
+            }
             if (epoch === sessionEpoch && scoped === engine) await this.hydrate()
           } while (epoch === sessionEpoch && scoped === engine && activeSyncPromise?.rerun)
+          if (epoch === sessionEpoch && scoped === engine) {
+            await this.flushGroupAssignments(scoped)
+            await this.hydrate()
+            this.syncError = ''
+            if (!this.pending && !this.conflicts.length && !this.rejected.length) syncRetryAttempt = 0
+            else if (this.pending && !this.conflicts.length) scheduleSyncRetry(this, epoch)
+          }
           return result
         } catch (error) {
-          if (epoch === sessionEpoch) this.error = error?.response?.data?.detail || error?.message || '任务同步失败'
+          if (epoch === sessionEpoch) {
+            this.syncError = syncFailureMessage(error)
+            await this.hydrate()
+            scheduleSyncRetry(this, epoch)
+          }
         } finally {
           if (activeSyncPromise?.promise === promise) { this.syncing = false; activeSyncPromise = null }
         }
       })
       activeSyncPromise = { epoch, promise, rerun: false }
       return promise
+    },
+    async flushGroupAssignments(scoped = engine) {
+      let assignments = await readGroupAssignments(scoped)
+      for (const assignment of assignments) {
+        const localPending = (await scoped.pendingOperations(SCOPE)).some(item => item.entityType === 'task-list' && item.entityId === assignment.listId)
+        const conflictPending = (await scoped.conflicts(SCOPE)).some(item => item.operation?.entityType === 'task-list' && item.operation.entityId === assignment.listId)
+        if (localPending || conflictPending) continue
+        const list = this.lists.find(item => item.publicId === assignment.listId)
+        if (!list) continue
+        let latest = list
+        try {
+          await apiAssignTaskListGroup(assignment.listId, assignment.groupId, Number(latest.revision || 0))
+        } catch (error) {
+          if (error?.response?.status !== 409) throw error
+          const remoteLists = await apiListTaskLists()
+          const remote = (remoteLists || []).find(value => value.publicId === assignment.listId)
+          if (!remote) throw error
+          latest = { ...remote, groupId: assignment.groupId }
+          if (remote.groupId !== assignment.groupId) {
+            await apiAssignTaskListGroup(assignment.listId, assignment.groupId, Number(remote.revision || 0))
+          }
+        }
+        assignments = assignments.filter(value => value.listId !== assignment.listId)
+        await writeGroupAssignments(assignments, scoped)
+        await scoped.put('task-list', { ...latest, id: list.publicId, groupId: assignment.groupId }, { bookId: SCOPE, recordOp: false })
+      }
     },
     async resolveConflict(opId, strategy) {
       await engine.resolveConflict(opId, strategy)

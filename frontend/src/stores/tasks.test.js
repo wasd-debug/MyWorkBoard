@@ -186,3 +186,152 @@ test('offline lists and tags use distinct projections and oplog entries', async 
   assert.equal(store.pending, 0)
   await assert.rejects(store.restore({ publicId: 'deleted' }), /需要联网/)
 })
+
+test('safe task-list conflicts are cleared and inbox name conflicts preserve the local color', async t => {
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine: false } })
+  setActivePinia(createPinia())
+  const store = useTasksStore()
+  await store.switchUser({ id: 'task-safe-conflicts' })
+  await store.init()
+  const stale = await store.createList({ name: '已一致清单', color: '#123456', icon: 'list-check' })
+  const inbox = await store.createList({ name: '收件箱', systemKey: 'INBOX', color: '#ff8b3d' })
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine: true } })
+  store.online = true
+  const previousAdapter = api.defaults.adapter
+  const pushed = []
+  api.defaults.adapter = async config => {
+    if (config.url.includes('/api/v1/tasks/sync/push')) {
+      const operations = JSON.parse(config.data)
+      pushed.push(...operations)
+      const results = operations.map(operation => {
+        if (operation.entityId === stale.id) return { opId: operation.opId, status: 'CONFLICT', serverRevision: 3, serverEntity: { ...operation.payload, revision: 3 } }
+        if (operation.entityId === inbox.id && operation.payload.name === '收件箱') {
+          return { opId: operation.opId, status: 'CONFLICT', message: '收集箱不可重命名', serverRevision: 5,
+            serverEntity: { ...operation.payload, name: '收集箱', color: null, systemKey: 'INBOX', revision: 5 } }
+        }
+        return { opId: operation.opId, status: 'APPLIED', entity: { ...operation.payload, revision: 6 } }
+      })
+      return { data: { data: { results } }, status: 200, statusText: 'OK', headers: {}, config }
+    }
+    if (config.url.includes('/api/v1/tasks/sync/pull')) {
+      return { data: { data: { cursor: 0, operations: [], hasMore: false } }, status: 200, statusText: 'OK', headers: {}, config }
+    }
+    throw new Error(`Unexpected API request ${config.method} ${config.url}`)
+  }
+  try {
+    await store.syncNow()
+    assert.equal(store.conflicts.length, 0)
+    assert.equal(store.pending, 0)
+    assert.equal(store.lists.find(item => item.publicId === inbox.id).name, '收集箱')
+    assert.equal(store.lists.find(item => item.publicId === inbox.id).color, '#ff8b3d')
+    assert.ok(pushed.some(operation => operation.entityId === inbox.id && operation.payload.name === '收集箱' && operation.payload.color === '#ff8b3d'))
+  } finally {
+    api.defaults.adapter = previousAdapter
+    await store.clearSession()
+  }
+})
+
+test('list folder assignment updates the cached view before its background request', async t => {
+  offline()
+  setActivePinia(createPinia())
+  const store = useTasksStore()
+  await store.switchUser({ id: 'task-folder-local-first' })
+  await store.init()
+  const list = await store.createList({ name: '待归组清单' })
+  await store.assignListGroup(store.lists[0], 'group-local')
+  assert.equal(store.lists[0].publicId, list.id)
+  assert.equal(store.lists[0].groupId, 'group-local')
+  assert.equal(store.pending, 2)
+  assert.equal(store.syncing, false)
+  await store.clearSession()
+})
+
+test('folder assignment retry recognizes a server-side success after a lost response', async () => {
+  offline()
+  setActivePinia(createPinia())
+  const store = useTasksStore()
+  await store.switchUser({ id: 'task-folder-retry' })
+  await store.init()
+  const list = await store.createList({ name: '归属重试清单' })
+  await store.assignListGroup(store.lists[0], 'group-already-assigned')
+  const previousAdapter = api.defaults.adapter
+  api.defaults.adapter = async config => {
+    if (config.url.includes('/api/v1/tasks/sync/push')) {
+      const operations = JSON.parse(config.data)
+      return { data: { data: { results: operations.map(operation => ({ opId: operation.opId, status: 'APPLIED', entity: { ...operation.payload, revision: 1 } })) } }, status: 200, statusText: 'OK', headers: {}, config }
+    }
+    if (config.url.includes('/api/v1/tasks/sync/pull')) {
+      return { data: { data: { cursor: 0, operations: [], hasMore: false } }, status: 200, statusText: 'OK', headers: {}, config }
+    }
+    if (config.url.endsWith(`/api/v1/tasks/lists/${list.id}/group`)) {
+      const error = new Error('Revision conflict after server accepted the assignment')
+      error.config = config
+      error.response = { status: 409, config, data: { serverRevision: 2 } }
+      throw error
+    }
+    if (config.url.endsWith('/api/v1/tasks/lists')) {
+      return { data: { data: [{ publicId: list.id, name: '归属重试清单', groupId: 'group-already-assigned', revision: 2 }] }, status: 200, statusText: 'OK', headers: {}, config }
+    }
+    throw new Error(`Unexpected API request ${config.method} ${config.url}`)
+  }
+  try {
+    store.online = true
+    await store.syncNow()
+    assert.equal(store.pending, 0)
+    assert.equal(store.lists[0].groupId, 'group-already-assigned')
+    assert.equal(store.syncError, '')
+  } finally {
+    api.defaults.adapter = previousAdapter
+    await store.clearSession()
+  }
+})
+
+test('batch task actions and manual sorting update the local projection without waiting for network', async () => {
+  offline()
+  setActivePinia(createPinia())
+  const store = useTasksStore()
+  await store.switchUser({ id: 'task-fast-batch-sort' })
+  await store.init()
+  const first = await store.create({ title: '第一项' })
+  const second = await store.create({ title: '第二项' })
+  const third = await store.create({ title: '第三项' })
+
+  await store.sortTask(store.tasks.find(item => item.publicId === third.id), 0)
+  assert.deepEqual(store.tasks.slice().sort((a, b) => a.sortOrder - b.sortOrder).map(item => item.title), ['第三项', '第一项', '第二项'])
+  const selected = [first, second].map(item => store.tasks.find(value => value.publicId === item.id))
+  const result = await store.batchTasks(selected, 'COMPLETE')
+  assert.equal(result.affected, 2)
+  assert.equal(store.completedTasks.length, 2)
+  assert.equal(store.pending, 3)
+  assert.equal(store.syncing, false)
+  await store.clearSession()
+})
+
+test('authentication failures retain queued task changes and expose a non-blocking status', async () => {
+  offline()
+  setActivePinia(createPinia())
+  const store = useTasksStore()
+  await store.switchUser({ id: 'task-sync-auth-failure' })
+  await store.init()
+  await store.create({ title: '保留在本机' })
+  const previousAdapter = api.defaults.adapter
+  api.defaults.adapter = async config => {
+    if (config.url.includes('/api/v1/tasks/sync/push') || config.url.includes('/api/v1/auth/refresh')) {
+      const error = new Error('Unauthorized')
+      error.config = config
+      error.response = { status: 401, config }
+      throw error
+    }
+    throw new Error(`Unexpected API request ${config.method} ${config.url}`)
+  }
+  try {
+    store.online = true
+    await store.syncNow()
+    assert.equal(store.pending, 1)
+    assert.match(store.syncError, /登录已过期/)
+    assert.equal(store.tasks[0].title, '保留在本机')
+  } finally {
+    api.defaults.adapter = previousAdapter
+    await store.clearSession()
+  }
+})
