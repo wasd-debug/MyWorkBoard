@@ -3403,8 +3403,8 @@ const SidebarSection = {
   overflow: hidden;
   transition: grid-template-columns 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.clone-task-shell.sidebar-hidden { grid-template-columns: 44px minmax(420px, 1fr) 5px var(--clone-detail-width, 390px); }
-.clone-task-shell.sidebar-hidden .clone-task-sidebar { align-items: center; gap: 0; padding: 10px 4px; overflow: hidden; }
+.clone-task-shell.sidebar-hidden { grid-template-columns: 0 minmax(420px, 1fr) 5px var(--clone-detail-width, 390px); }
+.clone-task-shell.sidebar-hidden .clone-task-sidebar { align-items: center; gap: 0; padding: 0; border-right: 0; overflow: hidden; pointer-events: none; }
 .clone-task-shell.sidebar-hidden .clone-sidebar-head { display: flex; justify-content: center; width: 100%; padding: 0; }
 .clone-task-shell.sidebar-hidden .clone-sidebar-head strong { opacity: 0; }
 .clone-task-shell.sidebar-hidden .clone-task-sidebar > :not(.clone-sidebar-head) { opacity: 0; transform: translateX(-7px); visibility: hidden; pointer-events: none; transition-delay: 0s, 0s, 0.2s; }
@@ -4750,7 +4750,7 @@ const SidebarSection = {
   .clone-task-shell {
     grid-template-columns: var(--clone-sidebar-width, 248px) minmax(420px, 1fr);
   }
-  .clone-task-shell.sidebar-hidden { grid-template-columns: 44px minmax(420px, 1fr); }
+  .clone-task-shell.sidebar-hidden { grid-template-columns: 0 minmax(420px, 1fr); }
   .clone-detail-pane {
     grid-column: 2;
     border-top: 1px solid var(--line);
