@@ -3497,18 +3497,18 @@ const SidebarSection = {
 .clone-sortable-item.sorting-dragging,
 .clone-sortable-group.sorting-dragging { opacity: 0.48; transform: scale(0.985); }
 .clone-list-group { display: grid; min-width: 0; gap: 2px; }
-.clone-list-group-heading { display: flex; align-items: center; gap: 4px; min-height: 28px; padding: 0 8px 0 2px; color: var(--muted); font-size: 10px; font-weight: 600; }
+.clone-list-group-heading { position: relative; display: flex; align-items: center; gap: 0; min-height: 28px; padding: 0 8px 0 10px; color: var(--muted); font-size: 10px; font-weight: 600; }
 .clone-list-group-heading span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clone-list-group-heading button { display: grid; width: 22px; height: 22px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-list-group-heading button:hover, .clone-item-menu-trigger:hover { background: var(--paper); color: var(--ink); }
-.clone-list-group-heading .clone-list-group-icon { flex: none; width: 15px; text-align: center; }
-.clone-group-toggle { flex: 0 0 22px; }
+.clone-list-group-heading .clone-list-group-icon { display: inline-grid; flex: none; width: 16px; height: 16px; place-items: center; font-size: 14px; line-height: 1; }
+.clone-group-toggle { position: absolute; left: -10px; flex: 0 0 22px; }
 .clone-group-navigation { display: flex; min-width: 0; min-height: 28px; flex: 1; align-items: center; gap: 7px; color: var(--muted); text-decoration: none; }
 .clone-group-navigation:hover, .clone-group-navigation.active { color: var(--ink); }
 .clone-group-navigation .clone-list-group-icon { color: inherit; }
 .clone-group-navigation small { flex: none; margin-left: auto; color: var(--muted); font-size: 10px; }
 .clone-group-menu { flex: 0 0 22px; }
-.clone-group-lists { padding-left: 0; }
+.clone-group-lists { padding-left: 16px; }
 .clone-sidebar-heading-actions { position: relative; display: flex; flex: none; align-items: center; gap: 2px; white-space: nowrap; opacity: 0; visibility: hidden; transition: opacity 120ms ease, visibility 120ms ease; }
 .clone-sidebar-section > header:hover .clone-sidebar-heading-actions,
 .clone-sidebar-section > header:focus-within .clone-sidebar-heading-actions { opacity: 1; visibility: visible; }
