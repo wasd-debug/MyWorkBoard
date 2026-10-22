@@ -148,6 +148,24 @@ test('task rows expose a viewport-safe context menu with contract actions', () =
   assert.match(inboxView, /document\.addEventListener\('click', closeTaskContextMenu\)/)
 })
 
+test('middle task workspace matches the note-row, date, view, display, and print interactions', () => {
+  assert.match(workspaceView, /isNoteTask\(task\)[\s\S]*?clone-check/)
+  assert.match(workspaceView, /function openTaskRow\(task\)[\s\S]*openDetail\(task\)[\s\S]*isNoteTask\(task\)/)
+  assert.match(workspaceView, /async function saveInlineRowTitle\(task\)[\s\S]*store\.update\(task, \{ title \}\)/)
+  assert.match(workspaceView, /openRowDateEditor\(task\)[\s\S]*saveRowDate\(task\)/)
+  assert.match(workspaceView, /aria-label="中间栏更多选项"/)
+  for (const item of ['视图选项', '显示设置', '打印', 'switchWorkspaceView', 'window\.print\(\)']) assert.match(workspaceView, new RegExp(item))
+})
+
+test('quick add offers marker-driven candidates and distinguishes note destinations and compact mode', () => {
+  assert.match(workspaceView, /支持 !优先级、#标签、~清单/)
+  assert.match(workspaceView, /quickAddTokenAtCaret\(quickTitle\.value/)
+  assert.match(workspaceView, /handleQuickSuggestionKeydown/)
+  assert.match(workspaceView, /noteLists = computed/)
+  assert.match(workspaceView, /quickInputMode === 'SIMPLE'/)
+  assert.match(workspaceView, /当前后端尚无任务模板 API/)
+})
+
 test('task detail exposes contract-backed Markdown comments and attachments', () => {
   assert.match(inboxView, /TaskRichTextEditor/)
   for (const token of ['apiListTaskComments', 'apiCreateTaskComment', 'apiUpdateTaskComment', 'apiDeleteTaskComment', 'apiListTaskAttachments', 'apiUploadTaskAttachment', 'apiDeleteTaskAttachment']) assert.match(inboxView, new RegExp(token))
