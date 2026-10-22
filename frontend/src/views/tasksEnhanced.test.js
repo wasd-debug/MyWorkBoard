@@ -170,6 +170,19 @@ test('task date, recurrence, and reminder popovers preserve task state boundarie
   assert.match(workspaceView, /@click\.stop="toggleReminderPopover"/)
 })
 
+test('quick add exposes inline date, priority, tag, and list controls that override parsed values', () => {
+  for (const token of [
+    '快速设置日期', '快速设置优先级', '快速选择标签', '快速选择清单',
+    'quickAction', 'quickEntry.dateSelected ? quickEntry.dueAt',
+    'quickEntry.prioritySelected ? quickEntry.priority',
+    'quickEntry.listSelected ? quickEntry.listId',
+    '...quickEntry.tagIds', 'function setQuickDate(offset)', 'function closeQuickAction(event)',
+    'clone-quick-action-panel',
+  ]) assert.ok(workspaceView.includes(token), `missing quick-add behavior ${token}`)
+  assert.match(workspaceView, /function cancelQuickDraft()[\s\S]*Object\.assign\(quickEntry, \{ dueAt: "", dateSelected: false, priority: "NONE"/)
+  assert.match(workspaceView, /if \(quickAction\.value\) \{[\s\S]*quickAction\.value = "";[\s\S]*return;/)
+})
+
 test('task workspace keeps reading width and focus states deliberate on wide screens', () => {
   assert.match(workspaceView, /const detailWidth = ref\(390\)/)
   assert.match(workspaceView, /\.clone-task-header \{[\s\S]*max-width: none/)

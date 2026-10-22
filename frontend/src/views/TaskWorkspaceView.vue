@@ -203,14 +203,24 @@
       </div>
       <div class="clone-quick-add">
         <Plus :size="17" />
-        <form @submit.prevent="quickAdd">
+        <form class="clone-quick-add-form" @submit.prevent="quickAdd">
           <input
             v-model="quickTitle"
             aria-label="快速添加任务标题"
             :placeholder="`添加任务至“${title === '今天' ? '收集箱' : title}” · 支持日期、优先级、#标签、@清单`"
-          /><button type="submit" :disabled="!quickTitle.trim()">添加</button
-          ><kbd>N</kbd>
+          />
+          <button type="button" class="clone-quick-action" aria-label="快速设置日期" :aria-expanded="quickAction === 'date'" @click="toggleQuickAction('date')"><CalendarDays :size="15" /><span>{{ quickEntry.dueAt ? formatDate(quickEntry.dueAt) : '日期' }}</span></button>
+          <button type="button" class="clone-quick-action" aria-label="快速设置优先级" :aria-expanded="quickAction === 'priority'" @click="toggleQuickAction('priority')"><Flag :size="15" /><span>{{ priorityLabel(quickEntry.priority) }}</span></button>
+          <button v-if="store.tags.length" type="button" class="clone-quick-icon-action" aria-label="快速选择标签" :aria-expanded="quickAction === 'tags'" @click="toggleQuickAction('tags')"><Tag :size="15" /><span v-if="quickEntry.tagIds.length">{{ quickEntry.tagIds.length }}</span></button>
+          <button type="button" class="clone-quick-action clone-quick-list-action" aria-label="快速选择清单" :aria-expanded="quickAction === 'list'" @click="toggleQuickAction('list')"><ListTodo :size="15" /><span>{{ quickEntry.listId ? listName(quickEntry.listId) : '清单' }}</span></button>
+          <button type="submit" class="clone-quick-submit" :disabled="!quickTitle.trim() || quickParsing">{{ quickParsing ? '解析中…' : '添加' }}</button><kbd>N</kbd>
         </form>
+      </div>
+      <div v-if="quickAction" class="clone-quick-action-panel" :class="`is-${quickAction}`" @click.stop>
+        <template v-if="quickAction === 'date'"><label>截止日期<input v-model="quickEntry.dueAt" type="datetime-local" aria-label="快速新增截止日期" @change="quickEntry.dateSelected = true" /></label><button type="button" @click="setQuickDate(0)">今天</button><button type="button" @click="setQuickDate(1)">明天</button><button type="button" @click="quickEntry.dueAt = ''; quickEntry.dateSelected = true">清除</button></template>
+        <template v-else-if="quickAction === 'priority'"><strong>优先级</strong><button v-for="option in priorityOptions" :key="option.value" type="button" :class="{ active: quickEntry.priority === option.value }" @click="quickEntry.priority = option.value; quickEntry.prioritySelected = true; quickAction = ''">{{ option.label }}</button></template>
+        <template v-else-if="quickAction === 'tags'"><strong>标签</strong><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="quickEntry.tagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label><button type="button" @click="quickAction = ''">完成</button></template>
+        <template v-else><label>所属清单<select v-model="quickEntry.listId" aria-label="快速新增所属清单" @change="quickEntry.listSelected = true"><option value="">{{ store.inbox?.name || '收集箱' }}</option><option v-for="list in store.lists.filter((item) => !item.archived && item.publicId !== store.inbox?.publicId)" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select></label><button type="button" @click="quickAction = ''">完成</button></template>
       </div>
       <section v-if="quickDraft" class="clone-quick-draft" aria-label="快速添加预览">
         <header><strong>确认任务</strong><span v-if="quickDraft.unrecognized?.length">未识别：{{ quickDraft.unrecognized.join('、') }}</span></header>
@@ -985,6 +995,8 @@ const quickDraftDue = ref("");
 const quickParseError = ref("");
 const quickParsing = ref(false);
 const quickSaving = ref(false);
+const quickAction = ref("");
+const quickEntry = reactive({ dueAt: "", dateSelected: false, priority: "NONE", prioritySelected: false, listId: "", listSelected: false, tagIds: [] });
 const checklistDragIndex = ref(null);
 const checklistDropTarget = ref(null);
 const sidebarHidden = ref(false);
@@ -2190,6 +2202,14 @@ function toLocal(value) {
   const date = new Date(value);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
+function toggleQuickAction(action) {
+  quickAction.value = quickAction.value === action ? "" : action;
+}
+function setQuickDate(offset) {
+  quickEntry.dueAt = toLocal(addDays(new Date(), offset));
+  quickEntry.dateSelected = true;
+  quickAction.value = "";
+}
 async function quickAdd() {
   const text = quickTitle.value.trim();
   if (!text || quickParsing.value) return;
@@ -2202,11 +2222,15 @@ async function quickAdd() {
     quickDraft.value = {
       ...parsed,
       title: parsed.title || text,
-      priority: parsed.priority || "NONE",
-      listId: list?.publicId || fallbackListId,
-      tagIds: store.tags.filter((tag) => parsed.tagNames?.some((name) => name.toLocaleLowerCase() === tag.name.toLocaleLowerCase())).map((tag) => tag.publicId),
+      priority: quickEntry.prioritySelected ? quickEntry.priority : parsed.priority || "NONE",
+      listId: quickEntry.listSelected ? quickEntry.listId || store.inbox?.publicId || "" : list?.publicId || fallbackListId,
+      tagIds: [...new Set([
+        ...store.tags.filter((tag) => parsed.tagNames?.some((name) => name.toLocaleLowerCase() === tag.name.toLocaleLowerCase())).map((tag) => tag.publicId),
+        ...quickEntry.tagIds,
+      ])],
     };
-    quickDraftDue.value = parsed.dueAt ? toLocal(parsed.dueAt) : route.name === "tasks-today" ? toLocal(new Date()) : "";
+    quickDraftDue.value = quickEntry.dateSelected ? quickEntry.dueAt : parsed.dueAt ? toLocal(parsed.dueAt) : route.name === "tasks-today" ? toLocal(new Date()) : "";
+    quickAction.value = "";
   } catch (error) {
     quickParseError.value = error?.response?.data?.detail || error?.message || "解析快速添加内容失败";
   } finally {
@@ -2216,6 +2240,8 @@ async function quickAdd() {
 function cancelQuickDraft() {
   quickDraft.value = null;
   quickDraftDue.value = "";
+  quickAction.value = "";
+  Object.assign(quickEntry, { dueAt: "", dateSelected: false, priority: "NONE", prioritySelected: false, listId: "", listSelected: false, tagIds: [] });
 }
 async function confirmQuickAdd() {
   if (!quickDraft.value?.title?.trim() || quickSaving.value) return;
@@ -3358,6 +3384,10 @@ async function loadFilters() {
 }
 function onKeydown(event) {
   if (event.key === "Escape") {
+    if (quickAction.value) {
+      quickAction.value = "";
+      return;
+    }
     moreOpen.value = false;
     closeContext();
     organizationMenuOpen.value = false;
@@ -3371,6 +3401,9 @@ function onKeydown(event) {
     event.preventDefault();
     document.querySelector(".clone-quick-add input")?.focus();
   }
+}
+function closeQuickAction(event) {
+  if (quickAction.value && !event.target.closest?.(".clone-quick-add, .clone-quick-action-panel")) quickAction.value = "";
 }
 watch(
   () => route.fullPath,
@@ -3414,6 +3447,7 @@ onMounted(() => {
     if (failed) store.error = failed.reason?.message || "任务工作区加载失败";
   });
   document.addEventListener("pointerdown", closeContext);
+  document.addEventListener("pointerdown", closeQuickAction);
   window.addEventListener("keydown", onKeydown);
   window.matchMedia("(max-width: 900px)").addEventListener("change", handleSidebarViewportChange);
 });
@@ -3421,6 +3455,7 @@ onBeforeUnmount(() => {
   stopDetailResize();
   stopSidebarResize();
   document.removeEventListener("pointerdown", closeContext);
+  document.removeEventListener("pointerdown", closeQuickAction);
   window.removeEventListener("keydown", onKeydown);
   window.matchMedia("(max-width: 900px)").removeEventListener("change", handleSidebarViewportChange);
 });
@@ -3945,9 +3980,10 @@ const SidebarSection = {
 .clone-quick-add form {
   display: flex;
   align-items: center;
-  flex: 1;
+  flex: 1 1 100%;
   gap: 8px;
 }
+.clone-quick-add > svg { display: none; }
 .clone-quick-add input {
   min-width: 0;
   flex: 1;
@@ -3975,8 +4011,30 @@ const SidebarSection = {
   color: var(--muted);
   font-size: 11px;
 }
-.clone-quick-add form button,
-.clone-quick-add kbd { display: none; }
+.clone-quick-add form button.clone-quick-action,
+.clone-quick-add form button.clone-quick-icon-action { display: inline-flex; }
+.clone-quick-add form button.clone-quick-submit,
+.clone-quick-add form kbd { display: inline-flex; }
+.clone-quick-add-form { min-width: 0; flex-wrap: wrap; }
+.clone-quick-add form .clone-quick-action,
+.clone-quick-add form .clone-quick-icon-action { align-items: center; justify-content: center; gap: 5px; min-height: 30px; padding: 0 6px; border-radius: 5px; background: transparent; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.clone-quick-add form .clone-quick-action:hover,
+.clone-quick-add form .clone-quick-icon-action:hover,
+.clone-quick-add form .clone-quick-action[aria-expanded="true"],
+.clone-quick-add form .clone-quick-icon-action[aria-expanded="true"] { background: color-mix(in srgb, var(--accent) 9%, transparent); color: var(--accent); }
+.clone-quick-add form .clone-quick-icon-action { position: relative; width: 30px; padding: 0; }
+.clone-quick-add form .clone-quick-icon-action span { position: absolute; top: -2px; right: -1px; min-width: 13px; height: 13px; padding: 0 3px; border-radius: 8px; background: var(--accent); color: var(--accent-contrast, #fff); font-size: 9px; line-height: 13px; }
+.clone-quick-add form .clone-quick-submit { min-height: 30px; padding: 0 10px; font-size: 12px; white-space: nowrap; }
+.clone-quick-add form kbd { display: inline-flex; }
+.clone-quick-action-panel { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; width: fit-content; max-width: 100%; margin: -8px 0 12px 24px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); box-shadow: 0 5px 18px rgba(20, 27, 38, .12); }
+.clone-quick-action-panel strong { width: 100%; color: var(--muted); font-size: 11px; font-weight: 600; }
+.clone-quick-action-panel label { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
+.clone-quick-action-panel input:not([type="checkbox"]),
+.clone-quick-action-panel select { min-width: 0; height: 30px; padding: 0 7px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); color: var(--ink); font: inherit; }
+.clone-quick-action-panel button { min-height: 28px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: var(--ink); font-size: 11px; cursor: pointer; }
+.clone-quick-action-panel button:hover,
+.clone-quick-action-panel button.active { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
+.clone-quick-action-panel label:has(input[type="checkbox"]) { padding: 3px 5px; border-radius: 4px; color: var(--ink); }
 .clone-quick-draft {
   display: grid;
   width: min(100%, 820px);
@@ -4791,6 +4849,13 @@ const SidebarSection = {
   }
 }
 @media (max-width: 900px) {
+  .clone-quick-add { align-items: flex-start; min-height: 46px; padding-top: 8px; padding-bottom: 8px; }
+  .clone-quick-add-form { row-gap: 6px; column-gap: 3px; }
+  .clone-quick-add form input { flex-basis: 100%; height: 27px; }
+  .clone-quick-add form .clone-quick-action { min-height: 28px; padding: 0 3px; }
+  .clone-quick-add form .clone-quick-list-action { max-width: 78px; overflow: hidden; }
+  .clone-quick-add form kbd { display: none; }
+  .clone-quick-action-panel { margin-left: 0; }
   .clone-quick-draft-fields { grid-template-columns: 1fr; }
   .clone-task-shell {
     display: block;
