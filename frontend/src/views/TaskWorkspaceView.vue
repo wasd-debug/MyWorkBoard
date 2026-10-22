@@ -19,7 +19,6 @@
         </button>
       </div>
       <section class="clone-sidebar-block clone-sidebar-system" aria-label="系统集合">
-        <div class="clone-sidebar-block-title">系统集合</div>
         <nav class="clone-primary-nav">
         <div v-for="item in pinnedPrimaryViews" :key="`pinned-${item.key}`" class="clone-sidebar-object-row" @contextmenu.prevent="openOrganizationMenu('system', item, $event)">
           <RouterLink :to="item.to" class="clone-nav-item" :class="{ active: isActive(item.to) }"><component :is="item.icon" :size="16" /><span>{{ item.label }}</span><small>{{ itemCount(item.key) }}</small></RouterLink>
@@ -98,9 +97,6 @@
           }}</span><button class="clone-item-menu-trigger" type="button" :aria-label="`${filter.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('filter', filter, $event)"><Ellipsis :size="14" /></button></RouterLink
         >
         </TransitionGroup>
-        <span v-if="!filters.length" class="clone-empty-item"
-          >暂无自定义筛选器</span
-        >
         </div></div>
       </section>
       <section class="clone-sidebar-section">
@@ -3593,6 +3589,7 @@ const SidebarSection = {
 .clone-organization-form { display: grid; gap: 14px; }
 .clone-organization-form label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
 .clone-organization-form input:not([type="color"]), .clone-organization-form select { min-height: 38px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); }
+.clone-organization-form select { font-size: 12px; }
 .clone-organization-form input[type="color"] { width: 46px; height: 34px; padding: 2px; border: 1px solid var(--line); background: var(--card); }
 .clone-organization-form fieldset { display: grid; gap: 7px; min-width: 0; margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 7px; }
 .clone-organization-form fieldset legend { padding: 0 5px; color: var(--ink2); font-size: 12px; }
@@ -3626,16 +3623,16 @@ const SidebarSection = {
 .clone-filter-name-row { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
 .clone-filter-name-row input { min-width: 0; }
 .clone-filter-mode { width: 136px; margin: 0 auto; }
-.clone-filter-field { display: grid !important; grid-template-columns: 68px minmax(0, 1fr); align-items: center; gap: 8px !important; min-width: 0; color: var(--ink2) !important; }
-.clone-filter-field > span { color: var(--ink2); }
+.clone-filter-field { display: grid !important; grid-template-columns: 68px minmax(0, 1fr); align-items: center; gap: 8px !important; min-width: 0; color: var(--ink2) !important; font-size: 12px; }
+.clone-filter-field > span { color: var(--ink2); font-size: 12px; }
 .clone-filter-field > input,
-.clone-filter-field > select { width: 100%; min-width: 0; }
+.clone-filter-field > select { width: 100%; min-width: 0; font-size: 13px !important; }
 .clone-filter-select { position: relative; min-width: 0; }
-.clone-filter-select > summary { display: flex; align-items: center; justify-content: space-between; min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); cursor: pointer; list-style: none; }
+.clone-filter-select > summary { display: flex; align-items: center; justify-content: space-between; min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); font-size: 12px; cursor: pointer; list-style: none; }
 .clone-filter-select > summary::-webkit-details-marker { display: none; }
 .clone-filter-select[open] > summary { border-color: var(--accent); }
 .clone-filter-select-menu { position: absolute; z-index: 25; top: calc(100% + 4px); right: 0; left: 0; display: grid; gap: 2px; max-height: min(250px, 36vh); overflow: auto; padding: 7px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); box-shadow: 0 12px 28px rgb(0 0 0 / 20%); }
-.clone-filter-select-menu label { display: flex !important; align-items: center; gap: 8px; min-height: 30px; margin: 0; padding: 3px 5px; border-radius: 4px; color: var(--ink) !important; cursor: pointer; }
+.clone-filter-select-menu label { display: flex !important; align-items: center; gap: 8px; min-height: 30px; margin: 0; padding: 3px 5px; border-radius: 4px; color: var(--ink) !important; font-size: 12px; cursor: pointer; }
 .clone-filter-select-menu label:hover { background: var(--accent-soft); }
 .clone-filter-select-menu label input { flex: 0 0 15px; width: 15px; min-height: 15px; margin: 0; accent-color: var(--accent); }
 .clone-filter-select-menu label.is-child-list { padding-left: 23px; }
@@ -3668,7 +3665,7 @@ const SidebarSection = {
 .clone-filter-preview-check { flex: 0 0 13px; width: 13px; height: 13px; border: 1px solid var(--muted); border-radius: 50%; }
 .clone-filter-preview-list > span:not(:has(small:empty)) small { white-space: nowrap; }
 .clone-filter-preview-actions .clone-primary-button { min-width: 112px; }
-:global(.task-filter-dialog) { width: min(540px, calc(100vw - 32px)); max-width: 540px; }
+:global(.task-filter-dialog) { width: min(540px, calc(100vw - 32px)); max-width: 540px; overflow: visible; }
 :global(.task-filter-dialog .ui-dialog-head) { position: relative; justify-content: flex-start; padding-right: 52px; }
 :global(.task-filter-dialog .ui-dialog-close) { position: absolute; top: 12px; right: 12px; }
 :global(.task-filter-dialog .ui-dialog-body) { padding: 16px 20px; }

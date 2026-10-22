@@ -6,7 +6,7 @@
       <select aria-label="添加筛选条件" value="" @change="selectCondition($event.target.value)"><option value="" disabled>筛选条件</option><option v-for="item in availableOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select>
       <div class="advanced-filter-add-anchor">
         <button ref="addButton" type="button" class="advanced-filter-add-button" aria-label="添加筛选条件" title="添加筛选条件" @click="addCondition($event)"><Plus :size="15" /></button>
-        <Teleport to="body"><div v-if="menuOpen" ref="pickerMenu" class="advanced-filter-picker" :style="pickerPosition" role="menu" aria-label="选择筛选条件"><button v-for="item in availableOptions" :key="item.value" type="button" role="menuitem" @click="selectCondition(item.value)">{{ item.label }}</button></div></Teleport>
+        <Teleport to=".task-filter-dialog"><div v-if="menuOpen" ref="pickerMenu" class="advanced-filter-picker" :style="pickerPosition" role="menu" aria-label="选择筛选条件"><button v-for="item in availableOptions" :key="item.value" type="button" role="menuitem" @click="selectCondition(item.value)">{{ item.label }}</button></div></Teleport>
       </div>
     </div>
     <template v-else>
@@ -55,7 +55,7 @@
           </template>
         </article>
       </div>
-      <div class="advanced-filter-more"><div class="advanced-filter-add-anchor"><button ref="addButton" type="button" aria-label="添加筛选条件" title="添加筛选条件" @click="addCondition($event)"><Plus :size="15" />更多条件</button><Teleport to="body"><div v-if="menuOpen" ref="pickerMenu" class="advanced-filter-picker" :style="pickerPosition" role="menu" aria-label="选择筛选条件"><button v-for="item in availableOptions" :key="item.value" type="button" role="menuitem" @click="selectCondition(item.value)">{{ item.label }}</button></div></Teleport></div></div>
+      <div class="advanced-filter-more"><div class="advanced-filter-add-anchor"><button ref="addButton" type="button" aria-label="添加筛选条件" title="添加筛选条件" @click="addCondition($event)"><Plus :size="15" />更多条件</button><Teleport to=".task-filter-dialog"><div v-if="menuOpen" ref="pickerMenu" class="advanced-filter-picker" :style="pickerPosition" role="menu" aria-label="选择筛选条件"><button v-for="item in availableOptions" :key="item.value" type="button" role="menuitem" @click="selectCondition(item.value)">{{ item.label }}</button></div></Teleport></div></div>
     </template>
   </section>
 </template>
@@ -96,12 +96,14 @@ function publish(nextConditions, nextJoins = joins.value) { emit('update:modelVa
 function addCondition(event) {
   if (!availableOptions.value.length) return
   const rect = event.currentTarget.getBoundingClientRect()
+  const dialogRect = document.querySelector('.task-filter-dialog')?.getBoundingClientRect()
+  if (!dialogRect) return
   const width = Math.min(320, window.innerWidth - 24)
   const height = Math.min(availableOptions.value.length * 42 + 14, 480, window.innerHeight * 0.65)
   const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))
   const below = rect.bottom + 6
   const top = below + height <= window.innerHeight - 12 ? below : Math.max(12, rect.top - height - 6)
-  pickerPosition.value = { left: `${left}px`, top: `${top}px` }
+  pickerPosition.value = { left: `${left - dialogRect.left}px`, top: `${top - dialogRect.top}px`, width: `${width}px` }
   menuOpen.value = true
 }
 function selectCondition(type) { const next = [...conditions.value, newAdvancedFilterCondition(type)]; const nextJoins = next.length > 1 ? [...joins.value, 'AND'] : []; menuOpen.value = false; publish(next, nextJoins) }
@@ -118,6 +120,7 @@ function toggleGroup(index, group, checked) { const ids = props.lists.filter(ite
 .advanced-filter-editor { display: grid; gap: 12px; min-width: 0; }
 .advanced-filter-empty { display: grid; grid-template-columns: minmax(0, 1fr) 90px minmax(0, 1fr) 38px; align-items: center; gap: 8px; min-height: 40px; }
 .advanced-filter-empty > select, .advanced-filter-empty-logic { width: 100%; min-width: 0; min-height: 38px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink2); font: inherit; }
+.advanced-filter-empty > select { font-size: 12px; }
 .advanced-filter-empty-logic { border-style: dashed; }
 .advanced-filter-add-anchor { position: relative; display: inline-flex; }
 .advanced-filter-add-button { display: grid; width: 38px; height: 38px; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink2); cursor: pointer; }
@@ -127,10 +130,10 @@ function toggleGroup(index, group, checked) { const ids = props.lists.filter(ite
 .advanced-filter-sequence { display: grid; gap: 8px; }
 .advanced-filter-join-row { display: grid; grid-template-columns: 1fr 90px 1fr; align-items: center; gap: 8px; }
 .advanced-filter-join-row > span { height: 1px; background: var(--line); }
-.advanced-filter-join-row select, .advanced-filter-segment { min-height: 32px; padding: 3px; border: 1px dashed var(--line); border-radius: 6px; background: var(--card); color: var(--ink2); text-align: center; }
+.advanced-filter-join-row select, .advanced-filter-segment { min-height: 32px; padding: 3px; border: 1px dashed var(--line); border-radius: 6px; background: var(--card); color: var(--ink2); font-size: 12px; text-align: center; }
 .advanced-filter-card { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); }
 .advanced-filter-card > header { display: flex; align-items: center; justify-content: space-between; color: var(--ink); }
-.advanced-filter-card > header select { flex: 1; min-width: 0; min-height: 36px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--ink); font: inherit; }
+.advanced-filter-card > header select { flex: 1; min-width: 0; min-height: 36px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--ink); font: inherit; font-size: 12px; }
 .advanced-filter-card > header button { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
 .advanced-filter-card > header button:hover { background: var(--paper); color: var(--ink); }
 .advanced-filter-card.is-legacy { grid-template-columns: auto 1fr; align-items: center; color: var(--muted); font-size: 12px; }
@@ -150,7 +153,7 @@ function toggleGroup(index, group, checked) { const ids = props.lists.filter(ite
 .advanced-filter-date-range label, .advanced-filter-content-input { display: grid; gap: 6px; min-width: 0; color: var(--ink2); font-size: 12px; }
 .advanced-filter-date-range input, .advanced-filter-content-input input { width: 100%; min-width: 0; min-height: 36px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--ink); font: inherit; }
 .advanced-filter-date-range > span { padding-bottom: 10px; color: var(--muted); text-align: center; }
-.advanced-filter-picker { position: fixed; z-index: 202; display: grid; width: min(320px, calc(100vw - 24px)); max-height: min(65vh, 480px); overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); box-shadow: 0 12px 32px rgb(15 23 42 / 20%); }
+.advanced-filter-picker { position: absolute; z-index: 202; display: grid; max-width: calc(100vw - 24px); max-height: min(65vh, 480px); overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); box-shadow: 0 12px 32px rgb(15 23 42 / 20%); }
 .advanced-filter-picker button { min-height: 42px; padding: 7px 12px; border: 0; border-radius: 5px; background: transparent; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
 .advanced-filter-picker button:hover { background: var(--paper); }
 @media (max-width: 600px) {
