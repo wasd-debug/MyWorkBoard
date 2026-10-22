@@ -16,4 +16,5 @@
 
 export interface TaskListGroupAssignment {
     'groupId'?: string;
+    'sortOrder'?: number | null;
 }

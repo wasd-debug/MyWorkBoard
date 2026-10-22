@@ -11,7 +11,7 @@ public final class TaskModels {
 
     @Schema(name = "TaskList")
     public record TaskList(String publicId, String groupId, String name, String color, String icon, String systemKey,
-                           int sortOrder, boolean archived, boolean pinned, String viewType, String objectType,
+                           long sortOrder, boolean archived, boolean pinned, String viewType, String objectType,
                            boolean showInSmartLists,
                            long revision) {
         public TaskList(String publicId, String groupId, String name, String color, String icon, String systemKey,
@@ -25,14 +25,21 @@ public final class TaskModels {
     }
 
     @Schema(name = "TaskListCommand")
-    public record TaskListCommand(String name, String color, String icon, Integer sortOrder, Boolean archived,
+    public record TaskListCommand(String name, String color, String icon, Long sortOrder, Boolean archived,
                                   Boolean pinned, String viewType, String objectType, Boolean showInSmartLists) {
-        public TaskListCommand(String name, String color, String icon, Integer sortOrder, Boolean archived) {
+        public TaskListCommand(String name, String color, String icon, Long sortOrder, Boolean archived) {
             this(name, color, icon, sortOrder, archived, null, null, null, null);
         }
-        public TaskListCommand(String name, String color, String icon, Integer sortOrder, Boolean archived,
+        public TaskListCommand(String name, String color, String icon, int sortOrder, Boolean archived) {
+            this(name, color, icon, (long) sortOrder, archived, null, null, null, null);
+        }
+        public TaskListCommand(String name, String color, String icon, int sortOrder, Boolean archived,
                                Boolean pinned, String viewType, String objectType) {
-            this(name, color, icon, sortOrder, archived, pinned, viewType, objectType, null);
+            this(name, color, icon, (long) sortOrder, archived, pinned, viewType, objectType, null);
+        }
+        public TaskListCommand(String name, String color, String icon, int sortOrder, Boolean archived,
+                               Boolean pinned, String viewType, String objectType, Boolean showInSmartLists) {
+            this(name, color, icon, (long) sortOrder, archived, pinned, viewType, objectType, showInSmartLists);
         }
     }
 
@@ -52,7 +59,10 @@ public final class TaskModels {
     }
 
     @Schema(name = "TaskListGroupAssignment")
-    public record ListGroupAssignment(String groupId) {
+    public record ListGroupAssignment(String groupId, Long sortOrder) {
+        public ListGroupAssignment(String groupId) {
+            this(groupId, null);
+        }
     }
 
     @Schema(name = "TaskActivity")
@@ -274,7 +284,7 @@ public final class TaskModels {
                               String priority, String startAt, String dueAt, Boolean allDay, String timezone,
                               Integer durationMinutes, Long revision, String parentId, List<String> tagIds,
                               List<ChecklistCommand> checklist, String name, String color, String icon,
-                              Integer sortOrder, Boolean archived, String rrule, String recurrenceAnchor,
+                              Long sortOrder, Boolean archived, String rrule, String recurrenceAnchor,
                               Map<String, Object> extra) {
         public SyncPayload(String id, String listId, String title, String description, String status,
                            String priority, String startAt, String dueAt, Boolean allDay, String timezone,
@@ -282,7 +292,8 @@ public final class TaskModels {
                            List<ChecklistCommand> checklist, String name, String color, String icon,
                            Integer sortOrder, Boolean archived) {
             this(id, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
-                    durationMinutes, revision, parentId, tagIds, checklist, name, color, icon, sortOrder, archived,
+                    durationMinutes, revision, parentId, tagIds, checklist, name, color, icon,
+                    sortOrder == null ? null : sortOrder.longValue(), archived,
                     null, null, null);
         }
         public SyncPayload(String id, String listId, String title, String description, String status,
@@ -304,7 +315,7 @@ public final class TaskModels {
                              Integer durationMinutes, String source, String completedAt, long revision,
                              boolean deleted, String parentId, List<String> tagIds, List<ChecklistItem> checklist,
                              String deletedAt, String name, String color, String icon, String systemKey,
-                             Integer sortOrder, Boolean archived, String rrule, String recurrenceAnchor,
+                             Long sortOrder, Boolean archived, String rrule, String recurrenceAnchor,
                              String seriesId, Integer seriesSequence, String plannedDueAt, Integer focusMinutes,
                              Map<String, Object> extra) {
         public SyncEntity(String id, String listId, String title, String description, String status,

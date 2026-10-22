@@ -56,8 +56,10 @@ class TaskOrganizationIntegrationTest extends MySqlIntegrationTestSupport {
                 String.valueOf(group.revision()));
         assertEquals("📁", group.icon());
         var list = service.createList(new TaskModels.TaskListCommand("项目", "#2563eb", "folder", 1, false), "list-group-create");
-        var grouped = service.assignListGroup(list.publicId(), group.publicId(), String.valueOf(list.revision()));
+        var grouped = service.assignListGroup(list.publicId(), group.publicId(), 4_096L, String.valueOf(list.revision()));
         assertEquals(group.publicId(), grouped.groupId());
+        assertEquals(4_096L, grouped.sortOrder());
+        assertEquals(list.revision() + 1, grouped.revision());
 
         var tomorrow = java.time.LocalDate.now(java.time.ZoneId.systemDefault()).plusDays(1)
                 .atTime(12, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toString();
@@ -131,6 +133,13 @@ class TaskOrganizationIntegrationTest extends MySqlIntegrationTestSupport {
         assertEquals(inbox.revision() + 1, recoloredInbox.revision());
         assertEquals("#7259d9", service.listLists().stream()
                 .filter(item -> item.publicId().equals(inbox.publicId())).findFirst().orElseThrow().color());
+
+        var sparse = service.createList(new TaskListCommand("稀疏排序", null, null, 3_000_000_000L,
+                false, null, null, null, null), "sparse-list-rank");
+        assertEquals(3_000_000_000L, sparse.sortOrder());
+        var reorderedSparse = service.updateList(sparse.publicId(), new TaskListCommand(null, null, null,
+                3_000_000_512L, null), String.valueOf(sparse.revision()));
+        assertEquals(3_000_000_512L, reorderedSparse.sortOrder());
 
         var work = service.createList(new TaskListCommand("工作", "#2563eb", "briefcase", 1, false), "list-1");
         assertEquals(work.publicId(), service.createList(new TaskListCommand("重试", null, null, null, false), "list-1").publicId());

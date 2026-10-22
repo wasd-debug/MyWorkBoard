@@ -10,21 +10,6 @@ export function moveItem(items, itemId, targetId, placement = 'before') {
   return next.map((entry, sortOrder) => ({ ...entry, sortOrder }))
 }
 
-export function insertListDropPlaceholder(items, item, targetId, placement = 'before') {
-  const targetIndex = items.findIndex((entry) => entry.publicId === targetId)
-  if (targetId && targetIndex < 0) return items
-
-  const insertionIndex = targetId
-    ? targetIndex + (placement === 'after' ? 1 : 0)
-    : items.length
-  const placeholder = {
-    ...item,
-    publicId: `__drop-preview__:${item.publicId}`,
-    dropPlaceholder: true
-  }
-  return [...items.slice(0, insertionIndex), placeholder, ...items.slice(insertionIndex)]
-}
-
 export function reorderListDrop(targetItems, sourceItem, targetId, placement = 'before') {
   const next = targetItems.filter((item) => item.publicId !== sourceItem.publicId)
   const targetIndex = next.findIndex((item) => item.publicId === targetId)
@@ -32,5 +17,26 @@ export function reorderListDrop(targetItems, sourceItem, targetId, placement = '
     ? next.length
     : targetIndex + (placement === 'after' ? 1 : 0)
   next.splice(insertionIndex, 0, sourceItem)
-  return next.map((entry, sortOrder) => ({ ...entry, sortOrder }))
+
+  const previous = next[insertionIndex - 1]
+  const following = next[insertionIndex + 1]
+  const previousOrder = previous ? Number(previous.sortOrder) : null
+  const followingOrder = following ? Number(following.sortOrder) : null
+  let sortOrder
+
+  if (previousOrder === null && followingOrder === null) sortOrder = 1024
+  else if (previousOrder === null) sortOrder = followingOrder - 1024
+  else if (followingOrder === null) sortOrder = previousOrder + 1024
+  else if (followingOrder - previousOrder > 1) sortOrder = Math.floor((previousOrder + followingOrder) / 2)
+  else return next.map((entry, index) => ({ ...entry, sortOrder: (index + 1) * 1024 }))
+
+  return next.map((entry, index) => index === insertionIndex ? { ...entry, sortOrder } : entry)
+}
+
+export function getListDropPlacement(clientY, rect, mergeThreshold = 0.35) {
+  if (!rect || rect.height <= 0) return 'before'
+  const offset = (clientY - rect.top) / rect.height
+  if (offset < mergeThreshold) return 'before'
+  if (offset > 1 - mergeThreshold) return 'after'
+  return 'merge'
 }

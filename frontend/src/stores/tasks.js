@@ -8,7 +8,6 @@ import { accountScopeFor, taskDatabaseName } from '../utils/accountScope.js'
 import { createClientId } from '../utils/clientId.js'
 
 const SCOPE = 'tasks'
-const GROUP_ASSIGNMENTS_META_KEY = 'pending-list-group-assignments'
 const LIST_GROUPS_CACHE_META_KEY = 'task-list-groups-cache'
 const transport = {
   push: async (_scope, operations) => {
@@ -47,21 +46,10 @@ function localTask(value) {
 }
 
 async function replaceRemoteCollection(scoped, type, records) {
-  const groupAssignments = type === 'task-list' ? await readGroupAssignments(scoped) : []
-  const pending = new Set([
-    ...(await scoped.pendingOperations(SCOPE)).filter(item => item.entityType === type).map(item => item.entityId),
-    ...groupAssignments.map(item => item.listId)
-  ])
+  const pending = new Set((await scoped.pendingOperations(SCOPE))
+    .filter(item => item.entityType === type).map(item => item.entityId))
   const local = (await scoped.list(type, { bookId: SCOPE, includeDeleted: true })).filter(item => pending.has(item.id))
   await scoped.replace(type, [...records.filter(item => !pending.has(item.publicId)).map(item => ({ ...item, id: item.publicId })), ...local], { bookId: SCOPE })
-}
-
-async function readGroupAssignments(scoped = engine) {
-  return await scoped.meta(GROUP_ASSIGNMENTS_META_KEY) || []
-}
-
-async function writeGroupAssignments(assignments, scoped = engine) {
-  await scoped.setMeta(GROUP_ASSIGNMENTS_META_KEY, assignments)
 }
 
 function conflictListView(entity) {
@@ -116,6 +104,17 @@ function syncFailureMessage(error) {
 async function organizationOptions(type, item) {
   const pending = (await engine.pendingOperations(SCOPE)).find(value => value.entityType === type && value.entityId === item.publicId)
   return { bookId: SCOPE, opId: pending?.opId, baseRevision: pending?.baseRevision ?? item.revision ?? 0 }
+}
+
+async function assignListGroupWithRetry(id, groupId, revision, sortOrder) {
+  try {
+    return await apiAssignTaskListGroup(id, groupId, revision, sortOrder)
+  } catch (error) {
+    if (error?.response?.status !== 409) throw error
+    const latest = (await apiListTaskLists()).find(item => item.publicId === id)
+    if (!latest) throw error
+    return apiAssignTaskListGroup(id, groupId, latest.revision, sortOrder)
+  }
 }
 
 export const useTasksStore = defineStore('tasks', {
@@ -178,14 +177,14 @@ export const useTasksStore = defineStore('tasks', {
     async hydrate() {
       const epoch = sessionEpoch
       const scoped = engine
-      const [lists, tags, tasks, habits, habitCheckins, countdowns, conflicts, rejected, pending, cachedListGroups, groupAssignments] = await Promise.all([
+      const [lists, tags, tasks, habits, habitCheckins, countdowns, conflicts, rejected, pending, cachedListGroups] = await Promise.all([
         scoped.list('task-list', { bookId: SCOPE, includeDeleted: true }), scoped.list('task-tag', { bookId: SCOPE }),
         scoped.list('task', { bookId: SCOPE, includeDeleted: true }),
         scoped.list('habit', { bookId: SCOPE, includeDeleted: true }),
         scoped.list('habit-checkin', { bookId: SCOPE, includeDeleted: true }),
         scoped.list('countdown', { bookId: SCOPE, includeDeleted: true }),
         scoped.conflicts(SCOPE), scoped.rejected(SCOPE), scoped.pendingOperations(SCOPE),
-        scoped.meta(LIST_GROUPS_CACHE_META_KEY), readGroupAssignments(scoped)
+        scoped.meta(LIST_GROUPS_CACHE_META_KEY)
       ])
       if (epoch !== sessionEpoch || scoped !== engine) return
       this.lists = lists.filter(item => !item.deleted).map(item => ({ ...item, publicId: item.id })).sort((a, b) => a.sortOrder - b.sortOrder)
@@ -199,11 +198,7 @@ export const useTasksStore = defineStore('tasks', {
       this.conflicts = conflicts
       this.rejected = rejected
       this.listGroups = cachedListGroups || []
-      for (const assignment of groupAssignments) {
-        const list = this.lists.find(item => item.publicId === assignment.listId)
-        if (list) list.groupId = assignment.groupId || null
-      }
-      this.pending = pending.length + groupAssignments.length
+      this.pending = pending.length
     },
     async refreshServer() {
       if (!this.online || !this.accountScope) return
@@ -412,68 +407,42 @@ export const useTasksStore = defineStore('tasks', {
       await this.hydrate()
     },
     async assignListGroup(item, groupId) {
+      if (!this.online) throw new Error('清单归属需要联网执行')
       const id = item.publicId || item.id
       const normalizedGroupId = groupId || null
-      const assignments = await readGroupAssignments()
-      const next = [...assignments.filter(value => value.listId !== id), { listId: id, groupId: normalizedGroupId }]
-      await writeGroupAssignments(next)
       const current = this.lists.find(value => value.publicId === id) || item
-      await engine.put('task-list', { ...current, id, groupId: normalizedGroupId }, { bookId: SCOPE, recordOp: false })
-      await this.hydrate()
-      this.scheduleSync()
+      const epoch = sessionEpoch
+      const scoped = engine
+      const updated = await assignListGroupWithRetry(id, normalizedGroupId, current.revision, current.sortOrder)
+      if (epoch !== sessionEpoch || scoped !== engine) return updated
+      await scoped.put('task-list', { ...updated, id, publicId: undefined }, { bookId: SCOPE, recordOp: false })
+      this.lists = this.lists.map(value => value.publicId === id ? updated : value)
+        .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+      return updated
     },
     async reorderLists(orderedLists, assignment = null) {
       const epoch = sessionEpoch
       const scoped = engine
       const items = orderedLists.filter(item => this.lists.some(list => list.publicId === item.publicId))
       const originalById = new Map(this.lists.map(list => [list.publicId, list]))
-      const itemById = new Map(items.map(item => [item.publicId, item]))
       const assignmentGroupId = assignment?.groupId || null
-      this.lists = this.lists.map(list => {
-        const reordered = itemById.get(list.publicId)
-        const assigned = assignment?.listId === list.publicId
-        if (!reordered && !assigned) return list
-        return {
-          ...list,
-          ...(reordered ? { sortOrder: reordered.sortOrder } : {}),
-          ...(assigned ? { groupId: assignmentGroupId } : {})
-        }
-      })
-      if (assignment) {
-        const assignments = await readGroupAssignments(scoped)
-        const next = [...assignments.filter(value => value.listId !== assignment.listId), {
-          listId: assignment.listId,
-          groupId: assignmentGroupId
-        }]
-        await writeGroupAssignments(next, scoped)
-        const current = this.lists.find(value => value.publicId === assignment.listId)
-        if (current) await scoped.put('task-list', {
-          ...current,
-          id: assignment.listId,
-          groupId: assignmentGroupId
-        }, { bookId: SCOPE, recordOp: false })
-      }
-      const pendingOperations = await scoped.pendingOperations(SCOPE)
-      await Promise.all(items.map(item => {
+      const changedItems = items.filter(item => {
         const current = originalById.get(item.publicId)
-        if (!current) return Promise.resolve()
-        if (Number(current.sortOrder || 0) === Number(item.sortOrder || 0)
-          && (current.groupId || null) === (item.groupId || null)) return Promise.resolve()
-        const pending = pendingOperations.find(value => value.entityType === 'task-list' && value.entityId === item.publicId)
-        return scoped.put('task-list', {
-          ...current,
-          ...item,
-          id: item.publicId,
-          publicId: undefined
-        }, {
-          bookId: SCOPE,
-          opId: pending?.opId,
-          baseRevision: pending?.baseRevision ?? current.revision ?? 0
-        })
-      }))
+        const groupId = assignment?.listId === item.publicId ? assignmentGroupId : (item.groupId || null)
+        return current && (Number(current.sortOrder || 0) !== Number(item.sortOrder || 0)
+          || (current.groupId || null) !== groupId)
+      })
+      if (changedItems.length && !this.online) throw new Error('清单排序需要联网执行')
+      for (const item of changedItems) {
+        const current = originalById.get(item.publicId)
+        const groupId = assignment?.listId === item.publicId ? assignmentGroupId : (item.groupId || null)
+        const updated = await assignListGroupWithRetry(item.publicId, groupId, current.revision, item.sortOrder)
+        if (epoch !== sessionEpoch || scoped !== engine) return
+        await scoped.put('task-list', { ...updated, id: item.publicId, publicId: undefined }, { bookId: SCOPE, recordOp: false })
+        this.lists = this.lists.map(value => value.publicId === item.publicId ? updated : value)
+          .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+      }
       if (epoch !== sessionEpoch || scoped !== engine) return
-      await this.hydrate()
-      this.scheduleSync()
     },
     async batchTasks(items, action, values = {}) {
       const current = items.map(item => this.tasks.find(value => value.publicId === item.publicId) || item).filter(Boolean)
@@ -543,11 +512,18 @@ export const useTasksStore = defineStore('tasks', {
     },
     async createList(payload) {
       const groupId = payload.groupId || ''
+      if (groupId && !this.online) throw new Error('在文件夹内创建清单需要联网执行')
       const { groupId: ignoredGroupId, ...listPayload } = payload
       const created = await engine.put('task-list', { ...listPayload, id: createClientId(), revision: 0,
-        archived: Boolean(payload.archived), sortOrder: payload.sortOrder ?? this.lists.length }, { bookId: SCOPE })
+        archived: Boolean(payload.archived), sortOrder: payload.sortOrder ?? (this.lists.reduce((max, item) => Math.max(max, Number(item.sortOrder) || 0), 0) + 1024) }, { bookId: SCOPE })
       await this.hydrate()
-      if (groupId) await this.assignListGroup({ ...created, publicId: created.id }, groupId)
+      if (groupId) {
+        await this.syncNow()
+        if ((await engine.pendingOperations(SCOPE)).some(operation => operation.entityId === created.id)) {
+          throw new Error('清单尚未同步成功，请同步后再设置文件夹')
+        }
+        await this.assignListGroup({ ...created, publicId: created.id }, groupId)
+      }
       this.scheduleSync()
       return created
     },
@@ -632,7 +608,6 @@ export const useTasksStore = defineStore('tasks', {
             if (epoch === sessionEpoch && scoped === engine) await this.hydrate()
           } while (epoch === sessionEpoch && scoped === engine && activeSyncPromise?.rerun)
           if (epoch === sessionEpoch && scoped === engine) {
-            await this.flushGroupAssignments(scoped)
             await this.hydrate()
             this.syncError = ''
             if (!this.pending && !this.conflicts.length && !this.rejected.length) syncRetryAttempt = 0
@@ -651,32 +626,6 @@ export const useTasksStore = defineStore('tasks', {
       })
       activeSyncPromise = { epoch, promise, rerun: false }
       return promise
-    },
-    async flushGroupAssignments(scoped = engine) {
-      let assignments = await readGroupAssignments(scoped)
-      for (const assignment of assignments) {
-        const localPending = (await scoped.pendingOperations(SCOPE)).some(item => item.entityType === 'task-list' && item.entityId === assignment.listId)
-        const conflictPending = (await scoped.conflicts(SCOPE)).some(item => item.operation?.entityType === 'task-list' && item.operation.entityId === assignment.listId)
-        if (localPending || conflictPending) continue
-        const list = this.lists.find(item => item.publicId === assignment.listId)
-        if (!list) continue
-        let latest = list
-        try {
-          await apiAssignTaskListGroup(assignment.listId, assignment.groupId, Number(latest.revision || 0))
-        } catch (error) {
-          if (error?.response?.status !== 409) throw error
-          const remoteLists = await apiListTaskLists()
-          const remote = (remoteLists || []).find(value => value.publicId === assignment.listId)
-          if (!remote) throw error
-          latest = { ...remote, groupId: assignment.groupId }
-          if (remote.groupId !== assignment.groupId) {
-            await apiAssignTaskListGroup(assignment.listId, assignment.groupId, Number(remote.revision || 0))
-          }
-        }
-        assignments = assignments.filter(value => value.listId !== assignment.listId)
-        await writeGroupAssignments(assignments, scoped)
-        await scoped.put('task-list', { ...latest, id: list.publicId, groupId: assignment.groupId }, { bookId: SCOPE, recordOp: false })
-      }
     },
     async resolveConflict(opId, strategy) {
       await engine.resolveConflict(opId, strategy)

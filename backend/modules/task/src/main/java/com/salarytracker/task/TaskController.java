@@ -116,7 +116,8 @@ public class TaskController {
     public ApiResponse<TaskList> assignListGroup(@PathVariable String publicId,
                                                   @RequestBody ListGroupAssignment body,
                                                   @RequestHeader("If-Match") String ifMatch) {
-        return ApiResponse.ok(taskService.assignListGroup(publicId, body == null ? null : body.groupId(), ifMatch));
+        return ApiResponse.ok(taskService.assignListGroup(publicId, body == null ? null : body.groupId(),
+                body == null ? null : body.sortOrder(), ifMatch));
     }
 
     @GetMapping("/lists/trash")

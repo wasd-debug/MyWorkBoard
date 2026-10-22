@@ -122,7 +122,7 @@ public class TaskSyncService {
             TaskCommand command = new TaskCommand(payload.listId(), payload.title(), payload.description(),
                     payload.priority(), payload.startAt(), payload.dueAt(), payload.allDay(), payload.timezone(),
                     payload.durationMinutes(), payload.parentId(), payload.tagIds(), payload.checklist(), payload.rrule(),
-                    payload.recurrenceAnchor(), payload.sortOrder());
+                    payload.recurrenceAnchor(), payload.sortOrder() == null ? null : Math.toIntExact(payload.sortOrder()));
             TaskItem saved = current == null
                     ? tasks.createForSync(command, payload.status(), opId, entityId)
                     : tasks.updateForSync(entityId, command, payload.status(), baseRevision, opId);
@@ -196,7 +196,8 @@ public class TaskSyncService {
         SyncPayload payload = operation.payload();
         if (payload == null) throw new IllegalArgumentException("payload 必填");
         if (current == null && (base > 0 || tasks.tagExistsForAnotherUser(entityId))) return inaccessible(operation.opId(), "task-tag", entityId, "标签不存在或已删除");
-        TaskTagCommand command = new TaskTagCommand(payload.parentId(), payload.name(), payload.color(), payload.sortOrder(), payload.icon());
+        TaskTagCommand command = new TaskTagCommand(payload.parentId(), payload.name(), payload.color(),
+                payload.sortOrder() == null ? null : Math.toIntExact(payload.sortOrder()), payload.icon());
         var saved = current == null ? tasks.createTagForSync(command, entityId, operation.opId())
                 : tasks.updateTagForSync(entityId, command, base, operation.opId());
         return result(operation.opId(), "task-tag", entityId, SyncStatus.APPLIED,

@@ -231,22 +231,35 @@ test('safe task-list conflicts are cleared and inbox name conflicts preserve the
   }
 })
 
-test('list folder assignment updates the cached view before its background request', async t => {
+test('direct folder assignment updates the cached view only after server confirmation', async () => {
   offline()
   setActivePinia(createPinia())
   const store = useTasksStore()
-  await store.switchUser({ id: 'task-folder-local-first' })
+  await store.switchUser({ id: 'task-folder-confirmed' })
   await store.init()
-  const list = await store.createList({ name: '待归组清单' })
-  await store.assignListGroup(store.lists[0], 'group-local')
-  assert.equal(store.lists[0].publicId, list.id)
-  assert.equal(store.lists[0].groupId, 'group-local')
-  assert.equal(store.pending, 2)
-  assert.equal(store.syncing, false)
-  await store.clearSession()
+  const created = await store.createList({ name: '待归组清单' })
+  const current = store.lists.find(item => item.publicId === created.id)
+  const previousAdapter = api.defaults.adapter
+  api.defaults.adapter = async config => {
+    const body = JSON.parse(config.data)
+    assert.deepEqual(body, { groupId: 'group-local', sortOrder: current.sortOrder })
+    assert.equal(config.headers['If-Match'], String(current.revision))
+    return { data: { data: { ...current, groupId: body.groupId, revision: current.revision + 1 } },
+      status: 200, statusText: 'OK', headers: {}, config }
+  }
+  try {
+    store.online = true
+    await store.assignListGroup(current, 'group-local')
+    assert.equal(store.lists.find(item => item.publicId === created.id).groupId, 'group-local')
+    assert.equal(store.pending, 1)
+    assert.equal(store.syncing, false)
+  } finally {
+    api.defaults.adapter = previousAdapter
+    await store.clearSession()
+  }
 })
 
-test('list reordering and folder assignment hydrate the local projection once', async () => {
+test('list placement waits for server confirmation before updating the local projection', async () => {
   offline()
   setActivePinia(createPinia())
   const store = useTasksStore()
@@ -255,62 +268,142 @@ test('list reordering and folder assignment hydrate the local projection once', 
   const first = await store.createList({ name: '第一张清单' })
   const second = await store.createList({ name: '第二张清单' })
   const third = await store.createList({ name: '第三张清单' })
-  let hydrationCount = 0
-  const hydrate = store.hydrate.bind(store)
-  store.hydrate = async () => { hydrationCount += 1; await hydrate() }
-
-  const reordering = store.reorderLists([
-    { ...store.lists.find(item => item.publicId === third.id), sortOrder: 0, groupId: 'folder-a' },
-    { ...store.lists.find(item => item.publicId === first.id), sortOrder: 1 },
-    { ...store.lists.find(item => item.publicId === second.id), sortOrder: 2 }
-  ], { listId: third.id, groupId: 'folder-a' })
-
-  assert.equal(store.lists.find(item => item.publicId === third.id).groupId, 'folder-a')
-  assert.equal(store.lists.find(item => item.publicId === third.id).sortOrder, 0)
-  assert.equal(store.lists.find(item => item.publicId === first.id).sortOrder, 1)
-  await reordering
-
-  assert.equal(hydrationCount, 1)
-  assert.equal(store.lists.find(item => item.publicId === third.id).groupId, 'folder-a')
-  assert.equal(store.lists.find(item => item.publicId === third.id).sortOrder, 0)
-  assert.equal(store.pending, 4)
-  await store.clearSession()
+  const previousAdapter = api.defaults.adapter
+  let releasePlacement
+  let placementStarted
+  const started = new Promise(resolve => { placementStarted = resolve })
+  api.defaults.adapter = async config => {
+    if (!config.url.endsWith(`/api/v1/tasks/lists/${third.id}/group`)) throw new Error(`Unexpected API request ${config.method} ${config.url}`)
+    placementStarted()
+    await new Promise(resolve => { releasePlacement = resolve })
+    const payload = JSON.parse(config.data)
+    return { data: { data: { publicId: third.id, name: '第三张清单', groupId: payload.groupId,
+      sortOrder: payload.sortOrder, revision: 2 } }, status: 200, statusText: 'OK', headers: {}, config }
+  }
+  try {
+    store.online = true
+    const reordering = store.reorderLists([
+      { ...store.lists.find(item => item.publicId === third.id), sortOrder: 4096, groupId: 'folder-a' }
+    ], { listId: third.id, groupId: 'folder-a' })
+    await started
+    assert.notEqual(store.lists.find(item => item.publicId === third.id).groupId, 'folder-a')
+    assert.notEqual(store.lists.find(item => item.publicId === third.id).sortOrder, 4096)
+    releasePlacement()
+    await reordering
+    assert.equal(store.lists.find(item => item.publicId === third.id).groupId, 'folder-a')
+    assert.equal(store.lists.find(item => item.publicId === third.id).sortOrder, 4096)
+    assert.deepEqual(store.lists.filter(item => [first.id, second.id, third.id].includes(item.publicId)).map(item => item.publicId), [first.id, second.id, third.id])
+    assert.equal(store.pending, 3)
+  } finally {
+    releasePlacement?.()
+    api.defaults.adapter = previousAdapter
+    await store.clearSession()
+  }
 })
 
-test('folder assignment retry recognizes a server-side success after a lost response', async () => {
+test('failed list placement leaves the visible order and group unchanged', async () => {
   offline()
   setActivePinia(createPinia())
   const store = useTasksStore()
-  await store.switchUser({ id: 'task-folder-retry' })
+  await store.switchUser({ id: 'task-placement-failure' })
   await store.init()
-  const list = await store.createList({ name: '归属重试清单' })
-  await store.assignListGroup(store.lists[0], 'group-already-assigned')
+  const created = await store.createList({ name: '移动失败清单' })
+  const original = store.lists.find(item => item.publicId === created.id)
   const previousAdapter = api.defaults.adapter
   api.defaults.adapter = async config => {
-    if (config.url.includes('/api/v1/tasks/sync/push')) {
-      const operations = JSON.parse(config.data)
-      return { data: { data: { results: operations.map(operation => ({ opId: operation.opId, status: 'APPLIED', entity: { ...operation.payload, revision: 1 } })) } }, status: 200, statusText: 'OK', headers: {}, config }
+    const error = new Error('Placement rejected by server')
+    error.config = config
+    error.response = { status: 409, config, data: { detail: '版本冲突', serverRevision: 2 } }
+    throw error
+  }
+  try {
+    store.online = true
+    await assert.rejects(store.reorderLists([{ ...original, groupId: 'new-folder', sortOrder: original.sortOrder + 10 }], {
+      listId: original.publicId, groupId: 'new-folder'
+    }))
+    assert.equal(store.lists.find(item => item.publicId === created.id).groupId, original.groupId)
+    assert.equal(store.lists.find(item => item.publicId === created.id).sortOrder, original.sortOrder)
+    assert.equal(store.pending, 1)
+  } finally {
+    api.defaults.adapter = previousAdapter
+    await store.clearSession()
+  }
+})
+
+test('stale list placement retries once with the latest server revision', async () => {
+  offline()
+  setActivePinia(createPinia())
+  const store = useTasksStore()
+  await store.switchUser({ id: 'task-placement-retry' })
+  await store.init()
+  const created = await store.createList({ name: '版本竞争清单' })
+  const original = store.lists.find(item => item.publicId === created.id)
+  const previousAdapter = api.defaults.adapter
+  const assignmentHeaders = []
+  api.defaults.adapter = async config => {
+    if (config.url === '/api/v1/tasks/lists' && config.method === 'get') {
+      return { data: { data: [{ ...original, publicId: original.publicId, revision: 7 }] }, status: 200, statusText: 'OK', headers: {}, config }
     }
-    if (config.url.includes('/api/v1/tasks/sync/pull')) {
-      return { data: { data: { cursor: 0, operations: [], hasMore: false } }, status: 200, statusText: 'OK', headers: {}, config }
-    }
-    if (config.url.endsWith(`/api/v1/tasks/lists/${list.id}/group`)) {
-      const error = new Error('Revision conflict after server accepted the assignment')
-      error.config = config
-      error.response = { status: 409, config, data: { serverRevision: 2 } }
-      throw error
-    }
-    if (config.url.endsWith('/api/v1/tasks/lists')) {
-      return { data: { data: [{ publicId: list.id, name: '归属重试清单', groupId: 'group-already-assigned', revision: 2 }] }, status: 200, statusText: 'OK', headers: {}, config }
+    if (config.url.endsWith(`/api/v1/tasks/lists/${original.publicId}/group`)) {
+      assignmentHeaders.push(String(config.headers['If-Match']))
+      if (assignmentHeaders.length === 1) {
+        const error = new Error('stale revision')
+        error.response = { status: 409, config, data: { detail: '清单版本已变化', serverRevision: 7 } }
+        throw error
+      }
+      const payload = JSON.parse(config.data)
+      return { data: { data: { ...original, publicId: original.publicId, groupId: payload.groupId,
+        sortOrder: payload.sortOrder, revision: 8 } }, status: 200, statusText: 'OK', headers: {}, config }
     }
     throw new Error(`Unexpected API request ${config.method} ${config.url}`)
   }
   try {
     store.online = true
-    await store.syncNow()
+    await store.reorderLists([{ ...original, groupId: 'folder-retry', sortOrder: original.sortOrder + 512 }], {
+      listId: original.publicId, groupId: 'folder-retry'
+    })
+    assert.deepEqual(assignmentHeaders, [String(original.revision), '7'])
+    assert.equal(store.lists.find(item => item.publicId === original.publicId).groupId, 'folder-retry')
+    assert.equal(store.lists.find(item => item.publicId === original.publicId).revision, 8)
+  } finally {
+    api.defaults.adapter = previousAdapter
+    await store.clearSession()
+  }
+})
+
+test('creating a list inside a folder syncs creation before assigning its folder', async () => {
+  offline()
+  setActivePinia(createPinia())
+  const store = useTasksStore()
+  await store.switchUser({ id: 'task-create-folder' })
+  await store.init()
+  const previousAdapter = api.defaults.adapter
+  const requests = []
+  let serverList
+  api.defaults.adapter = async config => {
+    requests.push(config.url)
+    let result
+    if (config.url.includes('/sync/push')) {
+      const operations = JSON.parse(config.data)
+      result = { results: operations.map(operation => {
+        serverList = { ...operation.payload, id: operation.entityId, revision: 1 }
+        return { opId: operation.opId, entityType: operation.entityType, entityId: operation.entityId, status: 'APPLIED', entity: serverList }
+      }) }
+    } else if (config.url.includes('/sync/pull')) {
+      result = { cursor: 0, operations: [], hasMore: false }
+    } else if (config.url.endsWith('/group')) {
+      assert.ok(serverList, 'the list must exist on the server before folder assignment')
+      assert.equal(String(config.headers['If-Match']), '1')
+      result = { ...serverList, publicId: serverList.id, ...JSON.parse(config.data), revision: 2 }
+    } else throw new Error(`Unexpected API request ${config.url}`)
+    return { data: { data: result }, status: 200, statusText: 'OK', headers: {}, config }
+  }
+  try {
+    store.online = true
+    const created = await store.createList({ name: '文件夹内新清单', groupId: 'folder-new' })
+    assert.ok(requests.findIndex(url => url.includes('/sync/push')) < requests.findIndex(url => url.endsWith('/group')))
+    assert.equal(store.lists.find(item => item.publicId === created.id).groupId, 'folder-new')
     assert.equal(store.pending, 0)
-    assert.equal(store.lists[0].groupId, 'group-already-assigned')
-    assert.equal(store.syncError, '')
   } finally {
     api.defaults.adapter = previousAdapter
     await store.clearSession()

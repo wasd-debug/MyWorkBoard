@@ -74,7 +74,7 @@ public class TaskService {
                         "WHERE l.user_id = ? AND l.deleted = FALSE ORDER BY l.sort_order, l.id",
                 (result, rowNum) -> new TaskList(result.getString("public_id"), result.getString("group_public_id"), result.getString("name"),
                         result.getString("color"), result.getString("icon"), result.getString("system_key"),
-                        result.getInt("sort_order"), result.getBoolean("archived"), result.getBoolean("is_pinned"),
+                        result.getLong("sort_order"), result.getBoolean("archived"), result.getBoolean("is_pinned"),
                         result.getString("view_type"), result.getString("object_type"), result.getBoolean("show_in_smart_lists"), result.getLong("revision")),
                 userId);
     }
@@ -138,6 +138,11 @@ public class TaskService {
 
     @Transactional
     public TaskList assignListGroup(String listPublicId, String groupPublicId, String ifMatch) {
+        return assignListGroup(listPublicId, groupPublicId, null, ifMatch);
+    }
+
+    @Transactional
+    public TaskList assignListGroup(String listPublicId, String groupPublicId, Long sortOrder, String ifMatch) {
         long userId = currentUser.id();
         TaskList before = listForUser(userId, listPublicId, false);
         long expected = requiredRevision(ifMatch);
@@ -151,8 +156,9 @@ public class TaskService {
             groupId = jdbcTemplate.queryForObject("SELECT id FROM task_list_group WHERE public_id=? AND user_id=?", Long.class,
                     group.publicId(), userId);
         }
-        int changed = jdbcTemplate.update("UPDATE task_list SET group_id=?,revision=revision+1 WHERE public_id=? AND user_id=? AND revision=?",
-                groupId, validUuid(listPublicId, "publicId"), userId, expected);
+        int changed = jdbcTemplate.update("UPDATE task_list SET group_id=?,sort_order=?,revision=revision+1 WHERE public_id=? AND user_id=? AND revision=?",
+                groupId, sortOrder == null ? before.sortOrder() : sortOrder,
+                validUuid(listPublicId, "publicId"), userId, expected);
         if (changed == 0) throw new ConflictException("清单版本已变化", before.revision());
         TaskList assigned = listForUser(userId, listPublicId, false);
         changeLog.append(userId, UUID.randomUUID().toString(), "task-list", listPublicId, "UPSERT", syncEntity(assigned, false));
@@ -283,7 +289,7 @@ public class TaskService {
                 (result, rowNum) -> result.getString(1), userId, opId);
         if (!replay.isEmpty()) return listForUser(userId, replay.get(0), false);
         String name = requiredText(command == null ? null : command.name(), "name", 120);
-        int sortOrder = command.sortOrder() == null ? nextOrder("task_list", userId) : command.sortOrder();
+        long sortOrder = command.sortOrder() == null ? nextListOrder(userId) : command.sortOrder();
         String viewType = enumValue(command.viewType(), "LIST", List.of("LIST", "KANBAN", "TIMELINE"), "viewType");
         String objectType = enumValue(command.objectType(), "TASK", List.of("TASK", "NOTE"), "objectType");
         jdbcTemplate.update("INSERT INTO task_list(public_id,user_id,name,color,icon,sort_order,archived,is_pinned,view_type,object_type,show_in_smart_lists) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
@@ -1145,7 +1151,7 @@ public class TaskService {
         return new TaskModels.SyncEntity(item.publicId(), item.listId(), item.title(), item.description(), item.status(),
                 item.priority(), item.startAt(), item.dueAt(), item.allDay(), item.timezone(), item.durationMinutes(),
                 item.source(), item.completedAt(), item.revision(), deleted, item.parentId(), item.tagIds(),
-                item.checklist(), item.deletedAt(), null, null, null, null, item.sortOrder(), null, item.rrule(),
+                item.checklist(), item.deletedAt(), null, null, null, null, (long) item.sortOrder(), null, item.rrule(),
                 item.recurrenceAnchor(), item.seriesId(), item.seriesSequence(), item.plannedDueAt(), item.focusMinutes(), null);
     }
 
@@ -1159,7 +1165,7 @@ public class TaskService {
     static TaskModels.SyncEntity syncEntity(TaskTag item, boolean deleted) {
         return new TaskModels.SyncEntity(item.publicId(), null, null, null, null, null, null, null, false,
                 null, null, null, null, item.revision() + (deleted ? 1 : 0), deleted, item.parentId(), List.of(), List.of(), null,
-                item.name(), item.color(), item.icon(), null, item.sortOrder(), null, null, null, null, null, null, null, null);
+                item.name(), item.color(), item.icon(), null, (long) item.sortOrder(), null, null, null, null, null, null, null, null);
     }
 
     TaskList currentListForSync(String publicId) { return listForUser(currentUser.id(), publicId, false); }
@@ -1280,7 +1286,7 @@ public class TaskService {
 
     private TaskList taskList(ResultSet result) throws SQLException {
         return new TaskList(result.getString("public_id"), result.getString("group_public_id"), result.getString("name"), result.getString("color"),
-                result.getString("icon"), result.getString("system_key"), result.getInt("sort_order"),
+                result.getString("icon"), result.getString("system_key"), result.getLong("sort_order"),
                 result.getBoolean("archived"), result.getBoolean("is_pinned"), result.getString("view_type"),
                 result.getString("object_type"), result.getBoolean("show_in_smart_lists"), result.getLong("revision"));
     }
@@ -1399,6 +1405,11 @@ public class TaskService {
         if (!List.of("task_list", "task_tag").contains(table)) throw new IllegalArgumentException("排序资源无效");
         return jdbcTemplate.queryForObject("SELECT COALESCE(MAX(sort_order),-1)+1 FROM " + table + " WHERE user_id=?",
                 Integer.class, userId);
+    }
+
+    private long nextListOrder(long userId) {
+        return jdbcTemplate.queryForObject("SELECT COALESCE(MAX(sort_order),0)+1024 FROM task_list WHERE user_id=?",
+                Long.class, userId);
     }
 
     private TaskItem task(ResultSet result) throws SQLException {

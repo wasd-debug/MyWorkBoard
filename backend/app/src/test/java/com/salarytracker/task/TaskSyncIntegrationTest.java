@@ -36,6 +36,21 @@ class TaskSyncIntegrationTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
+    void taskListSyncPersistsLongSparseSortRanks() {
+        Fixture fixture = fixture(createUser("sync-list-rank-"));
+        String listId = UUID.randomUUID().toString();
+        SyncPayload payload = new SyncPayload(listId, null, null, null, null, null, null, null, null, null,
+                null, 0L, null, null, null, "稀疏清单", null, null, 3_000_000_000L, false,
+                null, null, Map.of());
+        SyncOperation operation = new SyncOperation("list-rank", "task-list", listId,
+                SyncAction.UPSERT, 0L, payload);
+
+        assertEquals(SyncStatus.APPLIED, fixture.sync.push(List.of(operation)).results().get(0).status());
+        assertEquals(3_000_000_000L, fixture.tasks.listLists().stream()
+                .filter(list -> list.publicId().equals(listId)).findFirst().orElseThrow().sortOrder());
+    }
+
+    @Test
     void exposesRevisionConflictAndKeepsServerVersion() {
         Fixture fixture = fixture(createUser("sync-conflict-"));
         String taskId = UUID.randomUUID().toString();

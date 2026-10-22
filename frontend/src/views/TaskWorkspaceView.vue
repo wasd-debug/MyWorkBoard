@@ -10,7 +10,7 @@
     @touchend.passive="finishSidebarSwipe"
   >
     <button v-if="!sidebarHidden && isMobileSidebar" class="clone-sidebar-backdrop" type="button" aria-label="关闭任务侧栏" @click="sidebarHidden = true"></button>
-    <aside class="clone-task-sidebar" :class="{ 'is-editing': sidebarEditing }" aria-label="任务导航" @click="handleSidebarClick" @dragover.capture="handleOrganizationDragOver" @dragend.capture="endOrganizationDrag">
+    <aside class="clone-task-sidebar" :class="{ 'is-editing': sidebarEditing }" aria-label="任务导航" @click="handleSidebarClick" @dragover.capture="handleOrganizationDragOver" @drop.capture.prevent.stop="handleSidebarDrop" @dragend.capture="endOrganizationDrag">
       <div class="clone-sidebar-scroll">
       <div class="clone-sidebar-head">
         <strong>任务</strong
@@ -45,12 +45,12 @@
       <section class="clone-sidebar-section">
         <header @click="toggleSection('lists')"><button type="button" :aria-expanded="sections.lists"><ChevronDown :size="14" class="clone-section-chevron" :class="{ rotated: !sections.lists }" />清单</button><div class="clone-sidebar-heading-actions"><button class="sidebar-create" type="button" aria-label="新建清单" title="新建清单" @click.stop="createList()"><Plus :size="14" /></button></div></header>
         <div class="clone-collapse-panel" :class="{ 'is-collapsed': !sections.lists }" :aria-hidden="!sections.lists"><div class="clone-sidebar-items clone-collapse-inner" :inert="!sections.lists" @dragover.prevent="handleListRootDragOver" @drop.prevent="dropOrganizationRoot('list')">
-        <section v-if="pinnedListGroups.length" class="clone-pinned-zone" aria-label="置顶分组"><div class="clone-pinned-title">置顶分组</div><section v-for="group in pinnedListGroups" :key="`pinned-group-${group.publicId}`" class="clone-list-group clone-sortable-group" :class="{ 'drag-over': organizationDropTarget === `group:${group.publicId}`, 'sorting-dragging': organizationDrag?.kind === 'group' && organizationDrag.item.publicId === group.publicId }" @dragover.prevent="handleGroupDragOver(group, $event)" @drop.prevent.stop="dropGroup(group)"><header class="clone-list-group-heading" draggable="true" @dragstart="startOrganizationDrag('group', group)"><button type="button" class="clone-group-toggle" :aria-expanded="!groupCollapsed[group.publicId]" :aria-label="`${groupCollapsed[group.publicId] ? '展开' : '折叠'}${group.name}`" @click.stop="toggleListGroupCollapsed(group)"><ChevronDown :size="13" :class="{ rotated: groupCollapsed[group.publicId] }" /></button><RouterLink class="clone-group-navigation" :class="{ active: route.name === 'tasks-group' && route.params.publicId === group.publicId }" :to="`/tasks/group/${group.publicId}`"><TaskOrganizationIcon v-if="group.icon" class="clone-list-group-icon" :value="group.icon" /><Folder v-else class="clone-list-group-icon" :size="15" /><span>{{ group.name }}</span><small>{{ groupOpenCount(group.publicId) }}</small></RouterLink><button class="clone-group-menu" type="button" :aria-label="`${group.name}的更多操作`" @click.stop="openOrganizationMenu('group', group, $event)"><Ellipsis :size="14" /></button></header><div class="clone-collapse-panel" :class="{ 'is-collapsed': groupCollapsed[group.publicId] }" :aria-hidden="Boolean(groupCollapsed[group.publicId])"><div class="clone-group-lists clone-collapse-inner" :inert="Boolean(groupCollapsed[group.publicId])"><template v-for="list in listsInGroup(group.publicId)" :key="list.publicId"><div v-if="list.dropPlaceholder" class="clone-nav-item clone-drag-placeholder" aria-hidden="true"><ListTodo :size="15" /><span>{{ list.name }}</span></div><RouterLink v-else :to="`/tasks/list/${list.publicId}`" class="clone-nav-item clone-sortable-item" :class="{ active: route.params.publicId === list.publicId, 'drag-over': organizationDropTarget === list.publicId, 'sorting-dragging': organizationDrag?.kind === 'list' && organizationDrag.item.publicId === list.publicId }" draggable="true" @dragstart="startOrganizationDrag('list', list)" @dragover.prevent="handleListDragOver(list)" @dragleave="handleListDragLeave(list)" @drop.prevent.stop="dropListOnList(list)" @contextmenu.prevent="openOrganizationMenu('list', list, $event)"><ListTodo :size="15" /><span>{{ list.name }}</span><small>{{ listOpenCount(list.publicId) }}</small><button class="clone-item-menu-trigger" type="button" :aria-label="`${list.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('list', list, $event)"><Ellipsis :size="14" /></button></RouterLink></template></div></div></section></section>
-        <section v-if="pinnedLists.length" class="clone-pinned-zone" aria-label="置顶清单"><div class="clone-pinned-title">置顶</div><RouterLink v-for="list in pinnedLists" :key="`pinned-${list.publicId}`" :to="`/tasks/list/${list.publicId}`" class="clone-nav-item clone-sortable-item" :class="{ active: route.params.publicId === list.publicId, 'drag-over': organizationDropTarget === list.publicId, 'sorting-dragging': organizationDrag?.kind === 'list' && organizationDrag.item.publicId === list.publicId }" draggable="true" @dragstart="startOrganizationDrag('list', list)" @dragover.prevent="handleListDragOver(list)" @dragleave="handleListDragLeave(list)" @drop.prevent.stop="dropListOnList(list)" @contextmenu.prevent="openOrganizationMenu('list', list, $event)"><TaskOrganizationIcon v-if="list.icon" class="clone-object-icon" :value="list.icon" /><ListTodo v-else :size="15" /><span>{{ list.name }}</span><i class="clone-list-color-dot" :style="{ backgroundColor: list.color || 'transparent' }" aria-hidden="true"></i><small>{{ listOpenCount(list.publicId) }}</small><button class="clone-item-menu-trigger" type="button" :aria-label="`${list.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('list', list, $event)"><Ellipsis :size="14" /></button></RouterLink></section>
+        <section v-if="pinnedListGroups.length" class="clone-pinned-zone" aria-label="置顶分组"><div class="clone-pinned-title">置顶分组</div><section v-for="group in pinnedListGroups" :key="`pinned-group-${group.publicId}`" class="clone-list-group clone-sortable-group" :class="{ 'drag-over': organizationDropTarget === `group:${group.publicId}`, 'sorting-dragging': organizationDrag?.kind === 'group' && organizationDrag.item.publicId === group.publicId }" @dragover.prevent="handleGroupDragOver(group, $event)" @drop.prevent.stop="dropGroup(group)"><header class="clone-list-group-heading" draggable="true" @dragstart="startOrganizationDrag('group', group, $event)"><button type="button" class="clone-group-toggle" :aria-expanded="!groupCollapsed[group.publicId]" :aria-label="`${groupCollapsed[group.publicId] ? '展开' : '折叠'}${group.name}`" @click.stop="toggleListGroupCollapsed(group)"><ChevronDown :size="13" :class="{ rotated: groupCollapsed[group.publicId] }" /></button><RouterLink class="clone-group-navigation" :class="{ active: route.name === 'tasks-group' && route.params.publicId === group.publicId }" :to="`/tasks/group/${group.publicId}`"><TaskOrganizationIcon v-if="group.icon" class="clone-list-group-icon" :value="group.icon" /><Folder v-else class="clone-list-group-icon" :size="15" /><span>{{ group.name }}</span><small>{{ groupOpenCount(group.publicId) }}</small></RouterLink><button class="clone-group-menu" type="button" :aria-label="`${group.name}的更多操作`" @click.stop="openOrganizationMenu('group', group, $event)"><Ellipsis :size="14" /></button></header><div class="clone-collapse-panel" :class="{ 'is-collapsed': groupCollapsed[group.publicId] }" :aria-hidden="Boolean(groupCollapsed[group.publicId])"><div class="clone-group-lists clone-collapse-inner" :inert="Boolean(groupCollapsed[group.publicId])"><template v-for="list in listsInGroup(group.publicId)" :key="list.publicId"><div v-if="list.dropPlaceholder" class="clone-nav-item clone-drag-placeholder" aria-hidden="true"><ListTodo :size="15" /><span>{{ list.name }}</span></div><RouterLink v-else :to="`/tasks/list/${list.publicId}`" class="clone-nav-item clone-sortable-item" :class="{ active: route.params.publicId === list.publicId, 'drag-over': organizationDropTarget === list.publicId, 'sorting-dragging': organizationDrag?.kind === 'list' && organizationDrag.item.publicId === list.publicId }" draggable="true" @dragstart="startOrganizationDrag('list', list, $event)" @dragover.prevent="handleListDragOver(list, $event)" @dragleave="handleListDragLeave(list)" @drop.prevent.stop="dropListOnList(list)" @contextmenu.prevent="openOrganizationMenu('list', list, $event)"><ListTodo :size="15" /><span>{{ list.name }}</span><small>{{ listOpenCount(list.publicId) }}</small><button class="clone-item-menu-trigger" type="button" :aria-label="`${list.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('list', list, $event)"><Ellipsis :size="14" /></button></RouterLink></template></div></div></section></section>
+        <section v-if="pinnedLists.length" class="clone-pinned-zone" aria-label="置顶清单"><div class="clone-pinned-title">置顶</div><RouterLink v-for="list in pinnedLists" :key="`pinned-${list.publicId}`" :to="`/tasks/list/${list.publicId}`" class="clone-nav-item clone-sortable-item" :class="{ active: route.params.publicId === list.publicId, 'drag-over': organizationDropTarget === list.publicId, 'sorting-dragging': organizationDrag?.kind === 'list' && organizationDrag.item.publicId === list.publicId }" draggable="true" @dragstart="startOrganizationDrag('list', list, $event)" @dragover.prevent="handleListDragOver(list, $event)" @dragleave="handleListDragLeave(list)" @drop.prevent.stop="dropListOnList(list)" @contextmenu.prevent="openOrganizationMenu('list', list, $event)"><TaskOrganizationIcon v-if="list.icon" class="clone-object-icon" :value="list.icon" /><ListTodo v-else :size="15" /><span>{{ list.name }}</span><i class="clone-list-color-dot" :style="{ backgroundColor: list.color || 'transparent' }" aria-hidden="true"></i><small>{{ listOpenCount(list.publicId) }}</small><button class="clone-item-menu-trigger" type="button" :aria-label="`${list.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('list', list, $event)"><Ellipsis :size="14" /></button></RouterLink></section>
         <TransitionGroup name="clone-sort" tag="div" class="clone-sort-stack">
         <section v-for="group in visibleListGroups" :key="group.publicId" class="clone-list-group clone-sortable-group" :class="{ 'drag-over': organizationDropTarget === `group:${group.publicId}`, 'sorting-dragging': organizationDrag?.kind === 'group' && organizationDrag.item.publicId === group.publicId }" @dragover.prevent="handleGroupDragOver(group, $event)" @drop.prevent.stop="dropGroup(group)" @contextmenu.prevent="openOrganizationMenu('group', group, $event)">
-          <header class="clone-list-group-heading" draggable="true" @dragstart="startOrganizationDrag('group', group)"><button type="button" class="clone-group-toggle" :aria-expanded="!groupCollapsed[group.publicId]" :aria-label="`${groupCollapsed[group.publicId] ? '展开' : '折叠'}${group.name}`" @click.stop="toggleListGroupCollapsed(group)"><ChevronDown :size="13" :class="{ rotated: groupCollapsed[group.publicId] }" /></button><RouterLink class="clone-group-navigation" :class="{ active: route.name === 'tasks-group' && route.params.publicId === group.publicId }" :to="`/tasks/group/${group.publicId}`"><TaskOrganizationIcon v-if="group.icon" class="clone-list-group-icon" :value="group.icon" /><Folder v-else class="clone-list-group-icon" :size="15" /><span>{{ group.name }}</span><small>{{ groupOpenCount(group.publicId) }}</small></RouterLink><button class="clone-group-menu" type="button" :aria-label="`${group.name}的更多操作`" @click.stop="openOrganizationMenu('group', group, $event)"><Ellipsis :size="14" /></button></header>
-          <div class="clone-collapse-panel" :class="{ 'is-collapsed': groupCollapsed[group.publicId] }" :aria-hidden="Boolean(groupCollapsed[group.publicId])"><TransitionGroup name="clone-sort" tag="div" class="clone-group-lists clone-collapse-inner" :inert="Boolean(groupCollapsed[group.publicId])"><template v-for="list in listsInGroup(group.publicId)" :key="list.publicId"><div v-if="list.dropPlaceholder" class="clone-nav-item clone-drag-placeholder" aria-hidden="true"><ListTodo :size="15" /><span>{{ list.name }}</span></div><RouterLink v-else :to="list.systemKey === 'INBOX' ? '/tasks/inbox' : `/tasks/list/${list.publicId}`" class="clone-nav-item clone-sortable-item" :class="{ active: route.params.publicId === list.publicId, 'drag-over': organizationDropTarget === list.publicId || organizationDropTarget === `new-group:${list.publicId}`, 'sorting-dragging': organizationDrag?.kind === 'list' && organizationDrag.item.publicId === list.publicId }" :draggable="list.systemKey !== 'INBOX'" @dragstart="startOrganizationDrag('list', list)" @dragover.prevent="handleListDragOver(list)" @dragleave="handleListDragLeave(list)" @drop.prevent.stop="dropListOnList(list)" @contextmenu.prevent="openOrganizationMenu('list', list, $event)"><TaskOrganizationIcon v-if="list.icon" class="clone-object-icon" :value="list.icon" /><ListTodo v-else :size="15" /><span>{{ list.name }}</span><i class="clone-list-color-dot" :style="{ backgroundColor: list.color || 'transparent' }" aria-hidden="true"></i><small>{{ listOpenCount(list.publicId) }}</small><button class="clone-item-menu-trigger" type="button" :aria-label="`${list.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('list', list, $event)"><Ellipsis :size="14" /></button></RouterLink></template></TransitionGroup></div>
+          <header class="clone-list-group-heading" draggable="true" @dragstart="startOrganizationDrag('group', group, $event)"><button type="button" class="clone-group-toggle" :aria-expanded="!groupCollapsed[group.publicId]" :aria-label="`${groupCollapsed[group.publicId] ? '展开' : '折叠'}${group.name}`" @click.stop="toggleListGroupCollapsed(group)"><ChevronDown :size="13" :class="{ rotated: groupCollapsed[group.publicId] }" /></button><RouterLink class="clone-group-navigation" :class="{ active: route.name === 'tasks-group' && route.params.publicId === group.publicId }" :to="`/tasks/group/${group.publicId}`"><TaskOrganizationIcon v-if="group.icon" class="clone-list-group-icon" :value="group.icon" /><Folder v-else class="clone-list-group-icon" :size="15" /><span>{{ group.name }}</span><small>{{ groupOpenCount(group.publicId) }}</small></RouterLink><button class="clone-group-menu" type="button" :aria-label="`${group.name}的更多操作`" @click.stop="openOrganizationMenu('group', group, $event)"><Ellipsis :size="14" /></button></header>
+          <div class="clone-collapse-panel" :class="{ 'is-collapsed': groupCollapsed[group.publicId] }" :aria-hidden="Boolean(groupCollapsed[group.publicId])"><TransitionGroup name="clone-sort" tag="div" class="clone-group-lists clone-collapse-inner" :inert="Boolean(groupCollapsed[group.publicId])"><template v-for="list in listsInGroup(group.publicId)" :key="list.publicId"><div v-if="list.dropPlaceholder" class="clone-nav-item clone-drag-placeholder" aria-hidden="true"><ListTodo :size="15" /><span>{{ list.name }}</span></div><RouterLink v-else :to="list.systemKey === 'INBOX' ? '/tasks/inbox' : `/tasks/list/${list.publicId}`" class="clone-nav-item clone-sortable-item" :class="{ active: route.params.publicId === list.publicId, 'drag-over': organizationDropTarget === list.publicId || organizationDropTarget === `new-group:${list.publicId}`, 'sorting-dragging': organizationDrag?.kind === 'list' && organizationDrag.item.publicId === list.publicId }" :draggable="list.systemKey !== 'INBOX'" @dragstart="startOrganizationDrag('list', list, $event)" @dragover.prevent="handleListDragOver(list, $event)" @dragleave="handleListDragLeave(list)" @drop.prevent.stop="dropListOnList(list)" @contextmenu.prevent="openOrganizationMenu('list', list, $event)"><TaskOrganizationIcon v-if="list.icon" class="clone-object-icon" :value="list.icon" /><ListTodo v-else :size="15" /><span>{{ list.name }}</span><i class="clone-list-color-dot" :style="{ backgroundColor: list.color || 'transparent' }" aria-hidden="true"></i><small>{{ listOpenCount(list.publicId) }}</small><button class="clone-item-menu-trigger" type="button" :aria-label="`${list.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('list', list, $event)"><Ellipsis :size="14" /></button></RouterLink></template></TransitionGroup></div>
         </section>
         </TransitionGroup>
         <TransitionGroup name="clone-sort" tag="div" class="clone-sort-stack">
@@ -66,8 +66,8 @@
           class="clone-nav-item clone-sortable-item"
           :class="{ active: route.params.publicId === list.publicId, 'drag-over': organizationDropTarget === list.publicId || organizationDropTarget === `new-group:${list.publicId}`, 'sorting-dragging': organizationDrag?.kind === 'list' && organizationDrag.item.publicId === list.publicId }"
           :draggable="list.systemKey !== 'INBOX'"
-          @dragstart="startOrganizationDrag('list', list)"
-          @dragover.prevent="handleListDragOver(list)"
+          @dragstart="startOrganizationDrag('list', list, $event)"
+          @dragover.prevent="handleListDragOver(list, $event)"
           @dragleave="handleListDragLeave(list)"
           @drop.prevent.stop="dropListOnList(list)"
           @contextmenu.prevent="openOrganizationMenu('list', list, $event)"
@@ -240,6 +240,11 @@
       </div>
       <div v-if="store.conflicts.length" class="clone-error" role="alert">
         {{ store.conflicts.length }} 项变更需要处理冲突；本地数据已保留。
+        <div v-for="conflict in store.conflicts" :key="conflict.id" class="clone-conflict-actions">
+          <span>{{ conflict.operation?.payload?.name || conflict.operation?.payload?.title || conflict.operation?.entityId }}（本地版本 {{ conflict.operation?.baseRevision }} / 服务端版本 {{ conflict.result?.serverRevision }}）</span>
+          <button type="button" :disabled="resolvingTaskConflict" @click="resolveTaskConflict(conflict, 'local')">保留本地并重试</button>
+          <button type="button" :disabled="resolvingTaskConflict" @click="resolveTaskConflict(conflict, 'server')">采用服务端</button>
+        </div>
       </div>
       <div
         v-if="store.pending || !store.online || store.syncing || store.syncError"
@@ -947,7 +952,7 @@ import TaskColorPicker from "../components/TaskColorPicker.vue";
 import TaskOrganizationIcon from "../components/tasks/TaskOrganizationIcon.vue";
 import Dialog from "../components/ui/Dialog.vue";
 import { organizationIconCategories, searchOrganizationIcons } from "./taskOrganizationIcons.js";
-import { insertListDropPlaceholder, moveItem, reorderListDrop } from "./taskSidebar.js";
+import { getListDropPlacement, moveItem, reorderListDrop } from "./taskSidebar.js";
 import { groupTaskItems, sortTaskItems } from "./taskList.js";
 import { moveChecklistItem as reorderChecklistItems } from "./taskChecklist.js";
 import { matchesFilterRules, serializeFilterRules } from "./taskFilterRules.js";
@@ -1048,6 +1053,18 @@ const sectionDisplayModes = reactive({ filters: "SHOW", tags: "SHOW" });
 const sectionDisplayMenu = ref("");
 const groupCollapsed = reactive({});
 const organizationDrag = ref(null);
+const resolvingTaskConflict = ref(false);
+async function resolveTaskConflict(conflict, strategy) {
+  resolvingTaskConflict.value = true;
+  try {
+    await store.resolveConflict(conflict.operation?.opId || conflict.id, strategy);
+    await store.syncNow();
+  } catch (error) {
+    store.error = error?.response?.data?.detail || error?.message || "冲突处理失败，本地数据已保留";
+  } finally {
+    resolvingTaskConflict.value = false;
+  }
+}
 const organizationDropTarget = ref("");
 const organizationDropPlacement = ref("");
 const organizationMenuOpen = ref(false);
@@ -1081,7 +1098,6 @@ const organizationConfirmOpen = ref(false);
 const organizationConfirmation = reactive({ action: "", item: null, title: "", message: "", confirmLabel: "确认", busy: false });
 const tagMergeOpen = ref(false);
 const tagMerge = reactive({ source: null, targetId: "", busy: false });
-let listHoverTimer = 0;
 const filterPreview = ref([]);
 const filterPreviewGroups = computed(() => {
   const folders = new Map();
@@ -2533,33 +2549,10 @@ async function createTag() {
   openOrganizationDialog("tag");
 }
 function previewListItems(groupId) {
-  const normalizedGroupId = groupId || "";
-  const items = sidebarLists.value
-    .filter(item => (item.groupId || "") === normalizedGroupId && !isHiddenObject("list", item) && !isPinnedObject("list", item))
+  // Keep row geometry fixed during drag; the target marker previews placement without moving hit areas.
+  return sidebarLists.value
+    .filter(item => (item.groupId || "") === (groupId || "") && !isHiddenObject("list", item) && !isPinnedObject("list", item))
     .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
-  const drag = organizationDrag.value;
-  if (drag?.kind !== "list" || drag.item.publicId === organizationDropTarget.value) return items;
-
-  let destination = null;
-  if (organizationDropTarget.value === "list-root") {
-    destination = { groupId: "", targetId: "", placement: "after" };
-  } else if (organizationDropTarget.value.startsWith("group:")) {
-    destination = { groupId: organizationDropTarget.value.slice("group:".length), targetId: "", placement: "after" };
-  } else if (!organizationDropTarget.value.startsWith("new-group:")) {
-    const target = sidebarLists.value.find(item => item.publicId === organizationDropTarget.value);
-    if (target) destination = {
-      groupId: target.groupId || "",
-      targetId: target.publicId,
-      placement: organizationDropPlacement.value === "after" ? "after" : "before"
-    };
-  }
-  if (!destination || destination.groupId !== normalizedGroupId) return items;
-
-  return insertListDropPlaceholder(items, {
-    ...drag.item,
-    groupId: normalizedGroupId,
-    name: drag.item.name
-  }, destination.targetId, destination.placement);
 }
 function listsInGroup(groupId) { return previewListItems(groupId); }
 function persistSidebarSections() { try { localStorage.setItem(`task_sidebar_sections:${store.accountScope || "anonymous"}`, JSON.stringify(sections)); } catch {} sidebarPrefsMutationVersion += 1; scheduleSidebarPreferencesSave(); }
@@ -2877,7 +2870,7 @@ async function confirmListCopy() {
   listCopy.busy = true;
   try {
     const source = listCopy.source;
-    const copiedList = await store.createList({ name: listCopy.name.trim(), color: source.color || "", icon: source.icon || "", archived: false, sortOrder: store.lists.length, groupId: source.groupId || "" });
+    const copiedList = await store.createList({ name: listCopy.name.trim(), color: source.color || "", icon: source.icon || "", archived: false, sortOrder: store.lists.reduce((max, list) => Math.max(max, Number(list.sortOrder) || 0), 0) + 1024, groupId: source.groupId || "" });
     const newListId = copiedList?.publicId || copiedList?.id;
     if (!newListId) throw new Error("新清单已创建，但无法取得其标识");
     let copiedCount = 0;
@@ -3053,7 +3046,7 @@ async function saveOrganization() {
   if (!name) return;
   try {
     if (kind === "list") {
-      const payload = { name, color: organizationDialog.color, icon: organizationDialog.icon || "", archived: item?.archived || false, sortOrder: item?.sortOrder ?? store.lists.length, viewType: organizationDialog.viewType, objectType: organizationDialog.objectType, showInSmartLists: organizationDialog.showInSmartLists };
+      const payload = { name, color: organizationDialog.color, icon: organizationDialog.icon || "", archived: item?.archived || false, sortOrder: item?.sortOrder ?? (store.lists.reduce((max, list) => Math.max(max, Number(list.sortOrder) || 0), 0) + 1024), viewType: organizationDialog.viewType, objectType: organizationDialog.objectType, showInSmartLists: organizationDialog.showInSmartLists };
       let groupId = organizationDialog.groupId;
       if (groupId === "__CREATE_GROUP__") {
         const folderName = organizationDialog.newGroupName.trim();
@@ -3065,7 +3058,11 @@ async function saveOrganization() {
       }
       const saved = item ? await store.updateList(item, payload) : await store.createList({ ...payload, groupId });
       const target = store.lists.find(value => value.publicId === (item?.publicId || saved?.id || saved?.publicId));
-      if (target && (groupId || target.groupId)) await store.assignListGroup(target, groupId);
+      if (item && target && (target.groupId || "") !== (groupId || "")) {
+        await store.syncNow();
+        if (store.conflicts.length || store.rejected.length || store.syncError) throw new Error("清单编辑尚未同步成功，请同步后再修改文件夹");
+        await store.assignListGroup(target, groupId);
+      }
     } else if (kind === "tag") {
       const payload = { name, color: organizationDialog.color, icon: organizationDialog.icon || null, parentId: organizationDialog.parentId || null, sortOrder: item?.sortOrder ?? store.tags.length };
       if (item) await store.updateTag(item, payload); else await store.createTag(payload);
@@ -3178,23 +3175,12 @@ function handleListRootDragOver(event) {
 }
 function handleListDragOver(target, event) {
   const source = organizationDrag.value;
-  if (source?.kind === "list" && listHoverTarget === target.publicId && organizationDropPlacement.value === "merge") return;
-  setOrganizationDropPosition(target.publicId, event);
-  if (source?.kind === "list" && source.item.publicId !== target.publicId) {
-    updateDropMarker(event.currentTarget, organizationDropPlacement.value);
-  }
-  if (!source || source.kind !== "list" || source.item.publicId === target.publicId || listHoverTarget === target.publicId) return;
-  clearTimeout(listHoverTimer);
-  listHoverTarget = target.publicId;
-  listHoverTimer = window.setTimeout(() => {
-    if (organizationDrag.value?.kind === "list" && organizationDrag.value.item.publicId !== target.publicId) {
-      organizationDropTarget.value = `new-group:${target.publicId}`;
-      organizationDropPlacement.value = "merge";
-      if (organizationDropMarkerElement) updateDropMarker(organizationDropMarkerElement, "merge");
-    }
-  }, 650);
+  if (!source || source.kind !== "list" || source.item.publicId === target.publicId) return;
+  const placement = getListDropPlacement(event.clientY, event.currentTarget.getBoundingClientRect());
+  organizationDropTarget.value = placement === "merge" ? `new-group:${target.publicId}` : target.publicId;
+  organizationDropPlacement.value = placement;
+  updateDropMarker(event.currentTarget, placement);
 }
-let listHoverTarget = "";
 let organizationDropMarkerElement = null;
 function updateDropMarker(element, placement) {
   if (organizationDropMarkerElement && organizationDropMarkerElement !== element) {
@@ -3218,11 +3204,6 @@ function handleOrganizationDragOver(event) {
     if (!id) return;
     const rect = row.getBoundingClientRect();
     const edge = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
-    if (organizationDrag.value.kind === "list" && href.includes("/tasks/list/") && listHoverTarget === id && organizationDropTarget.value === `new-group:${id}`) {
-      organizationDropPlacement.value = "merge";
-      updateDropMarker(row, "merge");
-      return;
-    }
     organizationDropTarget.value = id;
     organizationDropPlacement.value = edge;
     updateDropMarker(row, edge);
@@ -3250,36 +3231,58 @@ function handleOrganizationDragOver(event) {
   groupRow.classList.add(`drop-${edge}`);
 }
 function handleListDragLeave(target) {
-  if (listHoverTarget === target.publicId) { clearTimeout(listHoverTimer); listHoverTarget = ""; }
+  // 子节点之间的 dragleave 也会冒泡；落点只由下一次 dragover 或 dragend 改变。
+  // 保留最后一个有效落点，避免释放鼠标时先清空 placement 而丢失排序意图。
 }
 function dropListOnList(target) {
   if (organizationDropTarget.value === `new-group:${target.publicId}` && organizationDrag.value?.kind === "list") {
     const source = organizationDrag.value.item;
-    listHoverTarget = "";
-    clearTimeout(listHoverTimer);
-    organizationDrag.value = null;
+    endOrganizationDrag();
     openOrganizationDialog("group", null, { groupListIds: [source.publicId, target.publicId], name: `${source.name}、${target.name}` });
     return;
   }
-  handleListDragLeave(target);
   dropOrganization("list", target);
+}
+function handleSidebarDrop() {
+  const source = organizationDrag.value;
+  const targetKey = organizationDropTarget.value;
+  if (!source || !targetKey) return endOrganizationDrag();
+  if (source.kind === "list") {
+    if (targetKey === "list-root") return dropOrganizationRoot("list");
+    if (targetKey.startsWith("group:")) {
+      const group = sortedListGroups.value.find(item => item.publicId === targetKey.slice(6));
+      return group ? dropGroup(group) : endOrganizationDrag();
+    }
+    const listId = targetKey.startsWith("new-group:") ? targetKey.slice(10) : targetKey;
+    const target = sidebarLists.value.find(item => item.publicId === listId);
+    return target ? dropListOnList(target) : endOrganizationDrag();
+  }
+  if (source.kind === "group") {
+    const groupId = targetKey.startsWith("group:") ? targetKey.slice(6) : targetKey;
+    const group = sortedListGroups.value.find(item => item.publicId === groupId);
+    return group ? dropGroup(group) : endOrganizationDrag();
+  }
+  const collection = source.kind === "tag" ? store.tags : filters.value;
+  const target = collection.find(item => item.publicId === targetKey);
+  return target ? dropOrganization(source.kind, target) : endOrganizationDrag();
 }
 async function dropOrganization(kind, target) {
   const source = organizationDrag.value;
   if (!source || source.kind !== kind || source.item.publicId === target.publicId) return endOrganizationDrag();
+  const placement = organizationDropPlacement.value;
+  endOrganizationDrag();
   try {
     if (kind === "list") {
-      await commitListDrop(source.item, target.groupId || "", target.publicId, organizationDropPlacement.value);
+      await commitListDrop(source.item, target.groupId || "", target.publicId, placement);
     } else {
       const collection = kind === "tag" ? store.tags.filter(value => (value.parentId || "") === (target.parentId || "")) : filters.value;
-      const ordered = moveItem(collection, source.item.publicId, target.publicId, organizationDropPlacement.value);
+      const ordered = moveItem(collection, source.item.publicId, target.publicId, placement);
       if (kind === "tag") for (const value of ordered) await apiUpdateTaskTag(value.publicId, { name: value.name, color: value.color || "", parentId: value.parentId || "", sortOrder: value.sortOrder }, value.revision);
       else for (const value of ordered) await apiUpdateTaskFilter(value.publicId, { ...value, sortOrder: value.sortOrder }, value.revision);
       await store.refreshServer();
       await loadFilters();
     }
   } catch (error) { store.error = error?.response?.data?.detail || error?.message || "排序保存失败"; }
-  endOrganizationDrag();
 }
 async function commitListDrop(source, targetGroupId, targetId = "", placement = "after") {
   if (targetId === source.publicId) return;
@@ -3287,40 +3290,35 @@ async function commitListDrop(source, targetGroupId, targetId = "", placement = 
   const allLists = sidebarLists.value.slice().sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
   const destinationLists = allLists.filter(item => (item.groupId || "") === (targetGroupId || "") && item.publicId !== source.publicId);
   const orderedDestination = reorderListDrop(destinationLists, { ...source, groupId: targetGroupId || null }, targetId, placement);
-  const updates = [...orderedDestination];
-  if (sourceGroupId !== (targetGroupId || "")) {
-    updates.push(...allLists
-      .filter(item => (item.groupId || "") === sourceGroupId && item.publicId !== source.publicId)
-      .map((item, sortOrder) => ({ ...item, sortOrder })));
-  }
-  await store.reorderLists(updates, sourceGroupId !== (targetGroupId || "")
+  const assignment = sourceGroupId !== (targetGroupId || "")
     ? { listId: source.publicId, groupId: targetGroupId || null }
-    : null);
+    : null;
+  await store.reorderLists(orderedDestination, assignment);
 }
 async function dropOrganizationRoot(kind) {
-  if (kind === "list" && organizationDrag.value?.kind === "list") {
-    try { await commitListDrop(organizationDrag.value.item, "", "", "after"); }
+  const source = organizationDrag.value;
+  endOrganizationDrag();
+  if (kind === "list" && source?.kind === "list") {
+    try { await commitListDrop(source.item, "", "", "after"); }
     catch (error) { store.error = error?.message || "移动清单失败"; }
   }
-  endOrganizationDrag();
 }
 async function dropGroup(target) {
   const source = organizationDrag.value;
   if (!source || source.item.publicId === target.publicId) return endOrganizationDrag();
+  const placement = organizationDropPlacement.value;
+  endOrganizationDrag();
   try {
     if (source.kind === "list") {
       await commitListDrop(source.item, target.publicId, "", "after");
     } else if (source.kind === "group") {
-      const ordered = moveItem(sortedListGroups.value, source.item.publicId, target.publicId, organizationDropPlacement.value);
+      const ordered = moveItem(sortedListGroups.value, source.item.publicId, target.publicId, placement);
       for (const value of ordered) await apiUpdateTaskListGroup(value.publicId, { name: value.name, sortOrder: value.sortOrder }, value.revision);
       void store.refreshServer();
     }
   } catch (error) { store.error = error?.response?.data?.detail || error?.message || "移动失败"; }
-  endOrganizationDrag();
 }
 function endOrganizationDrag() {
-  clearTimeout(listHoverTimer);
-  listHoverTarget = "";
   organizationDrag.value = null;
   organizationDropTarget.value = "";
   organizationDropPlacement.value = "";
@@ -3401,7 +3399,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   stopDetailResize();
   stopSidebarResize();
-  clearTimeout(listHoverTimer);
   document.removeEventListener("pointerdown", closeContext);
   window.removeEventListener("keydown", onKeydown);
   window.matchMedia("(max-width: 900px)").removeEventListener("change", handleSidebarViewportChange);
@@ -4003,6 +4000,11 @@ const SidebarSection = {
   background: color-mix(in srgb, var(--down) 8%, var(--card));
   color: var(--down);
 }
+.clone-error:has(.clone-conflict-actions) { align-items: stretch; flex-direction: column; }
+.clone-conflict-actions { display: flex; align-items: center; gap: 7px; color: var(--ink); }
+.clone-conflict-actions span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clone-conflict-actions button { min-height: 28px; padding: 0 9px; border: 1px solid color-mix(in srgb, var(--down) 24%, var(--line)); border-radius: 5px; background: var(--card); color: inherit; cursor: pointer; }
+.clone-conflict-actions button:disabled { opacity: .55; cursor: wait; }
 .clone-list-toolbar {
   display: flex;
   align-items: center;
