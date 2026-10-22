@@ -422,6 +422,46 @@ export const useTasksStore = defineStore('tasks', {
       await this.hydrate()
       this.scheduleSync()
     },
+    async reorderLists(orderedLists, assignment = null) {
+      const epoch = sessionEpoch
+      const scoped = engine
+      const items = orderedLists.filter(item => this.lists.some(list => list.publicId === item.publicId))
+      if (assignment) {
+        const assignments = await readGroupAssignments(scoped)
+        const next = [...assignments.filter(value => value.listId !== assignment.listId), {
+          listId: assignment.listId,
+          groupId: assignment.groupId || null
+        }]
+        await writeGroupAssignments(next, scoped)
+        const current = this.lists.find(value => value.publicId === assignment.listId)
+        if (current) await scoped.put('task-list', {
+          ...current,
+          id: assignment.listId,
+          groupId: assignment.groupId || null
+        }, { bookId: SCOPE, recordOp: false })
+      }
+      const pendingOperations = await scoped.pendingOperations(SCOPE)
+      await Promise.all(items.map(item => {
+        const current = this.lists.find(value => value.publicId === item.publicId)
+        if (!current) return Promise.resolve()
+        if (Number(current.sortOrder || 0) === Number(item.sortOrder || 0)
+          && (current.groupId || null) === (item.groupId || null)) return Promise.resolve()
+        const pending = pendingOperations.find(value => value.entityType === 'task-list' && value.entityId === item.publicId)
+        return scoped.put('task-list', {
+          ...current,
+          ...item,
+          id: item.publicId,
+          publicId: undefined
+        }, {
+          bookId: SCOPE,
+          opId: pending?.opId,
+          baseRevision: pending?.baseRevision ?? current.revision ?? 0
+        })
+      }))
+      if (epoch !== sessionEpoch || scoped !== engine) return
+      await this.hydrate()
+      this.scheduleSync()
+    },
     async batchTasks(items, action, values = {}) {
       const current = items.map(item => this.tasks.find(value => value.publicId === item.publicId) || item).filter(Boolean)
       if (action === 'REMINDER') {

@@ -246,6 +246,32 @@ test('list folder assignment updates the cached view before its background reque
   await store.clearSession()
 })
 
+test('list reordering and folder assignment hydrate the local projection once', async () => {
+  offline()
+  setActivePinia(createPinia())
+  const store = useTasksStore()
+  await store.switchUser({ id: 'task-list-reorder-batch' })
+  await store.init()
+  const first = await store.createList({ name: '第一张清单' })
+  const second = await store.createList({ name: '第二张清单' })
+  const third = await store.createList({ name: '第三张清单' })
+  let hydrationCount = 0
+  const hydrate = store.hydrate.bind(store)
+  store.hydrate = async () => { hydrationCount += 1; await hydrate() }
+
+  await store.reorderLists([
+    { ...store.lists.find(item => item.publicId === third.id), sortOrder: 0, groupId: 'folder-a' },
+    { ...store.lists.find(item => item.publicId === first.id), sortOrder: 1 },
+    { ...store.lists.find(item => item.publicId === second.id), sortOrder: 2 }
+  ], { listId: third.id, groupId: 'folder-a' })
+
+  assert.equal(hydrationCount, 1)
+  assert.equal(store.lists.find(item => item.publicId === third.id).groupId, 'folder-a')
+  assert.equal(store.lists.find(item => item.publicId === third.id).sortOrder, 0)
+  assert.equal(store.pending, 4)
+  await store.clearSession()
+})
+
 test('folder assignment retry recognizes a server-side success after a lost response', async () => {
   offline()
   setActivePinia(createPinia())
