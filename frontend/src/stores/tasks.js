@@ -435,21 +435,28 @@ export const useTasksStore = defineStore('tasks', {
       if (!this.online || !this.accountScope) return
       const epoch = sessionEpoch
       const scoped = engine
-      if (activeSyncPromise?.epoch === epoch) return activeSyncPromise.promise
+      if (activeSyncPromise?.epoch === epoch) {
+        activeSyncPromise.rerun = true
+        return activeSyncPromise.promise
+      }
       this.syncing = true
-      const promise = (async () => {
+      const promise = Promise.resolve().then(async () => {
         try {
-          const result = await scoped.sync(SCOPE)
-          if (result?.resetRequired) await scoped.sync(SCOPE)
-          if (epoch === sessionEpoch && scoped === engine) await this.hydrate()
+          let result
+          do {
+            if (activeSyncPromise?.promise === promise) activeSyncPromise.rerun = false
+            result = await scoped.sync(SCOPE)
+            if (result?.resetRequired) result = await scoped.sync(SCOPE)
+            if (epoch === sessionEpoch && scoped === engine) await this.hydrate()
+          } while (epoch === sessionEpoch && scoped === engine && activeSyncPromise?.rerun)
           return result
         } catch (error) {
           if (epoch === sessionEpoch) this.error = error?.response?.data?.detail || error?.message || '任务同步失败'
         } finally {
           if (activeSyncPromise?.promise === promise) { this.syncing = false; activeSyncPromise = null }
         }
-      })()
-      activeSyncPromise = { epoch, promise }
+      })
+      activeSyncPromise = { epoch, promise, rerun: false }
       return promise
     },
     async resolveConflict(opId, strategy) {

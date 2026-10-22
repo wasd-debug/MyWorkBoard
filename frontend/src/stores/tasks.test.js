@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createPinia, setActivePinia } from 'pinia'
+import { api } from '../../packages/api-client/src/index.js'
 import { useTasksStore } from './tasks.js'
 
 function offline() {
@@ -27,6 +28,53 @@ test('task initialization renders the local projection without waiting for remot
   assert.equal(store.loading, false)
   assert.equal(store.tasks[0].title, '缓存任务')
   finishRefresh()
+})
+
+test('task changes queued during an active sync are sent in a follow-up batch', async () => {
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine: true } })
+  setActivePinia(createPinia())
+  const store = useTasksStore()
+  await store.switchUser({ id: 'sync-race' })
+  const previousAdapter = api.defaults.adapter
+  let releaseFirstPull
+  let markPullStarted
+  const firstPullStarted = new Promise(resolve => { markPullStarted = resolve })
+  let pullCount = 0
+  const pushedBatches = []
+  api.defaults.adapter = async config => {
+    if (config.url.includes('/api/v1/tasks/sync/pull')) {
+      pullCount += 1
+      if (pullCount === 1) {
+        markPullStarted()
+        await new Promise(resolve => { releaseFirstPull = resolve })
+      }
+      return { data: { data: { cursor: 0, operations: [], hasMore: false } }, status: 200, statusText: 'OK', headers: {}, config }
+    }
+    if (config.url.includes('/api/v1/tasks/sync/push')) {
+      const operations = JSON.parse(config.data)
+      pushedBatches.push(operations)
+      return { data: { data: { results: operations.map(operation => ({ opId: operation.opId, status: 'APPLIED', entity: { ...operation.payload, revision: 1 } })) } }, status: 200, statusText: 'OK', headers: {}, config }
+    }
+    throw new Error(`Unexpected API request ${config.method} ${config.url}`)
+  }
+
+  try {
+    const firstSync = store.syncNow()
+    await firstPullStarted
+    await store.createList({ name: '同步竞态清单' })
+    await new Promise(resolve => setTimeout(resolve, 300))
+    releaseFirstPull()
+    await firstSync
+
+    assert.equal(pushedBatches.length, 1)
+    assert.equal(pushedBatches[0].length, 1)
+    assert.equal(store.pending, 0)
+    assert.equal(pullCount, 2)
+  } finally {
+    releaseFirstPull?.()
+    api.defaults.adapter = previousAdapter
+    await store.clearSession()
+  }
 })
 
 test('offline task lifecycle updates local projection and one compacted operation', async () => {
