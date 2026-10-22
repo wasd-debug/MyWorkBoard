@@ -176,10 +176,12 @@ test('quick add exposes inline date, priority, tag, and list controls that overr
     'quickAction', 'quickEntry.dateSelected ? quickEntry.dueAt',
     'quickEntry.prioritySelected ? quickEntry.priority',
     'quickEntry.listSelected ? quickEntry.listId',
-    '...quickEntry.tagIds', 'function setQuickDate(offset)', 'function closeQuickAction(event)',
+    '...quickEntry.tagIds', 'function chooseQuickDatePreset(preset)', 'function closeQuickAction(event)',
+    'quickCalendarDays', 'role="tablist" aria-label="日期类型"', '选择日期', '时间段开始时间',
+    'quickReminderOptions', '持续提醒直到完成', 'quickReminderPayloads', 'aria-multiselectable="true"', 'for (const reminderPayload of reminderPayloads) await apiCreateTaskReminder(saved.publicId, reminderPayload)',
     'clone-quick-action-panel',
   ]) assert.ok(workspaceView.includes(token), `missing quick-add behavior ${token}`)
-  assert.match(workspaceView, /function cancelQuickDraft()[\s\S]*Object\.assign\(quickEntry, \{ dueAt: "", dateSelected: false, priority: "NONE"/)
+  assert.match(workspaceView, /function cancelQuickDraft()[\s\S]*Object\.assign\(quickEntry, \{ dueAt: "", startAt: "", allDay: false, dateSelected: false/)
   assert.match(workspaceView, /if \(quickAction\.value\) \{[\s\S]*quickAction\.value = "";[\s\S]*return;/)
 })
 
