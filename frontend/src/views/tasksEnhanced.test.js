@@ -25,6 +25,12 @@ test('task timeline and keyboard shortcuts complete the third residual batch', a
   const store = await readFile(new URL('../stores/tasks.js', import.meta.url), 'utf8')
   assert.match(timeline, /时间线 \/ 甘特/)
   assert.match(timeline, /timeline-bar/)
+  assert.match(timeline, /分组<select v-model="groupBy"/)
+  assert.match(timeline, /排序<select v-model="sortBy"/)
+  assert.match(timeline, /densityOptions/)
+  assert.match(timeline, /function goToday\(\)/)
+  assert.match(timeline, /year: 'numeric', month: 'numeric', day: 'numeric'/)
+  assert.match(timeline, /new Date\(date\.getFullYear\(\), date\.getMonth\(\) \+ direction \* 12, 1\)/)
   assert.match(app, /event\.key\.toLowerCase\(\) === 'k'/)
   assert.match(app, /event\.key\.toLowerCase\(\) === 'z'/)
   assert.match(app, /event\.key\.toLowerCase\(\) === 'n'/)
@@ -46,6 +52,14 @@ test('mobile board has explicit move control and statistics explain focus basis'
   assert.match(view, /移动到…/)
   assert.match(view, /专注时长是主动专注口径/)
   assert.match(view, /不参与工资、加班或实际时薪计算/)
+})
+
+test('board groups expose quick-add dialogs that keep the selected group dimension', () => {
+  assert.match(view, /在\$\{column\.label\}添加任务/)
+  assert.match(view, /function openBoardAdd\(column\)/)
+  assert.match(view, /async function saveBoardTask\(\)/)
+  assert.match(view, /dimension\.value==='tag'&&column\.key!=='NONE'/)
+  assert.match(view, /store\.create\(payload\);boardAddOpen\.value=false;await loadBoard\(\)/)
 })
 
 test('search highlights matches and scopes recent history by account', () => {
@@ -268,7 +282,10 @@ test('full task page rebuild exposes persistent list grouping and sorting contro
   }
   assert.match(workspaceView, /task_view_preferences:/)
   for (const option of ['创建时间', '标签', '优先级', '修改时间']) assert.ok(workspaceView.includes(option))
-  assert.match(workspaceView, /groupTaskItems\(visibleTasks\.value, groupBy\.value, store\.lists, new Date\(\), store\.tags\)/)
+  assert.match(workspaceView, /groupTaskItems\(openTasks\.value, groupBy\.value, store\.lists, new Date\(\), store\.tags\)/)
+  assert.match(workspaceView, /completedTasks\.value\.slice\(0, completedLimit\.value\)/)
+  assert.match(workspaceView, /查看更多/)
+  assert.match(workspaceView, /loadMoreCompletedOnScroll/)
   assert.match(workspaceView, /sortTaskItems\(values, \{ sortBy: sort\.value, direction: sortDirection\.value \}\)/)
   assert.match(workspaceView, /:draggable="!batchMode && sort === 'manual'"/)
 })

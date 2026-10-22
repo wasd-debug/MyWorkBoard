@@ -141,7 +141,7 @@
       <button v-if="!isMobileSidebar && !sidebarHidden" class="clone-sidebar-resize" type="button" role="separator" aria-label="调整任务侧栏宽度" aria-orientation="vertical" :aria-valuemin="184" :aria-valuemax="420" :aria-valuenow="sidebarWidth" @pointerdown="startSidebarResize" @keydown="resizeSidebarByKey"></button>
     </aside>
 
-    <main class="clone-task-main" :class="{ 'quick-action-open': Boolean(quickAction) }">
+    <main class="clone-task-main" :class="{ 'quick-action-open': Boolean(quickAction) }" @scroll.passive="loadMoreCompletedOnScroll">
       <header class="clone-task-header">
         <div class="clone-title-block">
           <button
@@ -501,6 +501,20 @@
               </article>
             </div></div>
           </section>
+        </section>
+        <section v-if="completedTasks.length" class="clone-task-group clone-completed-group" aria-label="已完成任务">
+          <button class="clone-group-heading" type="button" :aria-expanded="!collapsed.completed" @click="collapsed.completed = !collapsed.completed">
+            <ChevronDown :size="16" :class="{ rotated: collapsed.completed }" /><strong>已完成</strong><span>{{ completedTasks.length }}</span>
+          </button>
+          <div class="clone-collapse-panel" :class="{ 'is-collapsed': collapsed.completed }" :aria-hidden="Boolean(collapsed.completed)">
+            <TransitionGroup name="clone-sort" tag="div" class="clone-task-rows clone-collapse-inner" :inert="Boolean(collapsed.completed)">
+              <article v-for="task in completedPreviewTasks" :key="task.publicId" class="clone-task-row checked" :class="{ selected: selectedTask?.publicId === task.publicId, 'is-note': isNoteTask(task) }" :data-priority="task.priority" :style="{ '--task-group-color': groupColor(task) }" @contextmenu.prevent="openContext(task, $event)">
+                <button v-if="!isNoteTask(task)" type="button" class="clone-check" :aria-label="`重新打开${task.title}`" @click="toggleComplete(task)"><Check :size="14" /></button><GripVertical class="clone-drag-handle" :size="15" /><button type="button" class="clone-task-content" @click="openTaskRow(task)"><strong>{{ task.title }}</strong></button>
+                <div class="clone-task-metadata"><span v-if="showTags && task.tagIds?.length" class="clone-task-tags" :aria-label="taskTagSummary(task)"><RouterLink v-for="tagId in visibleTaskTagIds(task)" :key="tagId" :to="`/tasks/tag/${tagId}`" class="clone-task-tag" :style="taskTagStyle(tagId)" @click.stop>{{ tagName(tagId) }}</RouterLink></span><button v-if="task.dueAt" type="button" class="clone-task-date" @click.stop="openRowDateEditor(task)"><CalendarClock :size="14" />{{ taskDateLabel(task) }}</button><button v-if="showListLink" type="button" class="clone-task-list-link" :title="listName(task.listId)" @click.stop="navigateToTaskList(task)"><span class="clone-task-list-dot" :style="{ backgroundColor: taskListColor(task) }"></span>{{ listName(task.listId) }}</button></div>
+              </article>
+            </TransitionGroup>
+            <button v-if="completedPreviewTasks.length < completedTasks.length" type="button" class="clone-completed-more" @click="showMoreCompleted">查看更多（{{ completedTasks.length - completedPreviewTasks.length }}）</button>
+          </div>
         </section>
       </div>
       <div v-if="batchMode && selectedIds.size" class="clone-batch-bar">
@@ -1290,7 +1304,7 @@ const dragOverTask = ref(null);
 const groupBy = ref("time");
 const sort = ref("time");
 const sortDirection = ref("asc");
-const hideCompleted = ref(true);
+const hideCompleted = ref(false);
 const showDescription = ref(true);
 const showChecklist = ref(true);
 const workspaceViews = [
@@ -1693,12 +1707,13 @@ const openTasks = computed(() =>
 const completedTasks = computed(() =>
   visibleTasks.value.filter((task) => task.status === "COMPLETED"),
 );
+const completedPreviewTasks = computed(() => completedTasks.value.slice(0, completedLimit.value));
 const groups = computed(() => {
-  if (groupBy.value !== "time" && groupBy.value !== "none") return groupTaskItems(visibleTasks.value, groupBy.value, store.lists, new Date(), store.tags);
-  if (groupBy.value === "none") return [{ key: "all", label: "所有任务", tasks: visibleTasks.value }];
+  if (groupBy.value !== "time" && groupBy.value !== "none") return groupTaskItems(openTasks.value, groupBy.value, store.lists, new Date(), store.tags);
+  if (groupBy.value === "none") return [{ key: "all", label: "所有任务", tasks: openTasks.value }];
   if (route.name === "tasks-shortcut" && route.params.shortcut === "archived")
-    return [{ key: "open", label: "归档任务", tasks: visibleTasks.value }];
-  const result = groupTaskItems(visibleTasks.value, "time", store.lists);
+    return [{ key: "open", label: "归档任务", tasks: openTasks.value }];
+  const result = groupTaskItems(openTasks.value, "time", store.lists);
   if (["tasks-today", "tasks-tomorrow", "tasks-next7"].includes(route.name)) {
     const currentDay = result.find((group) => group.key === "today");
     if (currentDay) currentDay.label = title.value;
@@ -1707,6 +1722,12 @@ const groups = computed(() => {
 });
 const todayCountdowns = computed(() => route.name === "tasks-today" && !route.query.date ? store.countdowns.filter((item) => !item.archived && !item.deleted) : []);
 const todayHabits = computed(() => route.name === "tasks-today" && !route.query.date ? store.habits.filter((item) => !item.archived && !item.deleted) : []);
+const completedLimit = ref(5);
+function showMoreCompleted() { completedLimit.value = Math.min(completedTasks.value.length, completedLimit.value + 5); }
+function loadMoreCompletedOnScroll(event) {
+  const target = event.currentTarget;
+  if (completedPreviewTasks.value.length < completedTasks.value.length && target.scrollTop + target.clientHeight >= target.scrollHeight - 120) showMoreCompleted();
+}
 function groupColor(task) {
   const list = store.lists.find((item) => item.publicId === task.listId);
   return list?.color || (task.priority === "HIGH" ? "#ef4444" : task.priority === "MEDIUM" ? "#f59e0b" : "var(--accent)");
@@ -3943,6 +3964,7 @@ function closeQuickAction(event) {
 watch(
   () => route.fullPath,
   () => {
+    completedLimit.value = 5;
     closeContext();
     if (route.query.task) {
       const task = store.tasks.find(
@@ -4754,6 +4776,8 @@ const SidebarSection = {
   color: var(--muted);
   font-size: 12px;
 }
+.clone-completed-group { border-top: 1px solid var(--line); padding-top: 8px; }
+.clone-completed-more { display: block; margin: 8px auto 4px; padding: 6px 12px; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
 .clone-group-heading svg {
   transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
