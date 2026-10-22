@@ -104,6 +104,12 @@
 > 状态日期：2026-09-28
 > SSH 规则：所有连接必须使用仓库根目录的 `workboard.pem`，禁止密码认证。
 
+## 2026-10-22 快捷新增重复规则前端发布
+
+- 应用提交 `c107215` 已推送至 `origin/main`。服务器从该提交归档构建 `linux/amd64` 前端镜像 `salary-frontend:c107215`，镜像 ID 为 `sha256:95b81787cd34690d14e745bf5d79ab29af2522c4491a3ec10f844e5951fff8b3`。
+- 生产 Compose 前端镜像标签更新为 `c107215`，部署前配置备份为 `docker-compose.prod.yml.bak.c107215`，旧前端镜像保留为 `salary-frontend:pre-c107215`。仅重建前端容器；后端 `salary-backend:e8d0131`、MySQL 容器及数据卷未改动。
+- 部署后前端实际镜像标签和镜像 ID与构建结果一致；`GET /api/health` 返回 `{"ok":true}`，首页和 `/tasks/all` 均返回 HTTP 200。无后端/API/schema 变更，无需数据库备份或 Flyway 迁移。
+
 生产环境通过 Docker Compose 运行 MySQL、Spring Boot 后端和 Nginx 前端；本地开发/验收使用 MySQL、后端容器加 Vite 开发服务器。生产 Nginx 对外提供 80 端口，并将 `/api`、MCP Streamable HTTP `/mcp`、`/.well-known/*` 和 OAuth 协议端点转发到后端。
 
 ## 已配置服务器
