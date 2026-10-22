@@ -26,6 +26,16 @@ test('sortTaskItems supports priority, title and manual ordering', () => {
   assert.deepEqual(sortTaskItems(tasks, { sortBy: 'manual' }).map((task) => task.publicId), ['b', 'a'])
 })
 
+test('sortTaskItems supports creation, modification and tag ordering', () => {
+  const tasks = [
+    { publicId: 'new', createdAt: '2026-10-20T10:00:00Z', updatedAt: '2026-10-22T10:00:00Z', tagIds: ['z'] },
+    { publicId: 'old', createdAt: '2026-10-19T10:00:00Z', updatedAt: '2026-10-21T10:00:00Z', tagIds: ['a'] },
+  ]
+  assert.deepEqual(sortTaskItems(tasks, { sortBy: 'created' }).map((task) => task.publicId), ['old', 'new'])
+  assert.deepEqual(sortTaskItems(tasks, { sortBy: 'updated', direction: 'desc' }).map((task) => task.publicId), ['new', 'old'])
+  assert.deepEqual(sortTaskItems(tasks, { sortBy: 'tag' }).map((task) => task.publicId), ['old', 'new'])
+})
+
 test('groupTaskItems groups by local day and keeps undated work distinct', () => {
   const tasks = [
     { publicId: 'overdue', dueAt: '2026-10-19T23:00:00' },
@@ -46,4 +56,16 @@ test('groupTaskItems groups by list and preserves task order in each group', () 
   assert.deepEqual(groupTaskItems(tasks, 'list', lists).map((group) => [group.label, group.tasks.map((task) => task.publicId)]), [
     ['工作', ['a', 'c']], ['生活', ['b']],
   ])
+})
+
+test('groupTaskItems supports tag, priority and creation-date groups', () => {
+  const tasks = [
+    { publicId: 'a', tagIds: ['focus'], priority: 'LOW', createdAt: '2026-10-20T09:00:00Z' },
+    { publicId: 'b', tagIds: ['home'], priority: 'HIGH', createdAt: '2026-10-19T09:00:00Z' },
+    { publicId: 'c', priority: 'NONE' },
+  ]
+  const tags = [{ publicId: 'focus', name: '专注' }, { publicId: 'home', name: '生活' }]
+  assert.deepEqual(groupTaskItems(tasks, 'tag', [], today, tags).map((group) => group.label), ['专注', '生活', '无标签'])
+  assert.deepEqual(groupTaskItems(tasks, 'priority', [], today).map((group) => group.label), ['高优先级', '低优先级', '无优先级'])
+  assert.deepEqual(groupTaskItems(tasks, 'created', [], today).map((group) => group.label), ['2026-10-20', '2026-10-19', '创建时间未知'])
 })

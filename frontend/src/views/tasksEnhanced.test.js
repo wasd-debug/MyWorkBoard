@@ -172,9 +172,9 @@ test('task date, recurrence, and reminder popovers preserve task state boundarie
 
 test('task workspace keeps reading width and focus states deliberate on wide screens', () => {
   assert.match(workspaceView, /const detailWidth = ref\(390\)/)
-  assert.match(workspaceView, /\.clone-task-header \{[\s\S]*max-width: 860px/)
-  assert.match(workspaceView, /\.clone-quick-add \{[\s\S]*width: min\(100%, 820px\)[\s\S]*border: 1px solid var\(--line\)/)
-  assert.match(workspaceView, /\.clone-task-groups \{[\s\S]*max-width: 860px/)
+  assert.match(workspaceView, /\.clone-task-header \{[\s\S]*max-width: none/)
+  assert.match(workspaceView, /\.clone-quick-add \{[\s\S]*width: 100%[\s\S]*border: 1px solid var\(--line\)/)
+  assert.match(workspaceView, /\.clone-task-groups \{[\s\S]*max-width: none/)
   assert.match(workspaceView, /\.clone-toolbar-popover button:focus-visible/)
 })
 
@@ -234,7 +234,8 @@ test('full task page rebuild exposes persistent list grouping and sorting contro
     assert.ok(workspaceView.includes(token), `missing list view control ${token}`)
   }
   assert.match(workspaceView, /task_view_preferences:/)
-  assert.match(workspaceView, /groupTaskItems\(visibleTasks\.value, "list", store\.lists\)/)
+  for (const option of ['创建时间', '标签', '优先级', '修改时间']) assert.ok(workspaceView.includes(option))
+  assert.match(workspaceView, /groupTaskItems\(visibleTasks\.value, groupBy\.value, store\.lists, new Date\(\), store\.tags\)/)
   assert.match(workspaceView, /sortTaskItems\(values, \{ sortBy: sort\.value, direction: sortDirection\.value \}\)/)
   assert.match(workspaceView, /:draggable="!batchMode && sort === 'manual'"/)
 })
@@ -257,7 +258,10 @@ test('task row menu exposes contract-backed task operations and accurate metadat
   assert.match(workspaceView, /async function moveContextTask\(list\)/)
   assert.match(workspaceView, /async function toggleContextTag\(tag\)/)
   assert.match(workspaceView, /task\.focusMinutes/)
-  assert.match(workspaceView, /ListTodo :size="13" \/>子任务/)
+  assert.match(workspaceView, /class="clone-task-metadata"/)
+  assert.match(workspaceView, /task\.totalSubtasks/)
+  assert.match(workspaceView, /taskDateLabel\(task\)/)
+  assert.match(workspaceView, /taskTagSummary\(task\)/)
 })
 
 test('task navigation collapses inline on narrow screens and persists by account', () => {

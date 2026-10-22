@@ -153,14 +153,7 @@
           >
             <PanelLeft :size="18" />
           </button>
-          <div>
-            <p>任务</p>
-            <h1>{{ title }}</h1>
-            <span
-              >{{ openTasks.length }} 项待完成 ·
-              {{ completedTasks.length }} 项已完成</span
-            >
-          </div>
+          <h1>{{ title }}</h1>
         </div>
         <div class="clone-header-actions">
           <span class="clone-sync-state" aria-live="polite">{{
@@ -176,10 +169,12 @@
           ><button
             type="button"
             class="clone-icon-button"
-            aria-label="更多视图操作"
+            aria-label="分组与排序"
+            title="分组与排序"
+            :aria-pressed="moreOpen"
             @click="moreOpen = !moreOpen"
           >
-            <Ellipsis :size="18" /></button
+            <ListFilter :size="18" /></button
           ><button
             type="button"
             class="clone-primary-button"
@@ -189,7 +184,7 @@
           </button>
         </div>
       </header>
-      <div v-if="moreOpen" class="clone-floating-menu clone-view-menu" role="menu" aria-label="视图设置" @click.stop>
+      <div v-if="moreOpen" class="clone-floating-menu clone-view-menu" role="menu" aria-label="分组与排序设置" @click.stop>
         <strong>分组</strong>
         <button v-for="option in groupOptions" :key="option.value" type="button" role="menuitemradio" :aria-checked="groupBy === option.value" @click="groupBy = option.value">
           <Check v-if="groupBy === option.value" :size="14" /><span v-else class="clone-menu-check-spacer"></span>{{ option.label }}
@@ -198,7 +193,7 @@
         <button v-for="option in sortOptions" :key="option.value" type="button" role="menuitemradio" :aria-checked="sort === option.value" @click="sort = option.value">
           <Check v-if="sort === option.value" :size="14" /><span v-else class="clone-menu-check-spacer"></span>{{ option.label }}
         </button>
-        <div class="clone-view-menu-order"><span>顺序</span><button type="button" :aria-pressed="sortDirection === 'asc'" @click="sortDirection = sortDirection === 'asc' ? 'desc' : 'asc'">{{ sortDirection === 'asc' ? '从旧到新' : '从新到旧' }}</button></div>
+        <div class="clone-view-menu-order"><span>顺序</span><button type="button" :aria-pressed="sortDirection === 'asc'" @click="sortDirection = sortDirection === 'asc' ? 'desc' : 'asc'">{{ sortDirectionLabel }}</button></div>
         <button type="button" :disabled="sort === 'time' && sortDirection === 'asc' && groupBy === 'time'" @click="sort = 'time'; sortDirection = 'asc'; groupBy = 'time'">恢复默认时间顺序</button>
         <hr />
         <button type="button" role="menuitemcheckbox" :aria-checked="hideCompleted" @click="hideCompleted = !hideCompleted"><Check v-if="hideCompleted" :size="14" /><span v-else class="clone-menu-check-spacer"></span>隐藏已完成</button>
@@ -339,26 +334,20 @@
                 @click="batchMode ? toggleSelected(task) : openDetail(task)"
               >
                 <strong>{{ task.title }}</strong
-                ><small v-if="showDescription && task.description">{{
-                  task.description
-                }}</small
-                ><span
-                  ><span>{{ listName(task.listId) }}</span
-                  ><span v-for="tagId in task.tagIds || []" :key="tagId"
-                    >#{{ tagName(tagId) }}</span
-                  ><span v-if="task.dueAt"
-                    ><CalendarClock :size="13" />{{
-                      formatDate(task.dueAt)
-                    }}</span
-                  ><span v-if="showChecklist && task.checklist?.length"
-                    >{{ task.checklist.filter(item => item.completed).length }}/{{ task.checklist.length }}<CheckSquare :size="13" />检查项</span
-                  ><span v-if="task.totalSubtasks"
-                    >{{ task.completedSubtasks || 0 }}/{{ task.totalSubtasks }}<ListTodo :size="13" />子任务</span
-                  ><span v-if="task.rrule" :title="recurrenceLabel(task.rrule)"><Repeat2 :size="13" />{{ recurrenceLabel(task.rrule) }}</span
-                  ><span v-if="task.focusMinutes" :title="`累计专注 ${task.focusMinutes} 分钟`"><Timer :size="13" />{{ task.focusMinutes }} 分钟</span
-                  ></span
                 ></button
-              ><em
+              ><div class="clone-task-metadata">
+                <span v-if="task.tagIds?.length" class="clone-task-tags" :aria-label="taskTagSummary(task)">
+                  <RouterLink v-for="tagId in visibleTaskTagIds(task)" :key="tagId" :to="`/tasks/tag/${tagId}`" class="clone-task-tag" :style="taskTagStyle(tagId)" @click.stop>{{ tagName(tagId) }}</RouterLink>
+                  <span v-if="task.tagIds.length > visibleTaskTagIds(task).length" class="clone-task-tag-count" :title="taskTagSummary(task)">+{{ task.tagIds.length - visibleTaskTagIds(task).length }}</span>
+                </span>
+                <span v-if="showDescription && task.description" class="clone-task-indicator" :title="task.description" aria-label="有详细内容"><ListTodo :size="14" /></span>
+                <span v-if="showChecklist && task.checklist?.length" class="clone-task-indicator" :title="`检查项 ${task.checklist.filter(item => item.completed).length}/${task.checklist.length}`" aria-label="检查项进度"><CheckSquare :size="14" /><small>{{ task.checklist.filter(item => item.completed).length }}/{{ task.checklist.length }}</small></span>
+                <span v-if="task.totalSubtasks" class="clone-task-indicator" :title="`子任务 ${task.completedSubtasks || 0}/${task.totalSubtasks}`"><ListTodo :size="14" /><small>{{ task.completedSubtasks || 0 }}/{{ task.totalSubtasks }}</small></span>
+                <span v-if="task.rrule" class="clone-task-indicator" :title="recurrenceLabel(task.rrule)"><Repeat2 :size="14" /></span>
+                <span v-if="task.focusMinutes" class="clone-task-indicator" :title="`累计专注 ${task.focusMinutes} 分钟`"><Timer :size="14" /></span>
+                <span v-if="task.dueAt" class="clone-task-date" :class="{ overdue: isTaskOverdue(task), today: isTaskDueToday(task) }" :title="formatDate(task.dueAt)"><CalendarClock :size="14" />{{ taskDateLabel(task) }}</span>
+                <button type="button" class="clone-task-list-link" :title="listName(task.listId)" @click.stop="navigateToTaskList(task)"><span class="clone-task-list-dot" :style="{ backgroundColor: taskListColor(task) }"></span>{{ listName(task.listId) }}</button>
+              </div><em
                 v-if="task.priority !== 'NONE'"
                 :data-priority="task.priority"
                 >{{ priorityLabel(task.priority) }}</em
@@ -1131,15 +1120,27 @@ const hideCompleted = ref(true);
 const showDescription = ref(true);
 const showChecklist = ref(true);
 const groupOptions = [
-  { value: "time", label: "时间" },
   { value: "list", label: "清单" },
+  { value: "time", label: "时间" },
+  { value: "created", label: "创建时间" },
+  { value: "tag", label: "标签" },
+  { value: "priority", label: "优先级" },
+  { value: "none", label: "无" },
 ];
 const sortOptions = [
   { value: "time", label: "时间" },
-  { value: "priority", label: "优先级" },
+  { value: "created", label: "创建时间" },
+  { value: "updated", label: "修改时间" },
   { value: "title", label: "标题" },
+  { value: "tag", label: "标签" },
+  { value: "priority", label: "优先级" },
   { value: "manual", label: "手动" },
 ];
+const sortDirectionLabel = computed(() => {
+  if (sort.value === "title" || sort.value === "tag") return sortDirection.value === "asc" ? "升序" : "降序";
+  if (sort.value === "priority") return sortDirection.value === "asc" ? "从高到低" : "从低到高";
+  return sortDirection.value === "asc" ? "从旧到新" : "从新到旧";
+});
 const viewPreferencesScope = ref("");
 function viewPreferencesKey() {
   return `task_view_preferences:${store.accountScope || "anonymous"}`;
@@ -1493,7 +1494,8 @@ const completedTasks = computed(() =>
   visibleTasks.value.filter((task) => task.status === "COMPLETED"),
 );
 const groups = computed(() => {
-  if (groupBy.value === "list") return groupTaskItems(visibleTasks.value, "list", store.lists);
+  if (groupBy.value !== "time" && groupBy.value !== "none") return groupTaskItems(visibleTasks.value, groupBy.value, store.lists, new Date(), store.tags);
+  if (groupBy.value === "none") return [{ key: "all", label: "所有任务", tasks: visibleTasks.value }];
   if (route.name === "tasks-shortcut" && route.params.shortcut === "archived")
     return [{ key: "open", label: "归档任务", tasks: visibleTasks.value }];
   const result = groupTaskItems(visibleTasks.value, "time", store.lists);
@@ -1508,6 +1510,46 @@ const todayHabits = computed(() => route.name === "tasks-today" && !route.query.
 function groupColor(task) {
   const list = store.lists.find((item) => item.publicId === task.listId);
   return list?.color || (task.priority === "HIGH" ? "#ef4444" : task.priority === "MEDIUM" ? "#f59e0b" : "var(--accent)");
+}
+function taskList(task) {
+  return store.lists.find((item) => item.publicId === task.listId);
+}
+function taskListColor(task) {
+  return taskList(task)?.color || "var(--line2)";
+}
+function taskTag(task, tagId) {
+  return store.tags.find((item) => item.publicId === tagId);
+}
+function taskTagStyle(tagId) {
+  const color = taskTag(null, tagId)?.color;
+  return color ? { "--task-tag-color": color } : {};
+}
+function visibleTaskTagIds(task) {
+  return (task.tagIds || []).slice(0, 1);
+}
+function taskTagSummary(task) {
+  return (task.tagIds || []).map(tagName).join("、");
+}
+function isTaskDueToday(task) {
+  if (!task.dueAt) return false;
+  return new Date(task.dueAt).toDateString() === new Date().toDateString();
+}
+function isTaskOverdue(task) {
+  return Boolean(task.dueAt && new Date(task.dueAt) < new Date() && !isTaskDueToday(task) && task.status !== "COMPLETED");
+}
+function taskDateLabel(task) {
+  if (isTaskDueToday(task)) return "今天";
+  const date = new Date(task.dueAt);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (date.toDateString() === tomorrow.toDateString()) return "明天";
+  const sameYear = date.getFullYear() === new Date().getFullYear();
+  const label = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) }).format(date);
+  return date.getHours() || date.getMinutes() ? `${label} ${new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(date)}` : label;
+}
+function navigateToTaskList(task) {
+  const list = taskList(task);
+  router.push(list?.systemKey === "INBOX" ? "/tasks/inbox" : `/tasks/list/${task.listId}`);
 }
 function countdownLabel(item) {
   const target = item.targetDate || item.date || item.dueDate;
@@ -3835,7 +3877,7 @@ const SidebarSection = {
   justify-content: space-between;
   gap: 16px;
   min-height: 54px;
-  max-width: 860px;
+  max-width: none;
 }
 .clone-title-block,
 .clone-header-actions {
@@ -3843,16 +3885,9 @@ const SidebarSection = {
   align-items: center;
   gap: 9px;
 }
-.clone-title-block p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 11px;
-}
-.clone-title-block p,
-.clone-title-block > div > span { display: none; }
 .clone-title-block h1 {
   margin: 0;
-  font-size: 23px;
+  font-size: 20px;
   font-weight: 650;
   line-height: 1.2;
 }
@@ -3892,8 +3927,8 @@ const SidebarSection = {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: min(100%, 820px);
-  margin: 24px 0 18px;
+  width: 100%;
+  margin: 16px 0 12px;
   padding: 0 14px;
   min-height: 46px;
   border: 1px solid var(--line);
@@ -3991,7 +4026,7 @@ const SidebarSection = {
   align-items: center;
   justify-content: space-between;
   margin: 12px 0;
-  max-width: 860px;
+  max-width: none;
   color: var(--muted);
   font-size: 12px;
 }
@@ -4008,7 +4043,7 @@ const SidebarSection = {
 }
 .clone-task-groups {
   display: grid;
-  max-width: 860px;
+  max-width: none;
   gap: 18px;
 }
 .clone-group-heading {
@@ -4031,15 +4066,15 @@ const SidebarSection = {
   transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .clone-task-rows {
-  border-top: 1px solid var(--line);
+  border-top: 0;
 }
 .clone-task-row {
   display: flex;
   align-items: center;
-  gap: 7px;
-  min-height: 40px;
-  border-bottom: 1px solid var(--line);
-  padding: 0 8px;
+  gap: 9px;
+  min-height: 48px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+  padding: 0 10px 0 13px;
   border-left: 3px solid var(--task-group-color, transparent);
   transition: background 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease, transform 0.12s ease;
 }
@@ -4050,8 +4085,8 @@ const SidebarSection = {
 .clone-select-box { width: 20px; height: 20px; border-radius: 5px; }
 .clone-task-row:hover,
 .clone-task-row.selected {
-  background: color-mix(in srgb, var(--accent) 5%, var(--card));
-  box-shadow: inset 3px 0 0 var(--accent);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  box-shadow: none;
 }
 .clone-task-row.multi {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
@@ -4081,10 +4116,11 @@ const SidebarSection = {
   border-radius: 5px;
 }
 .clone-task-content {
-  display: grid;
+  display: flex;
+  align-items: center;
   min-width: 0;
   flex: 1;
-  gap: 2px;
+  gap: 5px;
   border: 0;
   background: transparent;
   color: var(--ink);
@@ -4093,31 +4129,23 @@ const SidebarSection = {
 }
 .clone-task-content strong {
   overflow: hidden;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 450;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.clone-task-content small {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.clone-task-content > span {
-  display: flex;
-  gap: 7px;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 10px;
-  white-space: nowrap;
-}
-.clone-task-content > span span {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
+.clone-task-metadata { display: flex; align-items: center; gap: 7px; flex: none; max-width: 52%; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.clone-task-tags { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; }
+.clone-task-tag { display: inline-flex; align-items: center; max-width: 92px; overflow: hidden; padding: 2px 8px; border-radius: 12px; background: color-mix(in srgb, var(--task-tag-color, var(--accent)) 22%, var(--card)); color: color-mix(in srgb, var(--task-tag-color, var(--accent)) 70%, var(--ink)); text-overflow: ellipsis; }
+.clone-task-tag-count { display: inline-flex; align-items: center; flex: none; padding: 2px 7px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 18%, var(--card)); color: var(--ink2); }
+.clone-task-indicator { display: inline-flex; align-items: center; gap: 2px; flex: none; color: var(--muted); }
+.clone-task-indicator small { font-size: 10px; }
+.clone-task-date { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--accent); }
+.clone-task-date.overdue { color: var(--down); }
+.clone-task-date.today { color: var(--accent); }
+.clone-task-list-link { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 120px; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--ink2); font: inherit; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.clone-task-list-link:hover { color: var(--accent); }
+.clone-task-list-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; }
 .clone-task-row em {
   font-style: normal;
   font-size: 11px;
@@ -4138,7 +4166,7 @@ const SidebarSection = {
   display: grid;
   justify-items: center;
   gap: 9px;
-  width: min(100%, 820px);
+  width: 100%;
   min-height: 210px;
   align-content: center;
   color: var(--muted);
@@ -4873,5 +4901,18 @@ const SidebarSection = {
     transition-duration: 0.01ms !important;
     transition-delay: 0s !important;
   }
+}
+@media (max-width: 1100px) {
+  .clone-task-main { padding-right: 20px; padding-left: 20px; }
+  .clone-task-metadata { max-width: 46%; gap: 5px; font-size: 11px; }
+  .clone-task-list-link { max-width: 82px; }
+}
+@media (max-width: 760px) {
+  .clone-task-main { padding-right: 14px; padding-left: 14px; }
+  .clone-task-metadata { max-width: 38%; }
+  .clone-task-metadata > .clone-task-indicator:nth-of-type(n + 2),
+  .clone-task-metadata > .clone-task-list-link { display: none; }
+  .clone-task-tag { max-width: 68px; padding: 2px 6px; }
+  .clone-title-block h1 { font-size: 19px; }
 }
 </style>
