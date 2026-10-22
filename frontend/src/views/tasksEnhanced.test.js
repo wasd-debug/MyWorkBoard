@@ -471,6 +471,16 @@ test('task quick add previews parsed fields and writes only after confirmation',
   assert.match(workspaceView, /async function confirmQuickAdd\(\)[\s\S]*store\.create\(/)
 })
 
+test('quick add stages attachments and uploads only after task creation', () => {
+  const createFlow = workspaceView.slice(workspaceView.indexOf('async function confirmQuickAdd()'), workspaceView.indexOf('function resetCollaboration()'))
+  assert.match(workspaceView, /aria-label="快速新增更多操作"/)
+  assert.match(workspaceView, /quickAction === 'more'[\s\S]*?附件/)
+  assert.match(workspaceView, /type="file" multiple aria-label="选择快捷新增附件"/)
+  assert.ok(createFlow.indexOf('await store.create') < createFlow.indexOf('await retryQuickAttachments()'))
+  assert.match(workspaceView, /apiUploadTaskAttachment/)
+  assert.match(workspaceView, /重试附件上传/)
+})
+
 test('task detail checklist supports pointer and keyboard ordering', () => {
   assert.match(workspaceView, /@dragstart="dragChecklistItem\(index, \$event\)"/)
   assert.match(workspaceView, /@drop\.prevent="dropChecklistItem\(index\)"/)

@@ -214,11 +214,21 @@
           <button type="button" class="clone-quick-action" aria-label="快速设置重复" :aria-expanded="quickAction === 'repeat'" @click="toggleQuickAction('repeat')"><Repeat2 :size="15" /><span>{{ quickRepeatLabel(quickRepeat) }}</span></button>
           <button v-if="store.tags.length" type="button" class="clone-quick-icon-action" aria-label="快速选择标签" :aria-expanded="quickAction === 'tags'" @click="toggleQuickAction('tags')"><Tag :size="15" /><span v-if="quickEntry.tagIds.length">{{ quickEntry.tagIds.length }}</span></button>
           <button type="button" class="clone-quick-action clone-quick-list-action" aria-label="快速选择清单" :aria-expanded="quickAction === 'list'" @click="toggleQuickAction('list')"><ListTodo :size="15" /><span>{{ quickEntry.listId ? listName(quickEntry.listId) : '清单' }}</span></button>
+          <button type="button" class="clone-quick-icon-action" aria-label="快速新增更多操作" :aria-expanded="quickAction === 'more'" @click="toggleQuickAction('more')"><Ellipsis :size="16" /></button>
           <button type="submit" class="clone-quick-submit" :disabled="!quickTitle.trim() || quickParsing">{{ quickParsing ? '解析中…' : '添加' }}</button><kbd>N</kbd>
         </form>
+        <input ref="quickAttachmentInput" class="clone-quick-file-input" type="file" multiple aria-label="选择快捷新增附件" @change="selectQuickAttachments" />
       </div>
+      <div v-if="quickAttachments.length" class="clone-quick-attachments" aria-label="已选择附件">
+        <span v-for="item in quickAttachments" :key="item.id"><Paperclip :size="13" /><span>{{ item.name }}</span><small>{{ formatAttachmentSize(item.size) }}</small><button type="button" :aria-label="`移除附件 ${item.name}`" @click="removeQuickAttachment(item.id)"><X :size="13" /></button></span>
+      </div>
+      <div v-for="batch in pendingQuickAttachmentBatches" :key="batch.id" class="clone-quick-attachments" aria-label="待上传附件">
+        <span v-for="item in batch.attachments" :key="item.id"><Paperclip :size="13" /><span>{{ item.name }}</span><small>{{ formatAttachmentSize(item.size) }}</small><button type="button" :disabled="quickAttachmentUploading" :aria-label="`移除待上传附件 ${item.name}`" @click="removePendingQuickAttachment(batch.id, item.id)"><X :size="13" /></button></span>
+      </div>
+      <p v-if="quickAttachmentMessage" class="clone-quick-attachment-state" :role="quickAttachmentError || quickAttachmentSelectionError ? 'alert' : 'status'">{{ quickAttachmentMessage }}<button v-if="pendingQuickAttachmentBatches.length && (quickAttachmentError || !store.online)" type="button" :disabled="quickAttachmentUploading" @click="retryQuickAttachments">{{ quickAttachmentUploading ? `上传中 ${quickAttachmentProgress}%` : '重试附件上传' }}</button></p>
       <div v-if="quickAction" class="clone-quick-action-panel" :class="`is-${quickAction}`" @click.stop>
-        <template v-if="quickAction === 'date'">
+        <template v-if="quickAction === 'more'"><strong>更多</strong><button type="button" @click="openQuickAttachmentPicker"><Paperclip :size="14" />附件</button></template>
+        <template v-else-if="quickAction === 'date'">
           <div class="clone-quick-date-panel">
             <div class="clone-quick-date-tabs" role="tablist" aria-label="日期类型">
               <button type="button" role="tab" :aria-selected="quickDateMode === 'DATE'" :class="{ active: quickDateMode === 'DATE' }" @click="quickDateMode = 'DATE'">日期</button>
@@ -1012,6 +1022,7 @@ import { buildTaskSidebarCounts } from "./taskSidebarCounts.js";
 import { mergeSidebarPreferenceChanges } from "./taskSidebarPreferences.js";
 import { calendarMonthDays, localDateKey, nextWholeHour, quickReminderOptions as getQuickReminderOptions, quickReminderPayloads } from "./taskQuickAddDate.js";
 import { buildQuickRepeatRule, createQuickRepeatState, DAY_CODES, quickRepeatLabel, quickRepeatPresets, quickRepeatValidation } from "./taskQuickAddRepeat.js";
+import { formatAttachmentSize, uploadQuickAttachments, validateQuickAttachmentFiles } from "./taskQuickAddAttachments.js";
 import { useTasksStore } from "../stores/tasks.js";
 import { useTaskFocusStore } from "../stores/taskFocus.js";
 import { message } from "../services/message.js";
@@ -1050,6 +1061,21 @@ const store = useTasksStore();
 const focusStore = useTaskFocusStore();
 const filters = ref([]);
 const quickTitle = ref("");
+const quickAttachmentInput = ref(null);
+const quickAttachments = ref([]);
+const quickAttachmentError = ref("");
+const quickAttachmentSelectionError = ref("");
+const pendingQuickAttachmentBatches = ref([]);
+const quickAttachmentUploading = ref(false);
+const quickAttachmentProgress = ref(0);
+const quickAttachmentMessage = computed(() => {
+  if (quickAttachmentUploading.value) return `正在上传快捷新增附件 ${quickAttachmentProgress.value}%`;
+  if (quickAttachmentSelectionError.value) return quickAttachmentSelectionError.value;
+  if (quickAttachmentError.value) return `附件上传未完成：${quickAttachmentError.value}；文件仍保留，可重试`;
+  if (pendingQuickAttachmentBatches.value.length) return store.online ? "任务已创建，附件等待上传" : "任务已创建；当前离线，附件待联网后重试";
+  if (quickAttachments.value.length) return store.online ? "附件将在任务创建并同步后上传" : "当前离线，附件暂存于本页；任务创建后联网上传";
+  return "";
+});
 const quickDraft = ref(null);
 const quickDraftDue = ref("");
 const quickDraftStart = ref("");
@@ -2300,6 +2326,65 @@ function toggleQuickAction(action) {
   }
 }
 
+function openQuickAttachmentPicker() {
+  quickAction.value = "";
+  quickAttachmentInput.value?.click();
+}
+
+function selectQuickAttachments(event) {
+  const files = Array.from(event.target.files || []);
+  event.target.value = "";
+  const { accepted, rejected } = validateQuickAttachmentFiles(files);
+  quickAttachments.value.push(...accepted.map(file => ({ id: crypto.randomUUID(), file, name: file.name, size: file.size })));
+  quickAttachmentSelectionError.value = rejected.map(item => `${item.file.name}：${item.reason}`).join("；");
+}
+
+function removeQuickAttachment(id) {
+  quickAttachments.value = quickAttachments.value.filter(item => item.id !== id);
+  if (!quickAttachments.value.length) quickAttachmentSelectionError.value = "";
+}
+
+function removePendingQuickAttachment(batchId, attachmentId) {
+  pendingQuickAttachmentBatches.value = pendingQuickAttachmentBatches.value
+    .map(batch => batch.id === batchId ? { ...batch, attachments: batch.attachments.filter(item => item.id !== attachmentId) } : batch)
+    .filter(batch => batch.attachments.length);
+  if (!pendingQuickAttachmentBatches.value.length) quickAttachmentError.value = "";
+}
+
+async function retryQuickAttachments() {
+  if (!pendingQuickAttachmentBatches.value.length || quickAttachmentUploading.value) return;
+  if (!store.online) {
+    quickAttachmentError.value = "当前离线，附件待联网后重试";
+    return;
+  }
+  quickAttachmentUploading.value = true;
+  quickAttachmentError.value = "";
+  quickAttachmentProgress.value = 0;
+  try {
+    for (const batch of [...pendingQuickAttachmentBatches.value]) {
+      await store.syncNow();
+      const syncedTask = store.tasks.find(item => item.publicId === batch.taskId);
+      if (!syncedTask || Number(syncedTask.revision || 0) <= 0) throw new Error("任务尚未同步到服务端，请稍后重试");
+      const total = batch.attachments.length;
+      const result = await uploadQuickAttachments(batch.taskId, batch.attachments, apiUploadTaskAttachment, (index, percent) => {
+        quickAttachmentProgress.value = Math.round(((index + percent / 100) / total) * 100);
+      });
+      if (result.remaining.length) {
+        pendingQuickAttachmentBatches.value = pendingQuickAttachmentBatches.value.map(value => value.id === batch.id ? { ...value, attachments: result.remaining } : value);
+      } else {
+        pendingQuickAttachmentBatches.value = pendingQuickAttachmentBatches.value.filter(value => value.id !== batch.id);
+      }
+      if (result.error) throw result.error;
+    }
+    quickAttachmentError.value = "";
+  } catch (error) {
+    quickAttachmentError.value = error?.response?.data?.detail || error?.message || "附件上传失败";
+  } finally {
+    quickAttachmentUploading.value = false;
+    if (!pendingQuickAttachmentBatches.value.length) quickAttachmentProgress.value = 0;
+  }
+}
+
 function moveQuickMonth(offset) {
   quickCalendarMonth.value = new Date(quickCalendarMonth.value.getFullYear(), quickCalendarMonth.value.getMonth() + offset, 1);
 }
@@ -2505,6 +2590,13 @@ async function confirmQuickAdd() {
       tagIds: [...quickDraft.value.tagIds],
       checklist: [],
     });
+    if (saved?.publicId && quickAttachments.value.length) {
+      pendingQuickAttachmentBatches.value.push({ id: crypto.randomUUID(), taskId: saved.publicId, attachments: quickAttachments.value });
+      quickAttachments.value = [];
+      quickAttachmentSelectionError.value = "";
+      if (store.online) await retryQuickAttachments();
+      else quickAttachmentError.value = "当前离线，附件待联网后重试";
+    }
     let reminderError = "";
     if (saved?.publicId && reminderPayloads.length) {
       try {
@@ -3702,6 +3794,9 @@ onMounted(() => {
   window.addEventListener("keydown", onKeydown);
   window.matchMedia("(max-width: 900px)").addEventListener("change", handleSidebarViewportChange);
 });
+watch(() => store.online, online => {
+  if (online && pendingQuickAttachmentBatches.value.length) void retryQuickAttachments();
+});
 onBeforeUnmount(() => {
   stopDetailResize();
   stopSidebarResize();
@@ -4267,6 +4362,17 @@ const SidebarSection = {
 .clone-quick-add form button.clone-quick-submit,
 .clone-quick-add form kbd { display: inline-flex; }
 .clone-quick-add-form { min-width: 0; flex-wrap: wrap; }
+.clone-quick-file-input { display: none; }
+.clone-quick-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 10px 24px; }
+.clone-quick-attachments > span { display: inline-flex; min-width: 0; align-items: center; gap: 6px; max-width: 100%; padding: 5px 7px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--ink2); font-size: 11px; }
+.clone-quick-attachments > span > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clone-quick-attachments small { flex: 0 0 auto; color: var(--muted); font-size: 10px; }
+.clone-quick-attachments button { display: grid; width: 20px; height: 20px; flex: 0 0 20px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-quick-attachments button:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.clone-quick-attachment-state { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: -5px 0 10px 24px; color: var(--muted); font-size: 11px; }
+.clone-quick-attachment-state[role="alert"] { color: var(--danger, #b42318); }
+.clone-quick-attachment-state button { padding: 3px 7px; border: 1px solid var(--line); border-radius: 4px; background: var(--card); color: var(--accent); font-size: 11px; cursor: pointer; }
+.clone-quick-attachment-state button:disabled { cursor: progress; opacity: .65; }
 .clone-quick-add form .clone-quick-action,
 .clone-quick-add form .clone-quick-icon-action { align-items: center; justify-content: center; gap: 5px; min-height: 30px; padding: 0 6px; border-radius: 5px; background: transparent; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .clone-quick-add form .clone-quick-action:hover,
