@@ -25,6 +25,7 @@ let sessionEpoch = 0
 let listenersInstalled = false
 let syncTimer
 let activeSyncPromise
+let activeRefreshPromise
 
 function clearState(store) {
   Object.assign(store, { ready: false, loading: false, syncing: false, listGroups: [], lists: [], deletedLists: [], tags: [], tasks: [], total: 0, undoStack: [],
@@ -69,6 +70,7 @@ export const useTasksStore = defineStore('tasks', {
       clearTimeout(syncTimer)
       syncTimer = undefined
       activeSyncPromise = null
+      activeRefreshPromise = null
       clearState(this)
       this.accountScope = nextScope
       engine = createTaskSyncEngine({ dbName: taskDatabaseName(nextScope), transport })
@@ -128,46 +130,55 @@ export const useTasksStore = defineStore('tasks', {
       if (!this.online || !this.accountScope) return
       const epoch = sessionEpoch
       const scoped = engine
-      this.error = ''
-      try {
-        await this.syncNow()
-        const [listGroups, lists, deletedLists, tags, habits, countdowns] = await Promise.all([
-          apiListTaskListGroups(), apiListTaskLists(), apiListDeletedTaskLists(), apiListTaskTags(), apiListHabits(), apiListCountdowns()
-        ])
-        if (epoch !== sessionEpoch || scoped !== engine) return
-        this.listGroups = listGroups || []
-        await replaceRemoteCollection(scoped, 'task-list', [...(lists || []), ...(deletedLists || []).map(item => ({ ...item, deleted: true }))])
-        await replaceRemoteCollection(scoped, 'task-tag', tags || [])
-        await replaceRemoteCollection(scoped, 'habit', habits || [])
-        await replaceRemoteCollection(scoped, 'countdown', countdowns || [])
-        const checkins = []
-        for (const habit of habits || []) checkins.push(...((await apiGetHabitStats(habit.publicId))?.checkins || []))
-        await replaceRemoteCollection(scoped, 'habit-checkin', checkins || [])
-        const remoteTasks = []
-        for (const view of ['ALL', 'TRASH']) {
-          let pageNumber = 0
-          let fetched = 0
-          let total = 0
-          do {
-            const page = await apiListTasks({ view, page: pageNumber, size: 200 })
-            if (epoch !== sessionEpoch || scoped !== engine) return
-            const items = page?.items || []
-            remoteTasks.push(...items)
-            fetched += items.length
-            total = Number(page?.total ?? fetched)
-            pageNumber += 1
-            if (!items.length) break
-          } while (fetched < total)
-        }
-        const pendingIds = new Set((await scoped.pendingOperations(SCOPE)).map(item => item.entityId))
-        for (const item of remoteTasks) {
-          if (!pendingIds.has(item.publicId)) {
-            await scoped.put('task', { ...item, id: item.publicId }, { bookId: SCOPE, recordOp: false })
+      if (activeRefreshPromise?.epoch === epoch) return activeRefreshPromise.promise
+      const promise = (async () => {
+        this.error = ''
+        try {
+          await this.syncNow()
+          const [listGroups, lists, deletedLists, tags, habits, countdowns] = await Promise.all([
+            apiListTaskListGroups(), apiListTaskLists(), apiListDeletedTaskLists(), apiListTaskTags(), apiListHabits(), apiListCountdowns()
+          ])
+          if (epoch !== sessionEpoch || scoped !== engine) return
+          this.listGroups = listGroups || []
+          await replaceRemoteCollection(scoped, 'task-list', [...(lists || []), ...(deletedLists || []).map(item => ({ ...item, deleted: true }))])
+          await replaceRemoteCollection(scoped, 'task-tag', tags || [])
+          await replaceRemoteCollection(scoped, 'habit', habits || [])
+          await replaceRemoteCollection(scoped, 'countdown', countdowns || [])
+          const habitStats = await Promise.all((habits || []).map(habit => apiGetHabitStats(habit.publicId)))
+          const checkins = habitStats.flatMap(result => result?.checkins || [])
+          await replaceRemoteCollection(scoped, 'habit-checkin', checkins || [])
+          const remoteTasks = []
+          for (const view of ['ALL', 'TRASH']) {
+            let pageNumber = 0
+            let fetched = 0
+            let total = 0
+            do {
+              const page = await apiListTasks({ view, page: pageNumber, size: 200 })
+              if (epoch !== sessionEpoch || scoped !== engine) return
+              const items = page?.items || []
+              remoteTasks.push(...items)
+              fetched += items.length
+              total = Number(page?.total ?? fetched)
+              pageNumber += 1
+              if (!items.length) break
+            } while (fetched < total)
           }
+          const pendingIds = new Set((await scoped.pendingOperations(SCOPE)).map(item => item.entityId))
+          for (const item of remoteTasks) {
+            if (!pendingIds.has(item.publicId)) {
+              await scoped.put('task', { ...item, id: item.publicId }, { bookId: SCOPE, recordOp: false })
+            }
+          }
+          await this.hydrate()
+        } catch (error) {
+          if (epoch === sessionEpoch) this.error = error?.response?.data?.detail || error?.message || '任务同步失败'
         }
-        await this.hydrate()
-      } catch (error) {
-        if (epoch === sessionEpoch) this.error = error?.response?.data?.detail || error?.message || '任务同步失败'
+      })()
+      activeRefreshPromise = { epoch, promise }
+      try {
+        return await promise
+      } finally {
+        if (activeRefreshPromise?.promise === promise) activeRefreshPromise = null
       }
     },
     async saveLocal(value, operation = 'UPSERT') {

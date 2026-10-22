@@ -7,6 +7,28 @@ function offline() {
   Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine: false } })
 }
 
+test('task initialization renders the local projection without waiting for remote refresh', async () => {
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine: true } })
+  setActivePinia(createPinia())
+  const store = useTasksStore()
+  await store.switchUser({ id: 'cached-first' })
+  let finishRefresh
+  let refreshStarted = false
+  store.hydrate = async () => { store.tasks = [{ publicId: 'cached', title: '缓存任务' }] }
+  store.refreshServer = () => {
+    refreshStarted = true
+    return new Promise(resolve => { finishRefresh = resolve })
+  }
+
+  await store.init({ waitForRemote: false })
+
+  assert.equal(refreshStarted, true)
+  assert.equal(store.ready, true)
+  assert.equal(store.loading, false)
+  assert.equal(store.tasks[0].title, '缓存任务')
+  finishRefresh()
+})
+
 test('offline task lifecycle updates local projection and one compacted operation', async () => {
   offline()
   setActivePinia(createPinia())

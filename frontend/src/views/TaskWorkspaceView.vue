@@ -3304,7 +3304,7 @@ watch(
   },
   { deep: true },
 );
-onMounted(async () => {
+onMounted(() => {
   loadSidebarVisibility();
   loadSidebarWidth();
   loadSidebarObjectPrefs();
@@ -3316,10 +3316,13 @@ onMounted(async () => {
   loadListGroupState();
   const filtersLoad = loadFilters();
   const sidebarPreferencesLoad = loadSidebarPreferences(filtersLoad);
-  await store.init();
-  await Promise.all([filtersLoad, sidebarPreferencesLoad]);
   miniCalendarMonth.value = new Date(selectedDate.value.getFullYear(), selectedDate.value.getMonth(), 1);
-  await loadMiniCalendar();
+  const storeInit = store.init({ waitForRemote: false });
+  const miniCalendarLoad = loadMiniCalendar();
+  void Promise.allSettled([storeInit, filtersLoad, sidebarPreferencesLoad, miniCalendarLoad]).then(results => {
+    const failed = results.find(result => result.status === "rejected");
+    if (failed) store.error = failed.reason?.message || "任务工作区加载失败";
+  });
   document.addEventListener("pointerdown", closeContext);
   window.addEventListener("keydown", onKeydown);
   window.matchMedia("(max-width: 900px)").addEventListener("change", handleSidebarViewportChange);
