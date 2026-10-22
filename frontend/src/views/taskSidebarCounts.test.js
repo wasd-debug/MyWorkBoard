@@ -27,11 +27,10 @@ test("aggregates sidebar counts in one pass while preserving task state semantic
     abandoned: 1,
     trash: 1,
     archived: 2,
-    "this-week": 2,
-    "next-week": 0,
-    "no-date": 1,
-    "no-tag": 1,
   });
+  for (const removedShortcut of ["this-week", "next-week", "no-date", "no-tag"]) {
+    assert.equal(Object.hasOwn(counts.counts, removedShortcut), false);
+  }
   assert.deepEqual([...counts.openByList], [["inbox", 1], ["archive", 1], ["other", 1]]);
   assert.deepEqual([...counts.openByTag], [["work", 2], ["home", 1]]);
   assert.deepEqual([...counts.taggedTasks].sort(), ["home", "work"]);
@@ -41,8 +40,8 @@ test("counts tasks without list or tags without creating empty map entries", () 
   const counts = buildTaskSidebarCounts([{ publicId: "open", listId: "", tagIds: [] }], [], "inbox", new Date(2026, 9, 21));
 
   assert.equal(counts.counts.all, 1);
-  assert.equal(counts.counts["no-date"], 1);
-  assert.equal(counts.counts["no-tag"], 1);
+  assert.equal(Object.hasOwn(counts.counts, "no-date"), false);
+  assert.equal(Object.hasOwn(counts.counts, "no-tag"), false);
   assert.equal(counts.openByList.size, 0);
   assert.equal(counts.openByGroup.size, 0);
   assert.equal(counts.openByTag.size, 0);

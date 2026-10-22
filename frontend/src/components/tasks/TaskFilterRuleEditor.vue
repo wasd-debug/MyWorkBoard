@@ -4,7 +4,10 @@
       <select aria-label="筛选条件" value="" @change="selectCondition($event.target.value)"><option value="" disabled>筛选条件</option><option v-for="item in availableOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select>
       <button type="button" class="advanced-filter-empty-logic" disabled>逻辑</button>
       <select aria-label="添加筛选条件" value="" @change="selectCondition($event.target.value)"><option value="" disabled>筛选条件</option><option v-for="item in availableOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select>
-      <button type="button" aria-label="添加筛选条件" @click="addCondition"><Plus :size="14" />更多条件</button>
+      <div class="advanced-filter-add-anchor">
+        <button ref="addButton" type="button" class="advanced-filter-add-button" aria-label="添加筛选条件" title="添加筛选条件" @click="addCondition($event)"><Plus :size="15" /></button>
+        <Teleport to="body"><div v-if="menuOpen" ref="pickerMenu" class="advanced-filter-picker" :style="pickerPosition" role="menu" aria-label="选择筛选条件"><button v-for="item in availableOptions" :key="item.value" type="button" role="menuitem" @click="selectCondition(item.value)">{{ item.label }}</button></div></Teleport>
+      </div>
     </div>
     <template v-else>
       <div v-for="(condition, index) in conditions" :key="condition.id" class="advanced-filter-sequence">
@@ -52,14 +55,13 @@
           </template>
         </article>
       </div>
-      <div class="advanced-filter-more"><button type="button" aria-label="添加筛选条件" @click="addCondition"><Plus :size="14" />更多条件</button></div>
+      <div class="advanced-filter-more"><div class="advanced-filter-add-anchor"><button ref="addButton" type="button" aria-label="添加筛选条件" title="添加筛选条件" @click="addCondition($event)"><Plus :size="15" />更多条件</button><Teleport to="body"><div v-if="menuOpen" ref="pickerMenu" class="advanced-filter-picker" :style="pickerPosition" role="menu" aria-label="选择筛选条件"><button v-for="item in availableOptions" :key="item.value" type="button" role="menuitem" @click="selectCondition(item.value)">{{ item.label }}</button></div></Teleport></div></div>
     </template>
-    <div v-if="menuOpen" class="advanced-filter-picker-backdrop" @click="menuOpen = false"><div class="advanced-filter-picker" role="menu" aria-label="选择筛选条件" @click.stop><button v-for="item in availableOptions" :key="item.value" type="button" role="menuitem" @click="selectCondition(item.value)">{{ item.label }}</button></div></div>
   </section>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Folder, Plus, X } from 'lucide-vue-next'
 import { ADVANCED_FILTER_OPTIONS, newAdvancedFilterCondition } from '../../views/taskAdvancedFilter.js'
 
@@ -67,14 +69,41 @@ defineOptions({ name: 'TaskFilterRuleEditor' })
 const props = defineProps({ modelValue: { type: Object, required: true }, lists: { type: Array, default: () => [] }, groups: { type: Array, default: () => [] }, tags: { type: Array, default: () => [] } })
 const emit = defineEmits(['update:modelValue'])
 const menuOpen = ref(false)
+const pickerMenu = ref(null)
+const addButton = ref(null)
+const pickerPosition = ref({ left: '16px', top: '24px' })
 const conditions = computed(() => Array.isArray(props.modelValue.conditions) ? props.modelValue.conditions : [])
 const joins = computed(() => Array.isArray(props.modelValue.joins) ? props.modelValue.joins : [])
 const availableOptions = computed(() => ADVANCED_FILTER_OPTIONS.filter(item => item.value !== 'LIST' || !conditions.value.some(condition => condition.type === 'LIST')))
 const priorityOptions = [{ value: 'HIGH', label: '高' }, { value: 'MEDIUM', label: '中' }, { value: 'LOW', label: '低' }, { value: 'NONE', label: '无' }]
+function handleOutsidePointer(event) {
+  if (!menuOpen.value) return
+  if (pickerMenu.value?.contains(event.target) || addButton.value?.contains(event.target)) return
+  menuOpen.value = false
+}
+function handleEscape(event) { if (event.key === 'Escape') menuOpen.value = false }
+onMounted(() => {
+  document.addEventListener('pointerdown', handleOutsidePointer)
+  document.addEventListener('keydown', handleEscape)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', handleOutsidePointer)
+  document.removeEventListener('keydown', handleEscape)
+})
 function labelFor(type) { return ADVANCED_FILTER_OPTIONS.find(item => item.value === type)?.label || '筛选条件' }
 function optionsFor(index) { const current = conditions.value[index]; return ADVANCED_FILTER_OPTIONS.filter(item => item.value !== 'LIST' || current.type === 'LIST' || !conditions.value.some((condition, conditionIndex) => conditionIndex !== index && condition.type === 'LIST')) }
 function publish(nextConditions, nextJoins = joins.value) { emit('update:modelValue', { conditions: nextConditions, joins: nextJoins }) }
-function addCondition() { if (availableOptions.value.length) menuOpen.value = true }
+function addCondition(event) {
+  if (!availableOptions.value.length) return
+  const rect = event.currentTarget.getBoundingClientRect()
+  const width = Math.min(320, window.innerWidth - 24)
+  const height = Math.min(availableOptions.value.length * 42 + 14, 480, window.innerHeight * 0.65)
+  const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))
+  const below = rect.bottom + 6
+  const top = below + height <= window.innerHeight - 12 ? below : Math.max(12, rect.top - height - 6)
+  pickerPosition.value = { left: `${left}px`, top: `${top}px` }
+  menuOpen.value = true
+}
 function selectCondition(type) { const next = [...conditions.value, newAdvancedFilterCondition(type)]; const nextJoins = next.length > 1 ? [...joins.value, 'AND'] : []; menuOpen.value = false; publish(next, nextJoins) }
 function changeCondition(index, type) { const next = conditions.value.map((condition, conditionIndex) => conditionIndex === index ? newAdvancedFilterCondition(type) : condition); publish(next) }
 function setJoin(index, value) { const next = [...joins.value]; next[index] = value; publish(conditions.value, next) }
@@ -87,11 +116,14 @@ function toggleGroup(index, group, checked) { const ids = props.lists.filter(ite
 
 <style scoped>
 .advanced-filter-editor { display: grid; gap: 12px; min-width: 0; }
-.advanced-filter-empty { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 40px; }
-.advanced-filter-empty > select, .advanced-filter-empty-logic { min-width: 118px; min-height: 38px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink2); font: inherit; }
-.advanced-filter-empty-logic { min-width: 72px; border-style: dashed; }
+.advanced-filter-empty { display: grid; grid-template-columns: minmax(0, 1fr) 90px minmax(0, 1fr) 38px; align-items: center; gap: 8px; min-height: 40px; }
+.advanced-filter-empty > select, .advanced-filter-empty-logic { width: 100%; min-width: 0; min-height: 38px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink2); font: inherit; }
+.advanced-filter-empty-logic { border-style: dashed; }
+.advanced-filter-add-anchor { position: relative; display: inline-flex; }
+.advanced-filter-add-button { display: grid; width: 38px; height: 38px; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink2); cursor: pointer; }
+.advanced-filter-add-button:hover { border-color: var(--accent); color: var(--accent); }
 .advanced-filter-more { display: flex; justify-content: flex-start; }
-.advanced-filter-more button, .advanced-filter-empty button { display: inline-flex; min-height: 34px; align-items: center; gap: 5px; padding: 4px 2px; border: 0; background: transparent; color: var(--accent); font: inherit; cursor: pointer; }
+.advanced-filter-more button { display: inline-flex; min-height: 34px; align-items: center; gap: 5px; padding: 4px 2px; border: 0; background: transparent; color: var(--accent); font: inherit; cursor: pointer; }
 .advanced-filter-sequence { display: grid; gap: 8px; }
 .advanced-filter-join-row { display: grid; grid-template-columns: 1fr 90px 1fr; align-items: center; gap: 8px; }
 .advanced-filter-join-row > span { height: 1px; background: var(--line); }
@@ -118,9 +150,14 @@ function toggleGroup(index, group, checked) { const ids = props.lists.filter(ite
 .advanced-filter-date-range label, .advanced-filter-content-input { display: grid; gap: 6px; min-width: 0; color: var(--ink2); font-size: 12px; }
 .advanced-filter-date-range input, .advanced-filter-content-input input { width: 100%; min-width: 0; min-height: 36px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--ink); font: inherit; }
 .advanced-filter-date-range > span { padding-bottom: 10px; color: var(--muted); text-align: center; }
-.advanced-filter-picker-backdrop { position: fixed; z-index: 120; inset: 0; display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px; background: transparent; }
-.advanced-filter-picker { display: grid; width: min(320px, calc(100vw - 32px)); max-height: min(65vh, 480px); overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); box-shadow: 0 12px 32px rgb(15 23 42 / 20%); }
+.advanced-filter-picker { position: fixed; z-index: 202; display: grid; width: min(320px, calc(100vw - 24px)); max-height: min(65vh, 480px); overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); box-shadow: 0 12px 32px rgb(15 23 42 / 20%); }
 .advanced-filter-picker button { min-height: 42px; padding: 7px 12px; border: 0; border-radius: 5px; background: transparent; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
 .advanced-filter-picker button:hover { background: var(--paper); }
-@media (max-width: 600px) { .advanced-filter-date-range { grid-template-columns: 1fr; } .advanced-filter-date-range > span { padding: 0; } }
+@media (max-width: 600px) {
+  .advanced-filter-empty { grid-template-columns: minmax(0, 1fr) 36px; gap: 6px; }
+  .advanced-filter-empty-logic, .advanced-filter-empty > select:nth-of-type(2) { display: none; }
+  .advanced-filter-add-button { width: 36px; height: 38px; }
+  .advanced-filter-date-range { grid-template-columns: 1fr; }
+  .advanced-filter-date-range > span { padding: 0; }
+}
 </style>

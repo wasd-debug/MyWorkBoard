@@ -25,7 +25,6 @@
           <RouterLink :to="item.to" class="clone-nav-item" :class="{ active: isActive(item.to) }"><component :is="item.icon" :size="16" /><span>{{ item.label }}</span><small>{{ itemCount(item.key) }}</small></RouterLink>
           <button class="clone-item-menu-trigger" type="button" :aria-label="`${item.label}的更多操作`" @click.stop="openOrganizationMenu('system', item, $event)"><Ellipsis :size="14" /></button>
         </div>
-        <div v-for="item in pinnedShortcutViews" :key="`pinned-${item.key}`" class="clone-sidebar-object-row" @contextmenu.prevent="openOrganizationMenu('quick-filter', item, $event)"><RouterLink :to="item.to" class="clone-nav-item" :class="{ active: isActive(item.to) }"><component :is="item.icon" :size="15" /><span>{{ item.label }}</span><small>{{ itemCount(item.key) }}</small></RouterLink><button class="clone-item-menu-trigger" type="button" :aria-label="`${item.label}的更多操作`" @click.stop="openOrganizationMenu('quick-filter', item, $event)"><Ellipsis :size="14" /></button></div>
         <div v-for="item in pinnedBottomViews" :key="`pinned-${item.key}`" class="clone-sidebar-object-row" @contextmenu.prevent="openOrganizationMenu('system', item, $event)"><RouterLink :to="item.to" class="clone-nav-item" :class="{ active: isActive(item.to) }"><component :is="item.icon" :size="15" /><span>{{ item.label }}</span><small>{{ itemCount(item.key) }}</small></RouterLink><button class="clone-item-menu-trigger" type="button" :aria-label="`${item.label}的更多操作`" @click.stop="openOrganizationMenu('system', item, $event)"><Ellipsis :size="14" /></button></div>
         <div v-for="item in visiblePrimaryViews" :key="item.key" class="clone-sidebar-object-row" @contextmenu.prevent="openOrganizationMenu('system', item, $event)">
         <RouterLink
@@ -79,10 +78,9 @@
         </div></div>
       </section>
       <section class="clone-sidebar-section">
-        <header @click="toggleSection('filters')"><button type="button" :aria-expanded="sections.filters"><ChevronDown :size="14" class="clone-section-chevron" :class="{ rotated: !sections.filters }" />筛选器</button><div class="clone-sidebar-heading-actions"><button class="sidebar-create" type="button" aria-label="新建筛选器" title="新建筛选器" @click.stop="createFilter"><Plus :size="14" /></button><button class="sidebar-create" type="button" aria-label="筛选器显示选项" title="筛选器显示选项" :aria-expanded="sectionDisplayMenu === 'filters'" @click.stop="toggleSectionDisplayMenu('filters')"><Ellipsis :size="14" /></button><div v-if="sectionDisplayMenu === 'filters'" class="clone-section-display-menu" role="menu" aria-label="筛选器显示选项" @pointerdown.stop @click.stop><button v-for="option in sectionDisplayOptions('filters')" :key="option.value" type="button" role="menuitemradio" :aria-checked="sectionDisplayModes.filters === option.value" @click.stop="setSectionDisplayMode('filters', option.value)">{{ option.label }}<Check v-if="sectionDisplayModes.filters === option.value" :size="14" /></button><button v-for="item in hiddenShortcutViews" :key="`restore-${item.key}`" type="button" @click.stop="setDisplayOption('quick-filter', item, 'SHOW')">显示“{{ item.label }}”</button></div></div></header>
+        <header @click="toggleSection('filters')"><button type="button" :aria-expanded="sections.filters"><ChevronDown :size="14" class="clone-section-chevron" :class="{ rotated: !sections.filters }" />筛选器</button><div class="clone-sidebar-heading-actions"><button class="sidebar-create" type="button" aria-label="新建筛选器" title="新建筛选器" @click.stop="createFilter"><Plus :size="14" /></button><button class="sidebar-create" type="button" aria-label="筛选器显示选项" title="筛选器显示选项" :aria-expanded="sectionDisplayMenu === 'filters'" @click.stop="toggleSectionDisplayMenu('filters')"><Ellipsis :size="14" /></button><div v-if="sectionDisplayMenu === 'filters'" class="clone-section-display-menu" role="menu" aria-label="筛选器显示选项" @pointerdown.stop @click.stop><button v-for="option in sectionDisplayOptions('filters')" :key="option.value" type="button" role="menuitemradio" :aria-checked="sectionDisplayModes.filters === option.value" @click.stop="setSectionDisplayMode('filters', option.value)">{{ option.label }}<Check v-if="sectionDisplayModes.filters === option.value" :size="14" /></button></div></div></header>
         <div class="clone-collapse-panel" :class="{ 'is-collapsed': !sections.filters || !isSectionDisplayed('filters') }" :aria-hidden="!sections.filters || !isSectionDisplayed('filters')"><div class="clone-sidebar-items clone-collapse-inner" :inert="!sections.filters || !isSectionDisplayed('filters')">
         <section v-if="pinnedFilters.length" class="clone-pinned-zone" aria-label="置顶筛选器"><div class="clone-pinned-title">置顶</div><RouterLink v-for="filter in pinnedFilters" :key="`pinned-${filter.publicId}`" :to="`/tasks/filter/${filter.publicId}`" class="clone-nav-item clone-sortable-item" :class="{ 'drag-over': organizationDropTarget === filter.publicId, 'sorting-dragging': organizationDrag?.kind === 'filter' && organizationDrag.item.publicId === filter.publicId }" draggable="true" @dragstart="startOrganizationDrag('filter', filter)" @dragover.prevent="organizationDropTarget = filter.publicId" @drop.prevent.stop="dropOrganization('filter', filter)" @contextmenu.prevent="openOrganizationMenu('filter', filter, $event)"><TaskOrganizationIcon v-if="filter.icon" class="clone-object-icon" :value="filter.icon" /><SlidersHorizontal v-else :size="15" /><span>{{ filter.name }}</span><button class="clone-item-menu-trigger" type="button" :aria-label="`${filter.name}的更多操作`" @click.prevent.stop="openOrganizationMenu('filter', filter, $event)"><Ellipsis :size="14" /></button></RouterLink></section>
-        <div v-for="item in visibleShortcutViews" :key="item.to" class="clone-sidebar-object-row" @contextmenu.prevent="openOrganizationMenu('quick-filter', item, $event)"><RouterLink :to="item.to" class="clone-nav-item" :class="{ active: isActive(item.to) }"><component :is="item.icon" :size="15" /><span>{{ item.label }}</span><small>{{ itemCount(item.key) }}</small></RouterLink><button class="clone-item-menu-trigger" type="button" :aria-label="`${item.label}的更多操作`" @click.stop="openOrganizationMenu('quick-filter', item, $event)"><Ellipsis :size="14" /></button></div>
         <TransitionGroup name="clone-sort" tag="div" class="clone-sort-stack">
         <RouterLink
           v-for="filter in visibleFilters"
@@ -815,7 +813,6 @@
     </div>
     <div v-if="organizationMenuOpen" class="clone-context-menu clone-organization-menu" role="menu" :style="{ left: `${organizationMenu.x}px`, top: `${organizationMenu.y}px` }" @pointerdown.stop @click.stop>
       <template v-if="organizationMenu.kind === 'system' && organizationMenu.item.key === 'inbox'"><button type="button" @click="editInboxFromSystemMenu"><Pencil :size="14" />编辑</button></template>
-      <template v-else-if="organizationMenu.kind === 'quick-filter'"><button type="button" @click="togglePinnedObject('quick-filter', organizationMenu.item)"><Pin :size="14" />{{ isPinnedObject('quick-filter', organizationMenu.item) ? '取消置顶' : '置顶' }}</button><button type="button" @click="organizationMenu.submenu = organizationMenu.submenu === 'display' ? '' : 'display'"><Eye :size="14" />显示选项<ChevronDown :size="13" /></button><div v-if="organizationMenu.submenu === 'display'" class="clone-context-submenu"><button v-for="option in displayOptionsFor('quick-filter', organizationMenu.item)" :key="option.value" type="button" @click="setDisplayOption('quick-filter', organizationMenu.item, option.value)">{{ option.label }}<Check v-if="getDisplayOption('quick-filter', organizationMenu.item) === option.value" :size="14" /></button></div></template>
       <template v-else-if="organizationMenu.kind === 'system'"><button type="button" @click="togglePinnedObject('system', organizationMenu.item)"><Pin :size="14" />{{ isPinnedObject('system', organizationMenu.item) ? '取消置顶' : '置顶' }}</button><button type="button" @click="organizationMenu.submenu = organizationMenu.submenu === 'display' ? '' : 'display'"><Eye :size="14" />显示选项<ChevronDown :size="13" /></button><div v-if="organizationMenu.submenu === 'display'" class="clone-context-submenu"><button v-for="option in displayOptionsFor('system', organizationMenu.item)" :key="option.value" type="button" @click="setDisplayOption('system', organizationMenu.item, option.value)">{{ option.label }}<Check v-if="getDisplayOption('system', organizationMenu.item) === option.value" :size="14" /></button></div></template>
       <template v-else-if="organizationMenu.kind === 'list'">
         <button v-if="isInboxColorList(organizationMenu.item)" type="button" @click="editOrganization('list')"><Pencil :size="14" />编辑</button>
@@ -871,7 +868,7 @@
             <TaskFilterRuleEditor v-if="organizationDialog.filter.mode === 'ADVANCED'" v-model="organizationDialog.filter.advanced" :lists="activeLists" :groups="sortedListGroups" :tags="sortedTags" />
           </template>
         </template>
-        <footer :class="{ 'clone-inbox-color-actions': isInboxColorEditor, 'clone-filter-preview-actions': organizationDialog.kind === 'filter' && organizationDialog.filter.previewed }"><template v-if="isInboxColorEditor"><button type="submit" class="clone-primary-button">保存</button><button type="button" @click="organizationDialogOpen = false">取消</button></template><template v-else-if="organizationDialog.kind === 'filter' && organizationDialog.filter.previewed"><button type="button" @click="organizationDialog.filter.previewed = false">取消</button><button type="submit" class="clone-primary-button" :disabled="!filterDraftValid">保存</button></template><template v-else-if="organizationDialog.kind === 'filter'"><button type="button" class="clone-filter-preview-button" :disabled="!filterDraftValid" @click="previewFilterDraft"><Eye :size="14" />预览</button><button type="button" @click="organizationDialogOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="!filterDraftValid">保存</button></template><template v-else><button type="button" @click="organizationDialogOpen = false">取消</button><button type="submit" class="clone-primary-button">保存</button></template></footer>
+        <footer :class="{ 'clone-inbox-color-actions': isInboxColorEditor, 'clone-filter-preview-actions': organizationDialog.kind === 'filter' && organizationDialog.filter.previewed }"><template v-if="isInboxColorEditor"><button type="submit" class="clone-primary-button">保存</button><button type="button" @click="organizationDialogOpen = false">取消</button></template><template v-else-if="organizationDialog.kind === 'filter' && organizationDialog.filter.previewed"><button type="button" @click="organizationDialog.filter.previewed = false">取消</button><button type="submit" class="clone-primary-button" :disabled="!filterDraftValid"><Save :size="14" />保存</button></template><template v-else-if="organizationDialog.kind === 'filter'"><button type="button" class="clone-filter-preview-button" :disabled="!filterDraftValid" @click="previewFilterDraft"><Eye :size="14" />预览</button><button type="button" @click="organizationDialogOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="!filterDraftValid"><Save :size="14" />保存</button></template><template v-else><button type="button" @click="organizationDialogOpen = false">取消</button><button type="submit" class="clone-primary-button">保存</button></template></footer>
       </form>
     </Dialog>
     <Dialog v-model:open="folderDialogOpen" title="添加文件夹" content-class="task-folder-dialog">
@@ -934,6 +931,7 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Save,
   SquareKanban,
   Repeat2,
   SlidersHorizontal,
@@ -1084,7 +1082,6 @@ const listViewOptions = [
 const filteredOrganizationIcons = computed(() => searchOrganizationIcons(organizationIconSearch.value, organizationIconCategory.value));
 const currentOrganizationIcon = computed(() => organizationIconTarget.value === "new-group" ? organizationDialog.newGroupIcon : organizationDialog.icon);
 const sidebarObjectPrefs = reactive({ pinnedSystem: [], hiddenSystem: [], conditionalSystem: [], pinnedLists: [], hiddenLists: [], pinnedTags: [], hiddenTags: [], pinnedFilters: [], hiddenFilters: [], displayModes: {} });
-const shortcutFilterPrefs = reactive({ pinned: [], hidden: [] });
 const sidebarPrefsRevision = ref(0);
 let sidebarPrefsSave = Promise.resolve();
 let sidebarPrefsSaveTimer;
@@ -1299,15 +1296,6 @@ function persistListGroupState() { try { localStorage.setItem(`task_sidebar_grou
 function loadListGroupState() { try { Object.assign(groupCollapsed, JSON.parse(localStorage.getItem(`task_sidebar_groups:${store.accountScope || "anonymous"}`) || "{}")); } catch {} }
 const isInboxColorEditor = computed(() => organizationDialog.kind === "list" && organizationDialog.item?.systemKey === "INBOX");
 const organizationDialogTitle = computed(() => isInboxColorEditor.value ? '编辑“收集箱”' : `${organizationDialog.item ? "编辑" : "新建"}${({ list: "清单", tag: "标签", filter: "筛选器", group: "文件夹" })[organizationDialog.kind] || "项目"}`);
-const shortcutViews = [
-  { key: "this-week", publicId: "shortcut:this-week", label: "本周", to: "/tasks/shortcut/this-week", icon: CalendarClock },
-  { key: "next-week", publicId: "shortcut:next-week", label: "下周", to: "/tasks/shortcut/next-week", icon: CalendarClock },
-  { key: "no-date", publicId: "shortcut:no-date", label: "无日期任务", to: "/tasks/shortcut/no-date", icon: ListFilter },
-  { key: "no-tag", publicId: "shortcut:no-tag", label: "无标签", to: "/tasks/shortcut/no-tag", icon: ListFilter },
-];
-const pinnedShortcutViews = computed(() => shortcutViews.filter(item => !isHiddenObject("quick-filter", item) && isPinnedObject("quick-filter", item)));
-const visibleShortcutViews = computed(() => shortcutViews.filter(item => !isHiddenObject("quick-filter", item) && !isPinnedObject("quick-filter", item)));
-const hiddenShortcutViews = computed(() => shortcutViews.filter(item => isHiddenObject("quick-filter", item)));
 const pinnedBottomViews = computed(() => [completedView, abandonedView, trashView, archivedView].filter(item => !isHiddenObject("system", item) && isPinnedObject("system", item)));
 const recurrenceOptions = [
   { value: "", label: "不重复" },
@@ -1355,10 +1343,6 @@ const title = computed(() =>
                   )?.name || "智能清单"
                 : route.name === "tasks-shortcut"
                   ? {
-                      "no-date": "无日期任务",
-                      "this-week": "本周",
-                      "next-week": "下周",
-                      "no-tag": "无标签",
                       assigned: "指派给我",
                       summary: "摘要",
                       archived: "归档",
@@ -1502,13 +1486,7 @@ const visibleTasks = computed(() => {
         ? task.status !== "COMPLETED" && task.dueAt && new Date(task.dueAt) < tomorrow
         : shortcut === "archived"
           ? archivedIds.has(task.listId)
-          : shortcut === "no-tag"
-            ? !(task.tagIds || []).length && task.status !== "COMPLETED"
-            : shortcut === "no-date"
-              ? !task.dueAt && task.status !== "COMPLETED"
-              : shortcut === "this-week"
-                ? inRange(task.dueAt, today, addDays(today, 7)) && task.status !== "COMPLETED"
-                : inRange(task.dueAt, addDays(today, 7), addDays(today, 14)) && task.status !== "COMPLETED");
+          : false);
   }
   return sortTaskItems(values, { sortBy: sort.value, direction: sortDirection.value });
 });
@@ -2557,12 +2535,6 @@ function previewListItems(groupId) {
 function listsInGroup(groupId) { return previewListItems(groupId); }
 function persistSidebarSections() { try { localStorage.setItem(`task_sidebar_sections:${store.accountScope || "anonymous"}`, JSON.stringify(sections)); } catch {} sidebarPrefsMutationVersion += 1; scheduleSidebarPreferencesSave(); }
 function loadSidebarSections() { try { Object.assign(sections, JSON.parse(localStorage.getItem(`task_sidebar_sections:${store.accountScope || "anonymous"}`) || "{}")); } catch {} }
-function shortcutFilterPrefsKey() { return `task_sidebar_custom_shortcuts:${store.accountScope || "anonymous"}`; }
-function loadShortcutFilterPrefs() {
-  Object.assign(shortcutFilterPrefs, { pinned: [], hidden: [] });
-  try { Object.assign(shortcutFilterPrefs, JSON.parse(localStorage.getItem(shortcutFilterPrefsKey()) || "{}")); } catch {}
-}
-function persistShortcutFilterPrefs() { try { localStorage.setItem(shortcutFilterPrefsKey(), JSON.stringify(shortcutFilterPrefs)); } catch {} }
 function loadSectionDisplayModes() {
   try {
     Object.assign(sectionDisplayModes, { filters: "SHOW", tags: "SHOW" }, JSON.parse(localStorage.getItem(`task_sidebar_section_display:${store.accountScope || "anonymous"}`) || "{}"));
@@ -2708,26 +2680,17 @@ function objectIdentity(kind, item) { return kind === "system" ? item.key : item
 function displayOptionKey(kind, item) { return `${kind}:${objectIdentity(kind, item)}`; }
 function displayOptionsFor(kind, item) {
   const options = [{ value: "SHOW", label: "显示" }, { value: "HIDE", label: "隐藏" }];
-  if (kind === "quick-filter") return options;
   if (kind === "system" && item?.key === "abandoned") options.push({ value: "WHEN_HAS_CONTENT", label: "有内容时显示" });
   else if (kind === "system" && !["summary", "completed", "trash"].includes(item?.key)) options.push({ value: "WHEN_HAS_CONTENT", label: "有内容时显示" });
   return options;
 }
 function getDisplayOption(kind, item) {
-  if (kind === "quick-filter") return isHiddenObject(kind, item) ? "HIDE" : "SHOW";
   if (kind === "system" && sidebarObjectPrefs.conditionalSystem.includes(item?.key)) return "WHEN_HAS_CONTENT";
   if (isHiddenObject(kind, item)) return "HIDE";
   return "SHOW";
 }
 function setDisplayOption(kind, item, mode) {
   const value = displayOptionsFor(kind, item).some(option => option.value === mode) ? mode : "SHOW";
-  if (kind === "quick-filter") {
-    shortcutFilterPrefs.hidden = value === "HIDE" ? [...new Set([...shortcutFilterPrefs.hidden, item.publicId])] : shortcutFilterPrefs.hidden.filter(id => id !== item.publicId);
-    if (value === "HIDE") shortcutFilterPrefs.pinned = shortcutFilterPrefs.pinned.filter(id => id !== item.publicId);
-    persistShortcutFilterPrefs();
-    organizationMenuOpen.value = false;
-    return;
-  }
   const id = objectIdentity(kind, item), hiddenKey = objectPreferenceKey(kind, false), pinnedKey = objectPreferenceKey(kind, true);
   if (kind === "system") sidebarObjectPrefs.conditionalSystem = value === "WHEN_HAS_CONTENT"
     ? [...new Set([...sidebarObjectPrefs.conditionalSystem, id])]
@@ -2739,7 +2702,6 @@ function setDisplayOption(kind, item, mode) {
 }
 function isPinnedObject(kind, item) {
   if (!item) return false;
-  if (kind === "quick-filter") return shortcutFilterPrefs.pinned.includes(item.publicId);
   if (kind === "filter") return Boolean(sidebarObjectPrefs.pinnedFilters.includes(item.publicId));
   if (kind === "group") return Boolean(item.pinned);
   const key = objectPreferenceKey(kind, true);
@@ -2747,7 +2709,6 @@ function isPinnedObject(kind, item) {
 }
 function isHiddenObject(kind, item) {
   if (!item) return false;
-  if (kind === "quick-filter") return shortcutFilterPrefs.hidden.includes(item.publicId);
   const key = objectPreferenceKey(kind, false);
   if (key && sidebarObjectPrefs[key].includes(objectIdentity(kind, item))) return true;
   if (kind === "system" && sidebarObjectPrefs.conditionalSystem.includes(item.key)) return Number(itemCount(item.key)) <= 0;
@@ -2773,15 +2734,6 @@ async function updateFilterPinned(item, pinned) {
   persistSidebarObjectPrefs();
 }
 function togglePinnedObject(kind, item) {
-  if (kind === "quick-filter") {
-    shortcutFilterPrefs.pinned = isPinnedObject(kind, item)
-      ? shortcutFilterPrefs.pinned.filter(id => id !== item.publicId)
-      : [...new Set([...shortcutFilterPrefs.pinned, item.publicId])];
-    shortcutFilterPrefs.hidden = shortcutFilterPrefs.hidden.filter(id => id !== item.publicId);
-    persistShortcutFilterPrefs();
-    organizationMenuOpen.value = false;
-    return;
-  }
   if (kind === "group") {
     store.updateListGroup(item, { name: item.name, color: item.color, icon: item.icon, sortOrder: item.sortOrder, pinned: !item.pinned }).catch(error => { store.error = error?.response?.data?.detail || error?.message || "更新分组置顶失败"; });
     organizationMenuOpen.value = false;
@@ -2796,7 +2748,7 @@ function togglePinnedObject(kind, item) {
   persistSidebarObjectPrefs();
   organizationMenuOpen.value = false;
 }
-watch(() => store.accountScope, () => { loadSidebarObjectPrefs(); loadSidebarSections(); loadSectionDisplayModes(); loadShortcutFilterPrefs(); void loadSidebarPreferences(); });
+watch(() => store.accountScope, () => { loadSidebarObjectPrefs(); loadSidebarSections(); loadSectionDisplayModes(); void loadSidebarPreferences(); });
 function openOrganizationDialog(kind, item = null, overrides = {}) {
   const defaults = { list: { color: "#2563eb", icon: "", groupId: "" }, tag: { color: "#2f746f", parentId: "" }, filter: {}, group: { color: "#64748b", icon: "📁" } }[kind] || {};
   const filter = kind === "filter" ? { mode: item?.mode || "BASIC", listIds: [...(item?.listIds || [])], tagIds: [...(item?.tagIds || [])], tagMode: item?.tagMode || (item?.tagIds?.length ? "SELECTED" : "ALL"), taskTypes: [...(item?.taskTypes || [])], priorities: [...(item?.priorities || [])], status: item?.status || "OPEN", dueRange: item?.dueRange || "ANY", dueStart: item?.dueStart || "", dueEnd: item?.dueEnd || "", keyword: item?.keyword || "", includeSubtasks: item?.includeSubtasks !== false, matchAllTags: Boolean(item?.matchAllTags), pinned: isPinnedObject("filter", item), rules: item?.rules || null, advanced: advancedFilterConditionsFromRules(item?.rules), previewed: false } : {};
@@ -3409,7 +3361,6 @@ onMounted(() => {
   loadSidebarVisibility();
   loadSidebarWidth();
   loadSidebarObjectPrefs();
-  loadShortcutFilterPrefs();
   loadDetailWidth();
   loadViewPreferences();
   loadSidebarSections();

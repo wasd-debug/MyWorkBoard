@@ -7,6 +7,7 @@ const settingsView = await readFile(new URL('./TaskSettingsView.vue', import.met
 const dataPanel = await readFile(new URL('../components/tasks/TaskDataPanel.vue', import.meta.url), 'utf8')
 const inboxView = await readFile(new URL('./TasksInboxView.vue', import.meta.url), 'utf8')
 const workspaceView = await readFile(new URL('./TaskWorkspaceView.vue', import.meta.url), 'utf8')
+const taskFilterRuleEditor = await readFile(new URL('../components/tasks/TaskFilterRuleEditor.vue', import.meta.url), 'utf8')
 const calendarView = await readFile(new URL('./TasksCalendarView.vue', import.meta.url), 'utf8')
 const router = await readFile(new URL('../router/index.js', import.meta.url), 'utf8')
 const client = await readFile(new URL('../../packages/api-client/src/index.js', import.meta.url), 'utf8')
@@ -122,7 +123,7 @@ test('task detail collaboration and slash insertion stay in the replacement work
 
 test('task inbox mirrors ticktick shortcut navigation and mixed efficiency groups', () => {
   assert.match(router, /path: '\/tasks\/shortcut\/:shortcut'/)
-  for (const label of ['指派给我', '摘要', '归档', '本周', '下周', '无日期任务', '无标签']) assert.match(inboxView, new RegExp(label))
+  for (const label of ['指派给我', '摘要', '归档']) assert.match(inboxView, new RegExp(label))
   assert.match(inboxView, /task-week-nav/)
   assert.match(inboxView, /todayCountdowns/)
   assert.match(inboxView, /todayHabits/)
@@ -193,19 +194,24 @@ test('task sidebar sections reorder independently and task rows open the detail 
   assert.match(router, /path: '\/tasks\/filter\/:publicId'[\s\S]*TaskWorkspaceView/)
 })
 
-test('replacement task sidebar matches the captured navigation and shortcut filters', () => {
-  for (const path of ['/tasks/shortcut/assigned', '/tasks/shortcut/summary', '/tasks/shortcut/archived', '/tasks/shortcut/no-tag']) {
+test('task sidebar keeps supported system shortcuts without built-in custom filters', () => {
+  for (const path of ['/tasks/shortcut/assigned', '/tasks/shortcut/summary', '/tasks/shortcut/archived']) {
     assert.ok(workspaceView.includes(path), `missing task sidebar route ${path}`)
   }
-  for (const label of ['指派给我', '摘要', '归档', '无标签', '系统集合', '任务状态', '迷你日历']) assert.ok(workspaceView.includes(label))
+  for (const label of ['指派给我', '摘要', '归档', '系统集合', '任务状态', '迷你日历']) assert.ok(workspaceView.includes(label))
+  for (const shortcut of ['this-week', 'next-week', 'no-date', 'no-tag']) {
+    assert.doesNotMatch(workspaceView, new RegExp(`shortcut === [\"']${shortcut}[\"']`))
+    assert.doesNotMatch(workspaceView, new RegExp(`shortcut:${shortcut}`))
+  }
   assert.match(workspaceView, /shortcut === "assigned"\s*\? false/)
   assert.match(workspaceView, /shortcut === "summary"[\s\S]*tomorrow/)
   assert.match(workspaceView, /shortcut === "archived"[\s\S]*archivedIds\.has/)
   assert.match(workspaceView, /allSidebarSystemViews = computed\(\(\) => \[\.\.\.primaryViews, completedView, abandonedView, trashView, archivedView\]/)
-  assert.match(workspaceView, /shortcutViews = \[[\s\S]*publicId: "shortcut:this-week"[\s\S]*publicId: "shortcut:no-tag"/)
-  assert.match(workspaceView, /openOrganizationMenu\('quick-filter', item, \$event\)/)
-  assert.match(workspaceView, /task_sidebar_custom_shortcuts:/)
-  assert.match(workspaceView, /hiddenShortcutViews[\s\S]*显示“\{\{ item\.label \}\}”/)
+  assert.doesNotMatch(workspaceView, /quick-filter|shortcutViews|task_sidebar_custom_shortcuts/)
+  assert.match(router, /path: '\/tasks\/shortcut\/no-date', redirect: '\/tasks\/all'/)
+  assert.match(router, /path: '\/tasks\/shortcut\/no-tag', redirect: '\/tasks\/all'/)
+  assert.match(router, /path: '\/tasks\/shortcut\/this-week', redirect: '\/tasks\/all'/)
+  assert.match(router, /path: '\/tasks\/shortcut\/next-week', redirect: '\/tasks\/all'/)
 })
 
 test('completed, abandoned, and trash system views expose only their supported organization actions', () => {
@@ -299,7 +305,7 @@ test('mini calendar defaults to the selected week and expands into a marked mont
 test('task sidebar organization persists account preferences and exposes pin, list-copy, and filter preview actions', async () => {
   const sidebarCounts = await readFile(new URL('./taskSidebarCounts.js', import.meta.url), 'utf8')
   assert.match(workspaceView, /function displayOptionsFor\(/)
-  for (const shortcut of ['this-week', 'next-week', 'no-date', 'no-tag']) assert.match(sidebarCounts, new RegExp(`"${shortcut}"`))
+  for (const shortcut of ['this-week', 'next-week', 'no-date', 'no-tag']) assert.doesNotMatch(sidebarCounts, new RegExp(`"${shortcut}"`))
   assert.match(workspaceView, /const sidebarTaskCounts = computed\(\(\) => buildTaskSidebarCounts\(/)
   assert.match(workspaceView, /function itemCount\(key\) \{\s*return sidebarTaskCounts\.value\.counts\[key\] \?\? "";/)
   assert.match(workspaceView, /function setDisplayOption\(/)
@@ -399,10 +405,18 @@ test('task filter editor matches the basic and advanced filter workflow', () => 
   assert.match(workspaceView, /function previewFilterDraft\(\)[\s\S]*organizationDialog\.filter\.previewed = true/)
   assert.match(workspaceView, /class="clone-filter-preview-screen"[\s\S]*filterPreviewGroups/)
   assert.match(workspaceView, /organizationDialog\.filter\.previewed = false[\s\S]*保存[\s\S]*:disabled="!filterDraftValid"/)
+  assert.match(workspaceView, /clone-filter-preview-actions[\s\S]*<Save :size="14" \/>保存[\s\S]*clone-filter-preview-button[\s\S]*<Save :size="14" \/>保存/)
   assert.match(workspaceView, /filterDraftValid = computed\(\(\) => \{[\s\S]*advancedFilterConditionsValid\(organizationDialog\.filter\.advanced\.conditions, organizationDialog\.filter\.advanced\.joins\)[\s\S]*organizationDialog\.filter\.dueEnd > organizationDialog\.filter\.dueStart/)
   assert.match(workspaceView, /function toggleFilterTag\([\s\S]*if \(!organizationDialog\.filter\.tagIds\.length\) organizationDialog\.filter\.tagMode = "ALL"/)
   assert.match(workspaceView, /function filterPayload\(item, overrides = \{\}, useDraft = false\)[\s\S]*buildAdvancedFilterRules\(source\.advanced\.conditions, source\.advanced\.joins\)/)
   assert.match(workspaceView, /filterPayload\(item, \{ name, sortOrder: item\?\.sortOrder \?\? filters\.value\.length \}, true\)/)
+  assert.match(taskFilterRuleEditor, /advanced-filter-empty \{ display: grid; grid-template-columns: minmax\(0, 1fr\) 90px minmax\(0, 1fr\) 38px/)
+  assert.match(taskFilterRuleEditor, /function addCondition\(event\)[\s\S]*getBoundingClientRect\(\)[\s\S]*pickerPosition\.value/)
+  assert.match(taskFilterRuleEditor, /<Teleport to="body"><div v-if="menuOpen" ref="pickerMenu" class="advanced-filter-picker"/)
+  assert.match(taskFilterRuleEditor, /function handleOutsidePointer\(event\)[\s\S]*pickerMenu\.value\?\.contains\(event\.target\)[\s\S]*addButton\.value\?\.contains\(event\.target\)/)
+  assert.match(taskFilterRuleEditor, /document\.addEventListener\('pointerdown', handleOutsidePointer\)/)
+  assert.match(taskFilterRuleEditor, /advanced-filter-picker \{ position: fixed; z-index: 202;/)
+  assert.match(taskFilterRuleEditor, /@media \(max-width: 600px\)[\s\S]*advanced-filter-empty > select:nth-of-type\(2\) \{ display: none; \}/)
 })
 
 test('task navigation, collapsible groups and sortable rows expose motion and reduced-motion behavior', () => {

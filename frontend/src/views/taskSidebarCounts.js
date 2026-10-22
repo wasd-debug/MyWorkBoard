@@ -23,8 +23,7 @@ export function buildTaskSidebarCounts(tasks, archivedListIds, inboxId, groupByL
   }
   const counts = Object.fromEntries([
     "all", "today", "tomorrow", "next7", "assigned", "inbox", "summary",
-    "completed", "abandoned", "trash", "archived", "this-week", "next-week",
-    "no-date", "no-tag",
+    "completed", "abandoned", "trash", "archived",
   ].map(key => [key, 0]));
   const openByList = new Map();
   const openByGroup = new Map();
@@ -33,9 +32,6 @@ export function buildTaskSidebarCounts(tasks, archivedListIds, inboxId, groupByL
   const archivedIds = new Set(archivedListIds);
   const today = startOfDay(now);
   const tomorrow = addDays(today, 1);
-  const weekStart = addDays(today, -((today.getDay() + 6) % 7));
-  const nextWeekStart = addDays(weekStart, 7);
-  const nextNextWeekStart = addDays(nextWeekStart, 7);
 
   for (const task of tasks) {
     if (task.deleted) {
@@ -62,12 +58,7 @@ export function buildTaskSidebarCounts(tasks, archivedListIds, inboxId, groupByL
       if (inRange(task.dueAt, today, tomorrow)) counts.today += 1;
       if (inRange(task.dueAt, tomorrow, addDays(tomorrow, 1))) counts.tomorrow += 1;
       if (inRange(task.dueAt, today, addDays(today, 8))) counts.next7 += 1;
-      if (inRange(task.dueAt, weekStart, nextWeekStart)) counts["this-week"] += 1;
-      if (inRange(task.dueAt, nextWeekStart, nextNextWeekStart)) counts["next-week"] += 1;
-    } else {
-      counts["no-date"] += 1;
     }
-    if (!(task.tagIds || []).length) counts["no-tag"] += 1;
     if (task.listId === inboxId) counts.inbox += 1;
   }
 
