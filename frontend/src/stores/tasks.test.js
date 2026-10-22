@@ -259,11 +259,16 @@ test('list reordering and folder assignment hydrate the local projection once', 
   const hydrate = store.hydrate.bind(store)
   store.hydrate = async () => { hydrationCount += 1; await hydrate() }
 
-  await store.reorderLists([
+  const reordering = store.reorderLists([
     { ...store.lists.find(item => item.publicId === third.id), sortOrder: 0, groupId: 'folder-a' },
     { ...store.lists.find(item => item.publicId === first.id), sortOrder: 1 },
     { ...store.lists.find(item => item.publicId === second.id), sortOrder: 2 }
   ], { listId: third.id, groupId: 'folder-a' })
+
+  assert.equal(store.lists.find(item => item.publicId === third.id).groupId, 'folder-a')
+  assert.equal(store.lists.find(item => item.publicId === third.id).sortOrder, 0)
+  assert.equal(store.lists.find(item => item.publicId === first.id).sortOrder, 1)
+  await reordering
 
   assert.equal(hydrationCount, 1)
   assert.equal(store.lists.find(item => item.publicId === third.id).groupId, 'folder-a')

@@ -426,23 +426,36 @@ export const useTasksStore = defineStore('tasks', {
       const epoch = sessionEpoch
       const scoped = engine
       const items = orderedLists.filter(item => this.lists.some(list => list.publicId === item.publicId))
+      const originalById = new Map(this.lists.map(list => [list.publicId, list]))
+      const itemById = new Map(items.map(item => [item.publicId, item]))
+      const assignmentGroupId = assignment?.groupId || null
+      this.lists = this.lists.map(list => {
+        const reordered = itemById.get(list.publicId)
+        const assigned = assignment?.listId === list.publicId
+        if (!reordered && !assigned) return list
+        return {
+          ...list,
+          ...(reordered ? { sortOrder: reordered.sortOrder } : {}),
+          ...(assigned ? { groupId: assignmentGroupId } : {})
+        }
+      })
       if (assignment) {
         const assignments = await readGroupAssignments(scoped)
         const next = [...assignments.filter(value => value.listId !== assignment.listId), {
           listId: assignment.listId,
-          groupId: assignment.groupId || null
+          groupId: assignmentGroupId
         }]
         await writeGroupAssignments(next, scoped)
         const current = this.lists.find(value => value.publicId === assignment.listId)
         if (current) await scoped.put('task-list', {
           ...current,
           id: assignment.listId,
-          groupId: assignment.groupId || null
+          groupId: assignmentGroupId
         }, { bookId: SCOPE, recordOp: false })
       }
       const pendingOperations = await scoped.pendingOperations(SCOPE)
       await Promise.all(items.map(item => {
-        const current = this.lists.find(value => value.publicId === item.publicId)
+        const current = originalById.get(item.publicId)
         if (!current) return Promise.resolve()
         if (Number(current.sortOrder || 0) === Number(item.sortOrder || 0)
           && (current.groupId || null) === (item.groupId || null)) return Promise.resolve()
