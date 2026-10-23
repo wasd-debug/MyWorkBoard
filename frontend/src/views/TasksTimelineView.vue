@@ -1,6 +1,6 @@
 <template>
   <section class="timeline-page">
-    <header class="timeline-head">
+    <header v-if="!embedded" class="timeline-head">
       <div><p class="eyebrow">TASKS · TIMELINE</p><h1>时间线 / 甘特</h1></div>
       <div class="timeline-controls">
         <label>分组<select v-model="groupBy" aria-label="时间线分组"><option value="none">无</option><option value="list">清单</option><option value="tag">标签</option><option value="priority">优先级</option></select></label>
@@ -30,7 +30,8 @@
               <div class="timeline-today-line" :style="todayLineStyle"></div>
               <span v-if="intersectsRange(task)" class="timeline-bar" :class="[`priority-${String(task.priority).toLowerCase()}`, { milestone: isMilestone(task) }]" :style="barStyle(task)" :title="task.title"></span>
             </div>
-            <RouterLink :to="`/tasks/list/${task.listId}`">打开任务列表</RouterLink>
+            <button v-if="embedded" type="button" class="timeline-open-task" @click="emit('select-task', task)">详情</button>
+            <RouterLink v-else :to="`/tasks/list/${task.listId}`">打开任务列表</RouterLink>
           </div>
         </template>
       </div>
@@ -46,6 +47,8 @@ import { useTasksStore } from '../stores/tasks.js'
 import { groupTaskItems } from './taskList.js'
 
 const store = useTasksStore()
+const props = defineProps({ embedded: { type: Boolean, default: false }, tasks: { type: Array, default: null } })
+const emit = defineEmits(['select-task'])
 const densityOptions = [{ value: 'day', label: '日' }, { value: 'week', label: '周' }, { value: 'month', label: '月' }]
 const density = ref('week')
 const groupBy = ref('list')
@@ -93,7 +96,7 @@ const rangeLabel = computed(() => {
 const gridStyle = computed(() => ({ '--timeline-label-width': '210px', '--timeline-tick-width': density.value === 'day' ? '54px' : density.value === 'week' ? '104px' : '142px', '--timeline-column-count': ticks.value.length }))
 const todayIndex = computed(() => ticks.value.findIndex(tick => tick.today || sameDay(tick.date, new Date())))
 const todayLineStyle = computed(() => ({ left: `${Math.max(0, todayIndex.value) * 100 / ticks.value.length}%` }))
-const datedTasks = computed(() => store.tasks.filter(task => !task.deleted && task.status !== 'ABANDONED' && (task.startAt || task.dueAt)))
+const datedTasks = computed(() => (props.tasks || store.tasks).filter(task => !task.deleted && task.status !== 'ABANDONED' && (task.startAt || task.dueAt)))
 const groups = computed(() => {
   const rows = sortBy.value === 'time'
     ? [...datedTasks.value].sort((a, b) => new Date(a.startAt || a.dueAt) - new Date(b.startAt || b.dueAt))
@@ -183,5 +186,6 @@ onMounted(() => store.init())
 .timeline-bar.priority-high { background: #dc2626; }.timeline-bar.priority-medium { background: #d97706; }.timeline-bar.priority-low { background: #2563eb; }
 .timeline-row>a { align-self: center; margin: 0 10px; color: var(--primary); font-size: 11px; white-space: nowrap; }
 .timeline-empty { margin: 0; color: var(--muted); font-size: 13px; }
+.timeline-open-task { align-self: center; margin: 0 10px; border: 0; background: transparent; color: var(--primary); font-size: 11px; white-space: nowrap; cursor: pointer; }
 @media(max-width:700px) { .timeline-controls { width: 100%; }.timeline-row,.timeline-axis-row { grid-template-columns: 160px minmax(0,1fr) auto; }.timeline-grid { --timeline-label-width:160px!important; }.timeline-controls label { flex: 1; }.timeline-period { justify-content: flex-start; } }
 </style>

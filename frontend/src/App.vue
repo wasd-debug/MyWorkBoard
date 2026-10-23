@@ -26,7 +26,7 @@
       </header>
       <main class="app-main">
         <div v-if="showBasis" class="page-toolbar"><div class="basis-seg" aria-label="工资口径"><button :class="{ on: basis === 'pre' }" type="button" @click="setBasis('pre')">税前</button><button :class="{ on: basis === 'post' }" type="button" @click="setBasis('post')">税后</button></div></div>
-        <div class="page-content"><router-view v-slot="{ Component }"><transition name="page" mode="out-in"><component :is="Component" :key="route.fullPath" /></transition></router-view></div>
+        <div class="page-content"><router-view v-slot="{ Component }"><transition name="page" mode="out-in"><component :is="Component" :key="routerViewKey" /></transition></router-view></div>
       </main>
       <BottomNav v-if="!isHome && !isExternalFlow" />
       <FloatingAgentAssistant v-if="!isHome && store.authUser && !store.offlineSession" />
@@ -60,6 +60,8 @@ const focus = useTaskFocusStore()
 const tasks = useTasksStore()
 const route = useRoute()
 const isHome = computed(() => route.path === '/')
+const taskWorkspaceRoutes = new Set(['tasks-inbox', 'tasks-today', 'tasks-tomorrow', 'tasks-next7', 'tasks-board', 'tasks-timeline', 'tasks-filter', 'tasks-shortcut', 'tasks-all', 'tasks-completed', 'tasks-abandoned', 'tasks-trash', 'tasks-list', 'tasks-group', 'tasks-tag'])
+const routerViewKey = computed(() => taskWorkspaceRoutes.has(route.name) ? route.path : route.fullPath)
 const navigationLoading = ref(false)
 let navigationFinishTimer
 let navigationSafetyTimer
@@ -68,8 +70,8 @@ const isLedger = computed(() => route.path.startsWith('/ledger'))
 const isTasks = computed(() => route.path.startsWith('/tasks'))
 const isExternalFlow = computed(() => route.path === '/oauth/consent' || route.path === '/mcp/actions/confirm')
 const moduleLabel = computed(() => route.path === '/calendar' ? '日历' : isLedger.value ? '账本' : isTasks.value ? '任务' : route.path.startsWith('/approvals') ? '审批中心' : route.path === '/settings' ? '设置' : isExternalFlow.value ? '外部授权' : '工时')
-const moduleNav = computed(() => route.path === '/calendar' ? [] : isLedger.value ? ledgerNavigation : isTasks.value ? taskNavigation : route.path === '/settings' || route.path.startsWith('/approvals') || isExternalFlow.value ? [] : worktimeNavigation)
-function isNavActive(item) { return navigationItemIsActive(route, item) }
+const moduleNav = computed(() => route.path === '/calendar' ? [] : isLedger.value ? ledgerNavigation : isTasks.value ? taskNavigation.map(item => item.view ? { ...item, to: { path: route.path, query: { ...route.query, workspaceView: item.view } } } : item) : route.path === '/settings' || route.path.startsWith('/approvals') || isExternalFlow.value ? [] : worktimeNavigation)
+function isNavActive(item) { if (item.view) return route.path === item.to.path && route.query.workspaceView === item.view; return item.key === 'task' && route.query.workspaceView ? false : navigationItemIsActive(route, item) }
 function onGlobalKeydown(event) {
   if (!route.path.startsWith('/tasks') || event.defaultPrevented || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target?.tagName)) return
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); tasks.undoLast().catch(() => {}) }
@@ -79,7 +81,7 @@ function onGlobalKeydown(event) {
 function clearNavigationTimers() { window.clearTimeout(navigationFinishTimer); window.clearTimeout(navigationSafetyTimer) }
 function finishNavigationLoading(delay = 0) { clearNavigationTimers(); if (delay) navigationFinishTimer = window.setTimeout(() => { navigationLoading.value = false }, delay); else navigationLoading.value = false }
 function startNavigationLoading() { clearNavigationTimers(); navigationLoading.value = true; navigationSafetyTimer = window.setTimeout(() => { navigationLoading.value = false }, 5000) }
-const removeBeforeGuard = router.beforeEach((to, from) => { if (to.fullPath !== from.fullPath) startNavigationLoading() })
+const removeBeforeGuard = router.beforeEach((to, from) => { if (to.path !== from.path) startNavigationLoading() })
 const removeAfterGuard = router.afterEach(() => finishNavigationLoading(80))
 const removeErrorGuard = router.onError(() => finishNavigationLoading())
 const basis = computed(() => worktimeStore.settings.basis)

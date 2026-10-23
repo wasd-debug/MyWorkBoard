@@ -5,11 +5,14 @@
     :class="{
       'sidebar-hidden': sidebarHidden,
       'detail-open': Boolean(selectedTask),
+      'workspace-overlay-view': activeWorkspaceView !== 'LIST',
+      'workspace-detail-open': activeWorkspaceView !== 'LIST' && Boolean(selectedTask || editorOpen),
     }"
     @touchstart.passive="startSidebarSwipe"
     @touchend.passive="finishSidebarSwipe"
   >
     <button v-if="!sidebarHidden && isMobileSidebar" class="clone-sidebar-backdrop" type="button" aria-label="关闭任务侧栏" @click="sidebarHidden = true"></button>
+    <button v-if="selectedIds.size && isMobileSidebar" class="clone-batch-backdrop" type="button" aria-label="关闭批量操作" @click="clearBatchSelection"></button>
     <aside class="clone-task-sidebar" :class="{ 'is-editing': sidebarEditing }" aria-label="任务导航" @click="handleSidebarClick" @dragover.capture="handleOrganizationDragOver" @drop.capture.prevent.stop="handleSidebarDrop" @dragend.capture="endOrganizationDrag">
       <div class="clone-sidebar-scroll">
       <div class="clone-sidebar-head">
@@ -141,6 +144,14 @@
       <button v-if="!isMobileSidebar && !sidebarHidden" class="clone-sidebar-resize" type="button" role="separator" aria-label="调整任务侧栏宽度" aria-orientation="vertical" :aria-valuemin="184" :aria-valuemax="420" :aria-valuenow="sidebarWidth" @pointerdown="startSidebarResize" @keydown="resizeSidebarByKey"></button>
     </aside>
 
+    <button
+      v-if="activeWorkspaceView !== 'LIST' && (selectedTask || editorOpen)"
+      class="clone-workspace-detail-backdrop"
+      type="button"
+      aria-label="关闭任务详情"
+      @click="closeDetail"
+    ></button>
+
     <main class="clone-task-main" :class="{ 'quick-action-open': Boolean(quickAction) }" @scroll.passive="loadMoreCompletedOnScroll">
       <header class="clone-task-header">
         <div class="clone-title-block">
@@ -220,7 +231,13 @@
         <button type="button" role="menuitemcheckbox" :aria-checked="showDescription" @click="showDescription = !showDescription; listOptionsOpen = false"><Check v-if="showDescription" :size="14" /><span v-else class="clone-menu-check-spacer"></span>显示详细</button>
         <button type="button" role="menuitemcheckbox" :aria-checked="showChecklist" @click="showChecklist = !showChecklist; listOptionsOpen = false"><Check v-if="showChecklist" :size="14" /><span v-else class="clone-menu-check-spacer"></span>显示检查事项</button>
         <button type="button" @click="openDisplaySettings"><SlidersHorizontal :size="14" />显示设置</button>
-        <button type="button" @click="printTaskList"><Printer :size="14" />打印</button>
+        <div class="clone-print-submenu" @pointerenter="printOptionsOpen = true" @pointerleave="printOptionsOpen = false">
+          <button type="button" class="clone-print-submenu-trigger" :aria-expanded="printOptionsOpen" @click="printOptionsOpen = !printOptionsOpen"><Printer :size="14" /><span>打印</span><ChevronRight :size="14" /></button>
+          <div v-if="printOptionsOpen" class="clone-print-submenu-options" role="menu" aria-label="打印选项" @pointerdown.stop @click.stop>
+            <button type="button" role="menuitem" @click="printTaskList('TITLE')">打印标题</button>
+            <button type="button" role="menuitem" @click="printTaskList('CONTENT')">打印标题和内容</button>
+          </div>
+        </div>
       </div>
       <div class="clone-quick-add" :class="{ 'is-simple': quickInputMode === 'SIMPLE', 'is-collapsed': !quickAddExpanded }">
         <button v-if="!quickAddExpanded" type="button" class="clone-quick-add-collapsed" @click="expandQuickAdd"><Plus :size="17" /><span>添加任务至“{{ title === '今天' ? '收集箱' : title }}”</span></button>
@@ -358,18 +375,18 @@
                 : `${store.pending} 项待同步`
         }}
       </div>
-      <div class="clone-list-toolbar">
-        <button
-          type="button"
-          :class="{ active: batchMode }"
-          @click="
-            batchMode = !batchMode;
-            selectedIds.clear();
-          "
-        >
-        {{ batchMode ? "退出多选" : "多选" }}</button
-        ><button v-if="batchMode" type="button" @click="toggleAllSelected">{{ selectedIds.size === visibleTasks.length ? "取消全选" : "全选" }}</button><span>{{ visibleTasks.length }} 项任务</span>
+      <div v-if="activeWorkspaceView === 'LIST'" class="clone-list-toolbar"><span>{{ selectedIds.size ? `已选 ${selectedIds.size} 项` : `${visibleTasks.length} 项任务` }}</span></div>
+      <div v-if="activeWorkspaceView === 'KANBAN'" class="clone-inline-board" aria-label="任务看板">
+        <section v-for="group in groups" :key="group.key" class="clone-inline-board-column">
+          <header><strong>{{ group.label }}</strong><small>{{ group.tasks.length }}</small></header>
+          <button v-for="task in group.tasks" :key="task.publicId" type="button" class="clone-inline-board-card" :class="{ selected: selectedTask?.publicId === task.publicId }" @click="openTaskRow(task)">
+            <strong>{{ task.title }}</strong><span>{{ taskDateLabel(task) }}</span><small>{{ listName(task.listId) }}</small>
+          </button>
+          <p v-if="!group.tasks.length" class="clone-inline-board-empty">无任务</p>
+        </section>
       </div>
+      <TasksTimelineView v-else-if="activeWorkspaceView === 'TIMELINE'" embedded :tasks="visibleTasks" @select-task="openTaskRow" />
+      <template v-else>
       <section v-if="todayCountdowns.length" class="clone-efficiency-group clone-countdown-group">
         <button class="clone-group-heading" type="button" :aria-expanded="!collapsed.countdowns" @click="collapsed.countdowns = !collapsed.countdowns">
           <ChevronDown :size="16" :class="{ rotated: collapsed.countdowns }" /><strong>倒数纪念日</strong><span>{{ todayCountdowns.length }}</span>
@@ -412,6 +429,7 @@
                 checked: task.status === 'COMPLETED',
                 'is-note': isNoteTask(task),
                 multi: selectedIds.has(task.publicId),
+                'print-content': printMode === 'CONTENT',
                 dragging: dragged?.publicId === task.publicId,
                 'drag-over': dragOverTask?.publicId === task.publicId,
               }"
@@ -425,18 +443,7 @@
               @contextmenu.prevent="openContext(task, $event)"
             >
               <button
-                v-if="batchMode"
-                type="button"
-                class="clone-select-box"
-                :aria-label="`选择${task.title}`"
-                @click="toggleSelected(task)"
-              >
-                <Check
-                  v-if="selectedIds.has(task.publicId)"
-                  :size="13"
-                /></button
-              ><button
-                v-else-if="!isNoteTask(task)"
+                v-if="!isNoteTask(task)"
                 type="button"
                 class="clone-check"
                 :aria-label="
@@ -444,16 +451,15 @@
                     ? `重新打开${task.title}`
                     : `完成${task.title}`
                 "
-                @click="toggleComplete(task)"
+                @click="handleTaskCheckClick(task, $event)"
               >
                 <Check v-if="task.status === 'COMPLETED'" :size="14" /></button
               ><GripVertical class="clone-drag-handle" :size="15" /><button
                 type="button"
                 class="clone-task-content"
-                @click="batchMode ? toggleSelected(task) : openTaskRow(task)"
+                @click="handleTaskContentClick(task, $event)"
               >
-                <input v-if="inlineRowTitleTaskId === task.publicId" v-model="inlineRowTitleDraft" type="text" maxlength="500" :aria-label="`编辑${task.title}标题`" @click.stop @keydown.enter.prevent="saveInlineRowTitle(task)" @keydown.esc.prevent="cancelInlineRowTitle" @blur="saveInlineRowTitle(task)" />
-                <strong v-else>{{ task.title }}</strong
+                <template v-if="inlineRowTitleTaskId === task.publicId"><input v-model="inlineRowTitleDraft" type="text" maxlength="500" :aria-label="`编辑${task.title}标题`" @click.stop @keydown.enter.prevent="saveInlineRowTitle(task)" @keydown.esc.prevent="cancelInlineRowTitle" @blur="saveInlineRowTitle(task)" /></template><template v-else><span class="clone-print-task-copy"><strong>{{ task.title }}</strong><small v-if="task.description" class="clone-print-description">{{ printDescription(task.description) }}</small></span></template
                 ></button
               ><div class="clone-task-metadata">
                 <span v-if="showTags && task.tagIds?.length" class="clone-task-tags" :aria-label="taskTagSummary(task)">
@@ -473,7 +479,7 @@
                 :data-priority="task.priority"
                 >{{ priorityLabel(task.priority) }}</em
               ><button
-                v-if="!batchMode"
+                v-if="!selectedIds.size"
                 type="button"
                 class="clone-row-more"
                 :aria-label="`更多操作：${task.title}`"
@@ -500,8 +506,8 @@
           </button>
           <div class="clone-collapse-panel" :class="{ 'is-collapsed': collapsed.completed }" :aria-hidden="Boolean(collapsed.completed)">
             <TransitionGroup name="clone-sort" tag="div" class="clone-task-rows clone-collapse-inner" :inert="Boolean(collapsed.completed)">
-              <article v-for="task in completedPreviewTasks" :key="task.publicId" class="clone-task-row checked" :class="{ selected: selectedTask?.publicId === task.publicId, 'is-note': isNoteTask(task) }" :data-priority="task.priority" :style="{ '--task-group-color': groupColor(task) }" @contextmenu.prevent="openContext(task, $event)">
-                <button v-if="!isNoteTask(task)" type="button" class="clone-check" :aria-label="`重新打开${task.title}`" @click="toggleComplete(task)"><Check :size="14" /></button><GripVertical class="clone-drag-handle" :size="15" /><button type="button" class="clone-task-content" @click="openTaskRow(task)"><strong>{{ task.title }}</strong></button>
+              <article v-for="task in completedPreviewTasks" :key="task.publicId" class="clone-task-row checked" :class="{ selected: selectedTask?.publicId === task.publicId, 'is-note': isNoteTask(task), multi: selectedIds.has(task.publicId), 'print-content': printMode === 'CONTENT' }" :data-priority="task.priority" :style="{ '--task-group-color': groupColor(task) }" @contextmenu.prevent="openContext(task, $event)">
+                <button v-if="!isNoteTask(task)" type="button" class="clone-check" :aria-label="`重新打开${task.title}`" @click="handleTaskCheckClick(task, $event)"><Check :size="14" /></button><GripVertical class="clone-drag-handle" :size="15" /><button type="button" class="clone-task-content" @click="handleTaskContentClick(task, $event)"><span class="clone-print-task-copy"><strong>{{ task.title }}</strong><small v-if="task.description" class="clone-print-description">{{ printDescription(task.description) }}</small></span></button>
                 <div class="clone-task-metadata"><span v-if="showTags && task.tagIds?.length" class="clone-task-tags" :aria-label="taskTagSummary(task)"><RouterLink v-for="tagId in visibleTaskTagIds(task)" :key="tagId" :to="`/tasks/tag/${tagId}`" class="clone-task-tag" :style="taskTagStyle(tagId)" @click.stop>{{ tagName(tagId) }}</RouterLink></span><button v-if="task.dueAt" type="button" class="clone-task-date" @click.stop="openRowDateEditor(task)"><CalendarClock :size="14" />{{ taskDateLabel(task) }}</button><button v-if="showListLink" type="button" class="clone-task-list-link" :title="listName(task.listId)" @click.stop="navigateToTaskList(task)"><span class="clone-task-list-dot" :style="{ backgroundColor: taskListColor(task) }"></span>{{ listName(task.listId) }}</button></div>
               </article>
             </TransitionGroup>
@@ -509,12 +515,7 @@
           </div>
         </section>
       </div>
-      <div v-if="batchMode && selectedIds.size" class="clone-batch-bar">
-        <strong>已选 {{ selectedIds.size }} 项</strong
-        ><button type="button" @click="batchComplete">完成</button
-        ><button type="button" class="danger" @click="batchDelete">删除</button
-        ><button type="button" @click="selectedIds.clear()">取消</button>
-      </div>
+      </template>
     </main>
 
     <div
@@ -533,9 +534,29 @@
 
     <aside
       class="clone-detail-pane"
-      :class="{ 'is-empty': !selectedTask && !editorOpen }"
-      aria-label="任务详情"
+      :class="{ 'is-empty': !selectedTask && !editorOpen && !selectedIds.size, 'is-batch': Boolean(selectedIds.size) }"
+      :aria-label="selectedIds.size ? '批量操作' : '任务详情'"
+      :role="selectedIds.size || (activeWorkspaceView !== 'LIST' && (selectedTask || editorOpen)) ? 'dialog' : undefined"
+      :aria-modal="selectedIds.size || (activeWorkspaceView !== 'LIST' && (selectedTask || editorOpen)) ? 'true' : undefined"
+      :aria-hidden="isMobileSidebar && !selectedIds.size ? 'true' : undefined"
     >
+      <section v-if="selectedIds.size" class="clone-batch-panel" aria-label="批量操作面板">
+        <header class="clone-batch-panel-head">
+          <div><button type="button" class="clone-batch-close" aria-label="关闭批量操作" @click="clearBatchSelection"><X :size="18" /></button><strong>已选择 <b>{{ selectedIds.size }}</b> 项</strong></div>
+          <button type="button" class="clone-batch-cancel" @click="clearBatchSelection">取消</button>
+        </header>
+        <div class="clone-batch-fields">
+          <label class="clone-batch-field"><CalendarClock :size="17" /><input v-model="batchDueAt" type="datetime-local" aria-label="批量设置日期" @input="batchDueClear = false" /><button v-if="batchDueAt" type="button" aria-label="选择清除日期" title="选择清除日期" @click="batchDueAt = ''; batchDueClear = true"><X :size="14" /></button><button type="button" class="clone-batch-apply" :disabled="!batchDueAt && !batchDueClear" @click="applyBatch('RESCHEDULE', { dueAt: batchDueClear ? '' : new Date(batchDueAt).toISOString() })">{{ batchDueClear ? '清除' : '应用' }}</button></label>
+          <label class="clone-batch-field"><Flag :size="17" /><select v-model="batchPriority" aria-label="批量设置优先级"><option v-for="option in priorityOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select><button type="button" class="clone-batch-apply" @click="applyBatch('PRIORITY', { priority: batchPriority })">应用</button></label>
+          <label class="clone-batch-field"><ListTodo :size="17" /><select v-model="batchListId" aria-label="批量移动到清单"><option value="">选择清单</option><option v-for="list in activeLists" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select><button type="button" class="clone-batch-apply" :disabled="!batchListId" @click="applyBatch('MOVE', { listId: batchListId })">应用</button></label>
+          <details class="clone-batch-tags"><summary><Tag :size="17" /><span>选择标签</span><small>{{ batchTagIds.length || '' }}</small></summary><div><label v-for="tag in sortedTags" :key="tag.publicId"><input v-model="batchTagIds" type="checkbox" :value="tag.publicId" />#{{ tag.name }}</label><button type="button" class="clone-batch-apply" :disabled="!batchTagIds.length" @click="applyBatch('TAGS', { tagIds: batchTagIds })">应用标签</button></div></details>
+        </div>
+        <div class="clone-batch-actions">
+          <button type="button" @click="applyBatch('COMPLETE')"><CheckSquare :size="20" /><span>完成</span></button>
+          <button type="button" class="danger" @click="batchDelete"><Trash2 :size="20" /><span>删除</span></button>
+        </div>
+      </section>
+      <template v-else>
       <header v-if="selectedTask || editorOpen" class="clone-detail-toolbar">
         <div class="clone-detail-toolbar-main">
           <button type="button" class="clone-detail-tool clone-detail-list-tool" aria-label="任务清单" @click="editorOpen ? null : openEdit(selectedTask)">
@@ -892,9 +913,11 @@
           <button type="button" @click="openEdit(selectedTask)"><span>持续时间</span><strong>{{ selectedTask.durationMinutes ? `${selectedTask.durationMinutes} 分钟` : '未设置' }}</strong></button>
           <button type="button" @click="openEdit(selectedTask)"><span>父任务</span><strong>{{ selectedTask.parentId ? taskName(selectedTask.parentId) : '无' }}</strong></button>
           <button type="button" @click="openEdit(selectedTask)"><span>全天</span><strong>{{ selectedTask.allDay ? '是' : '否' }}</strong></button>
+          <div class="clone-detail-property"><span>创建时间</span><strong>{{ formatCreatedAt(selectedTask.createdAt) }}</strong></div>
         </section>
         <button type="button" class="clone-detail-edit-fields" @click="openEdit(selectedTask)"><Pencil :size="14" />编辑更多字段</button>
       </div>
+      </template>
     </aside>
 
     <div v-if="context.open" class="clone-context-menu clone-task-row-menu" :style="{ left: `${context.x}px`, top: `${context.y}px` }" role="menu" @pointerdown.stop @click.stop>
@@ -1059,6 +1082,7 @@ import TaskRichTextEditor from "../components/tasks/TaskRichTextEditor.vue";
 import TaskFilterRuleEditor from "../components/tasks/TaskFilterRuleEditor.vue";
 import TaskColorPicker from "../components/TaskColorPicker.vue";
 import TaskOrganizationIcon from "../components/tasks/TaskOrganizationIcon.vue";
+import TasksTimelineView from "./TasksTimelineView.vue";
 import Dialog from "../components/ui/Dialog.vue";
 import { organizationIconCategories, searchOrganizationIcons } from "./taskOrganizationIcons.js";
 import { getListDropPlacement, moveItem, reorderListDrop } from "./taskSidebar.js";
@@ -1200,8 +1224,16 @@ const reminderOffsetModel = computed({ get: () => editorOpen.value ? draft.remin
 const remindLocalModel = computed({ get: () => editorOpen.value ? draft.remindLocal : quickReminder.remindLocal, set: (value) => { if (editorOpen.value) draft.remindLocal = value; else quickReminder.remindLocal = value; } });
 const dailyUntilDoneModel = computed({ get: () => editorOpen.value ? draft.dailyUntilDone : quickReminder.dailyUntilDone, set: (value) => { if (editorOpen.value) draft.dailyUntilDone = value; else quickReminder.dailyUntilDone = value; } });
 const priorityPopoverOpen = ref(false);
-const batchMode = ref(false);
 const selectedIds = reactive(new Set());
+const batchMode = computed(() => selectedIds.size > 0);
+const batchPriority = ref("NONE");
+const batchDueAt = ref("");
+const batchDueClear = ref(false);
+const batchListId = ref("");
+const batchTagIds = ref([]);
+const selectedTasks = computed(() => [...selectedIds].map(id => store.tasks.find(task => task.publicId === id)).filter(Boolean));
+const printOptionsOpen = ref(false);
+const printMode = ref("TITLE");
 const collapsed = reactive({
   overdue: false,
   today: false,
@@ -1308,7 +1340,8 @@ const workspaceViews = [
   { value: "KANBAN", label: "看板", icon: Columns3 },
   { value: "TIMELINE", label: "时间线", icon: GanttChart },
 ];
-const activeWorkspaceView = computed(() => route.name === "tasks-board" ? "KANBAN" : route.name === "tasks-timeline" ? "TIMELINE" : "LIST");
+const selectedWorkspaceView = ref(route.query.workspaceView === "KANBAN" ? "KANBAN" : route.query.workspaceView === "TIMELINE" ? "TIMELINE" : "LIST");
+const activeWorkspaceView = computed(() => selectedWorkspaceView.value);
 const noteLists = computed(() => store.lists.filter(item => !item.archived && item.objectType === "NOTE"));
 const quickSuggestionLabel = computed(() => ({ priority: "优先级候选", tag: "标签候选", list: "清单候选" })[quickSuggestion.value?.kind] || "候选");
 const quickSuggestionOptions = computed(() => {
@@ -1810,6 +1843,16 @@ function formatDate(value) {
     minute: "2-digit",
   }).format(new Date(value));
 }
+function formatCreatedAt(value) {
+  if (!value) return "未知";
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
 function listName(id) {
   const list = store.lists.find((item) => item.publicId === id);
   return list?.systemKey === "INBOX" ? "收集箱" : list?.name || "收集箱";
@@ -2125,6 +2168,7 @@ function closeContext() {
 function closeWorkspaceMenus() {
   moreOpen.value = false;
   listOptionsOpen.value = false;
+  printOptionsOpen.value = false;
   workspaceMenuSection.value = "";
 }
 function toggleWorkspaceMenu(menu) {
@@ -2308,19 +2352,23 @@ function clearRowDate(task) {
 }
 function switchWorkspaceView(view) {
   closeWorkspaceMenus();
-  if (view === "LIST") {
-    if (activeWorkspaceView.value !== "LIST") router.push("/tasks/all");
-  } else {
-    router.push(view === "KANBAN" ? "/tasks/board" : "/tasks/timeline");
-  }
+  selectedWorkspaceView.value = view;
+  const { workspaceView, ...query } = route.query;
+  if (view !== "LIST") query.workspaceView = view;
+  router.replace({ path: route.path, query });
 }
 function openDisplaySettings() {
   closeWorkspaceMenus();
   displaySettingsOpen.value = true;
 }
-function printTaskList() {
+function printTaskList(mode = "TITLE") {
+  printMode.value = mode;
+  printOptionsOpen.value = false;
   closeWorkspaceMenus();
-  window.print();
+  void nextTick(() => window.print());
+}
+function printDescription(value) {
+  return String(value || "").replace(/<[^>]*>/g, " ").replace(/[\n\r]+/g, " ").replace(/[#*_`~>-]/g, " ").replace(/\s+/g, " ").trim();
 }
 function beginInlineTitleEdit() {
   inlineTitleDraft.value = selectedTask.value?.title || "";
@@ -3120,10 +3168,34 @@ function toggleSelected(task) {
   selectedIds.has(task.publicId)
     ? selectedIds.delete(task.publicId)
     : selectedIds.add(task.publicId);
+  if (!selectedIds.size) resetBatchFields();
 }
-function toggleAllSelected() {
-  if (selectedIds.size === visibleTasks.value.length) selectedIds.clear();
-  else visibleTasks.value.forEach((task) => selectedIds.add(task.publicId));
+function resetBatchFields() {
+  batchDueAt.value = "";
+  batchDueClear.value = false;
+  batchPriority.value = "NONE";
+  batchListId.value = "";
+  batchTagIds.value = [];
+}
+function clearBatchSelection() {
+  selectedIds.clear();
+  resetBatchFields();
+}
+function handleTaskContentClick(task, event) {
+  if (event.metaKey || event.ctrlKey) {
+    event.preventDefault();
+    toggleSelected(task);
+    return;
+  }
+  openTaskRow(task);
+}
+function handleTaskCheckClick(task, event) {
+  if (event.metaKey || event.ctrlKey) {
+    event.preventDefault();
+    toggleSelected(task);
+    return;
+  }
+  toggleComplete(task);
 }
 function habitDone(habit) {
   const today = new Date().toISOString().slice(0, 10);
@@ -3134,25 +3206,22 @@ async function toggleHabitToday(habit) {
   await store.checkinHabit(habit, { date: new Date().toISOString().slice(0, 10), count: done ? 0 : 1, status: done ? "SKIP" : "DONE" });
 }
 async function batchComplete() {
-  await store.batchTasks(
-    [...selectedIds]
-      .map((id) => store.tasks.find((task) => task.publicId === id))
-      .filter(Boolean),
-    "COMPLETE",
-  );
-  selectedIds.clear();
-  batchMode.value = false;
+  await applyBatch("COMPLETE");
 }
 async function batchDelete() {
   if (!window.confirm(`删除选中的 ${selectedIds.size} 项任务？`)) return;
-  await store.batchTasks(
-    [...selectedIds]
-      .map((id) => store.tasks.find((task) => task.publicId === id))
-      .filter(Boolean),
-    "DELETE",
-  );
-  selectedIds.clear();
-  batchMode.value = false;
+  await applyBatch("DELETE");
+}
+async function applyBatch(action, values = {}) {
+  const targets = selectedTasks.value;
+  if (!targets.length) return;
+  try {
+    await store.batchTasks(targets, action, values);
+    if (action === "COMPLETE" || action === "DELETE") clearBatchSelection();
+    message.success(action === "COMPLETE" ? `已完成 ${targets.length} 项` : action === "DELETE" ? `已删除 ${targets.length} 项` : "批量修改已应用");
+  } catch (error) {
+    store.error = error?.response?.data?.detail || error?.message || "批量操作失败";
+  }
 }
 function startTaskDrag(task, event) {
   if (batchMode.value || sort.value !== "manual") return;
@@ -3980,8 +4049,9 @@ function onKeydown(event) {
     closeWorkspaceMenus();
     closeContext();
     organizationMenuOpen.value = false;
+    clearBatchSelection();
     if (window.matchMedia("(max-width: 900px)").matches) sidebarHidden.value = true;
-    if (editorOpen.value) closeDetail();
+    if (editorOpen.value || (activeWorkspaceView.value !== "LIST" && selectedTask.value)) closeDetail();
   }
   if (
     event.key.toLowerCase() === "n" &&
@@ -4077,7 +4147,33 @@ const SidebarSection = {
   overflow: hidden;
   transition: grid-template-columns 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
+.clone-task-shell.workspace-overlay-view {
+  grid-template-columns: var(--clone-sidebar-width, 248px) minmax(0, 1fr);
+}
+.clone-task-shell.workspace-overlay-view > .clone-detail-divider { display: none; }
+.clone-task-shell.workspace-overlay-view .clone-detail-pane.is-empty { display: none; }
+.clone-task-shell.workspace-overlay-view.workspace-detail-open .clone-detail-pane {
+  position: fixed;
+  z-index: 301;
+  top: 50%;
+  left: 50%;
+  width: min(620px, calc(100vw - 40px));
+  max-height: min(86vh, 860px);
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 20px 64px rgb(15 23 42 / 24%);
+}
+.clone-workspace-detail-backdrop {
+  position: fixed;
+  z-index: 300;
+  inset: 0;
+  border: 0;
+  background: rgb(15 23 42 / 22%);
+  cursor: default;
+}
 .clone-task-shell.sidebar-hidden { grid-template-columns: 0 minmax(420px, 1fr) 5px var(--clone-detail-width, 390px); }
+.clone-task-shell.workspace-overlay-view.sidebar-hidden { grid-template-columns: 0 minmax(0, 1fr); }
 .clone-task-shell.sidebar-hidden .clone-task-sidebar { align-items: center; gap: 0; padding: 0; border-right: 0; overflow: hidden; pointer-events: none; }
 .clone-task-shell.sidebar-hidden .clone-sidebar-head { display: flex; justify-content: center; width: 100%; padding: 0; }
 .clone-task-shell.sidebar-hidden .clone-sidebar-head strong { opacity: 0; }
@@ -4786,20 +4882,10 @@ const SidebarSection = {
   font-size: 12px;
 }
 .clone-list-toolbar { display: flex; }
-.clone-list-toolbar button {
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-}
-.clone-list-toolbar button.active {
-  color: var(--accent);
-  font-weight: 700;
-}
 .clone-task-groups {
   display: grid;
   max-width: none;
-  gap: 18px;
+  gap: 20px;
 }
 .clone-group-heading {
   display: flex;
@@ -4817,7 +4903,7 @@ const SidebarSection = {
   color: var(--muted);
   font-size: 12px;
 }
-.clone-completed-group { border-top: 1px solid var(--line); padding-top: 8px; }
+.clone-completed-group { border-top: 1px solid var(--line); padding-top: 0; }
 .clone-completed-more { display: block; margin: 8px auto 4px; padding: 6px 12px; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
 .clone-group-heading svg {
   transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
@@ -4865,14 +4951,12 @@ const SidebarSection = {
   height: 21px;
   place-items: center;
   border: 1.5px solid var(--line2);
-  border-radius: 50%;
+  border-radius: 6px;
   background: transparent;
   color: var(--accent);
   cursor: pointer;
 }
-.clone-select-box {
-  border-radius: 5px;
-}
+.clone-select-box { border-radius: 6px; }
 .clone-task-content {
   display: flex;
   align-items: center;
@@ -4885,6 +4969,8 @@ const SidebarSection = {
   text-align: left;
   cursor: pointer;
 }
+.clone-print-task-copy { display: grid; min-width: 0; gap: 3px; }
+.clone-print-description { display: none; overflow: hidden; color: var(--muted); font-size: 11px; font-weight: 400; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .clone-task-content strong {
   overflow: hidden;
   font-size: 14px;
@@ -4912,6 +4998,15 @@ const SidebarSection = {
 .clone-task-list-link { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 120px; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--ink2); font: inherit; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .clone-task-list-link:hover { color: var(--accent); }
 .clone-task-list-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; }
+.clone-inline-board { display: grid; grid-auto-columns: minmax(220px, 1fr); grid-auto-flow: column; align-items: start; gap: 12px; min-width: 0; overflow-x: auto; padding: 8px 2px 24px; }
+.clone-inline-board-column { display: grid; align-content: start; gap: 8px; min-width: 220px; max-height: 100%; }
+.clone-inline-board-column > header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; min-height: 38px; padding: 0 4px; background: var(--surface); }
+.clone-inline-board-column > header small { color: var(--muted); }
+.clone-inline-board-card { display: grid; gap: 7px; width: 100%; padding: 10px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
+.clone-inline-board-card:hover, .clone-inline-board-card.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, var(--card)); }
+.clone-inline-board-card strong { overflow-wrap: anywhere; font-size: 13px; font-weight: 550; }
+.clone-inline-board-card span, .clone-inline-board-card small, .clone-inline-board-empty { color: var(--muted); font-size: 11px; }
+.clone-inline-board-empty { margin: 0; padding: 8px 4px; }
 .clone-task-row em {
   font-style: normal;
   font-size: 11px;
@@ -4940,14 +5035,14 @@ const SidebarSection = {
 }
 .clone-empty-state strong { color: var(--ink2); font-size: 15px; font-weight: 600; }
 .clone-empty-state p { max-width: 340px; margin: 0; font-size: 12px; line-height: 1.6; text-align: center; }
-.clone-countdown-group { margin-top: 12px; }
-.clone-habit-group { margin-top: 18px; }
+.clone-countdown-group { margin-top: 20px; }
+.clone-habit-group { margin-top: 0; }
 .clone-efficiency-rows { border-top: 1px solid var(--line); }
-.clone-efficiency-row { display: flex; align-items: center; gap: 9px; min-height: 42px; padding: 0 8px; border-bottom: 1px solid var(--line); border-left: 3px solid var(--efficiency-color, #22c55e); }
+.clone-efficiency-row { display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 0 10px; border-bottom: 1px solid var(--line); border-left: 3px solid var(--efficiency-color, #22c55e); }
 .clone-efficiency-row strong { min-width: 0; flex: 1; overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .clone-efficiency-icon { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 50%; background: var(--accent-soft); font-size: 13px; }
 .clone-efficiency-meta { color: var(--muted); font-size: 11px; }
-.clone-efficiency-check { display: grid; width: 21px; height: 21px; place-items: center; border: 1.5px solid var(--line2); border-radius: 50%; background: transparent; color: var(--accent); cursor: pointer; }
+.clone-efficiency-check { display: grid; width: 21px; height: 21px; place-items: center; border: 1.5px solid var(--line2); border-radius: 6px; background: transparent; color: var(--accent); cursor: pointer; }
 .clone-efficiency-check.checked { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast, #fff); }
 .countdown-row { --efficiency-color: #f59e0b; }
 .clone-detail-empty {
@@ -4992,7 +5087,7 @@ const SidebarSection = {
   top: 118px;
   right: 24px;
 }
-.clone-view-menu { width: 252px; max-height: min(74vh, 620px); overflow: auto; padding: 8px; }
+.clone-view-menu { width: 212px; max-height: min(74vh, 620px); overflow: visible; padding: 8px; }
 .clone-view-menu > strong { padding: 8px 9px 4px; color: var(--muted); font-size: 11px; }
 .clone-view-menu > button { min-height: 32px; }
 .clone-view-menu .clone-menu-submenu-trigger { min-height: 48px; padding: 6px 9px; gap: 12px; }
@@ -5001,9 +5096,17 @@ const SidebarSection = {
 .clone-menu-submenu-trigger > svg:last-child { color: var(--muted); }
 .clone-view-menu .clone-menu-back { color: var(--ink2); font-weight: 600; }
 .clone-view-menu .clone-menu-reset { justify-content: center; color: var(--muted); }
-.clone-view-segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding: 5px 7px 8px; }
-.clone-view-segmented button { display: grid; min-height: 42px; place-items: center; padding: 4px; color: var(--ink); }
+.clone-view-segmented { display: flex; align-items: center; gap: 7px; padding: 7px 9px 9px; }
+.clone-view-segmented button { display: grid; flex: 0 0 40px; width: 40px; height: 40px; min-height: 40px; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 6px; color: var(--ink); }
 .clone-view-segmented button[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+.clone-print-submenu { position: relative; }
+.clone-view-menu .clone-print-submenu-trigger { display: flex; width: 100%; align-items: center; justify-content: flex-start; gap: 8px; min-height: 34px; padding: 7px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.clone-print-submenu-trigger span { flex: 1; }
+.clone-print-submenu-trigger > svg:last-child { color: var(--muted); }
+.clone-view-menu .clone-print-submenu-trigger:hover,
+.clone-view-menu .clone-print-submenu-trigger[aria-expanded="true"] { background: var(--paper); }
+.clone-print-submenu-options { position: absolute; z-index: 2; top: -4px; right: calc(100% + 7px); display: grid; width: 190px; gap: 2px; padding: 5px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); box-shadow: 0 10px 28px rgb(15 23 42 / 16%); }
+.clone-view-menu .clone-print-submenu-options button { min-height: 38px; justify-content: flex-start; padding: 7px 10px; font-size: 13px; }
 .clone-view-menu > button:disabled { color: var(--muted); opacity: .5; cursor: default; }
 .clone-view-menu hr { width: 100%; margin: 5px 0; border: 0; border-top: 1px solid var(--line); }
 .clone-view-menu .clone-menu-check-spacer { flex: 0 0 14px; width: 14px; height: 14px; }
@@ -5056,33 +5159,37 @@ const SidebarSection = {
 .clone-detail-actions .danger {
   color: var(--down);
 }
-.clone-batch-bar {
-  position: fixed;
-  z-index: 70;
-  bottom: 24px;
-  left: 50%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  transform: translateX(-50%);
-  padding: 10px 14px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--card);
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
-}
-.clone-batch-bar button {
-  border: 0;
-  border-radius: 6px;
-  padding: 7px 9px;
-  background: var(--accent);
-  color: var(--accent-contrast, #fff);
-  cursor: pointer;
-}
-.clone-batch-bar button.danger {
-  background: transparent;
-  color: var(--down);
-}
+.clone-batch-backdrop { display: none; }
+.clone-batch-panel { min-height: 100%; padding: 0 20px 24px; }
+.clone-batch-panel-head { display: flex; min-height: 68px; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); }
+.clone-batch-panel-head > div { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.clone-batch-panel-head strong { color: var(--ink2); font-size: 16px; font-weight: 600; }
+.clone-batch-panel-head strong b { color: var(--accent); }
+.clone-batch-close, .clone-batch-cancel { display: inline-grid; min-width: 32px; height: 32px; place-items: center; padding: 0 6px; border: 0; border-radius: 5px; background: transparent; color: var(--accent); font: inherit; cursor: pointer; }
+.clone-batch-close { color: var(--muted); }
+.clone-batch-close:hover, .clone-batch-cancel:hover { background: var(--accent-soft); }
+.clone-batch-fields { display: grid; gap: 8px; margin-top: 18px; padding: 14px; border: 1px solid var(--line); border-radius: 7px; background: color-mix(in srgb, var(--paper) 66%, var(--card)); }
+.clone-batch-field { display: flex; min-width: 0; min-height: 42px; align-items: center; gap: 10px; color: var(--muted); }
+.clone-batch-field > svg, .clone-batch-tags summary > svg { flex: none; color: var(--accent); }
+.clone-batch-field input, .clone-batch-field select { min-width: 0; min-height: 34px; flex: 1; padding: 4px 7px; border: 0; border-radius: 4px; background: transparent; color: var(--ink2); font: inherit; font-size: 13px; }
+.clone-batch-field select { cursor: pointer; }
+.clone-batch-field > button:not(.clone-batch-apply) { display: grid; width: 26px; height: 26px; flex: none; place-items: center; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-batch-apply { flex: none; padding: 5px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
+.clone-batch-apply:hover { background: var(--accent-soft); }
+.clone-batch-apply:disabled { color: var(--muted); cursor: default; opacity: .55; }
+.clone-batch-tags { color: var(--ink2); }
+.clone-batch-tags summary { display: flex; min-height: 42px; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+.clone-batch-tags summary::-webkit-details-marker { display: none; }
+.clone-batch-tags summary span { flex: 1; font-size: 13px; }
+.clone-batch-tags summary small { color: var(--muted); }
+.clone-batch-tags > div { display: grid; max-height: 190px; gap: 2px; overflow: auto; padding: 4px 0 4px 27px; }
+.clone-batch-tags label { display: flex; min-height: 30px; align-items: center; gap: 8px; color: var(--ink2); font-size: 12px; }
+.clone-batch-tags input { accent-color: var(--accent); }
+.clone-batch-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.clone-batch-actions button { display: grid; min-height: 78px; align-content: center; justify-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--accent); font: inherit; cursor: pointer; }
+.clone-batch-actions button:hover { border-color: color-mix(in srgb, var(--accent) 38%, var(--line)); background: var(--accent-soft); }
+.clone-batch-actions button span { color: var(--ink2); font-size: 13px; }
+.clone-batch-actions button.danger { color: var(--down); }
 .clone-detail-pane {
   min-width: 0;
   overflow: auto;
@@ -5331,8 +5438,9 @@ const SidebarSection = {
 .clone-inline-description-editor > div > button:first-child { min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--ink2); }
 .clone-detail-properties { display: grid; border-top: 1px solid var(--line); }
 .clone-detail-properties button { display: flex; justify-content: space-between; gap: 12px; min-width: 0; padding: 9px 0; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--muted); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.clone-detail-property { display: flex; justify-content: space-between; gap: 12px; min-width: 0; padding: 9px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .clone-detail-properties button:hover strong { color: var(--accent); }
-.clone-detail-properties strong { min-width: 0; overflow: hidden; color: var(--ink2); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.clone-detail-properties strong, .clone-detail-property strong { min-width: 0; overflow: hidden; color: var(--ink2); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .clone-detail-edit-fields { display: inline-flex; align-items: center; justify-self: start; gap: 6px; min-height: 32px; padding: 0 2px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
 .clone-detail-edit-fields:hover { color: var(--accent); }
 .clone-checklist-editor,
@@ -5563,6 +5671,8 @@ const SidebarSection = {
     grid-column: 2;
     border-top: 1px solid var(--line);
   }
+  .clone-task-shell.workspace-overlay-view { grid-template-columns: var(--clone-sidebar-width, 248px) minmax(0, 1fr); }
+  .clone-task-shell.workspace-overlay-view.sidebar-hidden { grid-template-columns: 0 minmax(0, 1fr); }
   .clone-task-shell.detail-open {
     grid-template-rows: minmax(0, 1fr) minmax(320px, auto);
   }
@@ -5666,6 +5776,20 @@ const SidebarSection = {
   }
   .clone-detail-pane,
   .clone-detail-divider { display: none !important; }
+  .clone-batch-backdrop { position: fixed; z-index: 279; inset: 72px 0 0; display: block; border: 0; background: rgb(15 23 42 / 32%); }
+  .clone-detail-pane.is-batch { position: fixed; z-index: 280; top: 72px; right: 0; bottom: 0; display: block !important; width: min(420px, 92vw); max-height: none; margin: 0; overflow: auto; border: 0; border-left: 1px solid var(--line); border-radius: 0; box-shadow: -12px 0 32px rgb(15 23 42 / 16%); animation: clone-batch-drawer-in .22s cubic-bezier(.22, 1, .36, 1); }
+  .clone-batch-panel { padding: 0 16px 24px; }
+  .clone-batch-panel-head { position: sticky; top: 0; z-index: 1; min-height: 60px; background: var(--card); }
+  .clone-batch-fields { margin-top: 12px; }
+  .clone-batch-actions button { min-height: 68px; }
+  .clone-task-shell.workspace-overlay-view.workspace-detail-open .clone-detail-pane {
+    display: block !important;
+    top: 50%;
+    width: min(620px, calc(100vw - 24px));
+    max-height: calc(100dvh - 32px);
+    margin: 0;
+    border-radius: 10px;
+  }
   .clone-batch-bar {
     right: 14px;
     left: 14px;
@@ -5677,6 +5801,7 @@ const SidebarSection = {
     grid-template-columns: 1fr;
   }
 }
+@keyframes clone-batch-drawer-in { from { transform: translateX(24px); opacity: .75; } to { transform: translateX(0); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .clone-task-shell,
   .clone-task-sidebar,
@@ -5709,6 +5834,8 @@ const SidebarSection = {
   .clone-task-shell { display: block !important; width: 100% !important; height: auto !important; overflow: visible !important; }
   .clone-task-sidebar, .clone-detail-pane, .clone-header-actions, .clone-quick-add, .clone-quick-attachments, .clone-quick-attachment-state, .clone-row-more, .clone-drag-handle, .clone-check, .clone-select-box, .clone-task-list-link { display: none !important; }
   .clone-task-main { display: block !important; width: 100% !important; max-width: none !important; height: auto !important; overflow: visible !important; padding: 0 !important; }
+  .clone-task-metadata, .clone-task-row em { display: none !important; }
+  .clone-task-row.print-content .clone-print-description { display: block; overflow: visible; white-space: normal; }
   .clone-task-row, .clone-task-group { break-inside: avoid; }
 }
 </style>

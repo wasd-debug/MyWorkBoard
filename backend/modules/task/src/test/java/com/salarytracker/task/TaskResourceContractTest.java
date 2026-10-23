@@ -123,8 +123,24 @@ class TaskResourceContractTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.hasMore").value(false));
     }
 
+    @Test
+    @WithMockUser(authorities = {"task:read"})
+    void taskResponseIncludesCreationTimestamp() throws Exception {
+        when(taskService.get(TASK_ID)).thenReturn(itemWithCreatedAt("OPEN", 1, "2026-10-20T01:00:00Z"));
+
+        mockMvc.perform(get("/api/v1/tasks/{publicId}", TASK_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.createdAt").value("2026-10-20T01:00:00Z"));
+    }
+
     private TaskItem item(String status, long revision) {
         return new TaskItem(TASK_ID, "11111111-1111-1111-1111-111111111111", "整理收件箱", "", status,
                 "NONE", null, null, false, "Asia/Shanghai", null, "WEB", null, revision);
+    }
+
+    private TaskItem itemWithCreatedAt(String status, long revision, String createdAt) {
+        return new TaskItem(TASK_ID, "11111111-1111-1111-1111-111111111111", "整理收件箱", "", status,
+                "NONE", null, null, false, "Asia/Shanghai", null, "WEB", null, revision,
+                null, List.of(), List.of(), 0, 0, false, null, null, null, null, null, null, 0, 0, createdAt);
     }
 }

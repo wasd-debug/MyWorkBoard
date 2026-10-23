@@ -23,7 +23,7 @@ export const taskNavigation = [
   { key: 'habits', to: '/tasks/habits', label: '习惯' },
   { key: 'calendar', to: '/tasks/calendar', label: '日历' },
   { key: 'countdowns', to: '/tasks/countdowns', label: '倒数日' },
-  { key: 'board', to: '/tasks/board', label: '看板' },
+  { key: 'board', to: '/tasks/today', view: 'KANBAN', label: '看板' },
   { key: 'quadrant', to: '/tasks/quadrant', label: '四象限' },
   { key: 'search', to: '/tasks/search', label: '搜索与智能清单' },
   { key: 'stats', to: '/tasks/stats', label: '统计与回顾' },

@@ -12,11 +12,47 @@ const themeStyles = await readFile(new URL('../styles/theme.css', import.meta.ur
 const calendarView = await readFile(new URL('./TasksCalendarView.vue', import.meta.url), 'utf8')
 const router = await readFile(new URL('../router/index.js', import.meta.url), 'utf8')
 const client = await readFile(new URL('../../packages/api-client/src/index.js', import.meta.url), 'utf8')
+const navigation = await readFile(new URL('../config/moduleNavigation.js', import.meta.url), 'utf8')
+const appView = await readFile(new URL('../App.vue', import.meta.url), 'utf8')
 
 test('task enhanced workspace exposes all I7 and timeline routes', () => {
   for (const path of ['/tasks/board', '/tasks/quadrant', '/tasks/search', '/tasks/stats', '/tasks/filter/:publicId', '/tasks/timeline']) {
     assert.match(router, new RegExp(path.replace(/[/:]/g, match => `\\${match}`)))
   }
+})
+
+test('task board and timeline replace the list inside the persistent task workspace', () => {
+  assert.match(router, /path: '\/tasks\/board', redirect: \{ path: '\/tasks\/today', query: \{ workspaceView: 'KANBAN' \} \}/)
+  assert.match(router, /path: '\/tasks\/timeline', redirect: \{ path: '\/tasks\/today', query: \{ workspaceView: 'TIMELINE' \} \}/)
+  assert.match(workspaceView, /selectedWorkspaceView\.value = view/)
+  assert.doesNotMatch(workspaceView.match(/function switchWorkspaceView\(view\) \{[\s\S]*?\n\}/)?.[0] || '', /router\.push/)
+  assert.match(workspaceView, /class="clone-inline-board"/)
+  assert.match(workspaceView, /<TasksTimelineView v-else-if="activeWorkspaceView === 'TIMELINE'" embedded :tasks="visibleTasks"/)
+  assert.match(workspaceView, /'workspace-overlay-view': activeWorkspaceView !== 'LIST'/)
+  assert.match(workspaceView, /'workspace-detail-open': activeWorkspaceView !== 'LIST' && Boolean\(selectedTask \|\| editorOpen\)/)
+  assert.match(workspaceView, /class="clone-workspace-detail-backdrop"[\s\S]*@click="closeDetail"/)
+  assert.match(workspaceView, /:role="selectedIds\.size \|\| \(activeWorkspaceView !== 'LIST' && \(selectedTask \|\| editorOpen\)\) \? 'dialog' : undefined"/)
+  assert.match(workspaceView, /\.clone-task-shell\.workspace-overlay-view \{\s+grid-template-columns: var\(--clone-sidebar-width, 248px\) minmax\(0, 1fr\);/)
+  assert.match(workspaceView, /\.clone-task-shell\.workspace-overlay-view\.workspace-detail-open \.clone-detail-pane \{[\s\S]*position: fixed;[\s\S]*left: 50%;[\s\S]*transform: translate\(-50%, -50%\)/)
+  assert.match(workspaceView, /if \(editorOpen\.value \|\| \(activeWorkspaceView\.value !== "LIST" && selectedTask\.value\)\) closeDetail\(\)/)
+  assert.match(workspaceView, /<template v-else>/)
+  assert.match(workspaceView, /formatCreatedAt\(selectedTask\.createdAt\)/)
+  assert.match(workspaceView, /year: "numeric"/)
+  assert.match(workspaceView, /router\.replace\(\{ path: route\.path, query \}\)/)
+  assert.match(navigation, /view: 'KANBAN', label: '看板'/)
+  assert.match(appView, /taskWorkspaceRoutes\.has\(route\.name\) \? route\.path : route\.fullPath/)
+  assert.match(appView, /if \(to\.path !== from\.path\) startNavigationLoading\(\)/)
+})
+
+test('task creation timestamp is backed by TaskItem API data for grouping and sorting', async () => {
+  const models = await readFile(new URL('../../../backend/modules/task/src/main/java/com/salarytracker/task/TaskModels.java', import.meta.url), 'utf8')
+  const service = await readFile(new URL('../../../backend/modules/task/src/main/java/com/salarytracker/task/TaskService.java', import.meta.url), 'utf8')
+  const schema = JSON.parse(await readFile(new URL('../../packages/api-client/openapi.json', import.meta.url), 'utf8'))
+  assert.match(models, /int focusMinutes, String createdAt\)/)
+  assert.match(service, /t\.sort_order,t\.focus_minutes,t\.created_at/)
+  assert.match(service, /instant\(result\.getTimestamp\("created_at"\)\)/)
+  assert.equal(schema.components.schemas.TaskItem.properties.createdAt.format, 'date-time')
+  assert.match(workspaceView, /\{ value: "created", label: "创建时间" \}/)
 })
 
 test('task timeline and keyboard shortcuts complete the third residual batch', async () => {
@@ -25,6 +61,8 @@ test('task timeline and keyboard shortcuts complete the third residual batch', a
   const store = await readFile(new URL('../stores/tasks.js', import.meta.url), 'utf8')
   assert.match(timeline, /时间线 \/ 甘特/)
   assert.match(timeline, /timeline-bar/)
+  assert.match(timeline, /props\.tasks \|\| store\.tasks/)
+  assert.match(timeline, /emit\('select-task', task\)/)
   assert.match(timeline, /分组<select v-model="groupBy"/)
   assert.match(timeline, /排序<select v-model="sortBy"/)
   assert.match(timeline, /densityOptions/)
@@ -164,6 +202,27 @@ test('task rows open the persistent detail editor for direct task edits', () => 
   assert.match(inboxView, /提醒/)
 })
 
+test('selected tasks use the third pane or mobile right drawer for supported batch actions', async () => {
+  const store = await readFile(new URL('../stores/tasks.js', import.meta.url), 'utf8')
+  const service = await readFile(new URL('../../../backend/modules/task/src/main/java/com/salarytracker/task/TaskService.java', import.meta.url), 'utf8')
+  assert.match(workspaceView, /class="clone-batch-panel"/)
+  assert.match(workspaceView, /已选择 <b>\{\{ selectedIds\.size \}\}<\/b> 项/)
+  assert.match(workspaceView, /clone-batch-backdrop/)
+  assert.match(workspaceView, /clone-detail-pane\.is-batch[\s\S]*position: fixed[\s\S]*right: 0/)
+  assert.match(workspaceView, /applyBatch\('RESCHEDULE'/)
+  assert.match(workspaceView, /applyBatch\('PRIORITY'/)
+  assert.match(workspaceView, /applyBatch\('MOVE'/)
+  assert.match(workspaceView, /applyBatch\('TAGS'/)
+  assert.match(workspaceView, /applyBatch\('COMPLETE'\)/)
+  assert.match(workspaceView, /applyBatch\("DELETE"\)/)
+  assert.doesNotMatch(workspaceView, /class="clone-batch-bar"/)
+  assert.match(store, /action === 'MOVE'/)
+  assert.match(store, /action === 'PRIORITY'/)
+  assert.match(store, /action === 'RESCHEDULE'/)
+  assert.match(store, /action === 'TAGS'/)
+  for (const action of ['COMPLETE', 'DELETE', 'MOVE', 'PRIORITY', 'RESCHEDULE', 'TAGS']) assert.match(service, new RegExp(`"${action}"`))
+})
+
 test('task rows expose a viewport-safe context menu with contract actions', () => {
   assert.match(inboxView, /@contextmenu\.prevent="openTaskContextMenu\(task, \$event\)"/)
   assert.match(inboxView, /class="task-context-menu"/)
@@ -183,7 +242,7 @@ test('middle task workspace matches the note-row, date, view, display, and print
 
 test('today workspace orders countdowns, open tasks, habits, and completed tasks', () => {
   const countdown = workspaceView.indexOf('<section v-if="todayCountdowns.length"')
-  const openTasks = workspaceView.indexOf('v-for="group in groups"')
+  const openTasks = workspaceView.indexOf('class="clone-task-groups"')
   const habits = workspaceView.indexOf('v-if="todayHabits.length"')
   const completed = workspaceView.indexOf('v-if="completedTasks.length"')
   assert.ok(countdown >= 0 && countdown < openTasks)

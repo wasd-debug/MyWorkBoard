@@ -136,13 +136,13 @@ public final class TaskModels {
                            String parentId, List<String> tagIds, List<ChecklistItem> checklist,
                            int completedSubtasks, int totalSubtasks, boolean deleted, String deletedAt,
                            String rrule, String recurrenceAnchor, String seriesId, Integer seriesSequence,
-                           String plannedDueAt, int sortOrder, int focusMinutes) {
+                           String plannedDueAt, int sortOrder, int focusMinutes, String createdAt) {
         public TaskItem(String publicId, String listId, String title, String description, String status,
                         String priority, String startAt, String dueAt, boolean allDay, String timezone,
                         Integer durationMinutes, String source, String completedAt, long revision) {
             this(publicId, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
                     durationMinutes, source, completedAt, revision, null, List.of(), List.of(), 0, 0, false, null,
-                    null, null, null, null, null, 0, 0);
+                    null, null, null, null, null, 0, 0, null);
         }
     }
 

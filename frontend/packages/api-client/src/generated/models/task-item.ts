@@ -46,4 +46,5 @@ export interface TaskItem {
     'plannedDueAt'?: string;
     'sortOrder'?: number;
     'focusMinutes'?: number;
+    'createdAt'?: string;
 }
