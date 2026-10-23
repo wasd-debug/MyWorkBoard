@@ -169,19 +169,21 @@
           ><button
             type="button"
             class="clone-icon-button"
+            data-workspace-menu-trigger="group"
             aria-label="分组与排序"
             title="分组与排序"
             :aria-pressed="moreOpen"
-            @click="moreOpen = !moreOpen; listOptionsOpen = false"
+            @click="toggleWorkspaceMenu('group')"
           >
             <ListFilter :size="18" /></button
           ><button
             type="button"
             class="clone-icon-button"
+            data-workspace-menu-trigger="more"
             aria-label="中间栏更多选项"
             title="更多选项"
             :aria-pressed="listOptionsOpen"
-            @click="listOptionsOpen = !listOptionsOpen; moreOpen = false"
+            @click="toggleWorkspaceMenu('more')"
           >
             <Ellipsis :size="18" /></button
           ><button
@@ -194,23 +196,29 @@
         </div>
       </header>
       <div v-if="moreOpen" class="clone-floating-menu clone-view-menu" role="menu" aria-label="分组与排序设置" @click.stop>
-        <strong>分组</strong>
-        <button v-for="option in groupOptions" :key="option.value" type="button" role="menuitemradio" :aria-checked="groupBy === option.value" @click="groupBy = option.value">
-          <Check v-if="groupBy === option.value" :size="14" /><span v-else class="clone-menu-check-spacer"></span>{{ option.label }}
-        </button>
-        <strong>排序</strong>
-        <button v-for="option in sortOptions" :key="option.value" type="button" role="menuitemradio" :aria-checked="sort === option.value" @click="sort = option.value">
-          <Check v-if="sort === option.value" :size="14" /><span v-else class="clone-menu-check-spacer"></span>{{ option.label }}
-        </button>
-        <div class="clone-view-menu-order"><span>顺序</span><button type="button" :aria-pressed="sortDirection === 'asc'" @click="sortDirection = sortDirection === 'asc' ? 'desc' : 'asc'">{{ sortDirectionLabel }}</button></div>
-        <button type="button" :disabled="sort === 'time' && sortDirection === 'asc' && groupBy === 'time'" @click="sort = 'time'; sortDirection = 'asc'; groupBy = 'time'">恢复默认时间顺序</button>
+        <template v-if="!workspaceMenuSection">
+          <button type="button" class="clone-menu-submenu-trigger" role="menuitem" @click="workspaceMenuSection = 'group'"><Layers3 :size="18" /><span>分组</span><small>{{ groupOptionLabel }}</small><ChevronRight :size="16" /></button>
+          <button type="button" class="clone-menu-submenu-trigger" role="menuitem" @click="workspaceMenuSection = 'sort'"><ListFilter :size="18" /><span>排序</span><small>{{ sortOptionLabel }}</small><ChevronRight :size="16" /></button>
+          <button type="button" class="clone-menu-submenu-trigger" role="menuitem" @click="workspaceMenuSection = 'direction'"><ArrowDownUp :size="18" /><span>顺序</span><small>{{ sortDirectionLabel }}</small><ChevronRight :size="16" /></button>
+          <hr />
+          <button type="button" class="clone-menu-reset" :disabled="sort === 'time' && sortDirection === 'asc' && groupBy === 'time'" @click="sort = 'time'; sortDirection = 'asc'; groupBy = 'time'; closeWorkspaceMenus()">恢复默认时间顺序</button>
+        </template>
+        <template v-else>
+          <button type="button" class="clone-menu-back" @click="workspaceMenuSection = ''"><ChevronLeft :size="16" />{{ workspaceMenuHeading }}</button>
+          <button v-for="option in workspaceMenuOptions" :key="option.value" type="button" role="menuitemradio" :aria-checked="workspaceMenuValue === option.value" @click="selectWorkspaceMenuOption(option.value)">
+            <Check v-if="workspaceMenuValue === option.value" :size="14" /><span v-else class="clone-menu-check-spacer"></span>{{ option.label }}
+          </button>
+        </template>
       </div>
       <div v-if="listOptionsOpen" class="clone-floating-menu clone-view-menu clone-list-options-menu" role="menu" aria-label="中间栏更多选项" @click.stop>
         <strong>视图选项</strong>
-        <button v-for="option in workspaceViews" :key="option.value" type="button" role="menuitemradio" :aria-checked="activeWorkspaceView === option.value" @click="switchWorkspaceView(option.value)"><Check v-if="activeWorkspaceView === option.value" :size="14" /><span v-else class="clone-menu-check-spacer"></span>{{ option.label }}</button>
+        <div class="clone-view-segmented" role="group" aria-label="视图">
+          <button v-for="option in workspaceViews" :key="option.value" type="button" :aria-label="option.label" :title="option.label" :aria-pressed="activeWorkspaceView === option.value" @click="switchWorkspaceView(option.value)"><component :is="option.icon" :size="21" /></button>
+        </div>
         <hr />
         <button type="button" role="menuitemcheckbox" :aria-checked="hideCompleted" @click="hideCompleted = !hideCompleted; listOptionsOpen = false"><Check v-if="hideCompleted" :size="14" /><span v-else class="clone-menu-check-spacer"></span>隐藏已完成</button>
         <button type="button" role="menuitemcheckbox" :aria-checked="showDescription" @click="showDescription = !showDescription; listOptionsOpen = false"><Check v-if="showDescription" :size="14" /><span v-else class="clone-menu-check-spacer"></span>显示详细</button>
+        <button type="button" role="menuitemcheckbox" :aria-checked="showChecklist" @click="showChecklist = !showChecklist; listOptionsOpen = false"><Check v-if="showChecklist" :size="14" /><span v-else class="clone-menu-check-spacer"></span>显示检查事项</button>
         <button type="button" @click="openDisplaySettings"><SlidersHorizontal :size="14" />显示设置</button>
         <button type="button" @click="printTaskList"><Printer :size="14" />打印</button>
       </div>
@@ -376,7 +384,17 @@
         {{ batchMode ? "退出多选" : "多选" }}</button
         ><button v-if="batchMode" type="button" @click="toggleAllSelected">{{ selectedIds.size === visibleTasks.length ? "取消全选" : "全选" }}</button><span>{{ visibleTasks.length }} 项任务</span>
       </div>
-      <div v-if="!visibleTasks.length" class="clone-empty-state">
+      <section v-if="todayCountdowns.length" class="clone-efficiency-group clone-countdown-group">
+        <button class="clone-group-heading" type="button" :aria-expanded="!collapsed.countdowns" @click="collapsed.countdowns = !collapsed.countdowns">
+          <ChevronDown :size="16" :class="{ rotated: collapsed.countdowns }" /><strong>倒数纪念日</strong><span>{{ todayCountdowns.length }}</span>
+        </button>
+        <div class="clone-collapse-panel" :class="{ 'is-collapsed': collapsed.countdowns }" :aria-hidden="collapsed.countdowns"><div class="clone-efficiency-rows clone-collapse-inner" :inert="collapsed.countdowns">
+          <article v-for="item in todayCountdowns" :key="item.publicId" class="clone-efficiency-row countdown-row">
+            <span class="clone-efficiency-icon">{{ item.icon || '◷' }}</span><strong>{{ item.name || item.title }}</strong><span class="clone-efficiency-meta">{{ countdownLabel(item) }}</span>
+          </article>
+        </div></div>
+      </section>
+      <div v-if="!visibleTasks.length && !todayHabits.length && !completedTasks.length" class="clone-empty-state">
         <Inbox :size="28" /><strong>{{ title === "今天" ? "今天没有安排" : "这里还没有任务" }}</strong>
         <span v-if="title !== '今天'">使用上方输入框快速创建第一项任务</span>
       </div>
@@ -480,18 +498,7 @@
             </article>
           </TransitionGroup></div>
         </section>
-        <section v-if="todayCountdowns.length || todayHabits.length" class="clone-efficiency-groups">
-          <section v-if="todayCountdowns.length" class="clone-task-group clone-efficiency-group">
-            <button class="clone-group-heading" type="button" :aria-expanded="!collapsed.countdowns" @click="collapsed.countdowns = !collapsed.countdowns">
-              <ChevronDown :size="16" :class="{ rotated: collapsed.countdowns }" /><strong>倒数纪念日</strong><span>{{ todayCountdowns.length }}</span>
-            </button>
-            <div class="clone-collapse-panel" :class="{ 'is-collapsed': collapsed.countdowns }" :aria-hidden="collapsed.countdowns"><div class="clone-efficiency-rows clone-collapse-inner" :inert="collapsed.countdowns">
-              <article v-for="item in todayCountdowns" :key="item.publicId" class="clone-efficiency-row countdown-row">
-                <span class="clone-efficiency-icon">{{ item.icon || '◷' }}</span><strong>{{ item.name || item.title }}</strong><span class="clone-efficiency-meta">{{ countdownLabel(item) }}</span>
-              </article>
-            </div></div>
-          </section>
-          <section v-if="todayHabits.length" class="clone-task-group clone-efficiency-group">
+        <section v-if="todayHabits.length" class="clone-task-group clone-efficiency-group clone-habit-group">
             <button class="clone-group-heading" type="button" :aria-expanded="!collapsed.habits" @click="collapsed.habits = !collapsed.habits">
               <ChevronDown :size="16" :class="{ rotated: collapsed.habits }" /><strong>习惯</strong><span>{{ todayHabits.length }}</span>
             </button>
@@ -501,7 +508,6 @@
               </article>
             </div></div>
           </section>
-        </section>
         <section v-if="completedTasks.length" class="clone-task-group clone-completed-group" aria-label="已完成任务">
           <button class="clone-group-heading" type="button" :aria-expanded="!collapsed.completed" @click="collapsed.completed = !collapsed.completed">
             <ChevronDown :size="16" :class="{ rotated: collapsed.completed }" /><strong>已完成</strong><span>{{ completedTasks.length }}</span>
@@ -1026,6 +1032,8 @@ import {
   Circle,
   CalendarDays,
   Columns3,
+  ArrowDownUp,
+  Layers3,
   ClipboardList,
   Copy,
   Ellipsis,
@@ -1189,6 +1197,7 @@ let detailResizeState = null;
 let detailPreviousUserSelect = "";
 const moreOpen = ref(false);
 const listOptionsOpen = ref(false);
+const workspaceMenuSection = ref("");
 const datePopoverOpen = ref(false);
 const repeatPopoverOpen = ref(false);
 const reminderPopoverOpen = ref(false);
@@ -1308,9 +1317,9 @@ const hideCompleted = ref(false);
 const showDescription = ref(true);
 const showChecklist = ref(true);
 const workspaceViews = [
-  { value: "LIST", label: "列表" },
-  { value: "KANBAN", label: "看板" },
-  { value: "TIMELINE", label: "时间线" },
+  { value: "LIST", label: "列表", icon: List },
+  { value: "KANBAN", label: "看板", icon: Columns3 },
+  { value: "TIMELINE", label: "时间线", icon: GanttChart },
 ];
 const activeWorkspaceView = computed(() => route.name === "tasks-board" ? "KANBAN" : route.name === "tasks-timeline" ? "TIMELINE" : "LIST");
 const noteLists = computed(() => store.lists.filter(item => !item.archived && item.objectType === "NOTE"));
@@ -1341,6 +1350,16 @@ const sortOptions = [
   { value: "priority", label: "优先级" },
   { value: "manual", label: "手动" },
 ];
+const groupOptionLabel = computed(() => groupOptions.find(option => option.value === groupBy.value)?.label || "时间");
+const sortOptionLabel = computed(() => sortOptions.find(option => option.value === sort.value)?.label || "时间");
+const sortDirectionOptions = computed(() => sort.value === "title" || sort.value === "tag"
+  ? [{ value: "asc", label: "升序" }, { value: "desc", label: "降序" }]
+  : sort.value === "priority"
+    ? [{ value: "asc", label: "从高到低" }, { value: "desc", label: "从低到高" }]
+    : [{ value: "asc", label: "从旧到新" }, { value: "desc", label: "从新到旧" }]);
+const workspaceMenuOptions = computed(() => workspaceMenuSection.value === "group" ? groupOptions : workspaceMenuSection.value === "sort" ? sortOptions : sortDirectionOptions.value);
+const workspaceMenuValue = computed(() => workspaceMenuSection.value === "group" ? groupBy.value : workspaceMenuSection.value === "sort" ? sort.value : sortDirection.value);
+const workspaceMenuHeading = computed(() => ({ group: "分组", sort: "排序", direction: "顺序" })[workspaceMenuSection.value] || "返回");
 const sortDirectionLabel = computed(() => {
   if (sort.value === "title" || sort.value === "tag") return sortDirection.value === "asc" ? "升序" : "降序";
   if (sort.value === "priority") return sortDirection.value === "asc" ? "从高到低" : "从低到高";
@@ -2116,6 +2135,29 @@ function closeContext() {
   organizationMenuOpen.value = false;
   sectionDisplayMenu.value = "";
 }
+function closeWorkspaceMenus() {
+  moreOpen.value = false;
+  listOptionsOpen.value = false;
+  workspaceMenuSection.value = "";
+}
+function toggleWorkspaceMenu(menu) {
+  const wasOpen = menu === "group" ? moreOpen.value : listOptionsOpen.value;
+  closeWorkspaceMenus();
+  if (wasOpen) return;
+  if (menu === "group") moreOpen.value = true;
+  else listOptionsOpen.value = true;
+}
+function selectWorkspaceMenuOption(value) {
+  if (workspaceMenuSection.value === "group") groupBy.value = value;
+  else if (workspaceMenuSection.value === "sort") sort.value = value;
+  else sortDirection.value = value;
+  closeWorkspaceMenus();
+}
+function closeWorkspaceMenusOnOutsidePointer(event) {
+  if (!moreOpen.value && !listOptionsOpen.value) return;
+  if (event.target.closest?.("[data-workspace-menu-trigger], .clone-floating-menu")) return;
+  closeWorkspaceMenus();
+}
 async function setContextDue(offset) {
   const task = context.task;
   closeContext();
@@ -2278,8 +2320,7 @@ function clearRowDate(task) {
   void saveRowDate(task, "");
 }
 function switchWorkspaceView(view) {
-  moreOpen.value = false;
-  listOptionsOpen.value = false;
+  closeWorkspaceMenus();
   if (view === "LIST") {
     if (activeWorkspaceView.value !== "LIST") router.push("/tasks/all");
   } else {
@@ -2287,13 +2328,11 @@ function switchWorkspaceView(view) {
   }
 }
 function openDisplaySettings() {
-  moreOpen.value = false;
-  listOptionsOpen.value = false;
+  closeWorkspaceMenus();
   displaySettingsOpen.value = true;
 }
 function printTaskList() {
-  moreOpen.value = false;
-  listOptionsOpen.value = false;
+  closeWorkspaceMenus();
   window.print();
 }
 function beginInlineTitleEdit() {
@@ -3946,8 +3985,7 @@ function onKeydown(event) {
       quickAction.value = "";
       return;
     }
-    moreOpen.value = false;
-    listOptionsOpen.value = false;
+    closeWorkspaceMenus();
     closeContext();
     organizationMenuOpen.value = false;
     if (window.matchMedia("(max-width: 900px)").matches) sidebarHidden.value = true;
@@ -4008,6 +4046,7 @@ onMounted(() => {
   });
   document.addEventListener("pointerdown", closeContext);
   document.addEventListener("pointerdown", closeQuickAction);
+  document.addEventListener("pointerdown", closeWorkspaceMenusOnOutsidePointer);
   window.addEventListener("scroll", loadMoreCompletedOnScroll, { passive: true });
   window.addEventListener("keydown", onKeydown);
   window.matchMedia("(max-width: 900px)").addEventListener("change", handleSidebarViewportChange);
@@ -4020,6 +4059,7 @@ onBeforeUnmount(() => {
   stopSidebarResize();
   document.removeEventListener("pointerdown", closeContext);
   document.removeEventListener("pointerdown", closeQuickAction);
+  document.removeEventListener("pointerdown", closeWorkspaceMenusOnOutsidePointer);
   window.removeEventListener("scroll", loadMoreCompletedOnScroll);
   window.removeEventListener("keydown", onKeydown);
   window.matchMedia("(max-width: 900px)").removeEventListener("change", handleSidebarViewportChange);
@@ -4904,7 +4944,8 @@ const SidebarSection = {
 }
 .clone-empty-state strong { color: var(--ink2); font-size: 15px; font-weight: 600; }
 .clone-empty-state p { max-width: 340px; margin: 0; font-size: 12px; line-height: 1.6; text-align: center; }
-.clone-efficiency-groups { display: grid; gap: 18px; margin-top: 18px; }
+.clone-countdown-group { margin-top: 12px; }
+.clone-habit-group { margin-top: 18px; }
 .clone-efficiency-rows { border-top: 1px solid var(--line); }
 .clone-efficiency-row { display: flex; align-items: center; gap: 9px; min-height: 42px; padding: 0 8px; border-bottom: 1px solid var(--line); border-left: 3px solid var(--efficiency-color, #22c55e); }
 .clone-efficiency-row strong { min-width: 0; flex: 1; overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
@@ -4958,6 +4999,15 @@ const SidebarSection = {
 .clone-view-menu { width: 252px; max-height: min(74vh, 620px); overflow: auto; padding: 8px; }
 .clone-view-menu > strong { padding: 8px 9px 4px; color: var(--muted); font-size: 11px; }
 .clone-view-menu > button { min-height: 32px; }
+.clone-view-menu .clone-menu-submenu-trigger { min-height: 48px; padding: 6px 9px; gap: 12px; }
+.clone-menu-submenu-trigger > span { flex: 1; }
+.clone-menu-submenu-trigger > small { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.clone-menu-submenu-trigger > svg:last-child { color: var(--muted); }
+.clone-view-menu .clone-menu-back { color: var(--ink2); font-weight: 600; }
+.clone-view-menu .clone-menu-reset { justify-content: center; color: var(--muted); }
+.clone-view-segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding: 5px 7px 8px; }
+.clone-view-segmented button { display: grid; min-height: 42px; place-items: center; padding: 4px; color: var(--ink); }
+.clone-view-segmented button[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
 .clone-view-menu > button:disabled { color: var(--muted); opacity: .5; cursor: default; }
 .clone-view-menu hr { width: 100%; margin: 5px 0; border: 0; border-top: 1px solid var(--line); }
 .clone-view-menu .clone-menu-check-spacer { flex: 0 0 14px; width: 14px; height: 14px; }
@@ -5614,6 +5664,8 @@ const SidebarSection = {
     border: 1px solid var(--line);
     border-radius: 8px;
   }
+  .clone-detail-pane,
+  .clone-detail-divider { display: none !important; }
   .clone-batch-bar {
     right: 14px;
     left: 14px;

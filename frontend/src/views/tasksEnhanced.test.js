@@ -181,6 +181,28 @@ test('middle task workspace matches the note-row, date, view, display, and print
   for (const item of ['视图选项', '显示设置', '打印', 'switchWorkspaceView', 'window\.print\(\)']) assert.match(workspaceView, new RegExp(item))
 })
 
+test('today workspace orders countdowns, open tasks, habits, and completed tasks', () => {
+  const countdown = workspaceView.indexOf('<section v-if="todayCountdowns.length"')
+  const openTasks = workspaceView.indexOf('v-for="group in groups"')
+  const habits = workspaceView.indexOf('v-if="todayHabits.length"')
+  const completed = workspaceView.indexOf('v-if="completedTasks.length"')
+  assert.ok(countdown >= 0 && countdown < openTasks)
+  assert.ok(openTasks < habits && habits < completed)
+})
+
+test('workspace menus match compact reference controls and close on outside pointer', () => {
+  assert.match(workspaceView, /clone-menu-submenu-trigger[\s\S]*groupOptionLabel[\s\S]*sortOptionLabel[\s\S]*sortDirectionLabel/)
+  assert.match(workspaceView, /clone-view-segmented[\s\S]*option\.icon[\s\S]*aria-pressed/)
+  assert.match(workspaceView, /role="menuitemcheckbox" :aria-checked="showChecklist"[\s\S]*显示检查事项/)
+  assert.match(workspaceView, /document\.addEventListener\("pointerdown", closeWorkspaceMenusOnOutsidePointer\)/)
+  assert.match(workspaceView, /event\.target\.closest\?\.\("\[data-workspace-menu-trigger\], \.clone-floating-menu"\)/)
+  assert.match(workspaceView, /document\.removeEventListener\("pointerdown", closeWorkspaceMenusOnOutsidePointer\)/)
+})
+
+test('mobile task workspace hides the desktop third-pane detail area', () => {
+  assert.match(workspaceView, /@media \(max-width: 900px\)[\s\S]*?\.clone-detail-pane,[\s\S]*?\.clone-detail-divider \{ display: none !important; \}/)
+})
+
 test('quick add offers marker-driven candidates and distinguishes note destinations and compact mode', () => {
   assert.match(workspaceView, /支持 !优先级、#标签、~清单/)
   assert.match(workspaceView, /quickAddTokenAtCaret\(quickTitle\.value/)
