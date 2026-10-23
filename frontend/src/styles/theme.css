@@ -377,7 +377,7 @@ html.dark .page-toolbar .basis-seg button.on { color: #132019 }
   color: var(--ink); font-weight: 600;
   border-top-color: var(--ink);
 }
-@media (min-width: 1024px) {
+@media (min-width: 901px) {
   .bottom-nav { display: none }
 }
 
@@ -1358,6 +1358,10 @@ body { background:var(--paper); color:var(--ink); }
   .mobile-more-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px; }.mobile-more-head b,.mobile-more-head small { display:block; }.mobile-more-head small { margin-top:3px; color:var(--muted); font-size:11px; }.mobile-more-head > button { display:grid; width:44px; height:44px; flex:0 0 44px; place-items:center; padding:0; border:0; border-radius:50%; background:var(--paper); color:var(--ink); line-height:0; }.mobile-more-head svg { display:block; width:18px; height:18px; }
   .mobile-module-order { display:grid; gap:7px; margin:0; padding:0; list-style:none; }.mobile-module-order li { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:8px; min-height:52px; padding:5px 6px 5px 12px; border:1px solid var(--line); border-radius:13px; background:var(--card); }.mobile-module-order li.active { border-color:color-mix(in srgb,var(--accent) 45%,var(--line)); background:var(--accent-soft); }.mobile-order-link { display:grid; min-width:0; min-height:44px; grid-template-columns:22px minmax(0,1fr) auto; align-items:center; gap:10px; padding:0; border:0; background:transparent; color:var(--ink); text-align:left; }.mobile-order-link > svg { width:19px; height:19px; color:var(--ink2); }.mobile-order-link span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.mobile-order-link small { flex:0 0 auto; color:var(--muted); font-size:10px; }.mobile-order-actions { display:flex; gap:4px; }.mobile-order-actions button { display:grid; width:44px; height:44px; place-items:center; padding:0; border:0; border-radius:10px; background:var(--paper); color:var(--ink2); }.mobile-order-actions button:disabled { opacity:.25; }.mobile-order-actions svg { width:17px; }
   .dock-sheet-enter-active,.dock-sheet-leave-active { transition:opacity .18s ease,transform .18s ease; }.dock-sheet-enter-from,.dock-sheet-leave-to { opacity:0; transform:translateY(10px); }
+}
+/* Task pages use the tablet two-pane layout from 901px through 1279px. */
+@media (min-width:901px) and (max-width:1279px) {
+  .app-shell:has(.clone-task-shell) .bottom-nav { display:none !important; }
 }
 @media (prefers-reduced-motion:reduce) { .workspace-module-card,.card,.panel { animation:none !important; transition:none !important; } }
 

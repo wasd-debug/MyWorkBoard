@@ -5680,6 +5680,30 @@ const SidebarSection = {
     grid-row: 2;
   }
 }
+/* Tablet widths keep the desktop sidebar and task list, while details float above the list. */
+@media (min-width: 901px) and (max-width: 1279px) {
+  .clone-task-shell {
+    grid-template-columns: var(--clone-sidebar-width, 248px) minmax(0, 1fr);
+  }
+  .clone-task-shell.sidebar-hidden {
+    grid-template-columns: 0 minmax(0, 1fr);
+  }
+  .clone-detail-divider,
+  .clone-detail-pane.is-empty {
+    display: none;
+  }
+  .clone-detail-pane:not(.is-empty) {
+    position: fixed;
+    z-index: 280;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    display: block;
+    width: min(var(--clone-detail-width, 390px), 46vw);
+    border-left: 1px solid var(--line);
+    box-shadow: -12px 0 32px rgb(15 23 42 / 16%);
+  }
+}
 @media (max-width: 900px) {
   .clone-quick-add { align-items: flex-start; min-height: 46px; padding-top: 8px; padding-bottom: 8px; }
   .clone-quick-add-form { row-gap: 6px; column-gap: 3px; }
