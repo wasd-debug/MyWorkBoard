@@ -344,6 +344,9 @@ test('task row menu exposes contract-backed task operations and accurate metadat
   assert.match(workspaceView, /task\.totalSubtasks/)
   assert.match(workspaceView, /taskDateLabel\(task\)/)
   assert.match(workspaceView, /taskTagSummary\(task\)/)
+  assert.match(workspaceView, /\.clone-task-row-menu > button \{ box-sizing: border-box; width: 100%; min-width: 0; min-height: 32px; justify-content: flex-start;/)
+  assert.match(workspaceView, /\.clone-task-row-menu > button > svg:first-child \{ width: 16px; height: 16px; flex: 0 0 16px; \}/)
+  assert.match(workspaceView, /\.clone-task-row-menu > button > svg:last-child:not\(:first-child\) \{[\s\S]*margin-left: auto;/)
 })
 
 test('task navigation collapses inline on narrow screens and persists by account', () => {

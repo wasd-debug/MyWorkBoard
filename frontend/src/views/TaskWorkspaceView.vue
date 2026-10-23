@@ -5037,9 +5037,13 @@ const SidebarSection = {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.clone-task-row-menu { width: min(290px, calc(100vw - 16px)); max-height: min(80vh, 680px); overflow-y: auto; overscroll-behavior: contain; }
-.clone-task-row-menu > button { width: 100%; }
-.clone-task-row-menu > button > svg:last-child { margin-left: auto; }
+.clone-task-row-menu { width: min(260px, calc(100vw - 16px)); max-height: min(80vh, 560px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 5px; }
+.clone-task-row-menu > strong { padding: 6px 8px; font-size: 11px; line-height: 16px; }
+.clone-task-row-menu > button { box-sizing: border-box; width: 100%; min-width: 0; min-height: 32px; justify-content: flex-start; gap: 9px; padding: 5px 8px; font-size: 13px; line-height: 18px; }
+.clone-task-row-menu > button > svg:first-child { width: 16px; height: 16px; flex: 0 0 16px; }
+.clone-task-row-menu > button > svg:last-child:not(:first-child) { width: 14px; height: 14px; flex: 0 0 14px; margin-left: auto; }
+.clone-task-row-menu .clone-context-submenu { margin-left: 18px; }
+.clone-task-row-menu .clone-context-submenu button { box-sizing: border-box; min-height: 28px; padding: 4px 7px; font-size: 12px; line-height: 18px; }
 .clone-task-row-menu button:disabled { color: var(--muted); opacity: .55; cursor: default; }
 .clone-context-submenu { display: grid; gap: 2px; max-height: 180px; overflow: auto; margin: 0 4px 4px 22px; padding: 4px; border-left: 1px solid var(--line); }
 .clone-context-submenu button { min-height: 29px; padding: 5px 7px; font-size: 12px; }
