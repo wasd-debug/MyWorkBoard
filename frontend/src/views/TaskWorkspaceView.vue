@@ -1725,7 +1725,10 @@ const todayHabits = computed(() => route.name === "tasks-today" && !route.query.
 const completedLimit = ref(5);
 function showMoreCompleted() { completedLimit.value = Math.min(completedTasks.value.length, completedLimit.value + 5); }
 function loadMoreCompletedOnScroll(event) {
-  const target = event.currentTarget;
+  const eventTarget = event.currentTarget;
+  const target = eventTarget === window || eventTarget === document
+    ? document.scrollingElement || document.documentElement
+    : eventTarget;
   if (completedPreviewTasks.value.length < completedTasks.value.length && target.scrollTop + target.clientHeight >= target.scrollHeight - 120) showMoreCompleted();
 }
 function groupColor(task) {
@@ -4005,6 +4008,7 @@ onMounted(() => {
   });
   document.addEventListener("pointerdown", closeContext);
   document.addEventListener("pointerdown", closeQuickAction);
+  window.addEventListener("scroll", loadMoreCompletedOnScroll, { passive: true });
   window.addEventListener("keydown", onKeydown);
   window.matchMedia("(max-width: 900px)").addEventListener("change", handleSidebarViewportChange);
 });
@@ -4016,6 +4020,7 @@ onBeforeUnmount(() => {
   stopSidebarResize();
   document.removeEventListener("pointerdown", closeContext);
   document.removeEventListener("pointerdown", closeQuickAction);
+  window.removeEventListener("scroll", loadMoreCompletedOnScroll);
   window.removeEventListener("keydown", onKeydown);
   window.matchMedia("(max-width: 900px)").removeEventListener("change", handleSidebarViewportChange);
 });

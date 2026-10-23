@@ -48,6 +48,16 @@ test('task import remains preview then explicit commit', () => {
   assert.match(router, /path: '\/tasks\/data', redirect: \{ path: '\/tasks\/settings', hash: '#data' \}/)
 })
 
+test('completed tasks append on both workspace and document scrolling', async () => {
+  const workspace = await readFile(new URL('./TaskWorkspaceView.vue', import.meta.url), 'utf8')
+  assert.match(workspace, /@scroll\.passive="loadMoreCompletedOnScroll"/)
+  assert.match(workspace, /eventTarget === window \|\| eventTarget === document/)
+  assert.match(workspace, /document\.scrollingElement \|\| document\.documentElement/)
+  assert.match(workspace, /window\.addEventListener\("scroll", loadMoreCompletedOnScroll, \{ passive: true \}\)/)
+  assert.match(workspace, /window\.removeEventListener\("scroll", loadMoreCompletedOnScroll\)/)
+  assert.match(workspace, /completedLimit\.value \+ 5/)
+})
+
 test('mobile board has explicit move control and statistics explain focus basis', () => {
   assert.match(view, /移动到…/)
   assert.match(view, /专注时长是主动专注口径/)
