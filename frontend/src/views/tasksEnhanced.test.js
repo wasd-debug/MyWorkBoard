@@ -204,7 +204,7 @@ test('mobile task workspace hides the desktop third-pane detail area', () => {
 })
 
 test('quick add offers marker-driven candidates and distinguishes note destinations and compact mode', () => {
-  assert.match(workspaceView, /支持 !优先级、#标签、~清单/)
+  assert.match(workspaceView, /placeholder="准备做什么？"/)
   assert.match(workspaceView, /quickAddTokenAtCaret\(quickTitle\.value/)
   assert.match(workspaceView, /handleQuickSuggestionKeydown/)
   assert.match(workspaceView, /noteLists = computed/)
@@ -527,19 +527,22 @@ test('task navigation, collapsible groups and sortable rows expose motion and re
   assert.match(workspaceView, /transition-delay: 0s !important/)
 })
 
-test('task quick add previews parsed fields and writes only after confirmation', () => {
+test('task quick add expands on demand and creates parsed tasks without a confirmation step', () => {
   assert.match(workspaceView, /apiParseTaskQuickAdd\(text\)/)
-  assert.match(workspaceView, /aria-label="快速添加预览"/)
-  assert.match(workspaceView, /async function confirmQuickAdd\(\)/)
-  assert.match(workspaceView, /@click="confirmQuickAdd"/)
+  assert.match(workspaceView, /class="clone-quick-add-collapsed" @click="expandQuickAdd"/)
+  assert.match(workspaceView, /quickAddExpanded\.value = true/)
+  assert.doesNotMatch(workspaceView, /aria-label="快速添加预览"|确认任务|确认添加/)
   assert.match(workspaceView, /parsed\.tagNames[\s\S]*map\(\(tag\) => tag\.publicId\)/)
   assert.match(workspaceView, /quickDraftDue\.value \? new Date\(quickDraftDue\.value\)\.toISOString\(\)/)
-  assert.match(workspaceView, /async function quickAdd\(\)[\s\S]*apiParseTaskQuickAdd[\s\S]*?\n}\nfunction cancelQuickDraft/)
-  assert.match(workspaceView, /async function confirmQuickAdd\(\)[\s\S]*store\.create\(/)
+  assert.match(workspaceView, /async function quickAdd\(\)[\s\S]*apiParseTaskQuickAdd[\s\S]*await createQuickAddTask\(\)[\s\S]*?\n}\nfunction cancelQuickDraft/)
+  assert.match(workspaceView, /async function createQuickAddTask\(\)[\s\S]*store\.create\(/)
+  assert.match(workspaceView, /quickAddExpanded\.value = false/)
+  const createFlow = workspaceView.slice(workspaceView.indexOf('async function createQuickAddTask()'), workspaceView.indexOf('function resetCollaboration()'))
+  assert.doesNotMatch(createFlow, /openDetail\(saved\)/)
 })
 
 test('quick add stages attachments and uploads only after task creation', () => {
-  const createFlow = workspaceView.slice(workspaceView.indexOf('async function confirmQuickAdd()'), workspaceView.indexOf('function resetCollaboration()'))
+  const createFlow = workspaceView.slice(workspaceView.indexOf('async function createQuickAddTask()'), workspaceView.indexOf('function resetCollaboration()'))
   assert.match(workspaceView, /aria-label="快速新增更多操作"/)
   assert.match(workspaceView, /quickAction === 'more'[\s\S]*?附件/)
   assert.match(workspaceView, /type="file" multiple aria-label="选择快捷新增附件"/)

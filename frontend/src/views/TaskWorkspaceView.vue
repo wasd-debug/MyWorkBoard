@@ -222,14 +222,14 @@
         <button type="button" @click="openDisplaySettings"><SlidersHorizontal :size="14" />显示设置</button>
         <button type="button" @click="printTaskList"><Printer :size="14" />打印</button>
       </div>
-      <div class="clone-quick-add" :class="{ 'is-simple': quickInputMode === 'SIMPLE' }">
-        <Plus :size="17" />
-        <form class="clone-quick-add-form" @submit.prevent="quickAdd">
+      <div class="clone-quick-add" :class="{ 'is-simple': quickInputMode === 'SIMPLE', 'is-collapsed': !quickAddExpanded }">
+        <button v-if="!quickAddExpanded" type="button" class="clone-quick-add-collapsed" @click="expandQuickAdd"><Plus :size="17" /><span>添加任务至“{{ title === '今天' ? '收集箱' : title }}”</span></button>
+        <form v-else class="clone-quick-add-form" @submit.prevent="quickAdd">
           <input
             ref="quickTitleInput"
             v-model="quickTitle"
             aria-label="快速添加任务标题"
-            :placeholder="`添加任务至“${title === '今天' ? '收集箱' : title}” · 支持 !优先级、#标签、~清单`"
+            placeholder="准备做什么？"
             @input="updateQuickSuggestion"
             @keydown="handleQuickSuggestionKeydown"
           />
@@ -239,7 +239,7 @@
           <button v-if="store.tags.length" type="button" class="clone-quick-icon-action" aria-label="快速选择标签" :aria-expanded="quickAction === 'tags'" @click="toggleQuickAction('tags')"><Tag :size="15" /><span v-if="quickEntry.tagIds.length">{{ quickEntry.tagIds.length }}</span></button>
           <button type="button" class="clone-quick-action clone-quick-list-action" aria-label="快速选择清单" :aria-expanded="quickAction === 'list'" @click="toggleQuickAction('list')"><ListTodo :size="15" /><span>{{ quickEntry.listId ? listName(quickEntry.listId) : '清单' }}</span></button>
           <button type="button" class="clone-quick-icon-action" aria-label="快速新增更多操作" :aria-expanded="quickAction === 'more'" @click="toggleQuickAction('more')"><Ellipsis :size="16" /></button>
-          <button type="submit" class="clone-quick-submit" :disabled="!quickTitle.trim() || quickParsing">{{ quickParsing ? '解析中…' : '添加' }}</button><kbd>N</kbd>
+          <button type="submit" class="clone-quick-submit" :disabled="!quickTitle.trim() || quickParsing || quickSaving">{{ quickParsing ? '解析中…' : quickSaving ? '添加中…' : '添加' }}</button><kbd>N</kbd>
         </form>
         <input ref="quickAttachmentInput" class="clone-quick-file-input" type="file" multiple aria-label="选择快捷新增附件" @change="selectQuickAttachments" />
         <div v-if="quickSuggestion && quickSuggestionOptions.length" class="clone-quick-suggestions" role="listbox" :aria-label="quickSuggestionLabel">
@@ -331,20 +331,6 @@
           <div class="clone-quick-input-modes" role="radiogroup" aria-label="输入框显示模式"><label><input v-model="quickInputMode" type="radio" value="SIMPLE" />简洁</label><label><input v-model="quickInputMode" type="radio" value="DETAILED" />详细</label></div>
         </section>
       </div>
-      <section v-if="quickDraft" class="clone-quick-draft" aria-label="快速添加预览">
-        <header><strong>确认任务</strong><span v-if="quickDraft.unrecognized?.length">未识别：{{ quickDraft.unrecognized.join('、') }}</span></header>
-        <label>标题<input v-model="quickDraft.title" aria-label="快速添加任务标题预览" maxlength="500" /></label>
-        <div class="clone-quick-draft-fields">
-          <label v-if="quickDraftStart">开始时间<input v-model="quickDraftStart" type="datetime-local" aria-label="快速添加开始时间" /></label>
-          <label>日期<input v-model="quickDraftDue" type="datetime-local" aria-label="快速添加日期" /></label>
-          <label>优先级<select v-model="quickDraft.priority" aria-label="快速添加优先级"><option value="NONE">无</option><option value="LOW">低</option><option value="MEDIUM">中</option><option value="HIGH">高</option></select></label>
-          <label>清单<select v-model="quickDraft.listId" aria-label="快速添加清单"><option v-for="list in store.lists.filter((item) => !item.archived)" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select></label>
-        </div>
-        <p v-if="quickDraftReminder?.enabled" class="clone-quick-draft-reminder"><Bell :size="14" />提醒：{{ quickReminderOptionsForDraft.join('、') }}<template v-if="quickDraftReminder.dailyUntilDone"> · 持续提醒直到完成</template></p>
-        <p v-if="quickDraft.rrule" class="clone-quick-draft-reminder"><Repeat2 :size="14" />重复：{{ quickRepeatLabel(quickDraft.repeatState) }}</p>
-        <fieldset v-if="store.tags.length" class="clone-quick-draft-tags"><legend>标签</legend><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="quickDraft.tagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label></fieldset>
-        <footer><button type="button" @click="cancelQuickDraft">取消</button><button type="button" class="clone-primary-button" :disabled="quickSaving || !quickDraft.title.trim()" @click="confirmQuickAdd">{{ quickSaving ? '保存中…' : '确认添加' }}</button></footer>
-      </section>
       <p v-if="quickParseError" class="clone-error" role="alert">{{ quickParseError }}</p>
       <div v-if="store.error" class="clone-error" role="alert">
         {{ store.error }}
@@ -1150,6 +1136,7 @@ const quickDraftReminder = ref(null);
 const quickParseError = ref("");
 const quickParsing = ref(false);
 const quickSaving = ref(false);
+const quickAddExpanded = ref(false);
 const quickAction = ref("");
 const quickInputSettingsOpen = ref(false);
 const quickInputMode = ref("DETAILED");
@@ -2799,6 +2786,7 @@ async function quickAdd() {
     quickDraftAllDay.value = quickEntry.dateSelected ? quickEntry.allDay : false;
     quickDraftReminder.value = { ...quickAddReminder, presets: [...quickAddReminder.presets] };
     quickAction.value = "";
+    await createQuickAddTask();
   } catch (error) {
     quickParseError.value = error?.response?.data?.detail || error?.message || "解析快速添加内容失败";
   } finally {
@@ -2821,7 +2809,7 @@ function cancelQuickDraft() {
   quickRangeStart.value = "";
   quickRangeEnd.value = "";
 }
-async function confirmQuickAdd() {
+async function createQuickAddTask() {
   if (!quickDraft.value?.title?.trim() || quickSaving.value) return;
   quickSaving.value = true;
   quickParseError.value = "";
@@ -2861,13 +2849,17 @@ async function confirmQuickAdd() {
     }
     quickTitle.value = "";
     cancelQuickDraft();
-    if (saved?.publicId) openDetail(saved);
+    quickAddExpanded.value = false;
     if (reminderError) quickParseError.value = `任务已添加，但${reminderError}；可在任务详情中重试`;
   } catch (error) {
     quickParseError.value = error?.response?.data?.detail || error?.message || "新增任务失败";
   } finally {
     quickSaving.value = false;
   }
+}
+function expandQuickAdd() {
+  quickAddExpanded.value = true;
+  nextTick(() => quickTitleInput.value?.focus());
 }
 function resetCollaboration() {
   activities.value = [];
@@ -4579,6 +4571,10 @@ const SidebarSection = {
   box-shadow: 0 1px 2px rgba(20, 27, 38, 0.035);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+.clone-quick-add.is-collapsed { padding: 0; border-color: transparent; background: color-mix(in srgb, var(--ink) 4%, var(--card)); box-shadow: none; }
+.clone-quick-add-collapsed { display: flex; width: 100%; min-height: 44px; align-items: center; gap: 9px; padding: 0 14px; border: 0; border-radius: inherit; background: transparent; color: var(--muted); font: inherit; text-align: left; cursor: text; }
+.clone-quick-add-collapsed:hover { color: var(--ink2); background: color-mix(in srgb, var(--ink) 3%, transparent); }
+.clone-quick-add-collapsed svg { flex: none; }
 .clone-quick-add.is-simple form .clone-quick-action:not([aria-label="快速设置日期和提醒"]),
 .clone-quick-add.is-simple form .clone-quick-icon-action,
 .clone-quick-add.is-simple form kbd { display: none; }
