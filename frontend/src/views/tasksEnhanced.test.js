@@ -295,7 +295,27 @@ test('quick add offers marker-driven candidates and distinguishes note destinati
   assert.match(workspaceView, /handleQuickSuggestionKeydown/)
   assert.match(workspaceView, /noteLists = computed/)
   assert.match(workspaceView, /quickInputMode === 'SIMPLE'/)
-  assert.match(workspaceView, /当前后端尚无任务模板 API/)
+  assert.match(workspaceView, /quickAddIsNote = computed/)
+  assert.match(workspaceView, /v-if="!quickAddIsNote"[^>]*aria-label="快速设置优先级"/)
+  assert.match(workspaceView, /v-if="!quickAddIsNote"[^>]*aria-label="快速设置重复"/)
+})
+
+test('quick add more menu supports native attachments, draft templates, note mode, and responsive input settings', () => {
+  assert.match(workspaceView, /@click="openQuickAttachmentPicker"/)
+  assert.match(workspaceView, /type="file" multiple aria-label="选择快捷新增附件"/)
+  assert.match(workspaceView, /taskTemplatesOpen = ref\(false\)/)
+  assert.match(workspaceView, /clone-task-template-dialog[\s\S]*任务模板/)
+  assert.match(workspaceView, /filteredQuickTaskTemplates/)
+  assert.match(workspaceView, /quickTemplateDraft\.value = \{[\s\S]*checklist: template\.checklist\.map/)
+  assert.match(workspaceView, /description: quickTemplateDraft\.value\?\.description \|\| ""/)
+  assert.match(workspaceView, /checklist: quickDraft\.value\.checklist\?\.map/)
+  assert.match(workspaceView, /function convertQuickAddToNote\(\)[\s\S]*quickEntry\.priority = "NONE"[\s\S]*createQuickRepeatState\(\)/)
+  assert.match(workspaceView, /clone-task-template-dialog \{ width: 100%; height: min\(78dvh, 620px\)/)
+  assert.match(workspaceView, /:global\(body:has\(\.clone-task-template-backdrop\) \.floating-agent\) \{ visibility: hidden/)
+  assert.match(workspaceView, /clone-task-template-grid \{ grid-template-columns: minmax\(0, 1fr\)/)
+  assert.match(workspaceView, /clone-quick-input-settings \{ width: min\(860px, 100%\)/)
+  assert.match(workspaceView, /clone-quick-input-previews \{ grid-template-columns: minmax\(0, 1fr\)/)
+  assert.match(workspaceView, /value="SIMPLE" \/>简洁[\s\S]*value="DETAILED" \/>详细/)
 })
 
 test('task detail exposes contract-backed Markdown comments and attachments', () => {

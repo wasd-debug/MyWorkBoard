@@ -251,8 +251,8 @@
             @keydown="handleQuickSuggestionKeydown"
           />
           <button type="button" class="clone-quick-action" aria-label="快速设置日期和提醒" :aria-expanded="quickAction === 'date'" @click="toggleQuickAction('date')"><CalendarDays :size="15" /><span>{{ quickDateSummary }}</span></button>
-          <button type="button" class="clone-quick-action" aria-label="快速设置优先级" :aria-expanded="quickAction === 'priority'" @click="toggleQuickAction('priority')"><Flag :size="15" /><span>{{ priorityLabel(quickEntry.priority) }}</span></button>
-          <button type="button" class="clone-quick-action" aria-label="快速设置重复" :aria-expanded="quickAction === 'repeat'" @click="toggleQuickAction('repeat')"><Repeat2 :size="15" /><span>{{ quickRepeatLabel(quickRepeat) }}</span></button>
+          <button v-if="!quickAddIsNote" type="button" class="clone-quick-action" aria-label="快速设置优先级" :aria-expanded="quickAction === 'priority'" @click="toggleQuickAction('priority')"><Flag :size="15" /><span>{{ priorityLabel(quickEntry.priority) }}</span></button>
+          <button v-if="!quickAddIsNote" type="button" class="clone-quick-action" aria-label="快速设置重复" :aria-expanded="quickAction === 'repeat'" @click="toggleQuickAction('repeat')"><Repeat2 :size="15" /><span>{{ quickRepeatLabel(quickRepeat) }}</span></button>
           <button v-if="store.tags.length" type="button" class="clone-quick-icon-action" aria-label="快速选择标签" :aria-expanded="quickAction === 'tags'" @click="toggleQuickAction('tags')"><Tag :size="15" /><span v-if="quickEntry.tagIds.length">{{ quickEntry.tagIds.length }}</span></button>
           <button type="button" class="clone-quick-action clone-quick-list-action" aria-label="快速选择清单" :aria-expanded="quickAction === 'list'" @click="toggleQuickAction('list')"><ListTodo :size="15" /><span>{{ quickEntry.listId ? listName(quickEntry.listId) : '清单' }}</span></button>
           <button type="button" class="clone-quick-icon-action" aria-label="快速新增更多操作" :aria-expanded="quickAction === 'more'" @click="toggleQuickAction('more')"><Ellipsis :size="16" /></button>
@@ -271,7 +271,7 @@
       </div>
       <p v-if="quickAttachmentMessage" class="clone-quick-attachment-state" :role="quickAttachmentError || quickAttachmentSelectionError ? 'alert' : 'status'">{{ quickAttachmentMessage }}<button v-if="pendingQuickAttachmentBatches.length && (quickAttachmentError || !store.online)" type="button" :disabled="quickAttachmentUploading" @click="retryQuickAttachments">{{ quickAttachmentUploading ? `上传中 ${quickAttachmentProgress}%` : '重试附件上传' }}</button></p>
       <div v-if="quickAction" class="clone-quick-action-panel" :class="`is-${quickAction}`" @click.stop>
-        <template v-if="quickAction === 'more'"><strong>更多</strong><button type="button" @click="openQuickAttachmentPicker"><Paperclip :size="14" />附件</button><button type="button" :disabled="!taskTemplatesAvailable" :title="taskTemplatesAvailable ? '' : '当前后端尚无任务模板 API'" @click="openTaskTemplates"><ClipboardList :size="14" />从模板添加</button><button type="button" :disabled="!noteLists.length" :title="noteLists.length ? '' : '请先创建笔记清单'" @click="convertQuickAddToNote"><ListTodo :size="14" />转换为笔记</button><button type="button" @click="openQuickInputSettings"><SlidersHorizontal :size="14" />输入框设置</button></template>
+        <template v-if="quickAction === 'more'"><strong>更多</strong><button type="button" @click="openQuickAttachmentPicker"><Paperclip :size="14" />附件</button><button type="button" @click="openTaskTemplates"><ClipboardList :size="14" />从模板添加</button><button type="button" :disabled="quickAddIsNote || !noteLists.length" :title="quickAddIsNote ? '当前已是笔记' : noteLists.length ? '' : '请先创建笔记清单'" @click="convertQuickAddToNote"><ListTodo :size="14" />转换为笔记</button><button type="button" @click="openQuickInputSettings"><SlidersHorizontal :size="14" />输入框设置</button></template>
         <template v-else-if="quickAction === 'date'">
           <div class="clone-quick-date-panel">
             <div class="clone-quick-date-tabs" role="tablist" aria-label="日期类型">
@@ -370,10 +370,30 @@
       <div v-if="quickInputSettingsOpen" class="clone-modal-backdrop" @click.self="quickInputSettingsOpen = false">
         <section class="clone-display-settings clone-quick-input-settings" role="dialog" aria-modal="true" aria-label="输入框设置">
           <header><h2>输入框设置</h2><button type="button" aria-label="关闭输入框设置" @click="quickInputSettingsOpen = false"><X :size="16" /></button></header>
-          <div class="clone-quick-input-previews"><div class="is-simple"><span>＋ 添加任务</span><CalendarDays :size="14" /><ChevronDown :size="13" /></div><div><span>准备做什么？</span><CalendarDays :size="14" /><Flag :size="14" /><Tag :size="14" /><Ellipsis :size="14" /><button type="button">添加</button></div></div>
+          <div class="clone-quick-input-previews"><div class="is-simple"><span>＋ 添加任务</span><CalendarDays :size="14" /><ChevronDown :size="13" /></div><div><span>准备做什么？</span><CalendarDays :size="14" /><Flag :size="14" /><Tag :size="14" /><ListTodo :size="14" /><Ellipsis :size="14" /><button type="button">添加</button></div></div>
           <div class="clone-quick-input-modes" role="radiogroup" aria-label="输入框显示模式"><label><input v-model="quickInputMode" type="radio" value="SIMPLE" />简洁</label><label><input v-model="quickInputMode" type="radio" value="DETAILED" />详细</label></div>
         </section>
       </div>
+      <Teleport to="body">
+      <div v-if="taskTemplatesOpen" class="clone-modal-backdrop clone-task-template-backdrop" @click.self="taskTemplatesOpen = false">
+        <section class="clone-task-template-dialog" role="dialog" aria-modal="true" aria-label="任务模板" @keydown.esc.stop.prevent="taskTemplatesOpen = false">
+          <header>
+            <h2>任务模板</h2>
+            <label><Search :size="15" /><input v-model="taskTemplateQuery" aria-label="搜索任务模板" placeholder="搜索" /></label>
+            <button type="button" aria-label="关闭任务模板" @click="taskTemplatesOpen = false"><X :size="17" /></button>
+          </header>
+          <div v-if="filteredQuickTaskTemplates.length" class="clone-task-template-grid">
+            <button v-for="template in filteredQuickTaskTemplates" :key="template.id" type="button" class="clone-task-template-card" @click="applyQuickTaskTemplate(template)">
+              <strong>{{ template.title }}</strong>
+              <ul v-if="template.checklist.length"><li v-for="item in template.checklist.slice(0, 7)" :key="item"><span aria-hidden="true"></span>{{ item }}</li></ul>
+              <p v-else>{{ template.description }}</p>
+            </button>
+          </div>
+          <p v-else class="clone-task-template-empty">没有匹配的模板</p>
+          <footer><button type="button" @click="message.info('模板管理暂未开放；选择内置模板可直接填入快捷新增框')">管理模板</button></footer>
+        </section>
+      </div>
+      </Teleport>
       <p v-if="quickParseError" class="clone-error" role="alert">{{ quickParseError }}</p>
       <div v-if="store.error" class="clone-error" role="alert">
         {{ store.error }}
@@ -1190,6 +1210,9 @@ const quickParsing = ref(false);
 const quickSaving = ref(false);
 const quickAddExpanded = ref(false);
 const quickAction = ref("");
+const taskTemplatesOpen = ref(false);
+const taskTemplateQuery = ref("");
+const quickTemplateDraft = ref(null);
 const boardQuickAddOpen = ref(false);
 const boardQuickAddInput = ref(null);
 const boardQuickAddGroup = ref(null);
@@ -1208,7 +1231,6 @@ const quickInputMode = ref("DETAILED");
 const displaySettingsOpen = ref(false);
 const showTags = ref(true);
 const showListLink = ref(true);
-const taskTemplatesAvailable = false;
 const quickEntry = reactive({ dueAt: "", startAt: "", allDay: false, dateSelected: false, priority: "NONE", prioritySelected: false, listId: "", listSelected: false, tagIds: [] });
 const quickRepeat = reactive(createQuickRepeatState());
 const quickAddSettings = ref({ defaultDueDate: "TODAY", defaultDueTime: "NEXT_HOUR", defaultReminderMinutes: null });
@@ -1393,6 +1415,18 @@ const workspaceViews = [
 const selectedWorkspaceView = ref(route.query.workspaceView === "KANBAN" ? "KANBAN" : route.query.workspaceView === "TIMELINE" ? "TIMELINE" : "LIST");
 const activeWorkspaceView = computed(() => selectedWorkspaceView.value);
 const noteLists = computed(() => store.lists.filter(item => !item.archived && item.objectType === "NOTE"));
+const quickAddIsNote = computed(() => noteLists.value.some(item => item.publicId === quickEntry.listId)
+  || (route.name === "tasks-list" && noteLists.value.some(item => item.publicId === route.params.publicId)));
+const quickTaskTemplates = [
+  { id: "travel-packing", title: "旅行必备物品", description: "", checklist: ["身份证 / 护照 / 学生证", "充电器 / 数据线", "晴雨伞", "易于携带的小背包", "衣物：上衣 / 下装", "衣物：换洗内衣裤", "鞋袜"] },
+  { id: "work-start", title: "每天工作前要做的几件事", description: "", checklist: ["花几分钟了解昨天的情况", "充点时间处理邮件和未读消息", "查看智能清单“今天”中的任务", "确定今天最重要的 1~3 件事，排好优先级", "确定今天最难的事情，把它拆分成检查事项"] },
+  { id: "daily-journal", title: "每日记录", description: "今天完成了什么？\n\n今天发生了哪些美好或值得关注的事？\n\n今天遇到了哪些突发问题？\n\n今天心情如何？", checklist: [] },
+];
+const filteredQuickTaskTemplates = computed(() => {
+  const query = taskTemplateQuery.value.trim().toLocaleLowerCase();
+  if (!query) return quickTaskTemplates;
+  return quickTaskTemplates.filter(template => `${template.title} ${template.description} ${template.checklist.join(" ")}`.toLocaleLowerCase().includes(query));
+});
 const quickSuggestionLabel = computed(() => ({ priority: "优先级候选", tag: "标签候选", list: "清单候选" })[quickSuggestion.value?.kind] || "候选");
 const quickSuggestionOptions = computed(() => {
   const current = quickSuggestion.value;
@@ -2744,11 +2778,27 @@ function convertQuickAddToNote() {
   if (!noteList) return message.warning("请先创建笔记清单，再转换为笔记");
   quickEntry.listId = noteList.publicId;
   quickEntry.listSelected = true;
+  quickEntry.priority = "NONE";
+  quickEntry.prioritySelected = true;
+  Object.assign(quickRepeat, createQuickRepeatState());
+  quickRepeatError.value = "";
   quickAction.value = "";
   message.success(`新内容将添加至笔记清单“${noteList.name}”`);
 }
 function openTaskTemplates() {
-  message.warning("任务模板需要后端模板 API 支持，当前尚未启用");
+  quickAction.value = "";
+  taskTemplateQuery.value = "";
+  taskTemplatesOpen.value = true;
+}
+function applyQuickTaskTemplate(template) {
+  quickTemplateDraft.value = {
+    description: template.description || "",
+    checklist: template.checklist.map((title, sortOrder) => ({ title, completed: false, sortOrder })),
+  };
+  quickTitle.value = template.title;
+  taskTemplatesOpen.value = false;
+  quickAddExpanded.value = true;
+  nextTick(() => quickTitleInput.value?.focus());
 }
 
 function selectQuickAttachments(event) {
@@ -2965,6 +3015,8 @@ async function quickAdd() {
     quickDraft.value = {
       ...parsed,
       title: parsed.title || text,
+      description: quickTemplateDraft.value?.description || "",
+      checklist: quickTemplateDraft.value?.checklist?.map(item => ({ ...item })) || [],
       rrule: buildQuickRepeatRule(quickRepeat) || parsed.rrule || "",
       repeatState: { ...quickRepeat, weekdays: [...quickRepeat.weekdays] },
       priority: quickEntry.prioritySelected ? quickEntry.priority : parsed.priority || "NONE",
@@ -2994,6 +3046,9 @@ function cancelQuickDraft() {
   quickDraftStart.value = "";
   quickDraftAllDay.value = false;
   quickDraftReminder.value = null;
+  quickTemplateDraft.value = null;
+  taskTemplatesOpen.value = false;
+  taskTemplateQuery.value = "";
   quickAction.value = "";
   Object.assign(quickRepeat, createQuickRepeatState());
   quickRepeatError.value = "";
@@ -3014,7 +3069,7 @@ async function createQuickAddTask() {
     if (quickDraftReminder.value?.enabled && !dueAt) throw new Error("提醒需要先设置任务日期");
     const saved = await store.create({
       title: quickDraft.value.title.trim(),
-      description: "",
+      description: quickDraft.value.description || "",
       listId: quickDraft.value.listId || store.inbox?.publicId || "",
       priority: quickDraft.value.priority || "NONE",
       startAt: quickDraftStart.value ? new Date(quickDraftStart.value).toISOString() : "",
@@ -3025,7 +3080,7 @@ async function createQuickAddTask() {
       rrule: quickDraft.value.rrule || "",
       recurrenceAnchor: quickDraft.value.rrule ? (quickDraft.value.repeatState?.mode === "COMPLETION_DATE" ? "COMPLETION_DATE" : "DUE_DATE") : "",
       tagIds: [...quickDraft.value.tagIds],
-      checklist: [],
+      checklist: quickDraft.value.checklist?.map((item, sortOrder) => ({ ...item, sortOrder })) || [],
     });
     if (saved?.publicId && quickAttachments.value.length) {
       pendingQuickAttachmentBatches.value.push({ id: crypto.randomUUID(), taskId: saved.publicId, attachments: quickAttachments.value });
@@ -4833,6 +4888,7 @@ const SidebarSection = {
 .clone-modal-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(0, 0, 0, .42); }
 .clone-display-settings { display: grid; gap: 14px; width: min(430px, 100%); padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); box-shadow: 0 16px 48px rgba(0, 0, 0, .22); }
 .clone-display-settings > header { display: flex; align-items: center; justify-content: space-between; }
+.clone-quick-input-settings { width: min(860px, 100%); }
 .clone-display-settings h2 { margin: 0; font-size: 16px; }
 .clone-display-settings > header button { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-display-settings > label { display: flex; align-items: center; gap: 9px; min-height: 26px; color: var(--ink2); font-size: 13px; }
@@ -4844,6 +4900,35 @@ const SidebarSection = {
 .clone-quick-input-previews > div > button { padding: 4px 7px; border: 0; border-radius: 4px; background: var(--accent); color: white; font: inherit; }
 .clone-quick-input-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .clone-quick-input-modes label { display: flex; align-items: center; gap: 8px; justify-content: center; min-height: 38px; color: var(--ink2); }
+.clone-task-template-dialog { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 18px; width: min(860px, 100%); max-height: min(570px, calc(100dvh - 40px)); padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); box-shadow: 0 18px 55px rgba(0, 0, 0, .28); }
+.clone-task-template-dialog > header { display: flex; align-items: center; gap: 16px; }
+.clone-task-template-dialog > header h2 { flex: 1; margin: 0; font-size: 16px; }
+.clone-task-template-dialog > header label { display: flex; width: min(220px, 35vw); align-items: center; gap: 7px; padding: 0 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); }
+.clone-task-template-dialog > header label input { width: 100%; min-width: 0; height: 30px; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 12px; }
+.clone-task-template-dialog > header > button { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-task-template-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: start; gap: 10px; overflow: auto; }
+.clone-task-template-card { display: flex; min-width: 0; min-height: 182px; flex-direction: column; gap: 10px; overflow: hidden; padding: 13px; border: 1px solid transparent; border-radius: 8px; background: color-mix(in srgb, var(--ink) 4%, var(--card)); color: var(--ink2); text-align: left; cursor: pointer; }
+.clone-task-template-card:hover { border-color: color-mix(in srgb, var(--accent) 38%, var(--line)); background: color-mix(in srgb, var(--accent) 7%, var(--card)); }
+.clone-task-template-card > strong { color: var(--ink); font-size: 13px; }
+.clone-task-template-card ul { display: grid; gap: 5px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.clone-task-template-card li { display: flex; min-width: 0; align-items: flex-start; gap: 6px; font-size: 11px; line-height: 1.45; }
+.clone-task-template-card li > span { width: 12px; height: 12px; flex: none; margin-top: 1px; border: 1px solid var(--muted); border-radius: 3px; }
+.clone-task-template-card p { margin: 0; color: var(--ink2); font-size: 12px; line-height: 1.65; white-space: pre-line; }
+.clone-task-template-empty { display: grid; min-height: 180px; margin: 0; place-items: center; color: var(--muted); font-size: 12px; }
+.clone-task-template-dialog > footer { display: flex; justify-content: center; }
+.clone-task-template-dialog > footer button { border: 0; background: transparent; color: var(--accent); font-size: 12px; text-decoration: underline; cursor: pointer; }
+@media (max-width: 700px) {
+  .clone-task-template-backdrop { align-items: end; padding: 0; }
+  .clone-task-template-dialog { width: 100%; height: min(78dvh, 620px); max-height: min(78dvh, 620px); gap: 14px; padding: 16px 14px calc(16px + env(safe-area-inset-bottom)); border-radius: 12px 12px 0 0; }
+  .clone-task-template-dialog > header { flex-wrap: wrap; gap: 10px; }
+  .clone-task-template-dialog > header h2 { min-width: 0; }
+  .clone-task-template-dialog > header label { order: 3; width: 100%; }
+  .clone-task-template-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .clone-task-template-card { min-height: 112px; max-height: 190px; }
+  .clone-quick-input-settings { max-height: calc(100dvh - 32px); overflow-y: auto; }
+  .clone-quick-input-previews { grid-template-columns: minmax(0, 1fr); }
+}
+:global(body:has(.clone-task-template-backdrop) .floating-agent) { visibility: hidden; pointer-events: none; }
 .clone-quick-add:focus-within {
   border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent), 0 2px 6px rgba(20, 27, 38, 0.05);
