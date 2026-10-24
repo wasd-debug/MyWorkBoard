@@ -232,7 +232,7 @@
         <button type="button" role="menuitemcheckbox" :aria-checked="showChecklist" @click="showChecklist = !showChecklist; listOptionsOpen = false"><Check v-if="showChecklist" :size="14" /><span v-else class="clone-menu-check-spacer"></span>显示检查事项</button>
         <button type="button" @click="openDisplaySettings"><SlidersHorizontal :size="14" />显示设置</button>
         <div class="clone-print-submenu" @pointerenter="printOptionsOpen = true" @pointerleave="printOptionsOpen = false">
-          <button type="button" class="clone-print-submenu-trigger" :aria-expanded="printOptionsOpen" @click="printOptionsOpen = !printOptionsOpen"><Printer :size="14" /><span>打印</span><ChevronRight :size="14" /></button>
+          <button type="button" class="clone-print-submenu-trigger" :aria-expanded="printOptionsOpen" @click="printOptionsOpen = true"><Printer :size="14" /><span>打印</span><ChevronRight :size="14" /></button>
           <div v-if="printOptionsOpen" class="clone-print-submenu-options" role="menu" aria-label="打印选项" @pointerdown.stop @click.stop>
             <button type="button" role="menuitem" @click="printTaskList('TITLE')">打印标题</button>
             <button type="button" role="menuitem" @click="printTaskList('CONTENT')">打印标题和内容</button>
@@ -5096,8 +5096,8 @@ const SidebarSection = {
 .clone-menu-submenu-trigger > svg:last-child { color: var(--muted); }
 .clone-view-menu .clone-menu-back { color: var(--ink2); font-weight: 600; }
 .clone-view-menu .clone-menu-reset { justify-content: center; color: var(--muted); }
-.clone-view-segmented { display: flex; align-items: center; gap: 7px; padding: 7px 9px 9px; }
-.clone-view-segmented button { display: grid; flex: 0 0 40px; width: 40px; height: 40px; min-height: 40px; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 6px; color: var(--ink); }
+.clone-view-segmented { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; padding: 7px 9px 9px; }
+.clone-view-segmented button { display: grid; justify-self: center; width: 40px; height: 40px; min-height: 40px; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 6px; color: var(--ink); }
 .clone-view-segmented button[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
 .clone-print-submenu { position: relative; }
 .clone-view-menu .clone-print-submenu-trigger { display: flex; width: 100%; align-items: center; justify-content: flex-start; gap: 8px; min-height: 34px; padding: 7px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
@@ -5105,7 +5105,7 @@ const SidebarSection = {
 .clone-print-submenu-trigger > svg:last-child { color: var(--muted); }
 .clone-view-menu .clone-print-submenu-trigger:hover,
 .clone-view-menu .clone-print-submenu-trigger[aria-expanded="true"] { background: var(--paper); }
-.clone-print-submenu-options { position: absolute; z-index: 2; top: -4px; right: calc(100% + 7px); display: grid; width: 190px; gap: 2px; padding: 5px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); box-shadow: 0 10px 28px rgb(15 23 42 / 16%); }
+.clone-print-submenu-options { position: absolute; z-index: 2; top: -4px; right: 100%; display: grid; width: 190px; gap: 2px; padding: 5px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); box-shadow: 0 10px 28px rgb(15 23 42 / 16%); }
 .clone-view-menu .clone-print-submenu-options button { min-height: 38px; justify-content: flex-start; padding: 7px 10px; font-size: 13px; }
 .clone-view-menu > button:disabled { color: var(--muted); opacity: .5; cursor: default; }
 .clone-view-menu hr { width: 100%; margin: 5px 0; border: 0; border-top: 1px solid var(--line); }
