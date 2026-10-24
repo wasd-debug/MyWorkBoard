@@ -28,6 +28,7 @@ import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -58,11 +59,19 @@ public class TaskService {
     private final JdbcTemplate jdbcTemplate;
     private final CurrentUserResolver currentUser;
     private final TaskChangeLog changeLog;
+    private final TaskRecurrenceCalendar recurrenceCalendar;
 
     public TaskService(JdbcTemplate jdbcTemplate, CurrentUserResolver currentUser, TaskChangeLog changeLog) {
+        this(jdbcTemplate, currentUser, changeLog, null);
+    }
+
+    @Autowired
+    public TaskService(JdbcTemplate jdbcTemplate, CurrentUserResolver currentUser, TaskChangeLog changeLog,
+                       TaskRecurrenceCalendar recurrenceCalendar) {
         this.jdbcTemplate = jdbcTemplate;
         this.currentUser = currentUser;
         this.changeLog = changeLog;
+        this.recurrenceCalendar = recurrenceCalendar;
     }
 
     @Transactional
@@ -912,7 +921,8 @@ public class TaskService {
                         "TIME_FORMAT(s.quiet_start,'%H:%i') quiet_start_text,TIME_FORMAT(s.quiet_end,'%H:%i') quiet_end_text " +
                         "FROM task_setting s JOIN task_list l ON l.id = s.default_list_id WHERE s.user_id = ?",
                 (result, rowNum) -> new Settings(result.getString("public_id"), result.getString("default_view"),
-                        (Integer) result.getObject("default_reminder_minutes"), result.getInt("week_start"),
+                        (Integer) result.getObject("default_reminder_minutes"), result.getString("default_due_date"),
+                        result.getString("default_due_time"), result.getInt("week_start"),
                         result.getBoolean("show_lunar"), result.getBoolean("overlay_worktime"),
                         result.getBoolean("overlay_ledger"), result.getBoolean("overlay_holiday"),
                         result.getBoolean("overlay_habit"), result.getBoolean("notification_reminders"),
@@ -932,6 +942,13 @@ public class TaskService {
         String view = enumValue(command.defaultView(), before.defaultView(), List.of("INBOX", "TODAY", "CALENDAR", "BOARD"), "defaultView");
         Integer reminder = command.defaultReminderMinutes() == null ? before.defaultReminderMinutes() : command.defaultReminderMinutes();
         if (reminder != null && (reminder < 0 || reminder > 10080)) throw new IllegalArgumentException("默认提醒必须在 0-10080 分钟");
+        String defaultDueDate = command.defaultDueDate() == null ? before.defaultDueDate()
+                : enumValue(command.defaultDueDate(), before.defaultDueDate(), List.of("TODAY", "NONE"), "defaultDueDate");
+        String defaultDueTime = command.defaultDueTime() == null ? before.defaultDueTime()
+                : requiredText(command.defaultDueTime(), "defaultDueTime", 16);
+        if (!"NEXT_HOUR".equals(defaultDueTime) && !defaultDueTime.matches("(?:[01]\\d|2[0-3]):[0-5]\\d")) {
+            throw new IllegalArgumentException("默认任务时间必须为 NEXT_HOUR 或 HH:mm");
+        }
         int weekStart = command.weekStart() == null ? before.weekStart() : command.weekStart();
         if (weekStart != 0 && weekStart != 1) throw new IllegalArgumentException("一周起始日只能是周日或周一");
         String timezone = command.timezone() == null ? before.timezone() : requiredText(command.timezone(), "timezone", 64);
@@ -939,10 +956,10 @@ public class TaskService {
         String summary = time(command.dailySummaryTime(), before.dailySummaryTime(), "每日摘要时间");
         String quietStart = time(command.quietStart(), before.quietStart(), "免打扰开始时间");
         String quietEnd = time(command.quietEnd(), before.quietEnd(), "免打扰结束时间");
-        int changed = jdbcTemplate.update("UPDATE task_setting SET default_list_id=?,default_view=?,default_reminder_minutes=?,week_start=?," +
+        int changed = jdbcTemplate.update("UPDATE task_setting SET default_list_id=?,default_view=?,default_reminder_minutes=?,default_due_date=?,default_due_time=?,week_start=?," +
                         "show_lunar=?,overlay_worktime=?,overlay_ledger=?,overlay_holiday=?,overlay_habit=?,notification_reminders=?," +
                         "notification_overdue=?,daily_summary_time=?,quiet_start=?,quiet_end=?,feed_include_description=?,timezone=?,revision=revision+1 " +
-                        "WHERE user_id=? AND revision=?", listId, view, reminder, weekStart,
+                "WHERE user_id=? AND revision=?", listId, view, reminder, defaultDueDate, defaultDueTime, weekStart,
                 value(command.showLunar(), before.showLunar()), value(command.overlayWorktime(), before.overlayWorktime()),
                 value(command.overlayLedger(), before.overlayLedger()), value(command.overlayHoliday(), before.overlayHoliday()),
                 value(command.overlayHabit(), before.overlayHabit()), value(command.notificationReminders(), before.notificationReminders()),
@@ -1085,7 +1102,8 @@ public class TaskService {
     private void generateNextInstance(long userId, TaskItem current, Instant completedAt) {
         if (current.rrule() == null || current.seriesId() == null || current.plannedDueAt() == null) return;
         Instant next = TaskRecurrence.next(current.rrule(), Instant.parse(current.plannedDueAt()), completedAt,
-                current.recurrenceAnchor(), current.timezone(), (current.seriesSequence() == null ? 1 : current.seriesSequence()) + 1);
+                current.recurrenceAnchor(), current.timezone(), (current.seriesSequence() == null ? 1 : current.seriesSequence()) + 1,
+                recurrenceCalendar);
         if (next == null) return;
         int sequence = current.seriesSequence() + 1;
         String nextId = UUID.randomUUID().toString();

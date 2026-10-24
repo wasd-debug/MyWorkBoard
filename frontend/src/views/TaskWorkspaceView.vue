@@ -320,10 +320,12 @@
             <template v-if="quickRepeat.preset === 'CUSTOM'">
               <div class="clone-quick-repeat-grid"><label>重复方式<select v-model="quickRepeat.mode"><option value="DUE_DATE">到期重复</option><option value="COMPLETION_DATE">完成重复</option><option value="CUSTOM">自选重复</option></select></label><label>频率<select :value="quickRepeat.frequency" @change="setQuickRepeatFrequency"><option value="DAILY">每天</option><option value="WEEKLY">每周</option><option value="MONTHLY">每月</option><option value="YEARLY">每年</option></select></label><label>间隔<input v-model.number="quickRepeat.interval" type="number" min="1" max="365" /></label></div>
               <div v-if="quickRepeat.frequency === 'WEEKLY'" class="clone-quick-repeat-days"><span>每周</span><label v-for="day in DAY_CODES" :key="day"><input v-model="quickRepeat.weekdays" type="checkbox" :value="day" />{{ { MO: '一', TU: '二', WE: '三', TH: '四', FR: '五', SA: '六', SU: '日' }[day] }}</label></div>
-              <div v-if="['MONTHLY', 'YEARLY'].includes(quickRepeat.frequency)" class="clone-quick-repeat-grid"><label>重复日期<select v-model="quickRepeat.monthMode"><option value="DATE">按日期</option><option value="WEEKDAY">按星期</option><option v-if="quickRepeat.frequency === 'MONTHLY'" value="WORKDAY">按工作日</option></select></label><label v-if="quickRepeat.frequency === 'YEARLY'">月份<select v-model.number="quickRepeat.month"><option v-for="month in 12" :key="month" :value="month">{{ month }} 月</option></select></label><label v-if="quickRepeat.monthMode === 'DATE'">日期<input v-model.number="quickRepeat.monthDay" type="number" min="1" max="31" /></label><template v-if="quickRepeat.monthMode === 'WEEKDAY'"><label>第几周<select v-model.number="quickRepeat.ordinal"><option v-for="ordinal in 5" :key="ordinal" :value="ordinal">第 {{ ordinal }} 个</option><option :value="-1">最后一个</option></select></label><label>星期<select v-model="quickRepeat.weekday"><option v-for="day in DAY_CODES" :key="day" :value="day">{{ { MO: '周一', TU: '周二', WE: '周三', TH: '周四', FR: '周五', SA: '周六', SU: '周日' }[day] }}</option></select></label></template><label v-if="quickRepeat.monthMode === 'WORKDAY'">工作日<select v-model.number="quickRepeat.workdayPosition"><option :value="1">第一个工作日</option><option :value="-1">最后一个工作日</option></select></label></div>
-              <label v-if="quickRepeat.frequency !== 'WEEKLY' && quickRepeat.monthMode !== 'WORKDAY'" class="clone-quick-repeat-check"><input v-model="quickRepeat.skipWeekends" type="checkbox" />跳过双休日</label>
-              <div class="clone-quick-repeat-end"><span>结束条件</span><label><input v-model="quickRepeat.endMode" type="radio" value="NEVER" />永不结束</label><label><input v-model="quickRepeat.endMode" type="radio" value="UNTIL" />按日期结束</label><input v-if="quickRepeat.endMode === 'UNTIL'" v-model="quickRepeat.until" type="date" /><label><input v-model="quickRepeat.endMode" type="radio" value="COUNT" />按次数结束</label><input v-if="quickRepeat.endMode === 'COUNT'" v-model.number="quickRepeat.count" type="number" min="1" /></div>
+              <div v-if="['MONTHLY', 'YEARLY'].includes(quickRepeat.frequency)" class="clone-quick-repeat-grid"><label>重复日期<select v-model="quickRepeat.monthMode"><option value="DATE">按日期</option><option value="WEEKDAY">按星期</option><option v-if="quickRepeat.frequency === 'MONTHLY'" value="WORKDAY">按工作日</option></select></label><label v-if="quickRepeat.frequency === 'YEARLY'">月份<select v-model.number="quickRepeat.month"><option v-for="month in 12" :key="month" :value="month">{{ month }} 月</option></select></label><template v-if="quickRepeat.monthMode === 'WEEKDAY'"><label>第几周<select v-model.number="quickRepeat.ordinal"><option v-for="ordinal in 5" :key="ordinal" :value="ordinal">第 {{ ordinal }} 个</option><option :value="-1">最后一个</option></select></label><label>星期<select v-model="quickRepeat.weekday"><option v-for="day in DAY_CODES" :key="day" :value="day">{{ { MO: '周一', TU: '周二', WE: '周三', TH: '周四', FR: '周五', SA: '周六', SU: '周日' }[day] }}</option></select></label></template><label v-if="quickRepeat.monthMode === 'WORKDAY'">工作日<select v-model.number="quickRepeat.workdayPosition"><option :value="1">第一个工作日</option><option :value="-1">最后一个工作日</option></select></label></div>
+              <div v-if="['MONTHLY', 'YEARLY'].includes(quickRepeat.frequency) && quickRepeat.monthMode === 'DATE'" class="clone-quick-repeat-date-calendar" aria-label="选择重复日期"><span v-for="weekday in quickWeekdays" :key="`repeat-${weekday}`">{{ weekday }}</span><span v-for="(day, index) in quickRepeatCalendarDays.filter(value => !value)" :key="`repeat-day-${index}`" class="clone-quick-repeat-date-spacer"></span><button v-for="day in quickRepeatCalendarDays.filter(Boolean)" :key="`repeat-date-${day}`" type="button" :aria-pressed="!quickRepeat.lastDay && quickRepeat.monthDay === day" :class="{ active: !quickRepeat.lastDay && quickRepeat.monthDay === day }" @click="quickRepeat.monthDay = day; quickRepeat.lastDay = false">{{ day }}</button><button type="button" class="clone-quick-repeat-last-day" :aria-pressed="quickRepeat.lastDay" :class="{ active: quickRepeat.lastDay }" @click="quickRepeat.lastDay = true">最后一天</button></div>
+              <div class="clone-quick-repeat-checks"><label v-if="quickRepeat.frequency !== 'WEEKLY' && quickRepeat.monthMode !== 'WORKDAY'" class="clone-quick-repeat-check"><input v-model="quickRepeat.skipWeekends" type="checkbox" />跳过双休日</label><label class="clone-quick-repeat-check"><input v-model="quickRepeat.skipLegalHolidays" type="checkbox" />跳过法定节假日</label></div>
             </template>
+            <div v-if="quickRepeat.preset === 'LUNAR_MONTHLY' || quickRepeat.preset === 'LUNAR_YEARLY'" class="clone-quick-repeat-grid"><label v-if="quickRepeat.preset === 'LUNAR_YEARLY'">农历月份<select v-model.number="quickRepeat.lunarMonth"><option v-for="month in 12" :key="month" :value="month">{{ month }} 月</option></select></label><label>农历日期<select v-model.number="quickRepeat.lunarDay"><option v-for="day in 30" :key="day" :value="day">{{ day }} 日</option></select></label></div>
+            <div v-if="quickRepeat.preset" class="clone-quick-repeat-end"><span>结束条件</span><label><input v-model="quickRepeat.endMode" type="radio" value="NEVER" />永不结束</label><label><input v-model="quickRepeat.endMode" type="radio" value="UNTIL" />按日期结束</label><input v-if="quickRepeat.endMode === 'UNTIL'" v-model="quickRepeat.until" type="date" /><label><input v-model="quickRepeat.endMode" type="radio" value="COUNT" />按次数结束</label><input v-if="quickRepeat.endMode === 'COUNT'" v-model.number="quickRepeat.count" type="number" min="1" /></div>
             <p v-if="quickRepeatError" class="clone-error" role="alert">{{ quickRepeatError }}</p>
             <footer><button type="button" @click="resetQuickRepeat">清除</button><button type="button" class="clone-quick-date-apply" @click="applyQuickRepeat">完成</button></footer>
           </section>
@@ -1126,6 +1128,7 @@ import { useTaskFocusStore } from "../stores/taskFocus.js";
 import { message } from "../services/message.js";
 import {
   apiGetTaskSidebarPreferences,
+  apiGetTaskSettings,
   apiUpdateTaskSidebarPreferences,
   apiParseTaskQuickAdd,
   apiCreateTaskReminder,
@@ -1208,6 +1211,7 @@ const showListLink = ref(true);
 const taskTemplatesAvailable = false;
 const quickEntry = reactive({ dueAt: "", startAt: "", allDay: false, dateSelected: false, priority: "NONE", prioritySelected: false, listId: "", listSelected: false, tagIds: [] });
 const quickRepeat = reactive(createQuickRepeatState());
+const quickAddSettings = ref({ defaultDueDate: "TODAY", defaultDueTime: "NEXT_HOUR", defaultReminderMinutes: null });
 const quickRepeatError = ref("");
 const quickDateMode = ref("DATE");
 const quickCalendarMonth = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
@@ -1220,11 +1224,19 @@ const quickDateTime = ref("");
 const quickAddReminder = reactive({ enabled: false, presets: [], amount: 1, unit: "DAY", time: "09:00", dailyUntilDone: false });
 const quickWeekdays = ["一", "二", "三", "四", "五", "六", "日"];
 const quickCalendarDays = computed(() => calendarMonthDays(quickCalendarMonth.value));
+const quickRepeatCalendarDays = computed(() => {
+  const dueDate = quickEntry.dueAt ? new Date(quickEntry.dueAt) : new Date();
+  const year = dueDate.getFullYear();
+  const monthIndex = quickRepeat.frequency === "YEARLY" ? Number(quickRepeat.month || 1) - 1 : dueDate.getMonth();
+  const first = new Date(year, monthIndex, 1);
+  const offset = (first.getDay() + 6) % 7;
+  return [...Array(offset).fill(null), ...Array.from({ length: new Date(year, monthIndex + 1, 0).getDate() }, (_, index) => index + 1)];
+});
 const quickCalendarTitle = computed(() => new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long" }).format(quickCalendarMonth.value));
 const quickReminderOptions = computed(() => getQuickReminderOptions(quickEntry.allDay));
 const quickReminderLabel = computed(() => quickAddReminder.presets.map(value => quickReminderOptions.value.find(option => option.value === value)?.label || "自定义").join("、") || "提醒");
 const quickReminderOptionsForDraft = computed(() => (quickDraftReminder.value?.presets || []).map(value => getQuickReminderOptions(quickDraftAllDay.value).find(option => option.value === value)?.label || "自定义"));
-const quickDateSummary = computed(() => quickEntry.dueAt ? (quickEntry.startAt ? `${formatDate(quickEntry.startAt)} - ${formatDate(quickEntry.dueAt)}` : formatDate(quickEntry.dueAt)) : "日期");
+const quickDateSummary = computed(() => quickEntry.dueAt ? (quickEntry.startAt ? `${formatDate(quickEntry.startAt)} - ${formatDate(quickEntry.dueAt)}` : formatDate(quickEntry.dueAt)) : quickEntry.dateSelected ? "日期" : quickAddSettings.value.defaultDueDate === "TODAY" ? "今天" : "日期");
 const checklistDragIndex = ref(null);
 const checklistDropTarget = ref(null);
 const sidebarHidden = ref(false);
@@ -2670,9 +2682,10 @@ function toggleQuickAction(action) {
   quickAction.value = nextAction;
   if (nextAction !== "date") return;
   const selected = quickEntry.dueAt ? new Date(quickEntry.dueAt) : new Date();
-  quickSelectedDate.value = quickEntry.dueAt ? localDateKey(selected) : "";
+  quickSelectedDate.value = quickEntry.dueAt ? localDateKey(selected)
+    : quickEntry.dateSelected ? "" : quickAddSettings.value.defaultDueDate === "TODAY" ? localDateKey(selected) : "";
   quickCalendarMonth.value = new Date(selected.getFullYear(), selected.getMonth(), 1);
-  quickDateTime.value = quickEntry.dueAt ? toLocal(quickEntry.dueAt).slice(11, 16) : nextWholeHour().slice(11, 16);
+  quickDateTime.value = quickEntry.dueAt ? toLocal(quickEntry.dueAt).slice(11, 16) : defaultQuickTime();
   quickRangeStart.value = quickEntry.startAt ? localDateKey(new Date(quickEntry.startAt)) : "";
   quickRangeEnd.value = quickEntry.startAt && quickEntry.dueAt ? localDateKey(new Date(quickEntry.dueAt)) : "";
   if (quickEntry.startAt) {
@@ -2859,6 +2872,11 @@ function applyQuickDateTime() {
   quickEntry.dateSelected = true;
 }
 
+function defaultQuickTime() {
+  const configured = quickAddSettings.value.defaultDueTime;
+  return configured && configured !== "NEXT_HOUR" ? configured : nextWholeHour().slice(11, 16);
+}
+
 function applyQuickDate() {
   if (quickDateMode.value === "RANGE") {
     const rangeStart = `${quickRangeStart.value}T${quickRangeStartTime.value || "09:00"}`;
@@ -2911,7 +2929,16 @@ function clearQuickDate() {
 
 function toggleQuickReminder() {
   quickAddReminder.enabled = !quickAddReminder.enabled;
-  if (quickAddReminder.enabled && !quickAddReminder.presets.length) quickAddReminder.presets = [quickEntry.allDay ? "TODAY" : "30_MIN"];
+  if (quickAddReminder.enabled && !quickAddReminder.presets.length) {
+    const minutes = quickAddSettings.value.defaultReminderMinutes;
+    const timedPreset = ({ 0: "ON_TIME", 5: "5_MIN", 30: "30_MIN", 60: "1_HOUR", 1440: "1_DAY" })[minutes];
+    const dayPreset = ({ 0: "TODAY", 1440: "1_DAY", 2880: "2_DAY", 4320: "3_DAY", 10080: "1_WEEK" })[minutes];
+    quickAddReminder.presets = [quickEntry.allDay ? dayPreset || "TODAY" : timedPreset || (minutes == null ? "30_MIN" : "CUSTOM")];
+    if (!quickEntry.allDay && !timedPreset && minutes != null) {
+      quickAddReminder.amount = Math.max(1, minutes);
+      quickAddReminder.unit = "MINUTE";
+    }
+  }
 }
 
 function selectQuickReminder(preset) {
@@ -2946,7 +2973,9 @@ async function quickAdd() {
         ...quickEntry.tagIds,
       ])],
     };
-    quickDraftDue.value = quickEntry.dateSelected ? quickEntry.dueAt : parsed.dueAt ? toLocal(parsed.dueAt) : route.name === "tasks-today" ? toLocal(new Date()) : "";
+    quickDraftDue.value = quickEntry.dateSelected ? quickEntry.dueAt : parsed.dueAt ? toLocal(parsed.dueAt)
+      : quickAddSettings.value.defaultDueDate === "TODAY" || route.name === "tasks-today"
+        ? `${localDateKey(new Date())}T${defaultQuickTime()}` : "";
     quickDraftStart.value = quickEntry.dateSelected ? quickEntry.startAt : "";
     quickDraftAllDay.value = quickEntry.dateSelected ? quickEntry.allDay : false;
     quickDraftReminder.value = { ...quickAddReminder, presets: [...quickAddReminder.presets] };
@@ -4218,8 +4247,9 @@ onMounted(() => {
   const sidebarPreferencesLoad = loadSidebarPreferences(filtersLoad);
   miniCalendarMonth.value = new Date(selectedDate.value.getFullYear(), selectedDate.value.getMonth(), 1);
   const storeInit = store.init({ waitForRemote: false });
+  const taskSettingsLoad = apiGetTaskSettings().then(settings => { if (settings) quickAddSettings.value = settings; }).catch(() => {});
   const miniCalendarLoad = loadMiniCalendar();
-  void Promise.allSettled([storeInit, filtersLoad, sidebarPreferencesLoad, miniCalendarLoad]).then(results => {
+  void Promise.allSettled([storeInit, taskSettingsLoad, filtersLoad, sidebarPreferencesLoad, miniCalendarLoad]).then(results => {
     const failed = results.find(result => result.status === "rejected");
     if (failed) store.error = failed.reason?.message || "任务工作区加载失败";
   });
@@ -4926,6 +4956,14 @@ const SidebarSection = {
 .clone-quick-repeat-panel > header button { width: 26px; min-height: 26px; padding: 0; }
 .clone-quick-repeat-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
 .clone-quick-repeat-presets button { border: 1px solid var(--line); }
+.clone-quick-repeat-date-calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; text-align: center; }
+.clone-quick-repeat-date-calendar > span { display: grid; min-height: 20px; place-items: center; color: var(--muted); font-size: 10px; }
+.clone-quick-repeat-date-calendar > span.clone-quick-repeat-date-spacer { min-height: 0; }
+.clone-quick-repeat-date-calendar button { min-width: 0; min-height: 27px; padding-inline: 0; border: 1px solid transparent; }
+.clone-quick-repeat-date-calendar button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.clone-quick-repeat-date-calendar button.clone-quick-repeat-last-day { grid-column: span 2; }
+.clone-quick-repeat-checks { display: flex; flex-wrap: wrap; gap: 10px; }
+.clone-quick-repeat-checks .clone-quick-repeat-check { display: inline-flex; align-items: center; gap: 5px; }
 .clone-quick-repeat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
 .clone-quick-repeat-grid label { display: grid; min-width: 0; gap: 4px; }
 .clone-quick-repeat-grid input, .clone-quick-repeat-grid select, .clone-quick-repeat-end input[type="date"], .clone-quick-repeat-end input[type="number"] { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }

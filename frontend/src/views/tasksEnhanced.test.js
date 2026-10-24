@@ -505,7 +505,7 @@ test('task sidebar organization persists account preferences and exposes pin, li
   assert.match(workspaceView, /organizationMenu\.kind === 'filter'[\s\S]*编辑[\s\S]*置顶[\s\S]*复制[\s\S]*删除/)
   assert.match(workspaceView, /async function duplicateFilter\([\s\S]*name: `\$\{item\.name\} 副本`/)
   assert.match(workspaceView, /function setFilterPinned\(/)
-  assert.match(workspaceView, /const filtersLoad = loadFilters\(\);[\s\S]*const sidebarPreferencesLoad = loadSidebarPreferences\(filtersLoad\);[\s\S]*const storeInit = store\.init\(\{ waitForRemote: false \}\);[\s\S]*const miniCalendarLoad = loadMiniCalendar\(\);[\s\S]*void Promise\.allSettled\(\[storeInit, filtersLoad, sidebarPreferencesLoad, miniCalendarLoad\]\)/)
+  assert.match(workspaceView, /const filtersLoad = loadFilters\(\);[\s\S]*const sidebarPreferencesLoad = loadSidebarPreferences\(filtersLoad\);[\s\S]*const storeInit = store\.init\(\{ waitForRemote: false \}\);[\s\S]*const taskSettingsLoad = apiGetTaskSettings\(\)[\s\S]*const miniCalendarLoad = loadMiniCalendar\(\);[\s\S]*void Promise\.allSettled\(\[storeInit, taskSettingsLoad, filtersLoad, sidebarPreferencesLoad, miniCalendarLoad\]\)/)
   assert.match(workspaceView, /function handleListDragOver\(target, event\)[\s\S]*getListDropPlacement\(event\.clientY/)
 })
 

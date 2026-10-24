@@ -32,4 +32,14 @@ export interface TaskSettings {
     'feedIncludeDescription'?: boolean;
     'timezone'?: string;
     'revision'?: number;
+    'defaultDueDate'?: TaskSettingsDefaultDueDateEnum;
+    /**
+     * NEXT_HOUR or a local HH:mm time
+     */
+    'defaultDueTime'?: string;
+}
+
+export enum TaskSettingsDefaultDueDateEnum {
+    TODAY = 'TODAY',
+    NONE = 'NONE'
 }

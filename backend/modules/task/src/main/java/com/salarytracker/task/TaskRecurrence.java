@@ -14,6 +14,15 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 final class TaskRecurrence {
+    private static final TaskRecurrenceCalendar FALLBACK_CALENDAR = new TaskRecurrenceCalendar() {
+        @Override public boolean isStatutoryHoliday(LocalDate date) { return false; }
+        @Override public boolean isLegalWorkday(LocalDate date) {
+            return date.getDayOfWeek() != DayOfWeek.SATURDAY && date.getDayOfWeek() != DayOfWeek.SUNDAY;
+        }
+        @Override public boolean isLunarDate(LocalDate date, int month, int day) { return false; }
+        @Override public int lunarMonthIndex(LocalDate date) { return Integer.MIN_VALUE; }
+        @Override public int lunarYear(LocalDate date) { return Integer.MIN_VALUE; }
+    };
     private static final Map<String, DayOfWeek> DAYS = Map.of("MO", DayOfWeek.MONDAY, "TU", DayOfWeek.TUESDAY,
             "WE", DayOfWeek.WEDNESDAY, "TH", DayOfWeek.THURSDAY, "FR", DayOfWeek.FRIDAY,
             "SA", DayOfWeek.SATURDAY, "SU", DayOfWeek.SUNDAY);
@@ -28,8 +37,25 @@ final class TaskRecurrence {
             throw new IllegalArgumentException("RRULE FREQ 仅支持 DAILY/WEEKLY/MONTHLY/YEARLY");
         }
         for (String key : rule.keySet()) {
-            if (!Set.of("FREQ", "INTERVAL", "BYDAY", "BYMONTHDAY", "BYMONTH", "BYSETPOS", "COUNT", "UNTIL").contains(key)) {
+            if (!Set.of("FREQ", "INTERVAL", "BYDAY", "BYMONTHDAY", "BYMONTH", "BYSETPOS", "COUNT", "UNTIL",
+                    "X-TASK-KIND", "X-LUNAR-MONTH", "X-LUNAR-DAY", "X-SKIP-HOLIDAYS", "X-SKIP-WEEKENDS").contains(key)) {
                 throw new IllegalArgumentException("RRULE 字段不支持: " + key);
+            }
+        }
+        String taskKind = rule.get("X-TASK-KIND");
+        if (taskKind != null && !Set.of("LEGAL_WORKDAY", "LEGAL_HOLIDAY", "LUNAR_MONTHLY", "LUNAR_YEARLY").contains(taskKind)) {
+            throw new IllegalArgumentException("RRULE X-TASK-KIND 无效");
+        }
+        for (String key : Set.of("X-SKIP-HOLIDAYS", "X-SKIP-WEEKENDS")) {
+            if (rule.containsKey(key) && !Set.of("TRUE", "FALSE").contains(rule.get(key))) {
+                throw new IllegalArgumentException("RRULE " + key + " 无效");
+            }
+        }
+        if (taskKind != null && taskKind.startsWith("LUNAR_")) {
+            integers(rule, "X-LUNAR-MONTH", 1, 12, false);
+            integers(rule, "X-LUNAR-DAY", 1, 30, false);
+            if (!rule.containsKey("X-LUNAR-DAY") || ("LUNAR_YEARLY".equals(taskKind) && !rule.containsKey("X-LUNAR-MONTH"))) {
+                throw new IllegalArgumentException("农历重复缺少月份或日期");
             }
         }
         positive(rule, "INTERVAL", 1);
@@ -43,6 +69,12 @@ final class TaskRecurrence {
     }
 
     static Instant next(String raw, Instant planned, Instant completed, String anchor, String timezone, int nextSequence) {
+        return next(raw, planned, completed, anchor, timezone, nextSequence, null);
+    }
+
+    static Instant next(String raw, Instant planned, Instant completed, String anchor, String timezone,
+                        int nextSequence, TaskRecurrenceCalendar calendar) {
+        if (calendar == null) calendar = FALLBACK_CALENDAR;
         Map<String, String> rule = parse(validate(raw));
         Integer count = positive(rule, "COUNT", null);
         if (count != null && nextSequence > count) return null;
@@ -53,7 +85,7 @@ final class TaskRecurrence {
         ZonedDateTime candidate = base.plusDays(1).withHour(planned.atZone(zone).getHour())
                 .withMinute(planned.atZone(zone).getMinute()).withSecond(planned.atZone(zone).getSecond()).withNano(0);
         for (int i = 0; i < 3700; i++, candidate = candidate.plusDays(1)) {
-            if (matches(rule, origin, candidate.toLocalDate(), interval)) {
+            if (matches(rule, origin, candidate.toLocalDate(), interval, calendar)) {
                 Instant result = candidate.toInstant();
                 Instant until = until(rule.get("UNTIL"));
                 return until == null || !result.isAfter(until) ? result : null;
@@ -62,7 +94,10 @@ final class TaskRecurrence {
         throw new IllegalArgumentException("RRULE 在十年内没有下一实例");
     }
 
-    private static boolean matches(Map<String, String> rule, LocalDate origin, LocalDate date, int interval) {
+    private static boolean matches(Map<String, String> rule, LocalDate origin, LocalDate date, int interval,
+                                   TaskRecurrenceCalendar calendar) {
+        String taskKind = rule.get("X-TASK-KIND");
+        boolean lunar = "LUNAR_MONTHLY".equals(taskKind) || "LUNAR_YEARLY".equals(taskKind);
         long units = switch (rule.get("FREQ")) {
             case "DAILY" -> java.time.temporal.ChronoUnit.DAYS.between(origin, date);
             case "WEEKLY" -> java.time.temporal.ChronoUnit.WEEKS.between(
@@ -70,17 +105,28 @@ final class TaskRecurrence {
             case "MONTHLY" -> java.time.temporal.ChronoUnit.MONTHS.between(origin.withDayOfMonth(1), date.withDayOfMonth(1));
             default -> java.time.temporal.ChronoUnit.YEARS.between(origin.withDayOfYear(1), date.withDayOfYear(1));
         };
+        if ("LUNAR_MONTHLY".equals(taskKind)) units = calendar.lunarMonthIndex(date) - calendar.lunarMonthIndex(origin);
+        if ("LUNAR_YEARLY".equals(taskKind)) units = calendar.lunarYear(date) - calendar.lunarYear(origin);
         if (units < interval || units % interval != 0) return false;
-        if (!matchesBase(rule, origin, date)) return false;
+        if (lunar) {
+            if (!calendar.isLunarDate(date, "LUNAR_YEARLY".equals(taskKind) ? Integer.parseInt(rule.get("X-LUNAR-MONTH")) : 0,
+                    Integer.parseInt(rule.get("X-LUNAR-DAY")))) return false;
+        } else if (!matchesBase(rule, origin, date)) return false;
         Set<String> days = values(rule.get("BYDAY"));
         Set<Integer> monthDays = ints(rule.get("BYMONTHDAY"));
-        if (days.isEmpty() && monthDays.isEmpty()) {
+        if (!lunar && days.isEmpty() && monthDays.isEmpty()) {
             if ("WEEKLY".equals(rule.get("FREQ")) && date.getDayOfWeek() != origin.getDayOfWeek()) return false;
             if (("MONTHLY".equals(rule.get("FREQ")) || "YEARLY".equals(rule.get("FREQ")))
                     && date.getDayOfMonth() != Math.min(origin.getDayOfMonth(), date.lengthOfMonth())) return false;
         }
-        if ("YEARLY".equals(rule.get("FREQ")) && !rule.containsKey("BYMONTH") && date.getMonth() != origin.getMonth()) return false;
-        return matchesSetPosition(rule, origin, date);
+        if (!lunar && "YEARLY".equals(rule.get("FREQ")) && !rule.containsKey("BYMONTH") && date.getMonth() != origin.getMonth()) return false;
+        if (!lunar && !matchesSetPosition(rule, origin, date)) return false;
+        if ("LEGAL_WORKDAY".equals(taskKind) && !calendar.isLegalWorkday(date)) return false;
+        if ("LEGAL_HOLIDAY".equals(taskKind) && !calendar.isStatutoryHoliday(date)) return false;
+        if ("TRUE".equals(rule.get("X-SKIP-HOLIDAYS")) && calendar.isStatutoryHoliday(date)) return false;
+        if ("TRUE".equals(rule.get("X-SKIP-WEEKENDS"))
+                && (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY)) return false;
+        return true;
     }
 
     private static boolean matchesBase(Map<String, String> rule, LocalDate origin, LocalDate date) {

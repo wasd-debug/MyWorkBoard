@@ -22,5 +22,14 @@ test('validates custom weekly and end conditions', () => {
 })
 
 test('does not expose recurrence presets that have no persisted server semantics', () => {
-  assert.deepEqual(quickRepeatPresets.map(option => option.value), ['', 'DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY', 'WORKDAY', 'CUSTOM'])
+  assert.deepEqual(quickRepeatPresets.map(option => option.value), ['', 'DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY', 'WORKDAY', 'LEGAL_WORKDAY', 'WEEKEND', 'LEGAL_HOLIDAY', 'LUNAR_MONTHLY', 'LUNAR_YEARLY', 'CUSTOM'])
+})
+
+test('serializes legal holiday and lunar recurrence semantics', () => {
+  assert.equal(buildQuickRepeatRule({ ...createQuickRepeatState(), preset: 'LEGAL_WORKDAY' }), 'FREQ=DAILY;X-TASK-KIND=LEGAL_WORKDAY')
+  assert.equal(buildQuickRepeatRule({ ...createQuickRepeatState(), preset: 'WEEKEND' }), 'FREQ=WEEKLY;BYDAY=SA,SU')
+  assert.equal(buildQuickRepeatRule({ ...createQuickRepeatState(), preset: 'LEGAL_HOLIDAY' }), 'FREQ=DAILY;X-TASK-KIND=LEGAL_HOLIDAY')
+  assert.equal(buildQuickRepeatRule({ ...createQuickRepeatState(), preset: 'LUNAR_MONTHLY', lunarDay: 18 }), 'FREQ=MONTHLY;X-TASK-KIND=LUNAR_MONTHLY;X-LUNAR-DAY=18')
+  assert.equal(buildQuickRepeatRule({ ...createQuickRepeatState(), preset: 'LUNAR_YEARLY', lunarMonth: 8, lunarDay: 15 }), 'FREQ=YEARLY;X-TASK-KIND=LUNAR_YEARLY;X-LUNAR-MONTH=8;X-LUNAR-DAY=15')
+  assert.equal(buildQuickRepeatRule({ ...createQuickRepeatState(), preset: 'CUSTOM', frequency: 'MONTHLY', monthMode: 'DATE', lastDay: true, skipLegalHolidays: true }), 'FREQ=MONTHLY;BYMONTHDAY=-1;X-SKIP-HOLIDAYS=TRUE')
 })

@@ -31,4 +31,14 @@ export interface TaskSettingsCommand {
     'quietEnd'?: string;
     'feedIncludeDescription'?: boolean;
     'timezone'?: string;
+    'defaultDueDate'?: TaskSettingsCommandDefaultDueDateEnum;
+    /**
+     * NEXT_HOUR or a local HH:mm time
+     */
+    'defaultDueTime'?: string;
+}
+
+export enum TaskSettingsCommandDefaultDueDateEnum {
+    TODAY = 'TODAY',
+    NONE = 'NONE'
 }

@@ -6,7 +6,12 @@ export const quickRepeatPresets = [
   { value: 'WEEKLY', label: '每周' },
   { value: 'MONTHLY', label: '每月' },
   { value: 'YEARLY', label: '每年' },
-  { value: 'WORKDAY', label: '工作日' },
+  { value: 'WORKDAY', label: '每周工作日' },
+  { value: 'LEGAL_WORKDAY', label: '法定工作日' },
+  { value: 'WEEKEND', label: '每周末' },
+  { value: 'LEGAL_HOLIDAY', label: '法定节假日' },
+  { value: 'LUNAR_MONTHLY', label: '每月农历日' },
+  { value: 'LUNAR_YEARLY', label: '每年农历日' },
   { value: 'CUSTOM', label: '自定义' },
 ]
 
@@ -19,6 +24,7 @@ export function createQuickRepeatState() {
     weekdays: ['MO'],
     monthMode: 'DATE',
     monthDay: 1,
+    lastDay: false,
     month: 1,
     ordinal: 1,
     weekday: 'MO',
@@ -27,12 +33,20 @@ export function createQuickRepeatState() {
     until: '',
     count: 10,
     skipWeekends: false,
+    skipLegalHolidays: false,
+    lunarMonth: 1,
+    lunarDay: 1,
   }
 }
 
 export function buildQuickRepeatRule(state) {
   if (!state?.preset) return ''
-  if (state.preset === 'WORKDAY') return 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR'
+  if (state.preset === 'WORKDAY') return withEnd('FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', state)
+  if (state.preset === 'LEGAL_WORKDAY') return withEnd('FREQ=DAILY;X-TASK-KIND=LEGAL_WORKDAY', state)
+  if (state.preset === 'WEEKEND') return withEnd('FREQ=WEEKLY;BYDAY=SA,SU', state)
+  if (state.preset === 'LEGAL_HOLIDAY') return withEnd('FREQ=DAILY;X-TASK-KIND=LEGAL_HOLIDAY', state)
+  if (state.preset === 'LUNAR_MONTHLY') return withEnd(`FREQ=MONTHLY;X-TASK-KIND=LUNAR_MONTHLY;X-LUNAR-DAY=${Math.max(1, Math.min(30, Number(state.lunarDay) || 1))}`, state)
+  if (state.preset === 'LUNAR_YEARLY') return withEnd(`FREQ=YEARLY;X-TASK-KIND=LUNAR_YEARLY;X-LUNAR-MONTH=${Math.max(1, Math.min(12, Number(state.lunarMonth) || 1))};X-LUNAR-DAY=${Math.max(1, Math.min(30, Number(state.lunarDay) || 1))}`, state)
   const frequency = state.preset === 'CUSTOM' ? state.frequency : state.preset
   const interval = Math.max(1, Number(state.interval) || 1)
   const parts = [`FREQ=${frequency}`]
@@ -45,7 +59,7 @@ export function buildQuickRepeatRule(state) {
     parts.push('BYDAY=MO,TU,WE,TH,FR')
   }
   if (state.preset === 'CUSTOM' && ['MONTHLY', 'YEARLY'].includes(frequency)) {
-    const monthDay = Math.max(1, Math.min(31, Number(state.monthDay) || 1))
+    const monthDay = state.lastDay ? -1 : Math.max(1, Math.min(31, Number(state.monthDay) || 1))
     if (frequency === 'YEARLY') parts.push(`BYMONTH=${Math.max(1, Math.min(12, Number(state.month) || 1))}`)
     if (state.monthMode === 'DATE') {
       parts.push(`BYMONTHDAY=${monthDay}`)
@@ -59,9 +73,15 @@ export function buildQuickRepeatRule(state) {
       parts.push(`BYSETPOS=${Number(state.workdayPosition) < 0 ? -1 : 1}`)
     }
   }
-  if (state.endMode === 'UNTIL' && state.until) parts.push(`UNTIL=${String(state.until).replaceAll('-', '')}T235959Z`)
-  if (state.endMode === 'COUNT') parts.push(`COUNT=${Math.max(1, Number(state.count) || 1)}`)
-  return parts.join(';')
+  if (state.preset === 'CUSTOM' && state.skipLegalHolidays) parts.push('X-SKIP-HOLIDAYS=TRUE')
+  if (state.preset === 'CUSTOM' && state.skipWeekends && !['DAILY', 'WEEKLY'].includes(frequency)) parts.push('X-SKIP-WEEKENDS=TRUE')
+  return withEnd(parts.join(';'), state)
+}
+
+function withEnd(rule, state) {
+  if (state.endMode === 'UNTIL' && state.until) return `${rule};UNTIL=${String(state.until).replaceAll('-', '')}T235959Z`
+  if (state.endMode === 'COUNT') return `${rule};COUNT=${Math.max(1, Number(state.count) || 1)}`
+  return rule
 }
 
 export function quickRepeatLabel(state) {

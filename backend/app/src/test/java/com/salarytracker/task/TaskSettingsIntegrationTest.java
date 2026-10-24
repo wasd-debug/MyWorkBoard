@@ -37,9 +37,26 @@ class TaskSettingsIntegrationTest extends MySqlIntegrationTestSupport {
         var updated = tasks.updateSettings(command(first.defaultListId()), Long.toString(first.revision()));
         assertTrue(updated.revision() > first.revision());
         assertEquals(30, updated.defaultReminderMinutes());
+        assertEquals("TODAY", updated.defaultDueDate());
+        assertEquals("NEXT_HOUR", updated.defaultDueTime());
         assertTrue(updated.feedIncludeDescription());
         assertThrows(ConflictException.class, () -> tasks.updateSettings(command(first.defaultListId()),
                 Long.toString(first.revision())));
+    }
+
+    @Test
+    void savesQuickAddDateAndTimeDefaults() {
+        long userId = createUser();
+        CurrentUserResolver resolver = mock(CurrentUserResolver.class);
+        when(resolver.id()).thenReturn(userId);
+        TaskService tasks = new TaskService(jdbc, resolver,
+                new TaskChangeLog(jdbc, new ObjectMapper().findAndRegisterModules()));
+        var before = tasks.settings();
+        var saved = tasks.updateSettings(new TaskModels.SettingsCommand(before.defaultListId(), "TODAY", 30,
+                "NONE", "18:30", 1, true, true, true, true, true, true, true,
+                "08:30", "22:00", "07:00", true, "Asia/Shanghai"), Long.toString(before.revision()));
+        assertEquals("NONE", saved.defaultDueDate());
+        assertEquals("18:30", saved.defaultDueTime());
     }
 
     private TaskModels.SettingsCommand command(String defaultListId) {

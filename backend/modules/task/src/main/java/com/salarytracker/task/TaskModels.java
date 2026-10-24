@@ -208,23 +208,37 @@ public final class TaskModels {
 
     @Schema(name = "TaskSettings")
     public record Settings(String defaultListId, String defaultView, Integer defaultReminderMinutes,
+                           @Schema(allowableValues = {"TODAY", "NONE"}) String defaultDueDate,
+                           @Schema(description = "NEXT_HOUR or a local HH:mm time") String defaultDueTime,
                            int weekStart, boolean showLunar, boolean overlayWorktime, boolean overlayLedger,
                            boolean overlayHoliday, boolean overlayHabit, boolean notificationReminders,
                            boolean notificationOverdue, String dailySummaryTime, String quietStart, String quietEnd,
                            boolean feedIncludeDescription, String timezone, long revision) {
         public Settings(String defaultListId, String defaultView, int weekStart, String timezone, long revision) {
-            this(defaultListId, defaultView, null, weekStart, true, true, true, true, true,
+            this(defaultListId, defaultView, null, "TODAY", "NEXT_HOUR", weekStart, true, true, true, true, true,
                     true, true, null, null, null, false, timezone, revision);
         }
     }
 
     @Schema(name = "TaskSettingsCommand")
     public record SettingsCommand(String defaultListId, String defaultView, Integer defaultReminderMinutes,
+                                  @Schema(allowableValues = {"TODAY", "NONE"}) String defaultDueDate,
+                                  @Schema(description = "NEXT_HOUR or a local HH:mm time") String defaultDueTime,
                                   Integer weekStart, Boolean showLunar, Boolean overlayWorktime,
                                   Boolean overlayLedger, Boolean overlayHoliday, Boolean overlayHabit,
                                   Boolean notificationReminders, Boolean notificationOverdue,
                                   String dailySummaryTime, String quietStart, String quietEnd,
                                   Boolean feedIncludeDescription, String timezone) {
+        public SettingsCommand(String defaultListId, String defaultView, Integer defaultReminderMinutes,
+                               Integer weekStart, Boolean showLunar, Boolean overlayWorktime,
+                               Boolean overlayLedger, Boolean overlayHoliday, Boolean overlayHabit,
+                               Boolean notificationReminders, Boolean notificationOverdue,
+                               String dailySummaryTime, String quietStart, String quietEnd,
+                               Boolean feedIncludeDescription, String timezone) {
+            this(defaultListId, defaultView, defaultReminderMinutes, null, null, weekStart, showLunar,
+                    overlayWorktime, overlayLedger, overlayHoliday, overlayHabit, notificationReminders,
+                    notificationOverdue, dailySummaryTime, quietStart, quietEnd, feedIncludeDescription, timezone);
+        }
     }
 
     @Schema(name = "TaskSidebarPreferences")
