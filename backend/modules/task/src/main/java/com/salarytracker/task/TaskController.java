@@ -20,6 +20,7 @@ import com.salarytracker.task.TaskModels.ListGroup;
 import com.salarytracker.task.TaskModels.ListGroupCommand;
 import com.salarytracker.task.TaskModels.ListGroupAssignment;
 import com.salarytracker.task.TaskModels.ActivityPage;
+import com.salarytracker.task.TaskModels.ListActivityPage;
 import com.salarytracker.task.TaskModels.Comment;
 import com.salarytracker.task.TaskModels.CommentCommand;
 import com.salarytracker.task.TaskModels.CommentPage;
@@ -157,6 +158,15 @@ public class TaskController {
     public ApiResponse<TaskList> restoreList(@PathVariable String publicId,
                                              @RequestHeader("If-Match") String ifMatch) {
         return ApiResponse.ok(taskService.restoreList(publicId, ifMatch));
+    }
+
+    @GetMapping("/lists/{publicId}/activity")
+    @PreAuthorize("hasAuthority('task:read')")
+    @Operation(operationId = "listTaskListActivity")
+    public ApiResponse<ListActivityPage> listActivity(@PathVariable String publicId,
+                                                       @RequestParam(defaultValue = "0") int page,
+                                                       @RequestParam(defaultValue = "50") int size) {
+        return ApiResponse.ok(taskService.listActivity(publicId, page, size));
     }
 
     @GetMapping("/tags")

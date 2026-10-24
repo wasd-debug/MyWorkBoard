@@ -325,9 +325,12 @@ P0 不再等同于“一次性大版本”。每个增量必须形成可运行�
 
 - 记录任务生命周期事件：创建、修改（字段级前后值）、完成、取消完成、删除、恢复、改期、移动清单、加/去标签、提醒触发、番茄关联。
 - 在任务详情以时间线倒序展示，分页加载。
+- 清单可查询最近 12 个月内相关任务活动；移动任务时，来源/目标清单分别显示“移出了任务”/“移入了任务”。
 - 只保留最近 12 个月（与审计保留策略一致）。
 
 实现说明（P2-I9-A）：活动服务端分页查询并按 12 个月窗口返回，每日定时清理过期记录；修改事件保存字段级前后值，详情页倒序展示摘要与时间。永久清除任务会按外键级联清除其活动，避免保留无法归属的任务明细。
+
+实现说明（P2-FE79，2026-10-24）：收集箱中栏更多菜单提供“清单动态”，在右侧栏按日期展示最近 12 个月活动并分页；任务名可打开对应任务，标签可跳转标签页。新增 `GET /api/v1/tasks/lists/{publicId}/activity?page=&size=`，按当前用户校验清单。
 
 ### 5.3 视图
 
@@ -707,6 +710,7 @@ task_setting                         # 首批只建已使用字段，后续按�
 | GET/POST/PUT/DELETE | `/api/v1/tasks/{publicId}/checklist/**` | 检查项 |
 | GET/POST/PUT/DELETE | `/api/v1/tasks/{publicId}/reminders/**` | 提醒 |
 | GET | `/api/v1/tasks/{publicId}/activity` | 活动日志（分页） |
+| GET | `/api/v1/tasks/lists/{publicId}/activity` | 清单动态（最近 12 个月，分页；移动事件按清单上下文标注） |
 | GET | `/api/v1/tasks/calendar` | 日历聚合：`from`、`to`、`layers=worktime,ledger,holiday,habit`；`lunar=1` 时下发农历日期、节气与节日名（后端 6tail lunar 计算） |
 | GET | `/api/v1/tasks/board` | 看板聚合：`dimension=list\|status\|priority\|tag` |
 | GET | `/api/v1/tasks/quadrant` | 四象限聚合 |

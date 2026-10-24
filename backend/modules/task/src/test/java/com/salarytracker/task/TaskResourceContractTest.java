@@ -3,6 +3,8 @@ package com.salarytracker.task;
 import com.salarytracker.task.TaskModels.DeletedResource;
 import com.salarytracker.task.TaskModels.TaskCommand;
 import com.salarytracker.task.TaskModels.TaskItem;
+import com.salarytracker.task.TaskModels.ListActivity;
+import com.salarytracker.task.TaskModels.ListActivityPage;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -61,6 +63,19 @@ class TaskResourceContractTest {
     @Test
     void rejectsAnonymousReads() throws Exception {
         mockMvc.perform(get("/api/v1/tasks/lists")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(authorities = "task:read")
+    void exposesListActivityPage() throws Exception {
+        when(taskService.listActivity(eq("11111111-1111-1111-1111-111111111111"), eq(0), eq(50)))
+                .thenReturn(new ListActivityPage(List.of(new ListActivity("activity-1", "CREATED", "创建了任务",
+                        TASK_ID, "整理收件箱", "HIGH", List.of("tag-1"), "测试用户", "2026-10-24T01:00:00Z")), 0, 50, 1));
+        mockMvc.perform(get("/api/v1/tasks/lists/11111111-1111-1111-1111-111111111111/activity"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].taskTitle").value("整理收件箱"))
+                .andExpect(jsonPath("$.data.items[0].actorName").value("测试用户"))
+                .andExpect(jsonPath("$.data.items[0].tagIds[0]").value("tag-1"));
     }
 
     @Test

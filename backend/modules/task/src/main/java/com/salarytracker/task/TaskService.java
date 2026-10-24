@@ -20,6 +20,8 @@ import com.salarytracker.task.TaskModels.ListGroup;
 import com.salarytracker.task.TaskModels.ListGroupCommand;
 import com.salarytracker.task.TaskModels.Activity;
 import com.salarytracker.task.TaskModels.ActivityPage;
+import com.salarytracker.task.TaskModels.ListActivity;
+import com.salarytracker.task.TaskModels.ListActivityPage;
 import com.salarytracker.task.TaskModels.BatchCommand;
 import com.salarytracker.task.TaskModels.BatchResult;
 import com.salarytracker.task.TaskModels.BatchTarget;
@@ -613,6 +615,60 @@ public class TaskService {
                         result.getTimestamp("created_at").toInstant().toString()),
                 validUuid(publicId, "publicId"), userId, safeSize, safePage * safeSize);
         return new ActivityPage(items, safePage, safeSize, total);
+    }
+
+    public ListActivityPage listActivity(String listPublicId, int page, int size) {
+        long userId = currentUser.id();
+        String safeListPublicId = validUuid(listPublicId, "publicId");
+        listForUser(userId, safeListPublicId, false);
+        Long listId = jdbcTemplate.queryForObject("SELECT id FROM task_list WHERE public_id=? AND user_id=? AND deleted=FALSE",
+                Long.class, safeListPublicId, userId);
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        String listMatch = "(t.list_id=? OR JSON_UNQUOTE(JSON_EXTRACT(a.detail_json,'$.changes.listId.before'))=? " +
+                "OR JSON_UNQUOTE(JSON_EXTRACT(a.detail_json,'$.changes.listId.after'))=?)";
+        long total = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM task_activity a JOIN task t ON t.id=a.task_id " +
+                        "WHERE a.user_id=? AND a.created_at>=TIMESTAMPADD(MONTH,-12,CURRENT_TIMESTAMP(3)) AND " + listMatch,
+                Long.class, userId, listId, safeListPublicId, safeListPublicId);
+        List<ListActivity> items = jdbcTemplate.query("SELECT a.public_id,a.event_type,a.summary,a.detail_json,a.created_at, " +
+                        "t.public_id task_public_id,t.title task_title,t.priority, " +
+                        "(SELECT JSON_ARRAYAGG(tag.public_id) FROM task_tag_link link JOIN task_tag tag ON tag.id=link.tag_id " +
+                        "WHERE link.task_id=t.id AND tag.deleted=FALSE) tag_ids, " +
+                        "COALESCE(NULLIF(u.nickname,''),u.username) actor_name " +
+                        "FROM task_activity a JOIN task t ON t.id=a.task_id JOIN app_user u ON u.id=a.user_id " +
+                        "WHERE a.user_id=? AND a.created_at>=TIMESTAMPADD(MONTH,-12,CURRENT_TIMESTAMP(3)) AND " + listMatch +
+                        " ORDER BY a.created_at DESC,a.id DESC LIMIT ? OFFSET ?",
+                (result, rowNum) -> {
+                    String summary = result.getString("summary");
+                    String detailJson = result.getString("detail_json");
+                    String movement = listActivityMovement(detailJson, safeListPublicId);
+                    if ("OUT".equals(movement)) summary = "移出了任务";
+                    else if ("IN".equals(movement)) summary = "移入了任务";
+                    List<String> tagIds = List.of();
+                    String rawTagIds = result.getString("tag_ids");
+                    if (rawTagIds != null) {
+                        try { tagIds = JSON.readValue(rawTagIds, new TypeReference<>() { }); }
+                        catch (Exception ignored) { tagIds = List.of(); }
+                    }
+                    return new ListActivity(result.getString("public_id"), result.getString("event_type"), summary,
+                            result.getString("task_public_id"), result.getString("task_title"), result.getString("priority"),
+                            tagIds, result.getString("actor_name"), result.getTimestamp("created_at").toInstant().toString());
+                }, userId, listId, safeListPublicId, safeListPublicId, safeSize, safePage * safeSize);
+        return new ListActivityPage(items, safePage, safeSize, total);
+    }
+
+    private String listActivityMovement(String detailJson, String listPublicId) {
+        if (detailJson == null || detailJson.isBlank()) return "";
+        try {
+            var listChange = JSON.readTree(detailJson).path("changes").path("listId");
+            String before = listChange.path("before").asText("");
+            String after = listChange.path("after").asText("");
+            if (listPublicId.equals(before) && !listPublicId.equals(after)) return "OUT";
+            if (listPublicId.equals(after) && !listPublicId.equals(before)) return "IN";
+        } catch (Exception ignored) {
+            return "";
+        }
+        return "";
     }
 
     @Transactional

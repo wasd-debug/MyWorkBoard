@@ -73,6 +73,15 @@ public final class TaskModels {
     public record ActivityPage(List<Activity> items, int page, int size, long total) {
     }
 
+    @Schema(name = "TaskListActivity")
+    public record ListActivity(String publicId, String eventType, String summary, String taskId, String taskTitle,
+                               String priority, List<String> tagIds, String actorName, String createdAt) {
+    }
+
+    @Schema(name = "TaskListActivityPage")
+    public record ListActivityPage(List<ListActivity> items, int page, int size, long total) {
+    }
+
     @Schema(name = "TaskComment")
     public record Comment(String publicId, String taskId, String authorId, String authorName,
                           String bodyMarkdown, String createdAt, String updatedAt, long revision,

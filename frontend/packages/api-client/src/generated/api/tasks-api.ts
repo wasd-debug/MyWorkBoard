@@ -60,6 +60,8 @@ import type { ApiResponseTaskItem } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskList } from '../models/index.ts';
 // @ts-ignore
+import type { ApiResponseTaskListActivityPage } from '../models/index.ts';
+// @ts-ignore
 import type { ApiResponseTaskListGroup } from '../models/index.ts';
 // @ts-ignore
 import type { ApiResponseTaskPage } from '../models/index.ts';
@@ -1200,6 +1202,49 @@ export const TasksApiAxiosParamCreator = function (configuration?: Configuration
             if (unread !== undefined) {
                 localVarQueryParameter['unread'] = unread;
             }
+
+            if (page !== undefined) {
+                localVarQueryParameter['page'] = page;
+            }
+
+            if (size !== undefined) {
+                localVarQueryParameter['size'] = size;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json,application/problem+json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @param {string} publicId
+         * @param {number} [page]
+         * @param {number} [size]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listTaskListActivity: async (publicId: string, page?: number, size?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'publicId' is not null or undefined
+            assertParamExists('listTaskListActivity', 'publicId', publicId)
+            const localVarPath = `/api/v1/tasks/lists/{publicId}/activity`
+                .replace('{publicId}', encodeURIComponent(String(publicId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
 
             if (page !== undefined) {
                 localVarQueryParameter['page'] = page;
@@ -2649,6 +2694,20 @@ export const TasksApiFp = function(configuration?: Configuration) {
         },
         /**
          *
+         * @param {string} publicId
+         * @param {number} [page]
+         * @param {number} [size]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listTaskListActivity(publicId: string, page?: number, size?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseTaskListActivityPage>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listTaskListActivity(publicId, page, size, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['TasksApi.listTaskListActivity']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -3257,6 +3316,15 @@ export const TasksApiFactory = function (configuration?: Configuration, basePath
         },
         /**
          *
+         * @param {TasksApiListTaskListActivityRequest} requestParameters Request parameters.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listTaskListActivity(requestParameters: TasksApiListTaskListActivityRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseTaskListActivityPage> {
+            return localVarFp.listTaskListActivity(requestParameters.publicId, requestParameters.page, requestParameters.size, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -3708,6 +3776,17 @@ export interface TasksApiListTaskCommentsRequest {
  */
 export interface TasksApiListTaskInboxRequest {
     readonly unread?: boolean
+
+    readonly page?: number
+
+    readonly size?: number
+}
+
+/**
+ * Request parameters for listTaskListActivity operation in TasksApi.
+ */
+export interface TasksApiListTaskListActivityRequest {
+    readonly publicId: string
 
     readonly page?: number
 
@@ -4225,6 +4304,16 @@ export class TasksApi extends BaseAPI {
      */
     public listTaskInbox(requestParameters: TasksApiListTaskInboxRequest = {}, options?: RawAxiosRequestConfig) {
         return TasksApiFp(this.configuration).listTaskInbox(requestParameters.unread, requestParameters.page, requestParameters.size, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @param {TasksApiListTaskListActivityRequest} requestParameters Request parameters.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listTaskListActivity(requestParameters: TasksApiListTaskListActivityRequest, options?: RawAxiosRequestConfig) {
+        return TasksApiFp(this.configuration).listTaskListActivity(requestParameters.publicId, requestParameters.page, requestParameters.size, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

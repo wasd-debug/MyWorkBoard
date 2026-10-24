@@ -72,6 +72,15 @@ class TaskOrganizationIntegrationTest extends MySqlIntegrationTestSupport {
         assertTrue(service.activity(task.publicId(), 0, 20).items().stream()
                 .anyMatch(item -> "UPDATED".equals(item.eventType()) && item.detailJson().contains("priority")));
 
+        var movedTask = service.create(new TaskModels.TaskCommand(null, "收集箱历史任务", "", "HIGH", null,
+                null, false, java.time.ZoneId.systemDefault().getId(), null), "activity-inbox-create");
+        var inbox = service.listLists().stream().filter(item -> "INBOX".equals(item.systemKey())).findFirst().orElseThrow();
+        service.update(movedTask.publicId(), new TaskModels.TaskCommand(list.publicId(), "收集箱历史任务", "", "HIGH",
+                null, null, false, java.time.ZoneId.systemDefault().getId(), null), String.valueOf(movedTask.revision()));
+        var inboxActivity = service.listActivity(inbox.publicId(), 0, 20);
+        assertTrue(inboxActivity.items().stream().anyMatch(item -> movedTask.publicId().equals(item.taskId()) &&
+                "移出了任务".equals(item.summary())));
+
         service.deleteListGroup(group.publicId(), String.valueOf(group.revision()));
         assertEquals(null, service.listLists().stream().filter(item -> item.publicId().equals(list.publicId())).findFirst().orElseThrow().groupId());
     }

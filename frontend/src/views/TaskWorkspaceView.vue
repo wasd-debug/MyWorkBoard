@@ -4,15 +4,16 @@
     :style="{ '--clone-detail-width': `${detailWidth}px`, '--clone-sidebar-width': `${sidebarWidth}px` }"
     :class="{
       'sidebar-hidden': sidebarHidden,
-      'detail-open': Boolean(selectedTask),
+      'detail-open': Boolean(selectedTask || listActivityOpen),
       'workspace-overlay-view': activeWorkspaceView !== 'LIST',
-      'workspace-detail-open': activeWorkspaceView !== 'LIST' && Boolean(selectedTask || editorOpen),
+      'workspace-detail-open': activeWorkspaceView !== 'LIST' && Boolean(selectedTask || editorOpen || listActivityOpen),
     }"
     @touchstart.passive="startSidebarSwipe"
     @touchend.passive="finishSidebarSwipe"
   >
     <button v-if="!sidebarHidden && isMobileSidebar" class="clone-sidebar-backdrop" type="button" aria-label="关闭任务侧栏" @click="sidebarHidden = true"></button>
     <button v-if="selectedIds.size && isMobileSidebar" class="clone-batch-backdrop" type="button" aria-label="关闭批量操作" @click="clearBatchSelection"></button>
+    <button v-if="listActivityOpen && isMobileSidebar" class="clone-activity-backdrop" type="button" aria-label="关闭清单动态" @click="closeListActivity"></button>
     <aside class="clone-task-sidebar" :class="{ 'is-editing': sidebarEditing }" aria-label="任务导航" @click="handleSidebarClick" @dragover.capture="handleOrganizationDragOver" @drop.capture.prevent.stop="handleSidebarDrop" @dragend.capture="endOrganizationDrag">
       <div class="clone-sidebar-scroll">
       <div class="clone-sidebar-head">
@@ -231,6 +232,7 @@
         <button type="button" role="menuitemcheckbox" :aria-checked="showDescription" @click="showDescription = !showDescription; listOptionsOpen = false"><Check v-if="showDescription" :size="14" /><span v-else class="clone-menu-check-spacer"></span>显示详细</button>
         <button type="button" role="menuitemcheckbox" :aria-checked="showChecklist" @click="showChecklist = !showChecklist; listOptionsOpen = false"><Check v-if="showChecklist" :size="14" /><span v-else class="clone-menu-check-spacer"></span>显示检查事项</button>
         <button type="button" @click="openDisplaySettings"><SlidersHorizontal :size="14" />显示设置</button>
+        <button v-if="route.name === 'tasks-inbox'" type="button" @click="openListActivity"><History :size="14" />清单动态</button>
         <div class="clone-print-submenu" @pointerenter="printOptionsOpen = true" @pointerleave="printOptionsOpen = false">
           <button type="button" class="clone-print-submenu-trigger" :aria-expanded="printOptionsOpen" @click="printOptionsOpen = true"><Printer :size="14" /><span>打印</span><ChevronRight :size="14" /></button>
           <div v-if="printOptionsOpen" class="clone-print-submenu-options" role="menu" aria-label="打印选项" @pointerdown.stop @click.stop>
@@ -580,11 +582,11 @@
 
     <aside
       class="clone-detail-pane"
-      :class="{ 'is-empty': !selectedTask && !editorOpen && !selectedIds.size, 'is-batch': Boolean(selectedIds.size) }"
-      :aria-label="selectedIds.size ? '批量操作' : '任务详情'"
-      :role="selectedIds.size || (activeWorkspaceView !== 'LIST' && (selectedTask || editorOpen)) ? 'dialog' : undefined"
-      :aria-modal="selectedIds.size || (activeWorkspaceView !== 'LIST' && (selectedTask || editorOpen)) ? 'true' : undefined"
-      :aria-hidden="isMobileSidebar && !selectedIds.size ? 'true' : undefined"
+      :class="{ 'is-empty': !selectedTask && !editorOpen && !selectedIds.size && !listActivityOpen, 'is-batch': Boolean(selectedIds.size), 'is-list-activity': listActivityOpen }"
+      :aria-label="selectedIds.size ? '批量操作' : listActivityOpen ? '清单动态' : '任务详情'"
+      :role="selectedIds.size || listActivityOpen || (activeWorkspaceView !== 'LIST' && (selectedTask || editorOpen)) ? 'dialog' : undefined"
+      :aria-modal="selectedIds.size || listActivityOpen || (activeWorkspaceView !== 'LIST' && (selectedTask || editorOpen)) ? 'true' : undefined"
+      :aria-hidden="isMobileSidebar && !selectedIds.size && !listActivityOpen ? 'true' : undefined"
     >
       <section v-if="selectedIds.size" class="clone-batch-panel" aria-label="批量操作面板">
         <header class="clone-batch-panel-head">
@@ -600,6 +602,24 @@
         <div class="clone-batch-actions">
           <button type="button" @click="applyBatch('COMPLETE')"><CheckSquare :size="20" /><span>完成</span></button>
           <button type="button" class="danger" @click="batchDelete"><Trash2 :size="20" /><span>删除</span></button>
+        </div>
+      </section>
+      <section v-else-if="listActivityOpen" class="clone-list-activity-pane" aria-label="清单动态时间线">
+        <header class="clone-list-activity-header"><strong>清单动态</strong><button type="button" aria-label="关闭清单动态" @click="closeListActivity"><X :size="17" /></button></header>
+        <div class="clone-list-activity-scroll" aria-live="polite">
+          <p v-if="listActivityLoading && !listActivityItems.length" class="clone-muted">正在加载清单动态…</p>
+          <p v-else-if="listActivityError" class="clone-error" role="alert">{{ listActivityError }} <button type="button" @click="loadListActivityPage(true)">重试</button></p>
+          <p v-else-if="!listActivityItems.length" class="clone-muted">暂无清单动态</p>
+          <section v-for="group in listActivityGroups" :key="group.key" class="clone-list-activity-group">
+            <h3>{{ group.label }}</h3>
+            <ol>
+              <li v-for="item in group.items" :key="item.publicId">
+                <span class="clone-list-activity-icon" :class="activityTone(item)"><component :is="activityIcon(item)" :size="16" /></span>
+                <div class="clone-list-activity-copy"><p><strong>{{ item.actorName || '当前用户' }}</strong> {{ item.summary }} <button type="button" class="clone-list-activity-task" @click="openActivityTask(item)">{{ item.taskTitle || '未知任务' }}</button><RouterLink v-for="tag in activityTags(item)" :key="tag.publicId" :to="`/tasks/tag/${tag.publicId}`" class="clone-list-activity-tag" :style="{ '--activity-tag-color': tag.color || 'var(--accent)' }">#{{ tag.name }}</RouterLink></p><time>{{ formatListActivityTime(item.createdAt) }}</time></div>
+              </li>
+            </ol>
+          </section>
+          <button v-if="listActivityItems.length < listActivityTotal" type="button" class="clone-list-activity-more" :disabled="listActivityLoading" @click="loadListActivityPage(false)">{{ listActivityLoading ? '加载中…' : '加载更多' }}</button>
         </div>
       </section>
       <template v-else>
@@ -1085,6 +1105,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Circle,
+  CircleMinus,
   CalendarDays,
   Columns3,
   ArrowDownUp,
@@ -1098,6 +1119,7 @@ import {
   EyeOff,
   Flag,
   GanttChart,
+  History,
   GripVertical,
   Inbox,
   ListFilter,
@@ -1158,6 +1180,7 @@ import {
   apiDeleteTaskReminder,
   apiDownloadTaskAttachment,
   apiListTaskActivity,
+  apiListTaskListActivity,
   apiListTaskAttachments,
   apiListTaskComments,
   apiListTaskFilters,
@@ -1387,6 +1410,22 @@ const filterDraftValid = computed(() => {
   return organizationDialog.filter.dueRange !== "CUSTOM" || Boolean(organizationDialog.filter.dueStart && organizationDialog.filter.dueEnd && organizationDialog.filter.dueEnd > organizationDialog.filter.dueStart);
 });
 const selectedTask = ref(null);
+const listActivityOpen = ref(false);
+const listActivityItems = ref([]);
+const listActivityLoading = ref(false);
+const listActivityError = ref("");
+const listActivityPage = ref(0);
+const listActivityTotal = ref(0);
+const listActivityGroups = computed(() => {
+  const groups = new Map();
+  for (const item of listActivityItems.value) {
+    const date = new Date(item.createdAt);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    if (!groups.has(key)) groups.set(key, { key, label: listActivityGroupLabel(date), items: [] });
+    groups.get(key).items.push(item);
+  }
+  return [...groups.values()];
+});
 const editorOpen = ref(false);
 const editing = ref(null);
 const inlineTitleEditing = ref(false);
@@ -2475,6 +2514,7 @@ async function copyContextTaskLink() {
 }
 function openDetail(task) {
   if (!task) return;
+  listActivityOpen.value = false;
   reminderLoadSequence += 1;
   closeAttributePopovers();
   Object.assign(quickReminder, { enabled: false, kind: "RELATIVE", offsetMinutes: 30, remindLocal: "", dailyUntilDone: false, reminder: null });
@@ -2490,6 +2530,83 @@ function openTaskRow(task) {
   inlineRowTitleTaskId.value = task.publicId;
   inlineRowTitleDraft.value = task.title;
   void nextTick(() => document.querySelector(".clone-task-content input")?.focus());
+}
+function openListActivity() {
+  if (route.name !== "tasks-inbox" || !store.inbox?.publicId) return;
+  listOptionsOpen.value = false;
+  printOptionsOpen.value = false;
+  clearBatchSelection();
+  closeDetail();
+  listActivityOpen.value = true;
+  listActivityItems.value = [];
+  listActivityPage.value = 0;
+  listActivityTotal.value = 0;
+  listActivityError.value = "";
+  void loadListActivityPage(true);
+}
+function closeListActivity() {
+  listActivityOpen.value = false;
+  listActivityRequest += 1;
+  listActivityLoading.value = false;
+}
+let listActivityRequest = 0;
+async function loadListActivityPage(reset = false) {
+  const listId = store.inbox?.publicId;
+  if (!listId || listActivityLoading.value) return;
+  if (!store.online) {
+    listActivityError.value = "联网后才能查看清单动态";
+    return;
+  }
+  const requestId = ++listActivityRequest;
+  const page = reset ? 0 : listActivityPage.value + 1;
+  if (reset) {
+    listActivityItems.value = [];
+    listActivityError.value = "";
+  }
+  listActivityLoading.value = true;
+  try {
+    const result = await apiListTaskListActivity(listId, { page, size: 50 });
+    if (requestId !== listActivityRequest) return;
+    listActivityItems.value = reset ? result?.items || [] : [...listActivityItems.value, ...(result?.items || [])];
+    listActivityPage.value = page;
+    listActivityTotal.value = result?.total || 0;
+    listActivityError.value = "";
+  } catch (error) {
+    if (requestId === listActivityRequest) listActivityError.value = error?.response?.data?.detail || error?.message || "清单动态加载失败";
+  } finally {
+    if (requestId === listActivityRequest) listActivityLoading.value = false;
+  }
+}
+function listActivityGroupLabel(date) {
+  const today = new Date();
+  const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const current = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const dayName = new Intl.DateTimeFormat("zh-CN", { weekday: "long" }).format(date);
+  if (day.getTime() === current.getTime()) return `今天 ${dayName}`;
+  return new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(date);
+}
+function formatListActivityTime(value) {
+  const date = new Date(value);
+  const elapsed = Math.max(0, Date.now() - date.getTime());
+  if (elapsed < 60 * 60 * 1000) return `${Math.max(1, Math.floor(elapsed / 60000))}分钟前`;
+  if (elapsed < 24 * 60 * 60 * 1000) return `${Math.floor(elapsed / (60 * 60 * 1000))}小时前`;
+  return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
+}
+function activityIcon(item) {
+  if (item.summary?.startsWith("移出") || ["DELETED", "ATTACHMENT_DELETED"].includes(item.eventType)) return item.summary?.startsWith("移出") ? CircleMinus : Trash2;
+  if (["CREATED", "RESTORED", "ATTACHMENT_ADDED"].includes(item.eventType)) return Plus;
+  return Pencil;
+}
+function activityTone(item) {
+  if (item.summary?.startsWith("移出") || ["DELETED", "ATTACHMENT_DELETED"].includes(item.eventType)) return "is-destructive";
+  return ["CREATED", "RESTORED", "ATTACHMENT_ADDED"].includes(item.eventType) ? "is-created" : "is-updated";
+}
+function activityTags(item) {
+  return (item.tagIds || []).map(id => store.tags.find(tag => tag.publicId === id)).filter(Boolean);
+}
+function openActivityTask(item) {
+  closeListActivity();
+  void router.push({ path: "/tasks/all", query: { task: item.taskId } });
 }
 function cancelInlineRowTitle() {
   inlineRowTitleTaskId.value = "";
@@ -2698,6 +2815,9 @@ function createSubtask(task) {
 }
 function closeDetail() {
   reminderLoadSequence += 1;
+  listActivityOpen.value = false;
+  listActivityRequest += 1;
+  listActivityLoading.value = false;
   selectedTask.value = null;
   editing.value = null;
   editorOpen.value = false;
@@ -5462,6 +5582,30 @@ const SidebarSection = {
 }
 .clone-detail-empty strong { color: var(--ink2); font-size: 14px; }
 .clone-detail-empty p { max-width: 190px; margin: 0; font-size: 12px; line-height: 1.6; }
+.clone-list-activity-pane { display: grid; height: 100%; min-height: 0; grid-template-rows: 56px minmax(0, 1fr); }
+.clone-list-activity-header { display: flex; align-items: center; justify-content: space-between; min-height: 56px; padding: 0 18px; border-bottom: 1px solid var(--line); }
+.clone-list-activity-header strong { color: var(--ink); font-size: 16px; font-weight: 650; }
+.clone-list-activity-header button { display: grid; width: 32px; height: 32px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-list-activity-header button:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+.clone-list-activity-scroll { min-height: 0; overflow: auto; padding: 18px 16px 28px; }
+.clone-list-activity-group { margin: 0 0 24px; }
+.clone-list-activity-group h3 { margin: 0 0 12px; color: var(--ink2); font-size: 14px; font-weight: 550; }
+.clone-list-activity-group ol { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.clone-list-activity-group li { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px; min-height: 74px; }
+.clone-list-activity-group li:not(:last-child)::after { position: absolute; top: 32px; bottom: 0; left: 15px; width: 2px; background: var(--line); content: ""; }
+.clone-list-activity-icon { z-index: 1; display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; background: #4c75ed; color: #fff; }
+.clone-list-activity-icon.is-destructive { background: #dc4548; }
+.clone-list-activity-icon.is-updated { background: #707986; }
+.clone-list-activity-copy { min-width: 0; padding: 2px 0 20px; }
+.clone-list-activity-copy p { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 7px; margin: 0 0 5px; color: var(--ink2); font-size: 14px; line-height: 1.5; }
+.clone-list-activity-copy p > strong { color: var(--ink); font-weight: 600; }
+.clone-list-activity-task { max-width: 100%; padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.clone-list-activity-task:hover, .clone-list-activity-tag:hover { text-decoration: underline; }
+.clone-list-activity-tag { color: var(--activity-tag-color); font-size: 13px; text-decoration: none; }
+.clone-list-activity-copy time { color: var(--muted); font-size: 12px; }
+.clone-list-activity-more { display: block; min-height: 34px; margin: 0 auto; padding: 0 14px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
+.clone-list-activity-more:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.clone-list-activity-more:disabled { opacity: .6; cursor: wait; }
 .clone-empty-state strong {
   color: var(--ink2);
   font-size: 15px;
@@ -6197,6 +6341,8 @@ const SidebarSection = {
   .clone-detail-divider { display: none !important; }
   .clone-batch-backdrop { position: fixed; z-index: 279; inset: 72px 0 0; display: block; border: 0; background: rgb(15 23 42 / 32%); }
   .clone-detail-pane.is-batch { position: fixed; z-index: 280; top: 72px; right: 0; bottom: 0; display: block !important; width: min(420px, 92vw); max-height: none; margin: 0; overflow: auto; border: 0; border-left: 1px solid var(--line); border-radius: 0; box-shadow: -12px 0 32px rgb(15 23 42 / 16%); animation: clone-batch-drawer-in .22s cubic-bezier(.22, 1, .36, 1); }
+  .clone-activity-backdrop { position: fixed; z-index: 279; inset: 72px 0 0; display: block; border: 0; background: rgb(15 23 42 / 32%); }
+  .clone-detail-pane.is-list-activity { position: fixed; z-index: 280; top: 72px; right: 0; bottom: 0; display: block !important; width: min(420px, 92vw); max-height: none; margin: 0; overflow: hidden; border: 0; border-left: 1px solid var(--line); border-radius: 0; box-shadow: -12px 0 32px rgb(15 23 42 / 16%); animation: clone-batch-drawer-in .22s cubic-bezier(.22, 1, .36, 1); }
   .clone-batch-panel { padding: 0 16px 24px; }
   .clone-batch-panel-head { position: sticky; top: 0; z-index: 1; min-height: 60px; background: var(--card); }
   .clone-batch-fields { margin-top: 12px; }

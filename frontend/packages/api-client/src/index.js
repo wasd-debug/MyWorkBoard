@@ -228,6 +228,7 @@ export const apiUpdateTaskListGroup = async (id, payload, currentRevision) => da
 export const apiDeleteTaskListGroup = async (id, currentRevision) => data(await api.delete(`/api/v1/tasks/list-groups/${id}`, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiAssignTaskListGroup = async (id, groupId, currentRevision, sortOrder) => data(await api.put(`/api/v1/tasks/lists/${id}/group`, { groupId, ...(sortOrder == null ? {} : { sortOrder }) }, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiListTaskActivity = async (id, params = {}) => data(await api.get(`/api/v1/tasks/${id}/activity`, { params }))
+export const apiListTaskListActivity = async (id, params = {}) => data(await api.get(`/api/v1/tasks/lists/${id}/activity`, { params }))
 export const apiListTaskComments = async (id, params = {}) => data(await api.get(`/api/v1/tasks/${id}/comments`, { params }))
 export const apiCreateTaskComment = async (id, payload, idempotencyKey = crypto.randomUUID()) => data(await api.post(`/api/v1/tasks/${id}/comments`, payload, { headers: { 'Idempotency-Key': idempotencyKey } }))
 export const apiUpdateTaskComment = async (taskId, commentId, payload, currentRevision) => data(await api.put(`/api/v1/tasks/${taskId}/comments/${commentId}`, payload, { headers: { 'If-Match': revision(currentRevision) } }))

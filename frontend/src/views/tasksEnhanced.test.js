@@ -29,9 +29,9 @@ test('task board and timeline replace the list inside the persistent task worksp
   assert.match(workspaceView, /class="clone-inline-board"/)
   assert.match(workspaceView, /<TasksTimelineView v-else-if="activeWorkspaceView === 'TIMELINE'" embedded :tasks="visibleTasks"/)
   assert.match(workspaceView, /'workspace-overlay-view': activeWorkspaceView !== 'LIST'/)
-  assert.match(workspaceView, /'workspace-detail-open': activeWorkspaceView !== 'LIST' && Boolean\(selectedTask \|\| editorOpen\)/)
+  assert.match(workspaceView, /'workspace-detail-open': activeWorkspaceView !== 'LIST' && Boolean\(selectedTask \|\| editorOpen \|\| listActivityOpen\)/)
   assert.match(workspaceView, /class="clone-workspace-detail-backdrop"[\s\S]*@click="closeDetail"/)
-  assert.match(workspaceView, /:role="selectedIds\.size \|\| \(activeWorkspaceView !== 'LIST' && \(selectedTask \|\| editorOpen\)\) \? 'dialog' : undefined"/)
+  assert.match(workspaceView, /:role="selectedIds\.size \|\| listActivityOpen \|\| \(activeWorkspaceView !== 'LIST' && \(selectedTask \|\| editorOpen\)\) \? 'dialog' : undefined"/)
   assert.match(workspaceView, /\.clone-task-shell\.workspace-overlay-view \{\s+grid-template-columns: var\(--clone-sidebar-width, 248px\) minmax\(0, 1fr\);/)
   assert.match(workspaceView, /\.clone-task-shell\.workspace-overlay-view\.workspace-detail-open \.clone-detail-pane \{[\s\S]*position: fixed;[\s\S]*left: 50%;[\s\S]*transform: translate\(-50%, -50%\)/)
   assert.match(workspaceView, /if \(editorOpen\.value \|\| \(activeWorkspaceView\.value !== "LIST" && selectedTask\.value\)\) closeDetail\(\)/)
@@ -262,6 +262,18 @@ test('middle task workspace matches the note-row, date, view, display, and print
   assert.match(workspaceView, /openRowDateEditor\(task\)[\s\S]*saveRowDate\(task\)/)
   assert.match(workspaceView, /aria-label="中间栏更多选项"/)
   for (const item of ['视图选项', '显示设置', '打印', 'switchWorkspaceView', 'window\.print\(\)']) assert.match(workspaceView, new RegExp(item))
+})
+
+test('收集箱视图可以在右侧查看清单动态时间线', async () => {
+  const service = await readFile(new URL('../../../backend/modules/task/src/main/java/com/salarytracker/task/TaskService.java', import.meta.url), 'utf8')
+  assert.match(workspaceView, /v-if="route\.name === 'tasks-inbox'"[^>]*@click="openListActivity"/)
+  assert.match(workspaceView, />清单动态<\/button>/)
+  assert.match(workspaceView, /apiListTaskListActivity\(listId, \{ page, size: 50 \}\)/)
+  assert.match(workspaceView, /class="clone-list-activity-pane"/)
+  assert.match(workspaceView, /class="clone-activity-backdrop"[\s\S]*@click="closeListActivity"/)
+  assert.match(workspaceView, /\.clone-detail-pane\.is-list-activity \{ position: fixed;[\s\S]*display: block !important/)
+  assert.match(service, /summary = "移出了任务"/)
+  assert.match(client, /apiListTaskListActivity = async/)
 })
 
 test('today workspace orders countdowns, open tasks, habits, and completed tasks', () => {
