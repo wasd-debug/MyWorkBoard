@@ -1,18 +1,15 @@
 <template>
   <section class="timeline-page">
-    <header v-if="!embedded" class="timeline-head">
-      <div><p class="eyebrow">TASKS · TIMELINE</p><h1>时间线 / 甘特</h1></div>
+    <header class="timeline-head" :class="{ 'is-embedded': embedded }">
+      <div v-if="!embedded"><p class="eyebrow">TASKS · TIMELINE</p><h1>时间线 / 甘特</h1></div>
       <div class="timeline-controls">
-        <label>分组<select v-model="groupBy" aria-label="时间线分组"><option value="none">无</option><option value="list">清单</option><option value="tag">标签</option><option value="priority">优先级</option></select></label>
+        <label>分组<select v-model="groupBy" aria-label="时间线分组"><option value="list">清单</option><option value="tag">标签</option><option value="priority">优先级</option><option value="none">无</option></select></label>
         <label>排序<select v-model="sortBy" aria-label="时间线排序"><option value="default">默认</option><option value="time">按时间</option></select></label>
-        <div class="timeline-density" role="group" aria-label="时间线密度"><button v-for="option in densityOptions" :key="option.value" type="button" :class="{ active: density === option.value }" :aria-pressed="density === option.value" @click="setDensity(option.value)">{{ option.label }}</button></div>
-        <button type="button" class="timeline-today" @click="goToday">今天</button>
       </div>
     </header>
     <div class="timeline-period">
-      <button type="button" aria-label="上一时间段" @click="movePeriod(-1)"><ChevronLeft :size="16" /></button>
-      <strong>{{ rangeLabel }}</strong>
-      <button type="button" aria-label="下一时间段" @click="movePeriod(1)"><ChevronRight :size="16" /></button>
+      <div class="timeline-period-range"><strong>{{ rangeLabel }}</strong><button type="button" aria-label="上一时间段" @click="movePeriod(-1)"><ChevronLeft :size="16" /></button><button type="button" aria-label="下一时间段" @click="movePeriod(1)"><ChevronRight :size="16" /></button></div>
+      <div class="timeline-period-controls"><button type="button" class="timeline-today" @click="goToday">今天</button><label><select :value="density" aria-label="时间线密度" @change="setDensity($event.target.value)"><option v-for="option in densityOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label></div>
     </div>
     <p v-if="!groups.length" class="timeline-empty">没有包含时间范围的任务</p>
     <div v-else ref="scroller" class="timeline-scroll">
@@ -102,7 +99,7 @@ const groups = computed(() => {
     ? [...datedTasks.value].sort((a, b) => new Date(a.startAt || a.dueAt) - new Date(b.startAt || b.dueAt))
     : [...datedTasks.value].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
   if (groupBy.value === 'none') return rows.length ? [{ key: 'all', label: '所有任务', tasks: rows }] : []
-  return groupTaskItems(rows, groupBy.value, store.lists, new Date(), store.tags)
+  return groupTaskItems(rows, groupBy.value, store.lists, new Date(), store.tags, { includeEmptyLists: groupBy.value === 'list' })
 })
 
 function startOfDay(value) { const date = new Date(value); date.setHours(0, 0, 0, 0); return date }
@@ -156,16 +153,17 @@ onMounted(() => store.init())
 <style scoped>
 .timeline-page { display: grid; gap: 14px; min-width: 0; max-width: 1440px; margin: 0 auto; padding: 8px 0 48px; }
 .timeline-head { display: flex; justify-content: space-between; align-items: end; gap: 16px; flex-wrap: wrap; }
+.timeline-head.is-embedded { justify-content: flex-end; }
 .timeline-head h1 { margin: 3px 0 0; font-size: 22px; }
 .eyebrow { margin: 0; color: var(--primary); font-size: 11px; font-weight: 700; }
 .timeline-controls { display: flex; align-items: end; gap: 8px; flex-wrap: wrap; }
 .timeline-controls label { display: grid; gap: 3px; color: var(--muted); font-size: 11px; }
-.timeline-controls select,.timeline-controls button,.timeline-period button { min-height: 32px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); padding: 4px 9px; font-size: 12px; }
-.timeline-density { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-.timeline-density button { border: 0; border-radius: 0; }
-.timeline-density button+button { border-left: 1px solid var(--border); }
-.timeline-density button.active { background: var(--primary); color: #fff; }
-.timeline-period { display: flex; align-items: center; justify-content: center; gap: 14px; color: var(--muted); font-size: 12px; }
+.timeline-controls select,.timeline-period button,.timeline-period select { min-height: 32px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); padding: 4px 9px; font-size: 12px; }
+.timeline-period { display: flex; align-items: center; justify-content: space-between; gap: 14px; color: var(--muted); font-size: 12px; }
+.timeline-period-range,.timeline-period-controls { display: flex; align-items: center; gap: 6px; }
+.timeline-period-range strong { margin-right: 6px; }
+.timeline-period-controls label { display: flex; }
+.timeline-period .timeline-today { min-width: 48px; cursor: pointer; }
 .timeline-scroll { min-width: 0; overflow: auto; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }
 .timeline-grid { min-width: calc(var(--timeline-label-width) + var(--timeline-column-count) * var(--timeline-tick-width)); }
 .timeline-axis-row,.timeline-row { display: grid; grid-template-columns: var(--timeline-label-width) minmax(0,1fr) auto; min-height: 54px; border-bottom: 1px solid var(--border); }
@@ -187,5 +185,5 @@ onMounted(() => store.init())
 .timeline-row>a { align-self: center; margin: 0 10px; color: var(--primary); font-size: 11px; white-space: nowrap; }
 .timeline-empty { margin: 0; color: var(--muted); font-size: 13px; }
 .timeline-open-task { align-self: center; margin: 0 10px; border: 0; background: transparent; color: var(--primary); font-size: 11px; white-space: nowrap; cursor: pointer; }
-@media(max-width:700px) { .timeline-controls { width: 100%; }.timeline-row,.timeline-axis-row { grid-template-columns: 160px minmax(0,1fr) auto; }.timeline-grid { --timeline-label-width:160px!important; }.timeline-controls label { flex: 1; }.timeline-period { justify-content: flex-start; } }
+@media(max-width:700px) { .timeline-head.is-embedded { justify-content: flex-start; }.timeline-controls { width: 100%; }.timeline-row,.timeline-axis-row { grid-template-columns: 160px minmax(0,1fr) auto; }.timeline-grid { --timeline-label-width:160px!important; }.timeline-controls label { flex: 1; }.timeline-controls select { width: 100%; }.timeline-period { justify-content: space-between; }.timeline-period-range { gap: 3px; }.timeline-period-range strong { max-width: 35vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.timeline-period-controls { gap: 4px; }.timeline-period select { max-width: 72px; } }
 </style>
