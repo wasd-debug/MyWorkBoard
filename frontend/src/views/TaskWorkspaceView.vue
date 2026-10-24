@@ -233,9 +233,13 @@
         <hr />
         <button type="button" role="menuitemcheckbox" :aria-checked="hideCompleted" @click="hideCompleted = !hideCompleted; listOptionsOpen = false"><Check v-if="hideCompleted" :size="14" /><span v-else class="clone-menu-check-spacer"></span>隐藏已完成</button>
         <button type="button" role="menuitemcheckbox" :aria-checked="showDescription" @click="showDescription = !showDescription; listOptionsOpen = false"><Check v-if="showDescription" :size="14" /><span v-else class="clone-menu-check-spacer"></span>显示详细</button>
-        <button type="button" role="menuitemcheckbox" :aria-checked="showChecklist" @click="showChecklist = !showChecklist; listOptionsOpen = false"><Check v-if="showChecklist" :size="14" /><span v-else class="clone-menu-check-spacer"></span>显示检查事项</button>
+        <button v-if="showChecklistMenuItem" type="button" role="menuitemcheckbox" :aria-checked="showChecklist" @click="showChecklist = !showChecklist; listOptionsOpen = false"><Check v-if="showChecklist" :size="14" /><span v-else class="clone-menu-check-spacer"></span>显示检查事项</button>
         <button type="button" @click="openDisplaySettings"><SlidersHorizontal :size="14" />显示设置</button>
-        <button v-if="route.name === 'tasks-inbox'" type="button" @click="openListActivity"><History :size="14" />清单动态</button>
+        <template v-if="isOrdinaryTaskListView">
+          <button type="button" @click="addGroupForCurrentList"><Plus :size="14" />添加分组</button>
+          <button type="button" @click="shareCurrentList"><Copy :size="14" />共享</button>
+          <button type="button" @click="openListActivity"><History :size="14" />清单动态</button>
+        </template>
         <div class="clone-print-submenu" @pointerenter="printOptionsOpen = true" @pointerleave="printOptionsOpen = false">
           <button type="button" class="clone-print-submenu-trigger" :aria-expanded="printOptionsOpen" @click="printOptionsOpen = true"><Printer :size="14" /><span>打印</span><ChevronRight :size="14" /></button>
           <div v-if="printOptionsOpen" class="clone-print-submenu-options" role="menu" aria-label="打印选项" @pointerdown.stop @click.stop>
@@ -609,7 +613,7 @@
         </div>
       </section>
       <section v-else-if="listActivityOpen" class="clone-list-activity-pane" aria-label="清单动态时间线">
-        <header class="clone-list-activity-header"><strong>清单动态</strong><button type="button" aria-label="关闭清单动态" @click="closeListActivity"><X :size="17" /></button></header>
+        <header class="clone-list-activity-header"><strong>{{ listActivityTitle }}动态</strong><button type="button" aria-label="关闭清单动态" @click="closeListActivity"><X :size="17" /></button></header>
         <div class="clone-list-activity-scroll" aria-live="polite">
           <p v-if="listActivityLoading && !listActivityItems.length" class="clone-muted">正在加载清单动态…</p>
           <p v-else-if="listActivityError" class="clone-error" role="alert">{{ listActivityError }} <button type="button" @click="loadListActivityPage(true)">重试</button></p>
@@ -1417,6 +1421,8 @@ const filterDraftValid = computed(() => {
 });
 const selectedTask = ref(null);
 const listActivityOpen = ref(false);
+const listActivityListId = ref("");
+const listActivityTitle = ref("收集箱");
 const listActivityItems = ref([]);
 const listActivityLoading = ref(false);
 const listActivityError = ref("");
@@ -1748,6 +1754,12 @@ const title = computed(() =>
                     }[route.params.shortcut] || "任务"
                   : "所有",
 );
+const currentTaskList = computed(() => route.name === "tasks-list"
+  ? store.lists.find(item => item.publicId === route.params.publicId) || null
+  : null);
+const isOrdinaryTaskListView = computed(() => Boolean(currentTaskList.value && currentTaskList.value.objectType !== "NOTE"));
+const showChecklistMenuItem = computed(() => route.name === "tasks-filter"
+  || !["tasks-group", "tasks-list", "tasks-tag"].includes(route.name));
 const calendarDate = computed(() => {
   const match = String(route.query.date || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return null;
@@ -2538,11 +2550,15 @@ function openTaskRow(task) {
   void nextTick(() => document.querySelector(".clone-task-content input")?.focus());
 }
 function openListActivity() {
-  if (route.name !== "tasks-inbox" || !store.inbox?.publicId) return;
+  const list = route.name === "tasks-inbox" ? store.inbox : currentTaskList.value;
+  const listId = list?.publicId;
+  if (!listId) return;
   listOptionsOpen.value = false;
   printOptionsOpen.value = false;
   clearBatchSelection();
   closeDetail();
+  listActivityListId.value = listId;
+  listActivityTitle.value = list.name || "清单";
   listActivityOpen.value = true;
   listActivityItems.value = [];
   listActivityPage.value = 0;
@@ -2557,7 +2573,7 @@ function closeListActivity() {
 }
 let listActivityRequest = 0;
 async function loadListActivityPage(reset = false) {
-  const listId = store.inbox?.publicId;
+  const listId = listActivityListId.value;
   if (!listId || listActivityLoading.value) return;
   if (!store.online) {
     listActivityError.value = "联网后才能查看清单动态";
@@ -2661,6 +2677,20 @@ function printTaskList(mode = "TITLE") {
   printOptionsOpen.value = false;
   closeWorkspaceMenus();
   void nextTick(() => window.print());
+}
+function addGroupForCurrentList() {
+  const list = currentTaskList.value;
+  if (!list) return;
+  closeWorkspaceMenus();
+  openOrganizationDialog("group", null, { groupListIds: [list.publicId] });
+}
+async function shareCurrentList() {
+  const list = currentTaskList.value;
+  if (!list) return;
+  closeWorkspaceMenus();
+  const url = new URL(`/tasks/list/${list.publicId}`, window.location.origin).href;
+  try { await navigator.clipboard.writeText(url); message.success("清单链接已复制"); }
+  catch { window.prompt("复制清单链接", url); }
 }
 function printDescription(value) {
   return String(value || "").replace(/<[^>]*>/g, " ").replace(/[\n\r]+/g, " ").replace(/[#*_`~>-]/g, " ").replace(/\s+/g, " ").trim();

@@ -264,11 +264,18 @@ test('middle task workspace matches the note-row, date, view, display, and print
   for (const item of ['视图选项', '显示设置', '打印', 'switchWorkspaceView', 'window\.print\(\)']) assert.match(workspaceView, new RegExp(item))
 })
 
-test('收集箱视图可以在右侧查看清单动态时间线', async () => {
+test('普通清单视图的更多菜单按路由区分动作并可打开当前清单动态', async () => {
   const service = await readFile(new URL('../../../backend/modules/task/src/main/java/com/salarytracker/task/TaskService.java', import.meta.url), 'utf8')
-  assert.match(workspaceView, /v-if="route\.name === 'tasks-inbox'"[^>]*@click="openListActivity"/)
+  assert.match(workspaceView, /v-if="isOrdinaryTaskListView"[\s\S]*添加分组[\s\S]*共享[\s\S]*清单动态/)
+  assert.match(workspaceView, /const currentTaskList = computed\(\(\) => route\.name === "tasks-list"/)
+  assert.match(workspaceView, /function openListActivity\(\)[\s\S]*route\.name === "tasks-inbox" \? store\.inbox : currentTaskList\.value/)
+  assert.match(workspaceView, /function addGroupForCurrentList\(\)[\s\S]*openOrganizationDialog\("group", null, \{ groupListIds: \[list\.publicId\] \}\)/)
+  assert.match(workspaceView, /async function shareCurrentList\(\)[\s\S]*navigator\.clipboard\.writeText\(url\)/)
+  assert.match(workspaceView, /function loadListActivityPage\(reset = false\)[\s\S]*const listId = listActivityListId\.value/)
   assert.match(workspaceView, />清单动态<\/button>/)
   assert.match(workspaceView, /apiListTaskListActivity\(listId, \{ page, size: 50 \}\)/)
+  assert.match(workspaceView, /v-if="showChecklistMenuItem"[\s\S]*显示检查事项/)
+  assert.match(workspaceView, /const showChecklistMenuItem = computed\(\(\) => route\.name === "tasks-filter"/)
   assert.match(workspaceView, /class="clone-list-activity-pane"/)
   assert.match(workspaceView, /class="clone-activity-backdrop"[\s\S]*@click="closeListActivity"/)
   assert.match(workspaceView, /\.clone-detail-pane\.is-list-activity \{ position: fixed;[\s\S]*display: block !important/)
