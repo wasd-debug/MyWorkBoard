@@ -110,6 +110,20 @@ test('board groups expose quick-add dialogs that keep the selected group dimensi
   assert.match(view, /store\.create\(payload\);boardAddOpen\.value=false;await loadBoard\(\)/)
 })
 
+test('workspace board columns open quick-add with group defaults and persistent task fields', () => {
+  assert.match(workspaceView, /在\$\{group\.label\}添加任务/)
+  assert.match(workspaceView, /class="clone-board-quick-dialog" role="dialog" aria-modal="true" aria-label="添加看板任务"/)
+  assert.match(workspaceView, /placeholder="准备做什么？" aria-label="看板任务标题"/)
+  assert.match(workspaceView, /aria-label="设置日期"[\s\S]*aria-label="设置优先级"[\s\S]*aria-label="选择标签"[\s\S]*aria-label="选择清单"/)
+  assert.match(workspaceView, /function openBoardQuickAdd\(group\)[\s\S]*groupBy\.value === "list"[\s\S]*groupBy\.value === "priority"[\s\S]*groupBy\.value === "tag"[\s\S]*groupBy\.value === "time"/)
+  assert.match(workspaceView, /includeEmptyLists: route\.name === "tasks-all"/)
+  assert.match(workspaceView, /const boardQuickAddLists = computed\(\(\) => \{[\s\S]*seen\.has\(list\.publicId\)[\s\S]*list\.objectType === "NOTE"/)
+  assert.match(workspaceView, /names\.get\(label\) > 1 && list\.systemKey !== "INBOX" \? `\$\{label\}（清单）`/)
+  assert.match(workspaceView, /v-for="list in boardQuickAddLists"/)
+  assert.match(workspaceView, /async function saveBoardQuickAdd\(\)[\s\S]*await store\.create\(\{[\s\S]*description: boardQuickAddDescription\.value\.trim\(\)[\s\S]*priority: boardQuickAddPriority\.value[\s\S]*tagIds: \[\.\.\.boardQuickAddTagIds\.value\][\s\S]*rrule: boardQuickAddRrule\.value/)
+  assert.match(workspaceView, /@click\.self="closeBoardQuickAdd"/)
+})
+
 test('search highlights matches and scopes recent history by account', () => {
   assert.match(view, /h\('mark'/)
   assert.match(view, /task_recent_searches:\$\{appStore\.accountScope/)
@@ -381,7 +395,7 @@ test('full task page rebuild exposes persistent list grouping and sorting contro
   }
   assert.match(workspaceView, /task_view_preferences:/)
   for (const option of ['创建时间', '标签', '优先级', '修改时间']) assert.ok(workspaceView.includes(option))
-  assert.match(workspaceView, /groupTaskItems\(openTasks\.value, groupBy\.value, store\.lists, new Date\(\), store\.tags\)/)
+  assert.match(workspaceView, /groupTaskItems\(openTasks\.value, groupBy\.value, store\.lists, new Date\(\), store\.tags, \{ includeEmptyLists: route\.name === "tasks-all" \}\)/)
   assert.match(workspaceView, /completedTasks\.value\.slice\(0, completedLimit\.value\)/)
   assert.match(workspaceView, /查看更多/)
   assert.match(workspaceView, /loadMoreCompletedOnScroll/)

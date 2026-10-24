@@ -17,7 +17,7 @@ export function sortTaskItems(tasks, { sortBy = 'time', direction = 'asc' } = {}
   })
 }
 
-export function groupTaskItems(tasks, groupBy, lists, today = new Date(), tags = []) {
+export function groupTaskItems(tasks, groupBy, lists, today = new Date(), tags = [], { includeEmptyLists = false } = {}) {
   if (groupBy === 'list') {
     const buckets = new Map()
     for (const task of tasks) {
@@ -25,7 +25,13 @@ export function groupTaskItems(tasks, groupBy, lists, today = new Date(), tags =
       if (!buckets.has(key)) buckets.set(key, [])
       buckets.get(key).push(task)
     }
-    return [...buckets.entries()].map(([key, items]) => ({
+    const entries = includeEmptyLists
+      ? [
+          ...lists.filter((list) => !list.archived && list.objectType !== 'NOTE').map((list) => [list.publicId, buckets.get(list.publicId) || []]),
+          ...[...buckets.entries()].filter(([key]) => key === 'no-list' || !lists.some((list) => list.publicId === key && !list.archived && list.objectType !== 'NOTE')),
+        ]
+      : [...buckets.entries()]
+    return entries.map(([key, items]) => ({
       key: `list:${key}`,
       label: key === 'no-list' ? '未分配清单' : lists.find((list) => list.publicId === key)?.name || '已归档清单',
       tasks: items,

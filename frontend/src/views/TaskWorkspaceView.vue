@@ -331,6 +331,30 @@
         <template v-else-if="quickAction === 'tags'"><strong>标签</strong><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="quickEntry.tagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label><button type="button" @click="quickAction = ''">完成</button></template>
         <template v-else><label>所属清单<select v-model="quickEntry.listId" aria-label="快速新增所属清单" @change="quickEntry.listSelected = true"><option value="">{{ store.inbox?.name || '收集箱' }}</option><option v-for="list in store.lists.filter((item) => !item.archived && item.publicId !== store.inbox?.publicId)" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select></label><button type="button" @click="quickAction = ''">完成</button></template>
       </div>
+      <div v-if="boardQuickAddOpen" class="clone-modal-backdrop clone-board-quick-backdrop" @click.self="closeBoardQuickAdd">
+        <section class="clone-board-quick-dialog" role="dialog" aria-modal="true" aria-label="添加看板任务" @keydown.esc.stop.prevent="closeBoardQuickAdd">
+          <header><div><strong>{{ boardQuickAddGroup?.label || title }}</strong><small>{{ boardQuickAddGroup?.tasks.length || 0 }}</small></div><button type="button" aria-label="关闭添加任务" @click="closeBoardQuickAdd"><X :size="19" /></button></header>
+          <form @submit.prevent="saveBoardQuickAdd">
+            <div class="clone-board-quick-entry" :class="{ 'has-error': boardQuickAddError }">
+              <input ref="boardQuickAddInput" v-model.trim="boardQuickAddTitle" autofocus maxlength="500" placeholder="准备做什么？" aria-label="看板任务标题" />
+              <div class="clone-board-quick-actions">
+                <button type="button" aria-label="设置日期" title="设置日期" :aria-expanded="boardQuickAddPanel === 'date'" @click="toggleBoardQuickPanel('date')"><CalendarDays :size="22" /></button>
+                <button type="button" aria-label="设置优先级" title="设置优先级" :aria-expanded="boardQuickAddPanel === 'priority'" @click="toggleBoardQuickPanel('priority')"><Flag :size="22" /></button>
+                <button type="button" aria-label="选择标签" title="选择标签" :aria-expanded="boardQuickAddPanel === 'tags'" @click="toggleBoardQuickPanel('tags')"><Tag :size="22" /><small v-if="boardQuickAddTagIds.length">{{ boardQuickAddTagIds.length }}</small></button>
+                <button type="button" aria-label="选择清单" title="选择清单" :aria-expanded="boardQuickAddPanel === 'list'" @click="toggleBoardQuickPanel('list')"><ListTodo :size="22" /></button>
+                <button type="button" aria-label="更多任务属性" title="更多任务属性" :aria-expanded="boardQuickAddPanel === 'more'" @click="toggleBoardQuickPanel('more')"><Ellipsis :size="22" /></button>
+                <button type="submit" class="clone-board-quick-submit" aria-label="添加任务" title="添加任务" :disabled="!boardQuickAddTitle || boardQuickAddSaving"><ArrowRight :size="21" /></button>
+              </div>
+              <div v-if="boardQuickAddPanel === 'date'" class="clone-board-quick-popover"><label>日期<input v-model="boardQuickAddDue" type="datetime-local" aria-label="看板任务日期" /></label><button type="button" @click="boardQuickAddDue = ''">清除日期</button></div>
+              <div v-else-if="boardQuickAddPanel === 'priority'" class="clone-board-quick-popover"><strong>优先级</strong><button v-for="option in priorityOptions" :key="option.value" type="button" :class="{ active: boardQuickAddPriority === option.value }" @click="boardQuickAddPriority = option.value; boardQuickAddPanel = ''">{{ option.label }}</button></div>
+              <div v-else-if="boardQuickAddPanel === 'tags'" class="clone-board-quick-popover clone-board-quick-tags"><strong>标签</strong><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="boardQuickAddTagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label><button type="button" @click="boardQuickAddPanel = ''">完成</button></div>
+              <div v-else-if="boardQuickAddPanel === 'list'" class="clone-board-quick-popover"><label>所属清单<select v-model="boardQuickAddListId" aria-label="看板任务所属清单"><option v-for="list in boardQuickAddLists" :key="list.publicId" :value="list.publicId">{{ list.label }}</option></select></label><button type="button" @click="boardQuickAddPanel = ''">完成</button></div>
+              <div v-else-if="boardQuickAddPanel === 'more'" class="clone-board-quick-popover clone-board-quick-more"><label>描述<textarea v-model="boardQuickAddDescription" rows="2" aria-label="看板任务描述" /></label><label>重复<select v-model="boardQuickAddRrule" aria-label="看板任务重复"><option value="">不重复</option><option value="FREQ=DAILY">每天</option><option value="FREQ=WEEKLY">每周</option><option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">每个工作日</option><option value="FREQ=MONTHLY">每月</option><option value="FREQ=YEARLY">每年</option></select></label></div>
+            </div>
+            <p v-if="boardQuickAddError" class="clone-board-quick-error" role="alert">{{ boardQuickAddError }}</p>
+          </form>
+        </section>
+      </div>
       <div v-if="displaySettingsOpen" class="clone-modal-backdrop" @click.self="displaySettingsOpen = false">
         <section class="clone-display-settings" role="dialog" aria-modal="true" aria-label="显示设置">
           <header><h2>显示设置</h2><button type="button" aria-label="关闭显示设置" @click="displaySettingsOpen = false"><X :size="16" /></button></header>
@@ -378,7 +402,7 @@
       <div v-if="activeWorkspaceView === 'LIST'" class="clone-list-toolbar"><span>{{ selectedIds.size ? `已选 ${selectedIds.size} 项` : `${visibleTasks.length} 项任务` }}</span></div>
       <div v-if="activeWorkspaceView === 'KANBAN'" class="clone-inline-board" aria-label="任务看板">
         <section v-for="group in groups" :key="group.key" class="clone-inline-board-column">
-          <header><strong>{{ group.label }}</strong><small>{{ group.tasks.length }}</small></header>
+          <header><div><strong>{{ group.label }}</strong><small>{{ group.tasks.length }}</small></div><button type="button" :aria-label="`在${group.label}添加任务`" :title="`在${group.label}添加任务`" @click="openBoardQuickAdd(group)"><Plus :size="17" /></button></header>
           <button v-for="task in group.tasks" :key="task.publicId" type="button" class="clone-inline-board-card" :class="{ selected: selectedTask?.publicId === task.publicId }" @click="openTaskRow(task)">
             <strong>{{ task.title }}</strong><span>{{ taskDateLabel(task) }}</span><small>{{ listName(task.listId) }}</small>
           </button>
@@ -1042,6 +1066,7 @@ import {
   CalendarDays,
   Columns3,
   ArrowDownUp,
+  ArrowRight,
   Layers3,
   ClipboardList,
   Copy,
@@ -1162,6 +1187,19 @@ const quickParsing = ref(false);
 const quickSaving = ref(false);
 const quickAddExpanded = ref(false);
 const quickAction = ref("");
+const boardQuickAddOpen = ref(false);
+const boardQuickAddInput = ref(null);
+const boardQuickAddGroup = ref(null);
+const boardQuickAddTitle = ref("");
+const boardQuickAddListId = ref("");
+const boardQuickAddDue = ref("");
+const boardQuickAddPriority = ref("NONE");
+const boardQuickAddTagIds = ref([]);
+const boardQuickAddDescription = ref("");
+const boardQuickAddRrule = ref("");
+const boardQuickAddPanel = ref("");
+const boardQuickAddError = ref("");
+const boardQuickAddSaving = ref(false);
 const quickInputSettingsOpen = ref(false);
 const quickInputMode = ref("DETAILED");
 const displaySettingsOpen = ref(false);
@@ -1352,6 +1390,23 @@ const quickSuggestionOptions = computed(() => {
   if (current.kind === "priority") return priorityOptions.map(item => ({ id: item.value, label: item.label, value: item.value })).filter(matches);
   if (current.kind === "tag") return store.tags.map(item => ({ id: item.publicId, label: item.name, value: item.publicId, icon: item.icon })).filter(matches);
   return store.lists.filter(item => !item.archived).map(item => ({ id: item.publicId, label: item.name, value: item.publicId, icon: item.icon, meta: item.objectType === "NOTE" ? "笔记" : "清单" })).filter(matches);
+});
+const boardQuickAddLists = computed(() => {
+  const seen = new Set();
+  const available = store.lists.filter((list) => {
+    if (!list.publicId || seen.has(list.publicId) || list.archived || list.objectType === "NOTE") return false;
+    seen.add(list.publicId);
+    return true;
+  });
+  const names = new Map();
+  for (const list of available) {
+    const label = list.systemKey === "INBOX" ? "收集箱" : list.name;
+    names.set(label, (names.get(label) || 0) + 1);
+  }
+  return available.map((list) => {
+    const label = list.systemKey === "INBOX" ? "收集箱" : list.name;
+    return { ...list, label: names.get(label) > 1 && list.systemKey !== "INBOX" ? `${label}（清单）` : label };
+  });
 });
 const groupOptions = [
   { value: "list", label: "清单" },
@@ -1748,7 +1803,7 @@ const completedTasks = computed(() =>
 );
 const completedPreviewTasks = computed(() => completedTasks.value.slice(0, completedLimit.value));
 const groups = computed(() => {
-  if (groupBy.value !== "time" && groupBy.value !== "none") return groupTaskItems(openTasks.value, groupBy.value, store.lists, new Date(), store.tags);
+  if (groupBy.value !== "time" && groupBy.value !== "none") return groupTaskItems(openTasks.value, groupBy.value, store.lists, new Date(), store.tags, { includeEmptyLists: route.name === "tasks-all" });
   if (groupBy.value === "none") return [{ key: "all", label: "所有任务", tasks: openTasks.value }];
   if (route.name === "tasks-shortcut" && route.params.shortcut === "archived")
     return [{ key: "open", label: "归档任务", tasks: openTasks.value }];
@@ -1857,6 +1912,68 @@ function listName(id) {
   const list = store.lists.find((item) => item.publicId === id);
   return list?.systemKey === "INBOX" ? "收集箱" : list?.name || "收集箱";
 }
+
+function openBoardQuickAdd(group) {
+  boardQuickAddGroup.value = group;
+  boardQuickAddTitle.value = "";
+  boardQuickAddListId.value = route.name === "tasks-list" ? route.params.publicId : store.inbox?.publicId || "";
+  boardQuickAddDue.value = "";
+  boardQuickAddPriority.value = "NONE";
+  boardQuickAddTagIds.value = [];
+  boardQuickAddDescription.value = "";
+  boardQuickAddRrule.value = "";
+  boardQuickAddPanel.value = "";
+  boardQuickAddError.value = "";
+  if (groupBy.value === "list" && String(group.key).startsWith("list:")) {
+    const listId = String(group.key).slice("list:".length);
+    boardQuickAddListId.value = listId === "no-list" ? store.inbox?.publicId || "" : listId;
+  } else if (groupBy.value === "priority") {
+    boardQuickAddPriority.value = String(group.key).slice("priority:".length) || "NONE";
+  } else if (groupBy.value === "tag") {
+    const tagId = String(group.key).slice("tag:".length);
+    if (tagId && tagId !== "no-tag") boardQuickAddTagIds.value = [tagId];
+  } else if (groupBy.value === "time") {
+    const dayOffset = { overdue: -1, today: 0, later: 1 }[group.key];
+    if (dayOffset !== undefined) boardQuickAddDue.value = toLocal(addDays(new Date(), dayOffset));
+  }
+  boardQuickAddOpen.value = true;
+  nextTick(() => boardQuickAddInput.value?.focus());
+}
+
+function toggleBoardQuickPanel(panel) {
+  boardQuickAddPanel.value = boardQuickAddPanel.value === panel ? "" : panel;
+}
+
+function closeBoardQuickAdd() {
+  boardQuickAddOpen.value = false;
+  boardQuickAddPanel.value = "";
+  boardQuickAddError.value = "";
+}
+
+async function saveBoardQuickAdd() {
+  const titleText = boardQuickAddTitle.value.trim();
+  if (!titleText || boardQuickAddSaving.value) return;
+  boardQuickAddSaving.value = true;
+  boardQuickAddError.value = "";
+  try {
+    await store.create({
+      title: titleText,
+      description: boardQuickAddDescription.value.trim(),
+      listId: boardQuickAddListId.value || store.inbox?.publicId || "",
+      priority: boardQuickAddPriority.value,
+      dueAt: boardQuickAddDue.value ? new Date(boardQuickAddDue.value).toISOString() : "",
+      tagIds: [...boardQuickAddTagIds.value],
+      rrule: boardQuickAddRrule.value,
+    });
+    closeBoardQuickAdd();
+    message.success("任务已添加");
+  } catch (error) {
+    boardQuickAddError.value = error?.response?.data?.detail || error?.message || "任务新增失败";
+  } finally {
+    boardQuickAddSaving.value = false;
+  }
+}
+
 function tagName(id) {
   return store.tags.find((item) => item.publicId === id)?.name || "标签";
 }
@@ -5001,12 +5118,52 @@ const SidebarSection = {
 .clone-inline-board { display: grid; grid-auto-columns: minmax(220px, 1fr); grid-auto-flow: column; align-items: start; gap: 12px; min-width: 0; overflow-x: auto; padding: 8px 2px 24px; }
 .clone-inline-board-column { display: grid; align-content: start; gap: 8px; min-width: 220px; max-height: 100%; }
 .clone-inline-board-column > header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; min-height: 38px; padding: 0 4px; background: var(--surface); }
+.clone-inline-board-column > header > div { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .clone-inline-board-column > header small { color: var(--muted); }
+.clone-inline-board-column > header button { display: grid; flex: 0 0 30px; width: 30px; height: 30px; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-inline-board-column > header button:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
 .clone-inline-board-card { display: grid; gap: 7px; width: 100%; padding: 10px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
 .clone-inline-board-card:hover, .clone-inline-board-card.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, var(--card)); }
 .clone-inline-board-card strong { overflow-wrap: anywhere; font-size: 13px; font-weight: 550; }
 .clone-inline-board-card span, .clone-inline-board-card small, .clone-inline-board-empty { color: var(--muted); font-size: 11px; }
 .clone-inline-board-empty { margin: 0; padding: 8px 4px; }
+.clone-board-quick-backdrop { z-index: 1100; }
+.clone-board-quick-dialog { display: grid; gap: 18px; width: min(720px, 100%); padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink); box-shadow: 0 24px 70px rgb(0 0 0 / 28%); }
+.clone-board-quick-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.clone-board-quick-dialog > header > div { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.clone-board-quick-dialog > header strong { overflow: hidden; font-size: 21px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.clone-board-quick-dialog > header small { color: var(--muted); font-size: 15px; }
+.clone-board-quick-dialog > header button { display: grid; width: 32px; height: 32px; flex: 0 0 32px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-board-quick-dialog > header button:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+.clone-board-quick-entry { position: relative; display: grid; gap: 12px; min-height: 126px; padding: 18px; border: 2px solid var(--accent); border-radius: 12px; background: var(--surface); }
+.clone-board-quick-entry > input { width: 100%; min-width: 0; min-height: 45px; padding: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 20px; }
+.clone-board-quick-entry > input::placeholder { color: var(--muted); }
+.clone-board-quick-entry.has-error { border-color: var(--danger, #ef4444); }
+.clone-board-quick-actions { display: flex; align-items: center; gap: 8px; }
+.clone-board-quick-actions > button { position: relative; display: grid; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-board-quick-actions > button:hover, .clone-board-quick-actions > button[aria-expanded="true"] { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
+.clone-board-quick-actions > button > small { position: absolute; top: 0; right: 0; min-width: 14px; border-radius: 8px; background: var(--accent); color: var(--accent-contrast, white); font-size: 9px; line-height: 14px; }
+.clone-board-quick-actions > .clone-board-quick-submit { width: 48px; height: 40px; flex-basis: 48px; margin-left: auto; background: var(--accent); color: var(--accent-contrast, white); }
+.clone-board-quick-actions > .clone-board-quick-submit:hover { background: var(--accent); color: var(--accent-contrast, white); filter: brightness(1.08); }
+.clone-board-quick-actions > .clone-board-quick-submit:disabled { opacity: .45; cursor: not-allowed; }
+.clone-board-quick-popover { position: absolute; z-index: 2; bottom: calc(100% + 9px); left: 0; display: grid; gap: 8px; min-width: 220px; max-width: min(340px, calc(100vw - 56px)); max-height: min(320px, 45vh); overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); box-shadow: 0 12px 32px rgb(0 0 0 / 22%); }
+.clone-board-quick-popover strong { color: var(--ink2); font-size: 12px; }
+.clone-board-quick-popover label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+.clone-board-quick-popover input:not([type="checkbox"]), .clone-board-quick-popover select, .clone-board-quick-popover textarea { min-width: 0; min-height: 34px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; }
+.clone-board-quick-popover > button { min-height: 30px; padding: 5px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ink2); text-align: left; cursor: pointer; }
+.clone-board-quick-popover > button:hover, .clone-board-quick-popover > button.active { background: var(--accent-soft); color: var(--accent); }
+.clone-board-quick-tags label { display: flex; align-items: center; gap: 7px; min-height: 28px; color: var(--ink2); }
+.clone-board-quick-tags input { width: 15px; height: 15px; accent-color: var(--accent); }
+.clone-board-quick-error { margin: -8px 0 0; color: var(--danger, #ef4444); font-size: 12px; }
+@media (max-width: 600px) {
+  .clone-board-quick-dialog { gap: 14px; padding: 16px; }
+  .clone-board-quick-dialog > header strong { font-size: 18px; }
+  .clone-board-quick-entry { min-height: 118px; padding: 13px; }
+  .clone-board-quick-entry > input { font-size: 17px; }
+  .clone-board-quick-actions { gap: 3px; }
+  .clone-board-quick-actions > button { width: 34px; height: 36px; flex-basis: 34px; }
+  .clone-board-quick-actions > .clone-board-quick-submit { width: 42px; flex-basis: 42px; }
+}
 .clone-task-row em {
   font-style: normal;
   font-size: 11px;

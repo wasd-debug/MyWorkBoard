@@ -58,6 +58,20 @@ test('groupTaskItems groups by list and preserves task order in each group', () 
   ])
 })
 
+test('groupTaskItems can preserve empty active task lists for the all-tasks board', () => {
+  const lists = [
+    { publicId: 'inbox', name: '收集箱' },
+    { publicId: 'work', name: '工作' },
+    { publicId: 'notes', name: '笔记', objectType: 'NOTE' },
+    { publicId: 'archived', name: '已归档', archived: true },
+  ]
+  const groups = groupTaskItems([{ publicId: 'one', listId: 'inbox' }], 'list', lists, new Date(), [], { includeEmptyLists: true })
+  assert.deepEqual(groups.map((group) => [group.key, group.label, group.tasks.length]), [
+    ['list:inbox', '收集箱', 1],
+    ['list:work', '工作', 0],
+  ])
+})
+
 test('groupTaskItems supports tag, priority and creation-date groups', () => {
   const tasks = [
     { publicId: 'a', tagIds: ['focus'], priority: 'LOW', createdAt: '2026-10-20T09:00:00Z' },
