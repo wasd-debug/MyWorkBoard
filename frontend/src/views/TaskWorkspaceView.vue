@@ -4,6 +4,7 @@
     :style="{ '--clone-detail-width': `${detailWidth}px`, '--clone-sidebar-width': `${sidebarWidth}px` }"
     :class="{
       'sidebar-hidden': sidebarHidden,
+      'is-summary': isSummary,
       'detail-open': Boolean(selectedTask || listActivityOpen),
       'workspace-overlay-view': activeWorkspaceView !== 'LIST',
       'workspace-detail-open': activeWorkspaceView !== 'LIST' && Boolean(selectedTask || editorOpen || listActivityOpen),
@@ -12,7 +13,7 @@
     @touchend.passive="finishSidebarSwipe"
   >
     <button v-if="!sidebarHidden && isMobileSidebar" class="clone-sidebar-backdrop" type="button" aria-label="关闭任务侧栏" @click="sidebarHidden = true"></button>
-    <button v-if="selectedIds.size && isMobileSidebar" class="clone-batch-backdrop" type="button" aria-label="关闭批量操作" @click="clearBatchSelection"></button>
+    <button v-if="!isSummary && selectedIds.size && isMobileSidebar" class="clone-batch-backdrop" type="button" aria-label="关闭批量操作" @click="clearBatchSelection"></button>
     <button v-if="listActivityOpen && isMobileSidebar" class="clone-activity-backdrop" type="button" aria-label="关闭清单动态" @click="closeListActivity"></button>
     <aside class="clone-task-sidebar" :class="{ 'is-editing': sidebarEditing }" aria-label="任务导航" @click="handleSidebarClick" @dragover.capture="handleOrganizationDragOver" @drop.capture.prevent.stop="handleSidebarDrop" @dragend.capture="endOrganizationDrag">
       <div class="clone-sidebar-scroll">
@@ -146,7 +147,7 @@
     </aside>
 
     <button
-      v-if="activeWorkspaceView !== 'LIST' && (selectedTask || editorOpen)"
+      v-if="!isSummary && activeWorkspaceView !== 'LIST' && (selectedTask || editorOpen)"
       class="clone-workspace-detail-backdrop"
       type="button"
       aria-label="关闭任务详情"
@@ -154,6 +155,8 @@
     ></button>
 
     <main class="clone-task-main" :class="{ 'quick-action-open': Boolean(quickAction) }" @scroll.passive="loadMoreCompletedOnScroll">
+      <TaskSummaryWorkspace v-if="isSummary" />
+      <template v-else>
       <header class="clone-task-header">
         <div class="clone-title-block">
           <button
@@ -563,6 +566,7 @@
           </div>
         </section>
       </div>
+      </template>
       </template>
     </main>
 
@@ -1148,6 +1152,7 @@ import {
   Folder,
 } from "lucide-vue-next";
 import TaskRichTextEditor from "../components/tasks/TaskRichTextEditor.vue";
+import TaskSummaryWorkspace from "./TaskSummaryWorkspace.vue";
 import TaskFilterRuleEditor from "../components/tasks/TaskFilterRuleEditor.vue";
 import TaskColorPicker from "../components/TaskColorPicker.vue";
 import TaskOrganizationIcon from "../components/tasks/TaskOrganizationIcon.vue";
@@ -1202,6 +1207,7 @@ import {
 const route = useRoute();
 const router = useRouter();
 const store = useTasksStore();
+const isSummary = computed(() => route.name === "tasks-shortcut" && route.params.shortcut === "summary");
 const focusStore = useTaskFocusStore();
 const filters = ref([]);
 const quickTitle = ref("");
@@ -4527,6 +4533,13 @@ const SidebarSection = {
 .clone-task-shell.workspace-overlay-view {
   grid-template-columns: var(--clone-sidebar-width, 248px) minmax(0, 1fr);
 }
+.clone-task-shell.is-summary { grid-template-columns: var(--clone-sidebar-width, 248px) minmax(0, 1fr); }
+.clone-task-shell.is-summary.workspace-overlay-view { grid-template-columns: var(--clone-sidebar-width, 248px) minmax(0, 1fr); }
+.clone-task-shell.is-summary.sidebar-hidden { grid-template-columns: 0 minmax(0, 1fr); }
+.clone-task-shell.is-summary.workspace-overlay-view.sidebar-hidden { grid-template-columns: 0 minmax(0, 1fr); }
+.clone-task-shell.is-summary > .clone-detail-divider,
+.clone-task-shell.is-summary > .clone-detail-pane { display: none !important; }
+.clone-task-shell.is-summary > .clone-task-main { min-width: 0; padding: 0; }
 .clone-task-shell.workspace-overlay-view > .clone-detail-divider { display: none; }
 .clone-task-shell.workspace-overlay-view .clone-detail-pane.is-empty { display: none; }
 .clone-task-shell.workspace-overlay-view.workspace-detail-open .clone-detail-pane {
