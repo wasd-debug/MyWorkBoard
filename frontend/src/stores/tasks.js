@@ -304,7 +304,7 @@ export const useTasksStore = defineStore('tasks', {
       try {
         return await this.saveLocal({ ...payload, publicId: createClientId(), listId: payload.listId || this.inbox?.publicId || '',
           sortOrder: payload.sortOrder ?? this.tasks.filter(item => item.listId === (payload.listId || this.inbox?.publicId || '') && item.status === 'OPEN' && !item.deleted).length,
-          status: 'OPEN', source: 'WEB', revision: 0, completedAt: null })
+          status: 'OPEN', source: 'WEB', revision: 0, completedAt: null, abandonedAt: null })
       } finally { this.saving = false }
     },
     async update(item, payload) {
@@ -325,18 +325,18 @@ export const useTasksStore = defineStore('tasks', {
       }
       finally { this.saving = false }
     },
-    async complete(item) { this.undoStack.push({ item: { ...item }, label: '完成任务' }); return this.saveLocal({ ...item, status: 'COMPLETED', completedAt: new Date().toISOString() }) },
+    async complete(item) { this.undoStack.push({ item: { ...item }, label: '完成任务' }); return this.saveLocal({ ...item, status: 'COMPLETED', completedAt: new Date().toISOString(), abandonedAt: null }) },
     async abandon(item) {
       if (item.status === 'ABANDONED') return item
       this.undoStack.push({ item: { ...item }, label: '放弃任务' })
-      return this.saveLocal({ ...item, status: 'ABANDONED', completedAt: null })
+      return this.saveLocal({ ...item, status: 'ABANDONED', completedAt: null, abandonedAt: new Date().toISOString() })
     },
     async reopen(item) {
       this.undoStack.push({ item: { ...item }, label: '重新打开任务' })
       if (item.rrule && item.seriesId && this.tasks.some(value => value.seriesId === item.seriesId && value.seriesSequence > (item.seriesSequence || 0) && value.status === 'OPEN' && !value.deleted)) {
         throw new Error('周期任务的下一实例已生成，无法重开当前实例')
       }
-      return this.saveLocal({ ...item, status: 'OPEN', completedAt: null })
+      return this.saveLocal({ ...item, status: 'OPEN', completedAt: null, abandonedAt: null })
     },
     async undoLast() {
       const entry = this.undoStack.pop()

@@ -149,6 +149,17 @@ class TaskResourceContractTest {
                 .andExpect(jsonPath("$.data.attachmentCount").value(0));
     }
 
+    @Test
+    @WithMockUser(authorities = "task:read")
+    void taskResponseIncludesAbandonedTimestamp() throws Exception {
+        when(taskService.get(TASK_ID)).thenReturn(itemWithAbandonedAt("2026-10-22T01:00:00Z"));
+
+        mockMvc.perform(get("/api/v1/tasks/{publicId}", TASK_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ABANDONED"))
+                .andExpect(jsonPath("$.data.abandonedAt").value("2026-10-22T01:00:00Z"));
+    }
+
     private TaskItem item(String status, long revision) {
         return new TaskItem(TASK_ID, "11111111-1111-1111-1111-111111111111", "整理收件箱", "", status,
                 "NONE", null, null, false, "Asia/Shanghai", null, "WEB", null, revision);
@@ -158,5 +169,11 @@ class TaskResourceContractTest {
         return new TaskItem(TASK_ID, "11111111-1111-1111-1111-111111111111", "整理收件箱", "", status,
                 "NONE", null, null, false, "Asia/Shanghai", null, "WEB", null, revision,
                 null, List.of(), List.of(), 0, 0, false, null, null, null, null, null, null, 0, 0, createdAt, 0);
+    }
+
+    private TaskItem itemWithAbandonedAt(String abandonedAt) {
+        return new TaskItem(TASK_ID, "11111111-1111-1111-1111-111111111111", "整理收件箱", "", "ABANDONED",
+                "NONE", null, null, false, "Asia/Shanghai", null, "WEB", null, 1,
+                null, List.of(), List.of(), 0, 0, false, null, null, null, null, null, null, 0, 0, null, 0, abandonedAt);
     }
 }

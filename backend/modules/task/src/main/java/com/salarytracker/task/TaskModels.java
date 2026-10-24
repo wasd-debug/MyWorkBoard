@@ -145,7 +145,21 @@ public final class TaskModels {
                            String parentId, List<String> tagIds, List<ChecklistItem> checklist,
                            int completedSubtasks, int totalSubtasks, boolean deleted, String deletedAt,
                            String rrule, String recurrenceAnchor, String seriesId, Integer seriesSequence,
-                           String plannedDueAt, int sortOrder, int focusMinutes, String createdAt, int attachmentCount) {
+                           String plannedDueAt, int sortOrder, int focusMinutes, String createdAt, int attachmentCount,
+                           @Schema(type = "string", format = "date-time") String abandonedAt) {
+        public TaskItem(String publicId, String listId, String title, String description, String status,
+                        String priority, String startAt, String dueAt, boolean allDay, String timezone,
+                        Integer durationMinutes, String source, String completedAt, long revision,
+                        String parentId, List<String> tagIds, List<ChecklistItem> checklist,
+                        int completedSubtasks, int totalSubtasks, boolean deleted, String deletedAt,
+                        String rrule, String recurrenceAnchor, String seriesId, Integer seriesSequence,
+                        String plannedDueAt, int sortOrder, int focusMinutes, String createdAt, int attachmentCount) {
+            this(publicId, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
+                    durationMinutes, source, completedAt, revision, parentId, tagIds, checklist,
+                    completedSubtasks, totalSubtasks, deleted, deletedAt, rrule, recurrenceAnchor, seriesId,
+                    seriesSequence, plannedDueAt, sortOrder, focusMinutes, createdAt, attachmentCount, null);
+        }
+
         public TaskItem(String publicId, String listId, String title, String description, String status,
                         String priority, String startAt, String dueAt, boolean allDay, String timezone,
                         Integer durationMinutes, String source, String completedAt, long revision) {

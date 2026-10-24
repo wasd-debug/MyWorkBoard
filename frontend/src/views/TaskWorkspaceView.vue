@@ -210,6 +210,40 @@
           </button>
         </div>
       </header>
+      <div v-if="isCompletionRoute" class="clone-completion-filters" aria-label="任务筛选" @click.stop>
+        <div class="clone-completion-filter">
+          <button type="button" class="clone-completion-filter-trigger" :aria-expanded="completionFilterMenu === 'date'" @click="toggleCompletionFilterMenu('date')">{{ completionDateLabel }}<ChevronDown :size="14" /></button>
+          <div v-if="completionFilterMenu === 'date'" class="clone-completion-filter-menu" role="menu" aria-label="完成日期筛选">
+            <button v-for="option in completionDateOptions" :key="option.value" type="button" role="menuitemradio" :aria-checked="completionFilters.dateRange === option.value" :class="{ selected: completionFilters.dateRange === option.value }" @click="selectCompletionDateRange(option.value)">{{ option.label }}<Check v-if="completionFilters.dateRange === option.value" :size="15" /></button>
+            <div v-if="completionFilters.dateRange === 'CUSTOM'" class="clone-completion-custom-range">
+              <label><span>开始</span><input v-model="completionFilters.customStart" type="date" aria-label="完成日期开始" /></label>
+              <label><span>结束</span><input v-model="completionFilters.customEnd" type="date" :min="completionFilters.customStart || undefined" aria-label="完成日期结束" /></label>
+            </div>
+          </div>
+        </div>
+        <div class="clone-completion-filter">
+          <button type="button" class="clone-completion-filter-trigger" :aria-expanded="completionFilterMenu === 'list'" @click="toggleCompletionFilterMenu('list')">{{ completionListLabel }}<ChevronDown :size="14" /></button>
+          <div v-if="completionFilterMenu === 'list'" class="clone-completion-filter-menu clone-completion-list-menu" role="group" aria-label="清单筛选">
+            <label class="clone-completion-list-option"><input type="checkbox" :checked="completedListDraft === null || completedListDraft.length === completionAvailableListIds().length" :indeterminate="completedListDraft !== null && completedListDraft.length > 0 && completedListDraft.length < completionAvailableListIds().length" @change="completedListDraft = $event.target.checked ? null : []" /><span>所有</span></label>
+            <label v-if="store.inbox" class="clone-completion-list-option"><input type="checkbox" :checked="completedListDraft === null || completedListDraft.includes(store.inbox.publicId)" @change="toggleCompletedList(store.inbox.publicId, $event.target.checked)" /><Inbox :size="15" /><span>收集箱</span></label>
+            <template v-for="group in sortedListGroups" :key="group.publicId">
+              <div class="clone-completion-folder-option">
+                <button type="button" class="clone-completion-folder-toggle" :aria-label="`${completedFolderExpanded[group.publicId] ? '收起' : '展开'}${group.name}`" @click="completedFolderExpanded[group.publicId] = !completedFolderExpanded[group.publicId]"><ChevronRight :size="14" :class="{ expanded: completedFolderExpanded[group.publicId] }" /></button>
+                <label class="clone-completion-list-option"><input type="checkbox" :checked="completedFolderSelected(group.publicId)" @change="toggleCompletedFolder(group.publicId, $event.target.checked)" /><Folder :size="15" /><span>{{ group.name }}</span></label>
+              </div>
+              <label v-for="list in completionListsInGroup(group.publicId)" v-show="completedFolderExpanded[group.publicId]" :key="list.publicId" class="clone-completion-list-option is-child"><input type="checkbox" :checked="completedListDraft === null || completedListDraft.includes(list.publicId)" @change="toggleCompletedList(list.publicId, $event.target.checked)" /><span class="clone-completion-list-dot" :style="{ backgroundColor: list.color || 'transparent' }"></span><span>{{ list.name }}</span></label>
+            </template>
+            <label v-for="list in completionUngroupedLists" :key="list.publicId" class="clone-completion-list-option"><input type="checkbox" :checked="completedListDraft === null || completedListDraft.includes(list.publicId)" @change="toggleCompletedList(list.publicId, $event.target.checked)" /><span class="clone-completion-list-dot" :style="{ backgroundColor: list.color || 'transparent' }"></span><span>{{ list.name }}</span></label>
+            <footer><button type="button" @click="cancelCompletedListSelection">取消</button><button type="button" class="clone-completion-confirm" @click="applyCompletedListSelection">确定</button></footer>
+          </div>
+        </div>
+        <div class="clone-completion-filter">
+          <button type="button" class="clone-completion-filter-trigger" :aria-expanded="completionFilterMenu === 'scope'" @click="toggleCompletionFilterMenu('scope')">{{ completionScopeLabel }}<ChevronDown :size="14" /></button>
+          <div v-if="completionFilterMenu === 'scope'" class="clone-completion-filter-menu" role="menu" :aria-label="isAbandonedRoute ? '放弃范围' : '完成范围'">
+            <button v-for="option in completionScopeOptions" :key="option.value" type="button" role="menuitemradio" :aria-checked="completionFilters.scope === option.value" :class="{ selected: completionFilters.scope === option.value }" @click="completionFilters.scope = option.value; completionFilterMenu = ''">{{ option.label }}<Check v-if="completionFilters.scope === option.value" :size="15" /></button>
+          </div>
+        </div>
+      </div>
       <div v-if="moreOpen" class="clone-floating-menu clone-view-menu" role="menu" aria-label="分组与排序设置" @click.stop>
         <template v-if="!workspaceMenuSection">
           <button type="button" class="clone-menu-submenu-trigger" role="menuitem" @click="workspaceMenuSection = 'group'"><Layers3 :size="18" /><span>分组</span><small>{{ groupOptionLabel }}</small><ChevronRight :size="16" /></button>
@@ -1169,6 +1203,7 @@ import { moveChecklistItem as reorderChecklistItems } from "./taskChecklist.js";
 import { matchesFilterRules, serializeFilterRules } from "./taskFilterRules.js";
 import { advancedFilterConditionsFromRules, advancedFilterConditionsValid, buildAdvancedFilterRules } from "./taskAdvancedFilter.js";
 import { buildTaskSidebarCounts } from "./taskSidebarCounts.js";
+import { filterCompletionTasks, normalizeCompletionListSelection, toggleCompletionListSelection } from "./taskCompletionFilters.js";
 import { mergeSidebarPreferenceChanges } from "./taskSidebarPreferences.js";
 import { calendarMonthDays, localDateKey, nextWholeHour, quickReminderOptions as getQuickReminderOptions, quickReminderPayloads } from "./taskQuickAddDate.js";
 import { buildQuickRepeatRule, createQuickRepeatState, DAY_CODES, quickRepeatLabel, quickRepeatPresets, quickRepeatValidation } from "./taskQuickAddRepeat.js";
@@ -1420,6 +1455,57 @@ const filterDraftValid = computed(() => {
   return organizationDialog.filter.dueRange !== "CUSTOM" || Boolean(organizationDialog.filter.dueStart && organizationDialog.filter.dueEnd && organizationDialog.filter.dueEnd > organizationDialog.filter.dueStart);
 });
 const selectedTask = ref(null);
+const completionFilterMenu = ref("");
+const completionFilters = reactive({ dateRange: "ALL", customStart: "", customEnd: "", listIds: null, scope: "ALL" });
+const completedListDraft = ref(null);
+const completedFolderExpanded = reactive({});
+const completionDateOptions = [
+  { value: "ALL", label: "所有日期" },
+  { value: "THIS_WEEK", label: "本周" },
+  { value: "LAST_WEEK", label: "上周" },
+  { value: "THIS_MONTH", label: "本月" },
+  { value: "CUSTOM", label: "自定义" },
+];
+const isCompletionRoute = computed(() => ["tasks-completed", "tasks-abandoned"].includes(route.name));
+const isAbandonedRoute = computed(() => route.name === "tasks-abandoned");
+const completionDateLabel = computed(() => completionDateOptions.find(option => option.value === completionFilters.dateRange)?.label || "所有日期");
+const completionListLabel = computed(() => completionFilters.listIds === null ? "所有清单" : completionFilters.listIds.length ? `已选 ${completionFilters.listIds.length} 项` : "未选择清单");
+const completionScopeOptions = computed(() => isAbandonedRoute.value
+  ? [{ value: "MINE", label: "我放弃的" }, { value: "ALL", label: "所有放弃" }]
+  : [{ value: "MINE", label: "我完成的" }, { value: "ALL", label: "所有完成" }]);
+const completionScopeLabel = computed(() => completionScopeOptions.value.find(option => option.value === completionFilters.scope)?.label || completionScopeOptions.value[1].label);
+const completionUngroupedLists = computed(() => store.lists.filter(list => list.systemKey !== "INBOX" && !list.groupId));
+function completionListsInGroup(groupId) { return store.lists.filter(list => list.groupId === groupId); }
+function completionAvailableListIds() { return [...new Set([store.inbox?.publicId, ...store.lists.map(list => list.publicId)].filter(Boolean))]; }
+function toggleCompletionFilterMenu(menu) {
+  if (completionFilterMenu.value === menu) completionFilterMenu.value = "";
+  else {
+    if (menu === "list") completedListDraft.value = completionFilters.listIds === null ? null : [...completionFilters.listIds];
+    completionFilterMenu.value = menu;
+  }
+}
+function selectCompletionDateRange(value) {
+  completionFilters.dateRange = value;
+  if (value !== "CUSTOM") completionFilterMenu.value = "";
+}
+function toggleCompletedList(id, checked) {
+  completedListDraft.value = toggleCompletionListSelection(completedListDraft.value, completionAvailableListIds(), id, checked);
+}
+function completedFolderSelected(groupId) {
+  const ids = completionListsInGroup(groupId).map(list => list.publicId);
+  return ids.length > 0 && (completedListDraft.value === null || ids.every(id => completedListDraft.value.includes(id)));
+}
+function toggleCompletedFolder(groupId, checked) {
+  const ids = completionListsInGroup(groupId).map(list => list.publicId);
+  const selected = new Set(completedListDraft.value === null ? completionAvailableListIds() : completedListDraft.value);
+  for (const id of ids) checked ? selected.add(id) : selected.delete(id);
+  completedListDraft.value = normalizeCompletionListSelection([...selected], completionAvailableListIds());
+}
+function cancelCompletedListSelection() { completedListDraft.value = completionFilters.listIds === null ? null : [...completionFilters.listIds]; completionFilterMenu.value = ""; }
+function applyCompletedListSelection() {
+  completionFilters.listIds = normalizeCompletionListSelection(completedListDraft.value, completionAvailableListIds());
+  completionFilterMenu.value = "";
+}
 const listActivityOpen = ref(false);
 const listActivityListId = ref("");
 const listActivityTitle = ref("收集箱");
@@ -1898,6 +1984,15 @@ const visibleTasks = computed(() => {
         : shortcut === "archived"
           ? archivedIds.has(task.listId)
           : false);
+  }
+  if (route.name === "tasks-completed" || route.name === "tasks-abandoned") {
+    values = filterCompletionTasks(values, {
+      status: route.name === "tasks-completed" ? "COMPLETED" : "ABANDONED",
+      dateRange: completionFilters.dateRange,
+      customStart: completionFilters.customStart,
+      customEnd: completionFilters.customEnd,
+      listIds: completionFilters.listIds,
+    });
   }
   return sortTaskItems(values, { sortBy: sort.value, direction: sortDirection.value });
 });
@@ -2418,6 +2513,11 @@ function closeWorkspaceMenusOnOutsidePointer(event) {
   if (!moreOpen.value && !listOptionsOpen.value) return;
   if (event.target.closest?.("[data-workspace-menu-trigger], .clone-floating-menu")) return;
   closeWorkspaceMenus();
+}
+function closeCompletionFilterOnOutsidePointer(event) {
+  if (!completionFilterMenu.value) return;
+  if (event.target.closest?.(".clone-completion-filters")) return;
+  completionFilterMenu.value = "";
 }
 async function setContextDue(offset) {
   const task = context.task;
@@ -4522,6 +4622,7 @@ onMounted(() => {
   document.addEventListener("pointerdown", closeContext);
   document.addEventListener("pointerdown", closeQuickAction);
   document.addEventListener("pointerdown", closeWorkspaceMenusOnOutsidePointer);
+  document.addEventListener("pointerdown", closeCompletionFilterOnOutsidePointer);
   window.addEventListener("scroll", loadMoreCompletedOnScroll, { passive: true });
   window.addEventListener("keydown", onKeydown);
   window.matchMedia("(max-width: 900px)").addEventListener("change", handleSidebarViewportChange);
@@ -4535,6 +4636,7 @@ onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", closeContext);
   document.removeEventListener("pointerdown", closeQuickAction);
   document.removeEventListener("pointerdown", closeWorkspaceMenusOnOutsidePointer);
+  document.removeEventListener("pointerdown", closeCompletionFilterOnOutsidePointer);
   window.removeEventListener("scroll", loadMoreCompletedOnScroll);
   window.removeEventListener("keydown", onKeydown);
   window.matchMedia("(max-width: 900px)").removeEventListener("change", handleSidebarViewportChange);
@@ -5051,6 +5153,33 @@ const SidebarSection = {
   color: var(--muted);
   font-size: 11px;
 }
+.clone-completion-filters { position: relative; z-index: 8; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 2px 0 18px 43px; }
+.clone-completion-filter { position: relative; }
+.clone-completion-filter-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 126px; min-height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
+.clone-completion-filter-trigger:hover,
+.clone-completion-filter-trigger[aria-expanded="true"] { border-color: var(--accent); color: var(--ink); }
+.clone-completion-filter-menu { position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; display: grid; gap: 2px; width: max-content; min-width: 190px; max-width: min(330px, calc(100vw - 32px)); max-height: min(420px, 64vh); overflow: auto; padding: 7px; border: 1px solid var(--line); border-radius: 9px; background: var(--card); box-shadow: 0 14px 36px rgb(0 0 0 / 28%); }
+.clone-completion-filter-menu > button { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 36px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ink2); text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
+.clone-completion-filter-menu > button:hover,
+.clone-completion-filter-menu > button.selected { color: var(--accent); background: var(--accent-soft); }
+.clone-completion-custom-range { display: grid; gap: 8px; padding: 10px 7px 6px; border-top: 1px solid var(--line); }
+.clone-completion-custom-range label { display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+.clone-completion-custom-range input { min-width: 0; height: 32px; padding: 0 7px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--ink); font: inherit; font-size: 12px; }
+.clone-completion-list-menu { width: 280px; padding: 8px; }
+.clone-completion-list-menu > .clone-completion-list-option:first-child { margin: -8px -8px 4px; padding: 0 16px; border-bottom: 1px solid var(--line); border-radius: 0; color: var(--accent); }
+.clone-completion-list-option { display: flex; align-items: center; gap: 9px; min-height: 35px; padding: 0 8px; border-radius: 5px; color: var(--ink2); font-size: 13px; cursor: pointer; }
+.clone-completion-list-option:hover { background: var(--accent-soft); }
+.clone-completion-list-option input { width: 14px; height: 14px; margin: 0; accent-color: var(--accent); }
+.clone-completion-folder-option { display: flex; align-items: center; min-height: 35px; }
+.clone-completion-folder-toggle { display: grid; width: 24px; height: 28px; flex: none; place-items: center; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-completion-folder-toggle svg { transition: transform 150ms ease; }
+.clone-completion-folder-toggle svg.expanded { transform: rotate(90deg); }
+.clone-completion-folder-option .clone-completion-list-option { flex: 1; }
+.clone-completion-list-option.is-child { padding-left: 36px; }
+.clone-completion-list-dot { width: 8px; height: 8px; flex: none; border: 1px solid var(--line); border-radius: 50%; }
+.clone-completion-list-menu footer { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 4px 2px; border-top: 1px solid var(--line); }
+.clone-completion-list-menu footer button { min-width: 68px; height: 30px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
+.clone-completion-list-menu footer .clone-completion-confirm { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast, #fff); }
 .clone-primary-button {
   display: inline-flex;
   align-items: center;
@@ -6442,6 +6571,10 @@ const SidebarSection = {
 }
 @media (max-width: 760px) {
   .clone-task-main { padding-right: 14px; padding-left: 14px; }
+  .clone-completion-filters { gap: 6px; margin: 0 0 15px 0; }
+  .clone-completion-filter-trigger { min-width: 0; min-height: 32px; gap: 4px; padding: 0 8px; font-size: 11px; }
+  .clone-completion-filter-menu { max-width: calc(100vw - 28px); }
+  .clone-completion-list-menu { width: min(280px, calc(100vw - 28px)); }
   .clone-check { width: 30px; height: 32px; min-width: 30px; min-height: 32px; }
   .clone-check::before { width: 12px; height: 12px; }
   .clone-check svg { width: 9px; height: 9px; }

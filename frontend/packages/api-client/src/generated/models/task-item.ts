@@ -48,4 +48,5 @@ export interface TaskItem {
     'focusMinutes'?: number;
     'createdAt'?: string;
     'attachmentCount'?: number;
+    'abandonedAt'?: string;
 }

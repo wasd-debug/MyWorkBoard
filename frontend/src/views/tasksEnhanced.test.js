@@ -14,6 +14,7 @@ const router = await readFile(new URL('../router/index.js', import.meta.url), 'u
 const client = await readFile(new URL('../../packages/api-client/src/index.js', import.meta.url), 'utf8')
 const navigation = await readFile(new URL('../config/moduleNavigation.js', import.meta.url), 'utf8')
 const appView = await readFile(new URL('../App.vue', import.meta.url), 'utf8')
+const completionFilters = await readFile(new URL('./taskCompletionFilters.js', import.meta.url), 'utf8')
 
 test('task enhanced workspace exposes all I7 and timeline routes', () => {
   for (const path of ['/tasks/board', '/tasks/quadrant', '/tasks/search', '/tasks/stats', '/tasks/filter/:publicId', '/tasks/timeline']) {
@@ -99,6 +100,25 @@ test('completed tasks append on both workspace and document scrolling', async ()
   assert.match(workspace, /window\.addEventListener\("scroll", loadMoreCompletedOnScroll, \{ passive: true \}\)/)
   assert.match(workspace, /window\.removeEventListener\("scroll", loadMoreCompletedOnScroll\)/)
   assert.match(workspace, /completedLimit\.value \+ 5/)
+})
+
+test('completed and abandoned views expose matching date, list, and status filters', () => {
+  assert.match(workspaceView, /v-if="isCompletionRoute" class="clone-completion-filters"/)
+  assert.match(workspaceView, /我完成的/)
+  assert.match(workspaceView, /所有完成/)
+  assert.match(workspaceView, /我放弃的/)
+  assert.match(workspaceView, /所有放弃/)
+  assert.match(workspaceView, /所有日期/)
+  assert.match(workspaceView, /本周/)
+  assert.match(workspaceView, /上周/)
+  assert.match(workspaceView, /本月/)
+  assert.match(workspaceView, /type="date" aria-label="完成日期开始"/)
+  assert.match(workspaceView, /type="date" :min="completionFilters.customStart/)
+  assert.match(workspaceView, /toggleCompletedFolder/)
+  assert.match(workspaceView, /completionListsInGroup/)
+  assert.match(workspaceView, /closeCompletionFilterOnOutsidePointer/)
+  assert.match(completionFilters, /task\.completedAt : task\.abandonedAt/)
+  assert.match(completionFilters, /customEnd < customStart/)
 })
 
 test('mobile board has explicit move control and statistics explain focus basis', () => {
