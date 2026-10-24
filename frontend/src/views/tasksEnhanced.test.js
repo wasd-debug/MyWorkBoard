@@ -335,6 +335,19 @@ test('quick add exposes inline date, priority, tag, and list controls that overr
   assert.match(workspaceView, /if \(quickAction\.value\) \{[\s\S]*quickAction\.value = "";[\s\S]*return;/)
 })
 
+test('quick-add priority menus render color-coded flags for every priority', () => {
+  for (const priority of ['HIGH', 'MEDIUM', 'LOW', 'NONE']) {
+    assert.ok(workspaceView.includes(`data-priority="${priority}"`), `missing ${priority} priority option`)
+  }
+  assert.match(workspaceView, /clone-quick-priority-option[^>]*data-priority="option\.value"[\s\S]*<Flag[\s\S]*<Check v-if="quickEntry\.priority === option\.value"/)
+  assert.match(workspaceView, /clone-board-quick-priority-option[^>]*data-priority="option\.value"[\s\S]*<Flag[\s\S]*<Check v-if="boardQuickAddPriority === option\.value"/)
+  assert.match(workspaceView, /const quickPriorityOptions = \["HIGH", "MEDIUM", "LOW", "NONE"\]/)
+  assert.match(workspaceView, /clone-quick-priority-option\[data-priority="HIGH"\] > svg:first-child,[\s\S]*color: var\(--down\)/)
+  assert.match(workspaceView, /clone-quick-priority-option\[data-priority="MEDIUM"\] > svg:first-child,[\s\S]*color: var\(--warn\)/)
+  assert.match(workspaceView, /clone-quick-priority-option\[data-priority="LOW"\] > svg:first-child,[\s\S]*color: #4f82dd/)
+  assert.match(workspaceView, /clone-quick-priority-option\[data-priority="NONE"\] > svg:first-child,[\s\S]*color: var\(--muted\)/)
+})
+
 test('task workspace keeps reading width and focus states deliberate on wide screens', () => {
   assert.match(workspaceView, /const detailWidth = ref\(390\)/)
   assert.match(workspaceView, /\.clone-task-header \{[\s\S]*max-width: none/)

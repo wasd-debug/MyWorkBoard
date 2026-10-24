@@ -312,7 +312,7 @@
             <footer class="clone-quick-date-footer"><button type="button" @click="clearQuickDate">清除</button><button type="button" class="clone-quick-date-apply" @click="applyQuickDate">完成</button></footer>
           </div>
         </template>
-        <template v-else-if="quickAction === 'priority'"><strong>优先级</strong><button v-for="option in priorityOptions" :key="option.value" type="button" :class="{ active: quickEntry.priority === option.value }" @click="quickEntry.priority = option.value; quickEntry.prioritySelected = true; quickAction = ''">{{ option.label }}</button></template>
+        <template v-else-if="quickAction === 'priority'"><strong>优先级</strong><button v-for="option in quickPriorityOptions" :key="option.value" type="button" class="clone-quick-priority-option" :data-priority="option.value" :class="{ active: quickEntry.priority === option.value }" @click="quickEntry.priority = option.value; quickEntry.prioritySelected = true; quickAction = ''"><Flag :size="17" /><span>{{ option.label }}</span><Check v-if="quickEntry.priority === option.value" :size="15" /></button></template>
         <template v-else-if="quickAction === 'repeat'">
           <section class="clone-quick-repeat-panel" aria-label="快速设置重复">
             <header><strong>重复</strong><button type="button" aria-label="关闭重复设置" @click="quickAction = ''"><X :size="14" /></button></header>
@@ -348,7 +348,7 @@
                 <button type="submit" class="clone-board-quick-submit" aria-label="添加任务" title="添加任务" :disabled="!boardQuickAddTitle || boardQuickAddSaving"><ArrowRight :size="21" /></button>
               </div>
               <div v-if="boardQuickAddPanel === 'date'" class="clone-board-quick-popover"><label>日期<input v-model="boardQuickAddDue" type="datetime-local" aria-label="看板任务日期" /></label><button type="button" @click="boardQuickAddDue = ''">清除日期</button></div>
-              <div v-else-if="boardQuickAddPanel === 'priority'" class="clone-board-quick-popover"><strong>优先级</strong><button v-for="option in priorityOptions" :key="option.value" type="button" :class="{ active: boardQuickAddPriority === option.value }" @click="boardQuickAddPriority = option.value; boardQuickAddPanel = ''">{{ option.label }}</button></div>
+              <div v-else-if="boardQuickAddPanel === 'priority'" class="clone-board-quick-popover"><strong>优先级</strong><button v-for="option in quickPriorityOptions" :key="option.value" type="button" class="clone-board-quick-priority-option" :data-priority="option.value" :class="{ active: boardQuickAddPriority === option.value }" @click="boardQuickAddPriority = option.value; boardQuickAddPanel = ''"><Flag :size="17" /><span>{{ option.label }}</span><Check v-if="boardQuickAddPriority === option.value" :size="15" /></button></div>
               <div v-else-if="boardQuickAddPanel === 'tags'" class="clone-board-quick-popover clone-board-quick-tags"><strong>标签</strong><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="boardQuickAddTagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label><button type="button" @click="boardQuickAddPanel = ''">完成</button></div>
               <div v-else-if="boardQuickAddPanel === 'list'" class="clone-board-quick-popover"><label>所属清单<select v-model="boardQuickAddListId" aria-label="看板任务所属清单"><option v-for="list in boardQuickAddLists" :key="list.publicId" :value="list.publicId">{{ list.label }}</option></select></label><button type="button" @click="boardQuickAddPanel = ''">完成</button></div>
               <div v-else-if="boardQuickAddPanel === 'more'" class="clone-board-quick-popover clone-board-quick-more"><label>描述<textarea v-model="boardQuickAddDescription" rows="2" aria-label="看板任务描述" /></label><label>重复<select v-model="boardQuickAddRrule" aria-label="看板任务重复"><option value="">不重复</option><option value="FREQ=DAILY">每天</option><option value="FREQ=WEEKLY">每周</option><option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">每个工作日</option><option value="FREQ=MONTHLY">每月</option><option value="FREQ=YEARLY">每年</option></select></label></div>
@@ -1629,6 +1629,7 @@ const priorityOptions = [
   { value: "MEDIUM", label: "中优先级" },
   { value: "HIGH", label: "高优先级" },
 ];
+const quickPriorityOptions = ["HIGH", "MEDIUM", "LOW", "NONE"].map(value => priorityOptions.find(option => option.value === value));
 const filterPriorityOptions = [
   { value: "HIGH", label: "高" },
   { value: "MEDIUM", label: "中" },
@@ -4915,6 +4916,20 @@ const SidebarSection = {
 .clone-quick-action-panel button { min-height: 28px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: var(--ink); font-size: 11px; cursor: pointer; }
 .clone-quick-action-panel button:hover,
 .clone-quick-action-panel button.active { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
+.clone-quick-action-panel .clone-quick-priority-option { display: flex; width: 100%; align-items: center; gap: 9px; text-align: left; }
+.clone-quick-priority-option span { flex: 1; }
+.clone-quick-priority-option > svg:first-child,
+.clone-board-quick-priority-option > svg:first-child { flex: none; color: var(--muted); }
+.clone-quick-priority-option[data-priority="HIGH"] > svg:first-child,
+.clone-board-quick-priority-option[data-priority="HIGH"] > svg:first-child { color: var(--down); }
+.clone-quick-priority-option[data-priority="MEDIUM"] > svg:first-child,
+.clone-board-quick-priority-option[data-priority="MEDIUM"] > svg:first-child { color: var(--warn); }
+.clone-quick-priority-option[data-priority="LOW"] > svg:first-child,
+.clone-board-quick-priority-option[data-priority="LOW"] > svg:first-child { color: #4f82dd; }
+.clone-quick-priority-option[data-priority="NONE"] > svg:first-child,
+.clone-board-quick-priority-option[data-priority="NONE"] > svg:first-child { color: var(--muted); }
+.clone-quick-action-panel.is-priority { display: grid; min-width: 184px; gap: 2px; }
+.clone-quick-action-panel.is-priority > strong { margin: 0 4px 3px; }
 .clone-quick-action-panel label:has(input[type="checkbox"]) { padding: 3px 5px; border-radius: 4px; color: var(--ink); }
 .clone-quick-action-panel.is-date { display: block; width: min(420px, calc(100vw - 36px)); max-height: min(660px, calc(100dvh - 210px)); overflow: auto; padding: 0; }
 .clone-quick-action-panel.is-repeat { display: block; width: min(410px, calc(100vw - 36px)); max-width: calc(100vw - 36px); box-sizing: border-box; overflow: auto; }
@@ -5190,6 +5205,8 @@ const SidebarSection = {
 .clone-board-quick-popover input:not([type="checkbox"]), .clone-board-quick-popover select, .clone-board-quick-popover textarea { min-width: 0; min-height: 34px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; }
 .clone-board-quick-popover > button { min-height: 30px; padding: 5px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ink2); text-align: left; cursor: pointer; }
 .clone-board-quick-popover > button:hover, .clone-board-quick-popover > button.active { background: var(--accent-soft); color: var(--accent); }
+.clone-board-quick-popover > button.clone-board-quick-priority-option { display: flex; align-items: center; gap: 9px; text-align: left; }
+.clone-board-quick-priority-option span { flex: 1; }
 .clone-board-quick-tags label { display: flex; align-items: center; gap: 7px; min-height: 28px; color: var(--ink2); }
 .clone-board-quick-tags input { width: 15px; height: 15px; accent-color: var(--accent); }
 .clone-board-quick-error { margin: -8px 0 0; color: var(--danger, #ef4444); font-size: 12px; }
