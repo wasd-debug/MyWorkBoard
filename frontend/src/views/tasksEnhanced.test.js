@@ -471,6 +471,18 @@ test('completed, abandoned, and trash system views expose only their supported o
   assert.match(workspaceView, /!\["summary", "completed", "trash"\]\.includes\(item\?\.key\)/)
 })
 
+test('trash workspace header exposes only permanent clear and confirms before purging', () => {
+  const header = workspaceView.match(/<header class="clone-task-header">[\s\S]*?<\/header>/)?.[0] || ''
+  assert.match(header, /v-if="isTrashRoute"[\s\S]*aria-label="清空垃圾桶"[\s\S]*BrushCleaning/)
+  assert.match(header, /v-else class="clone-header-actions"/)
+  const clearDialog = workspaceView.match(/<Dialog v-model:open="trashClearOpen"[\s\S]*?<\/Dialog>/)?.[0] || ''
+  assert.match(clearDialog, /永久删除垃圾桶中的 \{\{ trashedTaskCount \}\} 项任务/)
+  assert.match(workspaceView, /async function clearTrashPermanently\(\)[\s\S]*for \(const item of items\) await store\.purge\(item\)/)
+  assert.match(workspaceView, /route\.name === "tasks-trash"\s*\? "垃圾桶"/)
+  assert.match(workspaceView, /v-if="!isTrashRoute" class="clone-quick-add"/)
+  assert.match(workspaceView, /isTrashRoute \? "垃圾桶是空的"/)
+})
+
 test('full task page rebuild exposes persistent list grouping and sorting controls', () => {
   for (const token of ['分组', '排序', '顺序', '恢复默认时间顺序', '隐藏已完成', '显示详细', '显示检查事项']) {
     assert.ok(workspaceView.includes(token), `missing list view control ${token}`)

@@ -170,7 +170,10 @@
           </button>
           <h1>{{ title }}</h1>
         </div>
-        <div class="clone-header-actions">
+        <div v-if="isTrashRoute" class="clone-header-actions clone-trash-header-actions">
+          <button type="button" class="clone-icon-button" aria-label="清空垃圾桶" :title="store.online ? '清空垃圾桶' : '联网后才能清空垃圾桶'" :disabled="!trashedTaskCount || !store.online || trashClearBusy" @click="trashClearOpen = true"><BrushCleaning :size="19" /></button>
+        </div>
+        <div v-else class="clone-header-actions">
           <span class="clone-sync-state" aria-live="polite">{{
             syncLabel
           }}</span
@@ -282,7 +285,7 @@
           </div>
         </div>
       </div>
-      <div class="clone-quick-add" :class="{ 'is-simple': quickInputMode === 'SIMPLE', 'is-collapsed': !quickAddExpanded }">
+      <div v-if="!isTrashRoute" class="clone-quick-add" :class="{ 'is-simple': quickInputMode === 'SIMPLE', 'is-collapsed': !quickAddExpanded }">
         <button v-if="!quickAddExpanded" type="button" class="clone-quick-add-collapsed" @click="expandQuickAdd"><Plus :size="17" /><span>添加任务至“{{ title === '今天' ? '收集箱' : title }}”</span></button>
         <form v-else class="clone-quick-add-form" @submit.prevent="quickAdd">
           <input
@@ -487,8 +490,8 @@
         </div></div>
       </section>
       <div v-if="!visibleTasks.length && !todayHabits.length && !completedTasks.length" class="clone-empty-state">
-        <Inbox :size="28" /><strong>{{ title === "今天" ? "今天没有安排" : "这里还没有任务" }}</strong>
-        <span v-if="title !== '今天'">使用上方输入框快速创建第一项任务</span>
+        <Inbox :size="28" /><strong>{{ isTrashRoute ? "垃圾桶是空的" : title === "今天" ? "今天没有安排" : "这里还没有任务" }}</strong>
+        <span v-if="!isTrashRoute && title !== '今天'">使用上方输入框快速创建第一项任务</span>
       </div>
       <div v-else class="clone-task-groups">
         <section
@@ -1119,6 +1122,7 @@
     <Dialog v-model:open="organizationIconPickerOpen" title="选择图标" content-class="task-icon-dialog">
       <div class="clone-icon-picker"><input v-model.trim="organizationIconSearch" aria-label="搜索图标" placeholder="搜索中文名称或图标名" /><div class="clone-icon-categories" role="tablist" aria-label="图标分类"><button v-for="category in organizationIconCategories" :key="category.value" type="button" role="tab" :aria-selected="organizationIconCategory === category.value" @click="organizationIconCategory = category.value">{{ category.label }}</button></div><div class="clone-icon-grid" role="listbox" aria-label="可选图标"><button v-for="icon in filteredOrganizationIcons" :key="icon.value" type="button" role="option" :aria-selected="currentOrganizationIcon === icon.value" :aria-label="icon.label" :title="`${icon.label} · ${icon.value}`" @click="selectOrganizationIcon(icon.value)"><component :is="icon.component" v-if="icon.component" :size="19" :stroke-width="2" aria-hidden="true" /><span v-else>{{ icon.value }}</span></button><p v-if="!filteredOrganizationIcons.length" class="clone-icon-empty">没有匹配的图标</p></div><small class="clone-icon-count">{{ filteredOrganizationIcons.length }} 个可选图标</small></div>
     </Dialog>
+    <Dialog v-model:open="trashClearOpen" title="清空垃圾桶"><div class="clone-confirmation"><p>将永久删除垃圾桶中的 {{ trashedTaskCount }} 项任务，且无法恢复。</p><footer><button type="button" :disabled="trashClearBusy" @click="trashClearOpen = false">取消</button><button type="button" class="clone-danger-button" :disabled="trashClearBusy || !trashedTaskCount" @click="clearTrashPermanently">{{ trashClearBusy ? '清除中…' : '永久清除' }}</button></footer></div></Dialog>
     <Dialog v-model:open="listCopyOpen" title="复制清单"><form class="clone-organization-form" @submit.prevent="confirmListCopy"><fieldset><legend>复制任务</legend><label><input v-model="listCopy.mode" type="radio" value="OPEN_ONLY" />只复制未完成任务</label><label><input v-model="listCopy.mode" type="radio" value="ALL_PRESERVE" />复制全部任务，保留已完成状态</label><label><input v-model="listCopy.mode" type="radio" value="ALL_OPEN" />复制全部任务，并将任务设为未完成</label></fieldset><p class="clone-dialog-note">新清单将命名为“{{ listCopy.name }}”。</p><footer><button type="button" :disabled="listCopy.busy" @click="listCopyOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="listCopy.busy">{{ listCopy.busy ? '复制中…' : '复制' }}</button></footer></form></Dialog>
     <Dialog v-model:open="organizationConfirmOpen" :title="organizationConfirmation.title"><template #title v-if="organizationConfirmation.action === 'delete-list'">删除清单“<TaskOrganizationIcon v-if="organizationConfirmation.item?.icon" class="clone-confirmation-title-icon" :value="organizationConfirmation.item.icon" :size="16" /><ListTodo v-else class="clone-confirmation-title-icon" :size="16" /> {{ organizationConfirmation.item?.name }}”？</template><div class="clone-confirmation"><p v-if="organizationConfirmation.action === 'dissolve-group'">解散后，文件夹（<TaskOrganizationIcon v-if="organizationConfirmation.item?.icon" class="clone-confirmation-title-icon" :value="organizationConfirmation.item.icon" :size="16" /><Folder v-else class="clone-confirmation-title-icon" :size="16" /> {{ organizationConfirmation.item?.name }}）中的清单将直接显示在侧边栏。</p><p v-else>{{ organizationConfirmation.message }}</p><footer><button type="button" :disabled="organizationConfirmation.busy" @click="organizationConfirmOpen = false">取消</button><button type="button" class="clone-danger-button" :disabled="organizationConfirmation.busy" @click="confirmOrganizationAction">{{ organizationConfirmation.busy ? '处理中…' : organizationConfirmation.confirmLabel }}</button></footer></div></Dialog>
     <Dialog v-model:open="tagMergeOpen" title="合并标签到…"><form class="clone-organization-form" @submit.prevent="confirmTagMerge"><p>你可以将标签“{{ tagMerge.source?.name }}”下的任务合并到另一个标签。合并后，标签“{{ tagMerge.source?.name }}”将被删除；其子标签会迁移至目标标签层级。</p><label>选择标签<select v-model="tagMerge.targetId" required><option value="" disabled>选择标签</option><option v-for="tag in mergeTargets" :key="tag.publicId" :value="tag.publicId">{{ tag.name }}</option></select></label><footer><button type="button" :disabled="tagMerge.busy" @click="tagMergeOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="tagMerge.busy || !mergeTargets.length">{{ tagMerge.busy ? '合并中…' : '确定' }}</button></footer></form></Dialog>
@@ -1138,6 +1142,7 @@ import {
 import { useRoute, useRouter, RouterLink } from "vue-router";
 import {
   Archive,
+  BrushCleaning,
   CalendarClock,
   Bell,
   Check,
@@ -1455,6 +1460,8 @@ const filterDraftValid = computed(() => {
   return organizationDialog.filter.dueRange !== "CUSTOM" || Boolean(organizationDialog.filter.dueStart && organizationDialog.filter.dueEnd && organizationDialog.filter.dueEnd > organizationDialog.filter.dueStart);
 });
 const selectedTask = ref(null);
+const trashClearOpen = ref(false);
+const trashClearBusy = ref(false);
 const completionFilterMenu = ref("");
 const completionFilters = reactive({ dateRange: "ALL", customStart: "", customEnd: "", listIds: null, scope: "ALL" });
 const completedListDraft = ref(null);
@@ -1468,6 +1475,7 @@ const completionDateOptions = [
 ];
 const isCompletionRoute = computed(() => ["tasks-completed", "tasks-abandoned"].includes(route.name));
 const isAbandonedRoute = computed(() => route.name === "tasks-abandoned");
+const isTrashRoute = computed(() => route.name === "tasks-trash");
 const completionDateLabel = computed(() => completionDateOptions.find(option => option.value === completionFilters.dateRange)?.label || "所有日期");
 const completionListLabel = computed(() => completionFilters.listIds === null ? "所有清单" : completionFilters.listIds.length ? `已选 ${completionFilters.listIds.length} 项` : "未选择清单");
 const completionScopeOptions = computed(() => isAbandonedRoute.value
@@ -1810,7 +1818,9 @@ const filterPriorityOptions = [
   { value: "NONE", label: "无" },
 ];
 const title = computed(() =>
-  route.name === "tasks-today"
+  route.name === "tasks-trash"
+    ? "垃圾桶"
+    : route.name === "tasks-today"
     ? calendarDate.value && dateKey(calendarDate.value) !== dateKey(new Date())
       ? new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" }).format(calendarDate.value)
       : "今天"
@@ -1840,6 +1850,19 @@ const title = computed(() =>
                     }[route.params.shortcut] || "任务"
                   : "所有",
 );
+async function clearTrashPermanently() {
+  if (trashClearBusy.value || !trashedTaskCount.value || !store.online) return;
+  trashClearBusy.value = true;
+  try {
+    const items = [...store.tasks.filter(task => task.deleted)];
+    for (const item of items) await store.purge(item);
+    trashClearOpen.value = false;
+  } catch (error) {
+    store.error = error?.response?.data?.detail || error?.message || "清空垃圾桶失败";
+  } finally {
+    trashClearBusy.value = false;
+  }
+}
 const currentTaskList = computed(() => route.name === "tasks-list"
   ? store.lists.find(item => item.publicId === route.params.publicId) || null
   : null);
@@ -5166,6 +5189,7 @@ const SidebarSection = {
 .clone-completion-custom-range label { display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
 .clone-completion-custom-range input { min-width: 0; height: 32px; padding: 0 7px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--ink); font: inherit; font-size: 12px; }
 .clone-completion-list-menu { width: 280px; padding: 8px; }
+.clone-trash-header-actions { justify-content: flex-end; }
 .clone-completion-list-menu > .clone-completion-list-option:first-child { margin: -8px -8px 4px; padding: 0 16px; border-bottom: 1px solid var(--line); border-radius: 0; color: var(--accent); }
 .clone-completion-list-option { display: flex; align-items: center; gap: 9px; min-height: 35px; padding: 0 8px; border-radius: 5px; color: var(--ink2); font-size: 13px; cursor: pointer; }
 .clone-completion-list-option:hover { background: var(--accent-soft); }
