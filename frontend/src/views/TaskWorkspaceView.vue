@@ -4316,7 +4316,7 @@ const SidebarSection = {
 .clone-drag-placeholder { min-height: 28px; border: 1px dashed color-mix(in srgb, var(--accent) 62%, var(--line)); background: color-mix(in srgb, var(--accent) 7%, var(--card)); color: var(--muted); pointer-events: none; }
 .clone-list-group { display: grid; min-width: 0; gap: 2px; }
 .clone-list-group-heading { position: relative; display: flex; align-items: center; gap: 0; min-height: 28px; padding: 0 8px 0 10px; color: var(--muted); font-size: 10px; font-weight: 600; }
-.clone-list-group-heading span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clone-group-navigation > span:not(.clone-group-toggle) { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clone-list-group-heading button { display: grid; width: 22px; height: 22px; place-items: center; border: 0; border-radius: 0; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-list-group-heading button:hover, .clone-item-menu-trigger:hover, .clone-sidebar-object-row > .clone-item-menu-trigger:hover { background: transparent; color: var(--ink); }
 .clone-list-group-heading .clone-list-group-icon { display: inline-grid; flex: none; width: 16px; height: 16px; place-items: center; font-size: 14px; line-height: 1; }
@@ -4324,7 +4324,7 @@ const SidebarSection = {
 .clone-group-toggle:hover, .clone-group-toggle:focus-visible { color: var(--ink); outline: none; }
 .clone-group-navigation { display: flex; min-width: 0; min-height: 28px; flex: 1; align-items: center; gap: 7px; color: var(--muted); text-decoration: none; }
 .clone-group-navigation:hover, .clone-group-navigation.active { color: var(--ink); }
-.clone-group-navigation .clone-list-group-icon { color: inherit; }
+.clone-group-navigation .clone-list-group-icon { margin-left: -5px; color: inherit; }
 .clone-group-navigation small { flex: none; margin-left: auto; color: var(--muted); font-size: 10px; }
 .clone-group-menu { flex: 0 0 16px; padding: 0; }
 .clone-group-lists { padding-left: 16px; }
