@@ -47,4 +47,5 @@ export interface TaskItem {
     'sortOrder'?: number;
     'focusMinutes'?: number;
     'createdAt'?: string;
+    'attachmentCount'?: number;
 }

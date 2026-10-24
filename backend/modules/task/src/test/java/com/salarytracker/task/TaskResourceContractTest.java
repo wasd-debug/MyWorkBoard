@@ -130,7 +130,8 @@ class TaskResourceContractTest {
 
         mockMvc.perform(get("/api/v1/tasks/{publicId}", TASK_ID))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.createdAt").value("2026-10-20T01:00:00Z"));
+                .andExpect(jsonPath("$.data.createdAt").value("2026-10-20T01:00:00Z"))
+                .andExpect(jsonPath("$.data.attachmentCount").value(0));
     }
 
     private TaskItem item(String status, long revision) {
@@ -141,6 +142,6 @@ class TaskResourceContractTest {
     private TaskItem itemWithCreatedAt(String status, long revision, String createdAt) {
         return new TaskItem(TASK_ID, "11111111-1111-1111-1111-111111111111", "整理收件箱", "", status,
                 "NONE", null, null, false, "Asia/Shanghai", null, "WEB", null, revision,
-                null, List.of(), List.of(), 0, 0, false, null, null, null, null, null, null, 0, 0, createdAt);
+                null, List.of(), List.of(), 0, 0, false, null, null, null, null, null, null, 0, 0, createdAt, 0);
     }
 }

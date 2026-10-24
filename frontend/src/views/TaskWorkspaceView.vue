@@ -452,6 +452,9 @@
           v-for="group in groups"
           :key="group.key"
           class="clone-task-group"
+          :class="{ 'drag-target': dragOverGroupKey === group.key }"
+          @dragover.prevent="setTaskGroupDragTarget(group)"
+          @drop.prevent.stop="dropTaskIntoGroup(group)"
         >
           <button
             class="clone-group-heading"
@@ -478,13 +481,13 @@
                 'print-content': printMode === 'CONTENT',
                 dragging: dragged?.publicId === task.publicId,
                 'drag-over': dragOverTask?.publicId === task.publicId,
+                'drop-before': dragOverTask?.publicId === task.publicId && dragOverPlacement === 'before',
+                'drop-after': dragOverTask?.publicId === task.publicId && dragOverPlacement === 'after',
               }"
               :data-priority="task.priority"
               :style="{ '--task-group-color': groupColor(task) }"
-              :draggable="!batchMode && sort === 'manual'"
-              @dragstart="startTaskDrag(task, $event)"
-              @dragover.prevent="dragOverTask = task"
-              @drop="dropTask(task, group.tasks.indexOf(task))"
+              @dragover.prevent.stop="setTaskDragTarget(task, $event)"
+              @drop.prevent.stop="dropTask(task, group.tasks.indexOf(task), group.key)"
               @dragend="endTaskDrag"
               @contextmenu.prevent="openContext(task, $event)"
             >
@@ -500,7 +503,7 @@
                 @click="handleTaskCheckClick(task, $event)"
               >
                 <Check v-if="task.status === 'COMPLETED'" :size="14" /></button
-              ><GripVertical class="clone-drag-handle" :size="15" /><button
+              ><button type="button" class="clone-drag-handle" :draggable="!batchMode" :aria-label="`拖动${task.title}`" @click.stop @dragstart.stop="startTaskDrag(task, $event)"><GripVertical :size="15" /></button><button
                 type="button"
                 class="clone-task-content"
                 @click="handleTaskContentClick(task, $event)"
@@ -508,23 +511,20 @@
                 <template v-if="inlineRowTitleTaskId === task.publicId"><input v-model="inlineRowTitleDraft" type="text" maxlength="500" :aria-label="`编辑${task.title}标题`" @click.stop @keydown.enter.prevent="saveInlineRowTitle(task)" @keydown.esc.prevent="cancelInlineRowTitle" @blur="saveInlineRowTitle(task)" /></template><template v-else><span class="clone-print-task-copy"><strong>{{ task.title }}</strong><small v-if="task.description" class="clone-print-description">{{ printDescription(task.description) }}</small></span></template
                 ></button
               ><div class="clone-task-metadata">
-                <span v-if="showTags && task.tagIds?.length" class="clone-task-tags" :aria-label="taskTagSummary(task)">
-                  <RouterLink v-for="tagId in visibleTaskTagIds(task)" :key="tagId" :to="`/tasks/tag/${tagId}`" class="clone-task-tag" :style="taskTagStyle(tagId)" @click.stop>{{ tagName(tagId) }}</RouterLink>
-                  <span v-if="task.tagIds.length > visibleTaskTagIds(task).length" class="clone-task-tag-count" :title="taskTagSummary(task)">+{{ task.tagIds.length - visibleTaskTagIds(task).length }}</span>
+                <span v-if="showTags && task.tagIds?.length" class="clone-task-tags" :aria-label="taskTagSummary(task)" :title="taskTagSummary(task)">
+                  <span v-for="tagId in visibleTaskTagIds(task)" :key="tagId" class="clone-task-tag-wrap" :style="taskTagStyle(tagId)"><RouterLink :to="`/tasks/tag/${tagId}`" class="clone-task-tag" @click.stop>{{ tagName(tagId) }}</RouterLink><button type="button" class="clone-task-tag-remove" :aria-label="`移除标签${tagName(tagId)}`" @click.stop="removeTaskTag(task, tagId)"><X :size="11" /></button></span>
+                  <span class="clone-task-tag-count" :class="{ 'has-overflow': task.tagIds.length > visibleTaskTagIds(task).length }" :data-count="Math.max(0, task.tagIds.length - 1)" :data-total="task.tagIds.length" :title="taskTagSummary(task)" tabindex="0">+{{ Math.max(0, task.tagIds.length - visibleTaskTagIds(task).length) }}<span class="clone-task-tag-tooltip">{{ taskTagSummary(task) }}</span></span>
                 </span>
                 <span v-if="showDescription && task.description" class="clone-task-indicator" :title="task.description" aria-label="有详细内容"><ListTodo :size="14" /></span>
-                <span v-if="showChecklist && task.checklist?.length" class="clone-task-indicator" :title="`检查项 ${task.checklist.filter(item => item.completed).length}/${task.checklist.length}`" aria-label="检查项进度"><CheckSquare :size="14" /><small>{{ task.checklist.filter(item => item.completed).length }}/{{ task.checklist.length }}</small></span>
+                <span v-if="showChecklist && task.checklist?.length" class="clone-task-indicator" :title="`检查项 ${task.checklist.filter(item => item.completed).length}/${task.checklist.length}`" aria-label="检查项进度"><span class="clone-checklist-progress" :style="{ '--check-progress': `${task.checklist.filter(item => item.completed).length / task.checklist.length * 100}%` }"></span><small>{{ task.checklist.filter(item => item.completed).length }}/{{ task.checklist.length }}</small></span>
                 <span v-if="task.totalSubtasks" class="clone-task-indicator" :title="`子任务 ${task.completedSubtasks || 0}/${task.totalSubtasks}`"><ListTodo :size="14" /><small>{{ task.completedSubtasks || 0 }}/{{ task.totalSubtasks }}</small></span>
                 <span v-if="task.rrule" class="clone-task-indicator" :title="recurrenceLabel(task.rrule)"><Repeat2 :size="14" /></span>
                 <span v-if="task.focusMinutes" class="clone-task-indicator" :title="`累计专注 ${task.focusMinutes} 分钟`"><Timer :size="14" /></span>
+                <span v-if="task.attachmentCount || task.attachments?.length" class="clone-task-indicator" :title="`附件 ${task.attachmentCount || task.attachments.length} 个`" aria-label="有附件"><Paperclip :size="14" /><small>{{ task.attachmentCount || task.attachments.length }}</small></span>
                 <button v-if="task.dueAt" type="button" class="clone-task-date" :class="{ overdue: isTaskOverdue(task), today: isTaskDueToday(task) }" :title="`调整日期 ${formatDate(task.dueAt)}`" @click.stop="openRowDateEditor(task)"><CalendarClock :size="14" />{{ taskDateLabel(task) }}</button>
                 <div v-if="rowDateTaskId === task.publicId" class="clone-row-date-editor" @click.stop><input v-model="rowDateDraft" type="datetime-local" :aria-label="`调整${task.title}日期`" /><button type="button" @click="saveRowDate(task)">保存</button><button type="button" aria-label="清除日期" @click="clearRowDate(task)">清除</button></div>
                 <button v-if="showListLink" type="button" class="clone-task-list-link" :title="listName(task.listId)" @click.stop="navigateToTaskList(task)"><span class="clone-task-list-dot" :style="{ backgroundColor: taskListColor(task) }"></span>{{ listName(task.listId) }}</button>
-              </div><em
-                v-if="!isNoteTask(task) && task.priority !== 'NONE'"
-                :data-priority="task.priority"
-                >{{ priorityLabel(task.priority) }}</em
-              ><button
+              </div><button
                 v-if="!selectedIds.size"
                 type="button"
                 class="clone-row-more"
@@ -1133,7 +1133,7 @@ import TasksTimelineView from "./TasksTimelineView.vue";
 import Dialog from "../components/ui/Dialog.vue";
 import { organizationIconCategories, searchOrganizationIcons } from "./taskOrganizationIcons.js";
 import { getListDropPlacement, moveItem, reorderListDrop } from "./taskSidebar.js";
-import { groupTaskItems, sortTaskItems } from "./taskList.js";
+import { groupTaskItems, sortTaskItems, taskGroupDropPatch } from "./taskList.js";
 import { moveChecklistItem as reorderChecklistItems } from "./taskChecklist.js";
 import { matchesFilterRules, serializeFilterRules } from "./taskFilterRules.js";
 import { advancedFilterConditionsFromRules, advancedFilterConditionsValid, buildAdvancedFilterRules } from "./taskAdvancedFilter.js";
@@ -1401,6 +1401,8 @@ const inlineDescriptionDraft = ref("");
 const inlineDescriptionSaving = ref(false);
 const dragged = ref(null);
 const dragOverTask = ref(null);
+const dragOverPlacement = ref("before");
+const dragOverGroupKey = ref("");
 const groupBy = ref("time");
 const sort = ref("time");
 const sortDirection = ref("asc");
@@ -1873,8 +1875,7 @@ function loadMoreCompletedOnScroll(event) {
   if (completedPreviewTasks.value.length < completedTasks.value.length && target.scrollTop + target.clientHeight >= target.scrollHeight - 120) showMoreCompleted();
 }
 function groupColor(task) {
-  const list = store.lists.find((item) => item.publicId === task.listId);
-  return list?.color || (task.priority === "HIGH" ? "#ef4444" : task.priority === "MEDIUM" ? "#f59e0b" : "var(--accent)");
+  return taskListColor(task);
 }
 function taskList(task) {
   return store.lists.find((item) => item.publicId === task.listId);
@@ -1893,7 +1894,15 @@ function taskTagStyle(tagId) {
   return color ? { "--task-tag-color": color } : {};
 }
 function visibleTaskTagIds(task) {
-  return (task.tagIds || []).slice(0, 1);
+  return (task.tagIds || []).slice(0, 2);
+}
+async function removeTaskTag(task, tagId) {
+  try {
+    const updated = await store.update(task, { tagIds: (task.tagIds || []).filter(id => id !== tagId) });
+    if (selectedTask.value?.publicId === task.publicId) selectedTask.value = updated;
+  } catch (error) {
+    message.error(error?.response?.data?.detail || error?.message || "移除标签失败");
+  }
 }
 function taskTagSummary(task) {
   return (task.tagIds || []).map(tagName).join("、");
@@ -2478,7 +2487,6 @@ function openDetail(task) {
 }
 function openTaskRow(task) {
   openDetail(task);
-  if (!isNoteTask(task)) return;
   inlineRowTitleTaskId.value = task.publicId;
   inlineRowTitleDraft.value = task.title;
   void nextTick(() => document.querySelector(".clone-task-content input")?.focus());
@@ -3426,16 +3434,60 @@ async function applyBatch(action, values = {}) {
   }
 }
 function startTaskDrag(task, event) {
-  if (batchMode.value || sort.value !== "manual") return;
+  if (batchMode.value || (sort.value !== "manual" && !["list", "tag", "priority", "time"].includes(groupBy.value))) return;
   dragged.value = task;
   dragOverTask.value = null;
+  dragOverGroupKey.value = "";
+  dragOverPlacement.value = "before";
   event.dataTransfer?.setData("text/plain", task.publicId);
   if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
 }
-async function dropTask(target, index = 0) {
+function setTaskDragTarget(task, event) {
+  dragOverTask.value = task;
+  dragOverGroupKey.value = "";
+  const bounds = event.currentTarget.getBoundingClientRect();
+  dragOverPlacement.value = event.clientY >= bounds.top + bounds.height / 2 ? "after" : "before";
+}
+function setTaskGroupDragTarget(group) {
+  dragOverTask.value = null;
+  dragOverGroupKey.value = group.key;
+}
+function manualTaskSortIndex(groupKey, movingTask, targetTask = null, after = false) {
+  const siblings = store.tasks.filter(task => task.listId === movingTask.listId && task.status === movingTask.status && !task.deleted)
+    .sort((left, right) => Number(left.sortOrder || 0) - Number(right.sortOrder || 0))
+    .filter(task => task.publicId !== movingTask.publicId);
+  if (targetTask) {
+    const targetIndex = siblings.findIndex(task => task.publicId === targetTask.publicId);
+    if (targetIndex >= 0) return targetIndex + (after ? 1 : 0);
+  }
+  const targetGroup = groups.value.find(group => group.key === groupKey);
+  const lastTarget = targetGroup?.tasks?.filter(task => task.publicId !== movingTask.publicId).at(-1);
+  const lastIndex = lastTarget ? siblings.findIndex(task => task.publicId === lastTarget.publicId) : -1;
+  return lastIndex >= 0 ? lastIndex + 1 : siblings.length;
+}
+async function dropTaskIntoGroup(group) {
+  if (!dragged.value || batchMode.value) return endTaskDrag();
+  try {
+    const patch = taskGroupDropPatch(dragged.value, groupBy.value, group.key);
+    if (patch) {
+      const updated = await store.update(dragged.value, patch);
+      if (sort.value === "manual") await store.sortTask(updated, manualTaskSortIndex(group.key, updated));
+    }
+    else if (sort.value === "manual") await store.sortTask(dragged.value, manualTaskSortIndex(group.key, dragged.value));
+  } finally {
+    endTaskDrag();
+  }
+}
+async function dropTask(target, index = 0, groupKey = "") {
   if (!dragged.value || dragged.value.publicId === target.publicId || batchMode.value) return endTaskDrag();
   try {
-    await store.sortTask(dragged.value, index);
+    const patch = taskGroupDropPatch(dragged.value, groupBy.value, groupKey);
+    if (patch) {
+      const updated = await store.update(dragged.value, patch);
+      if (sort.value === "manual") await store.sortTask(updated, manualTaskSortIndex(groupKey, updated, target, dragOverPlacement.value === "after"));
+    } else if (sort.value === "manual") {
+      await store.sortTask(dragged.value, manualTaskSortIndex(groupKey, dragged.value, target, dragOverPlacement.value === "after"));
+    }
   } finally {
     endTaskDrag();
   }
@@ -3443,6 +3495,8 @@ async function dropTask(target, index = 0) {
 function endTaskDrag() {
   dragged.value = null;
   dragOverTask.value = null;
+  dragOverPlacement.value = "before";
+  dragOverGroupKey.value = "";
 }
 async function createList(groupId = "") {
   openOrganizationDialog("list", null, { groupId });
@@ -5154,6 +5208,7 @@ const SidebarSection = {
   text-align: left;
   cursor: pointer;
 }
+.clone-task-group.drag-target > .clone-group-heading { border-radius: 4px; background: color-mix(in srgb, var(--accent) 9%, transparent); color: var(--accent); }
 .clone-group-heading span {
   color: var(--muted);
   font-size: 12px;
@@ -5179,7 +5234,18 @@ const SidebarSection = {
 }
 .clone-task-row.dragging { opacity: .42; }
 .clone-task-row.drag-over { box-shadow: inset 0 3px 0 var(--accent), inset 3px 0 0 var(--task-group-color, var(--accent)); }
-.clone-drag-handle { display: none; }
+.clone-task-row.drop-before::after,
+.clone-task-row.drop-after::after { position: absolute; z-index: 4; left: 7px; width: 7px; height: 7px; border: 1px solid var(--card); border-radius: 50%; background: var(--accent); content: ""; pointer-events: none; }
+.clone-task-row.drop-before::before,
+.clone-task-row.drop-after::before { position: absolute; z-index: 3; left: 10px; right: 7px; height: 2px; background: var(--accent); content: ""; pointer-events: none; }
+.clone-task-row.drop-before::before { top: -1px; }
+.clone-task-row.drop-after::before { bottom: -1px; }
+.clone-task-row.drop-before::after { top: -4px; }
+.clone-task-row.drop-after::after { bottom: -4px; }
+.clone-drag-handle { display: grid; flex: none; width: 17px; height: 24px; place-items: center; margin-left: -9px; padding: 0; border: 0; background: transparent; color: var(--muted); opacity: 0; cursor: grab; }
+.clone-task-row:hover .clone-drag-handle,
+.clone-drag-handle:focus-visible { opacity: .8; }
+.clone-drag-handle:active { cursor: grabbing; }
 .clone-select-box { width: 20px; height: 20px; border-radius: 5px; }
 .clone-task-row:hover,
 .clone-task-row.selected {
@@ -5256,10 +5322,19 @@ const SidebarSection = {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.clone-task-metadata { display: flex; align-items: center; gap: 7px; flex: none; max-width: 52%; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; }
-.clone-task-tags { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; }
+.clone-task-metadata { display: flex; align-items: center; gap: 7px; flex: none; max-width: 52%; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; container: task-meta / inline-size; }
+.clone-task-tags { position: relative; display: flex; align-items: center; gap: 5px; min-width: 0; overflow: visible; }
+.clone-task-tag-wrap { position: relative; display: inline-flex; align-items: center; flex: none; min-width: 0; }
 .clone-task-tag { display: inline-flex; align-items: center; max-width: 92px; overflow: hidden; padding: 2px 8px; border-radius: 12px; background: color-mix(in srgb, var(--task-tag-color, var(--accent)) 22%, var(--card)); color: color-mix(in srgb, var(--task-tag-color, var(--accent)) 70%, var(--ink)); text-overflow: ellipsis; }
-.clone-task-tag-count { display: inline-flex; align-items: center; flex: none; padding: 2px 7px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 18%, var(--card)); color: var(--ink2); }
+.clone-task-tag-remove { position: absolute; z-index: 2; top: -4px; right: -4px; display: grid; width: 14px; height: 14px; place-items: center; padding: 0; border: 1px solid var(--card); border-radius: 50%; background: var(--ink2); color: var(--card); opacity: 0; cursor: pointer; }
+.clone-task-tag-wrap:hover .clone-task-tag-remove,
+.clone-task-tag-remove:focus-visible { opacity: 1; }
+.clone-task-tag-count { position: relative; display: inline-flex; align-items: center; flex: none; padding: 2px 7px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 18%, var(--card)); color: var(--ink2); cursor: default; }
+.clone-task-tag-count:not(.has-overflow) { display: none; }
+.clone-task-tag-tooltip { position: absolute; z-index: 40; right: 0; bottom: calc(100% + 7px); display: none; width: max-content; max-width: min(260px, 70vw); white-space: normal; padding: 6px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--ink); box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+.clone-task-tag-count:hover .clone-task-tag-tooltip,
+.clone-task-tag-count:focus-visible .clone-task-tag-tooltip { display: block; }
+.clone-checklist-progress { width: 14px; height: 14px; flex: none; border-radius: 50%; background: conic-gradient(var(--accent) var(--check-progress), color-mix(in srgb, var(--line2) 60%, transparent) 0); }
 .clone-task-indicator { display: inline-flex; align-items: center; gap: 2px; flex: none; color: var(--muted); }
 .clone-task-indicator small { font-size: 10px; }
 .clone-task-date { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--accent); }
@@ -5268,7 +5343,7 @@ const SidebarSection = {
 .clone-task-date.today { color: var(--accent); }
 .clone-task-row.is-note { min-height: 54px; }
 .clone-task-row.is-note .clone-task-content { min-height: 44px; }
-.clone-task-row.is-note .clone-task-content input { min-width: 0; width: 100%; padding: 4px 6px; border: 1px solid var(--accent); border-radius: 4px; outline: 0; background: var(--card); color: var(--ink); font: inherit; }
+.clone-task-content input { min-width: 0; width: 100%; padding: 4px 6px; border: 1px solid var(--accent); border-radius: 4px; outline: 0; background: var(--card); color: var(--ink); font: inherit; }
 .clone-row-date-editor { position: absolute; z-index: 25; right: 38px; display: flex; align-items: center; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); box-shadow: 0 5px 16px rgba(20, 27, 38, .16); }
 .clone-row-date-editor input { width: 190px; min-width: 0; height: 30px; padding: 0 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); color: var(--ink); font: inherit; font-size: 11px; }
 .clone-row-date-editor button { min-height: 28px; padding: 0 7px; border: 0; border-radius: 4px; background: transparent; color: var(--ink2); font-size: 11px; cursor: pointer; }
@@ -6165,6 +6240,16 @@ const SidebarSection = {
   .clone-task-main { padding-right: 20px; padding-left: 20px; }
   .clone-task-metadata { max-width: 46%; gap: 5px; font-size: 11px; }
   .clone-task-list-link { max-width: 82px; }
+}
+@container task-meta (max-width: 350px) {
+  .clone-task-tag-wrap:nth-child(n + 2) { display: none; }
+  .clone-task-tag-count { display: inline-flex !important; font-size: 0; }
+  .clone-task-tag-count::before { content: "+" attr(data-count); font-size: 11px; }
+}
+@container task-meta (max-width: 230px) {
+  .clone-task-tag-wrap { display: none !important; }
+  .clone-task-tag-count { display: inline-flex !important; font-size: 0; }
+  .clone-task-tag-count::before { content: attr(data-total); font-size: 11px; }
 }
 @media (max-width: 760px) {
   .clone-task-main { padding-right: 14px; padding-left: 14px; }

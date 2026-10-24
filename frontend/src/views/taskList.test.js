@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { groupTaskItems, sortTaskItems } from './taskList.js'
+import { groupTaskItems, sortTaskItems, taskGroupDropPatch } from './taskList.js'
 
 const today = new Date(2026, 9, 20, 12)
 
@@ -82,4 +82,21 @@ test('groupTaskItems supports tag, priority and creation-date groups', () => {
   assert.deepEqual(groupTaskItems(tasks, 'tag', [], today, tags).map((group) => group.label), ['专注', '生活', '无标签'])
   assert.deepEqual(groupTaskItems(tasks, 'priority', [], today).map((group) => group.label), ['高优先级', '低优先级', '无优先级'])
   assert.deepEqual(groupTaskItems(tasks, 'created', [], today).map((group) => group.label), ['2026-10-20', '2026-10-19', '创建时间未知'])
+})
+
+test('taskGroupDropPatch changes the property represented by the target group', () => {
+  const task = { listId: 'inbox', tagIds: ['old', 'other'], priority: 'LOW', dueAt: null }
+  assert.deepEqual(taskGroupDropPatch(task, 'list', 'list:work'), { listId: 'work' })
+  assert.deepEqual(taskGroupDropPatch(task, 'tag', 'tag:new'), { tagIds: ['new', 'old', 'other'] })
+  assert.deepEqual(taskGroupDropPatch(task, 'priority', 'priority:HIGH'), { priority: 'HIGH' })
+  assert.deepEqual(taskGroupDropPatch(task, 'time', 'none'), null)
+  assert.equal(taskGroupDropPatch(task, 'created', 'created:2026-10-20'), null)
+})
+
+test('taskGroupDropPatch assigns stable local dates for time groups', () => {
+  const now = new Date(2026, 9, 24, 13, 30)
+  const task = { dueAt: null }
+  assert.equal(new Date(taskGroupDropPatch(task, 'time', 'today', now).dueAt).getDate(), 24)
+  assert.equal(new Date(taskGroupDropPatch(task, 'time', 'later', now).dueAt).getDate(), 25)
+  assert.equal(new Date(taskGroupDropPatch(task, 'time', 'overdue', now).dueAt).getDate(), 23)
 })

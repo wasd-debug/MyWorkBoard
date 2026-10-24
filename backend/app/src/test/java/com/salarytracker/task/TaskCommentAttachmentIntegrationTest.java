@@ -53,11 +53,13 @@ class TaskCommentAttachmentIntegrationTest extends MySqlIntegrationTestSupport {
         Attachment created = attachments.upload(task.publicId(), file, "attachment-1");
         assertEquals(created.publicId(), attachments.upload(task.publicId(), file, "attachment-1").publicId());
         assertEquals(bytes.length, created.sizeBytes());
+        assertEquals(1, tasks.get(task.publicId()).attachmentCount());
         try (var input = attachments.download(task.publicId(), created.publicId()).resource().getInputStream()) {
             assertArrayEquals(bytes, input.readAllBytes());
         }
         attachments.delete(task.publicId(), created.publicId(), "1");
         assertEquals(0, attachments.list(task.publicId()).size());
+        assertEquals(0, tasks.get(task.publicId()).attachmentCount());
     }
 
     private TaskCommentService comments(long userId, TaskService tasks) {

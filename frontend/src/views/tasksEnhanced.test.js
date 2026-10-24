@@ -48,7 +48,7 @@ test('task creation timestamp is backed by TaskItem API data for grouping and so
   const models = await readFile(new URL('../../../backend/modules/task/src/main/java/com/salarytracker/task/TaskModels.java', import.meta.url), 'utf8')
   const service = await readFile(new URL('../../../backend/modules/task/src/main/java/com/salarytracker/task/TaskService.java', import.meta.url), 'utf8')
   const schema = JSON.parse(await readFile(new URL('../../packages/api-client/openapi.json', import.meta.url), 'utf8'))
-  assert.match(models, /int focusMinutes, String createdAt\)/)
+  assert.match(models, /int focusMinutes, String createdAt, int attachmentCount\)/)
   assert.match(service, /t\.sort_order,t\.focus_minutes,t\.created_at/)
   assert.match(service, /instant\(result\.getTimestamp\("created_at"\)\)/)
   assert.equal(schema.components.schemas.TaskItem.properties.createdAt.format, 'date-time')
@@ -252,7 +252,12 @@ test('task rows expose a viewport-safe context menu with contract actions', () =
 
 test('middle task workspace matches the note-row, date, view, display, and print interactions', () => {
   assert.match(workspaceView, /isNoteTask\(task\)[\s\S]*?clone-check/)
-  assert.match(workspaceView, /function openTaskRow\(task\)[\s\S]*openDetail\(task\)[\s\S]*isNoteTask\(task\)/)
+  assert.match(workspaceView, /function openTaskRow\(task\)[\s\S]*openDetail\(task\)[\s\S]*inlineRowTitleTaskId\.value = task\.publicId/)
+  assert.match(workspaceView, /class="clone-drag-handle" :draggable="!batchMode"/)
+  assert.match(workspaceView, /taskGroupDropPatch\(dragged\.value, groupBy\.value, groupKey\)/)
+  assert.match(workspaceView, /clone-task-tag-remove/)
+  assert.match(workspaceView, /clone-checklist-progress/)
+  assert.match(workspaceView, /task\.attachmentCount \|\| task\.attachments\?\.length/)
   assert.match(workspaceView, /async function saveInlineRowTitle\(task\)[\s\S]*store\.update\(task, \{ title \}\)/)
   assert.match(workspaceView, /openRowDateEditor\(task\)[\s\S]*saveRowDate\(task\)/)
   assert.match(workspaceView, /aria-label="中间栏更多选项"/)
@@ -438,7 +443,8 @@ test('full task page rebuild exposes persistent list grouping and sorting contro
   assert.match(workspaceView, /查看更多/)
   assert.match(workspaceView, /loadMoreCompletedOnScroll/)
   assert.match(workspaceView, /sortTaskItems\(values, \{ sortBy: sort\.value, direction: sortDirection\.value \}\)/)
-  assert.match(workspaceView, /:draggable="!batchMode && sort === 'manual'"/)
+  assert.match(workspaceView, /class="clone-drag-handle" :draggable="!batchMode"/)
+  assert.match(workspaceView, /sort\.value !== "manual" && !\["list", "tag", "priority", "time"\]/)
 })
 
 test('task detail allows direct title and Markdown description editing in its pane', () => {

@@ -89,6 +89,41 @@ export function groupTaskItems(tasks, groupBy, lists, today = new Date(), tags =
   return result.filter((group) => group.tasks.length)
 }
 
+export function taskGroupDropPatch(task, groupBy, groupKey, now = new Date()) {
+  if (!task || !groupKey) return null
+  if (groupBy === 'list' && groupKey.startsWith('list:')) {
+    const listId = groupKey.slice(5)
+    return listId === 'no-list' || listId === task.listId ? null : { listId }
+  }
+  if (groupBy === 'tag' && groupKey.startsWith('tag:')) {
+    const tagId = groupKey.slice(4)
+    if (tagId === 'no-tag') return task.tagIds?.length ? { tagIds: [] } : null
+    if (task.tagIds?.[0] === tagId) return null
+    return { tagIds: [tagId, ...(task.tagIds || []).filter(id => id !== tagId)] }
+  }
+  if (groupBy === 'priority' && groupKey.startsWith('priority:')) {
+    const priority = groupKey.slice(9)
+    return priority === (task.priority || 'NONE') ? null : { priority }
+  }
+  if (groupBy === 'time') {
+    const current = task.dueAt ? new Date(task.dueAt) : null
+    const start = new Date(now)
+    start.setHours(0, 0, 0, 0)
+    const dueAt = groupKey === 'none'
+      ? null
+      : groupKey === 'overdue'
+        ? new Date(start.getTime() - 86400000 + (current ? current.getHours() * 3600000 + current.getMinutes() * 60000 : 17 * 3600000)).toISOString()
+        : groupKey === 'today'
+          ? new Date(start.getTime() + (current && current >= start && current < start.getTime() + 86400000 ? current.getTime() - start.getTime() : 17 * 3600000)).toISOString()
+          : groupKey === 'later'
+            ? new Date(start.getTime() + 86400000 + (current && current >= start.getTime() + 86400000 ? current.getHours() * 3600000 + current.getMinutes() * 60000 : 9 * 3600000)).toISOString()
+            : undefined
+    if (dueAt === undefined || (dueAt === null && !task.dueAt) || (dueAt && current?.getTime() === Date.parse(dueAt))) return null
+    return { dueAt }
+  }
+  return null
+}
+
 function priorityRank(priority) {
   return ({ HIGH: 0, MEDIUM: 1, LOW: 2, NONE: 3 })[priority] ?? 4
 }
