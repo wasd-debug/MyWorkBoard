@@ -673,6 +673,13 @@ test('quick add stages attachments and uploads only after task creation', () => 
   assert.match(workspaceView, /重试附件上传/)
 })
 
+test('task completion box is visually smaller than the task label with a mobile-specific size', () => {
+  assert.match(workspaceView, /\.clone-check::before \{[\s\S]*width: 14px;[\s\S]*height: 14px;/)
+  assert.match(workspaceView, /@media \(max-width: 760px\) \{[\s\S]*?\.clone-check::before \{ width: 12px; height: 12px; \}/)
+  assert.match(workspaceView, /\.clone-task-row\[data-priority="HIGH"\] \.clone-check::before/)
+  assert.match(workspaceView, /\.clone-task-row\.checked \.clone-task-content strong/)
+})
+
 test('task detail checklist supports pointer and keyboard ordering', () => {
   assert.match(workspaceView, /@dragstart="dragChecklistItem\(index, \$event\)"/)
   assert.match(workspaceView, /@drop\.prevent="dropChecklistItem\(index\)"/)

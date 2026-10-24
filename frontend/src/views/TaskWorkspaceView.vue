@@ -5180,7 +5180,6 @@ const SidebarSection = {
 .clone-task-row.dragging { opacity: .42; }
 .clone-task-row.drag-over { box-shadow: inset 0 3px 0 var(--accent), inset 3px 0 0 var(--task-group-color, var(--accent)); }
 .clone-drag-handle { display: none; }
-.clone-check,
 .clone-select-box { width: 20px; height: 20px; border-radius: 5px; }
 .clone-task-row:hover,
 .clone-task-row.selected {
@@ -5198,7 +5197,6 @@ const SidebarSection = {
   flex: none;
   color: color-mix(in srgb, var(--muted) 65%, transparent);
 }
-.clone-check,
 .clone-select-box {
   display: grid;
   flex: none;
@@ -5212,6 +5210,31 @@ const SidebarSection = {
   cursor: pointer;
 }
 .clone-select-box { border-radius: 6px; }
+.clone-check {
+  position: relative;
+  display: grid;
+  flex: none;
+  width: 26px;
+  height: 28px;
+  min-width: 26px;
+  min-height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+}
+.clone-check::before {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--line2);
+  border-radius: 4px;
+  background: transparent;
+  content: "";
+}
+.clone-check svg { position: absolute; width: 10px; height: 10px; }
 .clone-task-content {
   display: flex;
   align-items: center;
@@ -5314,9 +5337,9 @@ const SidebarSection = {
 .clone-task-row em[data-priority="MEDIUM"] {
   color: var(--warn);
 }
-.clone-task-row[data-priority="HIGH"] .clone-check { border-color: var(--down); color: var(--down); }
-.clone-task-row[data-priority="MEDIUM"] .clone-check { border-color: var(--warn); color: var(--warn); }
-.clone-task-row[data-priority="LOW"] .clone-check { border-color: var(--accent); }
+.clone-task-row[data-priority="HIGH"] .clone-check::before { border-color: var(--down); }
+.clone-task-row[data-priority="MEDIUM"] .clone-check::before { border-color: var(--warn); }
+.clone-task-row[data-priority="LOW"] .clone-check::before { border-color: var(--accent); }
 .clone-row-more {
   flex: none;
 }
@@ -6145,6 +6168,9 @@ const SidebarSection = {
 }
 @media (max-width: 760px) {
   .clone-task-main { padding-right: 14px; padding-left: 14px; }
+  .clone-check { width: 30px; height: 32px; min-width: 30px; min-height: 32px; }
+  .clone-check::before { width: 12px; height: 12px; }
+  .clone-check svg { width: 9px; height: 9px; }
   .clone-task-metadata { max-width: 38%; }
   .clone-task-metadata > .clone-task-indicator:nth-of-type(n + 2),
   .clone-task-metadata > .clone-task-list-link { display: none; }
