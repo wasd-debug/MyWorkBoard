@@ -19,6 +19,8 @@
     "@fullcalendar/interaction": "^6.1.21",
     "@fullcalendar/timegrid": "^6.1.21",
     "@fullcalendar/vue3": "^6.1.21",
+    "@milkdown/kit": "^7.22.3",
+    "@milkdown/vue": "^7.22.3",
     "axios": "^1.7.2",
     "dompurify": "^3.4.15",
     "echarts": "^5.6.0",

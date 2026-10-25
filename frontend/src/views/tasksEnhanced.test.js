@@ -234,6 +234,18 @@ test('task rich editor keeps the native caret during typing and renders markdown
   assert.match(taskRichTextEditor, /task-rich-input :deep\(h2\)[\s\S]*font-size: 1\.4em/)
 })
 
+test('task detail description uses the isolated Milkdown editor prototype', async () => {
+  assert.match(workspaceView, /<TaskMilkdownEditor v-model="inlineDescriptionDraft"/)
+  assert.match(workspaceView, /defineAsyncComponent\(\(\) => import\("\.\.\/components\/tasks\/TaskMilkdownEditor\.vue"\)\)/)
+  assert.match(workspaceView, /TaskRichTextEditor v-model="commentDraft"/)
+  const editor = await readFile(new URL('../components/tasks/TaskMilkdownEditorSurface.vue', import.meta.url), 'utf8')
+  assert.match(editor, /Editor\.make\(\)/)
+  assert.match(editor, /\.use\(commonmark\)/)
+  assert.match(editor, /\.use\(gfm\)/)
+  assert.match(editor, /markdownUpdated\(/)
+  assert.match(editor, /replaceAll\(markdown, true\)/)
+})
+
 test('task inbox mirrors ticktick shortcut navigation and mixed efficiency groups', () => {
   assert.match(router, /path: '\/tasks\/shortcut\/:shortcut'/)
   for (const label of ['指派给我', '摘要', '归档']) assert.match(inboxView, new RegExp(label))
@@ -532,7 +544,8 @@ test('task detail edits title, description, and checklist in place without an ed
   assert.match(workspaceView, /@keydown\.esc\.prevent="cancelDetailChecklistEdit\(item\)"/)
   assert.match(workspaceView, /@blur="saveDetailChecklistTitle\(selectedTask, index\)"/)
   assert.match(workspaceView, /\.clone-detail-description-block\.toolbar-open :deep\(\.task-rich-toolbar\)/)
-  assert.match(workspaceView, /\.clone-detail-description-block :deep\(\.task-rich-toolbar\) \{ position: absolute; right: clamp\(0px, calc\(var\(--clone-detail-width\) \* \.31 - 99px\), 110px\); bottom: 56px;/)
+  assert.match(workspaceView, /\.clone-detail-description-block :deep\(\.task-rich-toolbar\) \{ position: absolute; right: clamp\(88px, calc\(var\(--clone-detail-width\) \* \.2\), 112px\); bottom: 56px;/)
+  assert.match(workspaceView, /max-width: calc\(100% - 112px\); max-height: 0; gap: 3px; overflow-x: auto/)
   assert.match(workspaceView, /:toolbar-visible="detailRichToolbarOpen"/)
   assert.match(workspaceView, /aria-label="打开评论"[^>]*if \(commentComposerOpen\) detailRichToolbarOpen = false/)
   assert.match(taskRichTextEditor, /defineEmits\(\['update:modelValue', 'blur'\]\)/)

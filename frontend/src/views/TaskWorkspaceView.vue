@@ -933,7 +933,7 @@
           <button type="button" class="clone-detail-content-toggle" aria-label="在描述和检查事项之间转换" :title="selectedTask.checklist?.length ? '转换为描述' : '转换为检查事项'" @click="toggleDescriptionChecklist(selectedTask)"><ListTodo v-if="selectedTask.checklist?.length" :size="16" /><AlignLeft v-else :size="16" /></button>
         </div>
         <div class="clone-detail-description-block" :class="{ 'toolbar-open': detailRichToolbarOpen }">
-          <TaskRichTextEditor v-model="inlineDescriptionDraft" :toolbar-visible="detailRichToolbarOpen" label="任务描述" placeholder="输入内容或使用 / 快速插入" @update:model-value="scheduleInlineDescriptionSave" @blur="saveInlineDescription" />
+          <TaskMilkdownEditor v-model="inlineDescriptionDraft" :toolbar-visible="detailRichToolbarOpen" label="任务描述" placeholder="输入内容…" @update:model-value="scheduleInlineDescriptionSave" @blur="saveInlineDescription" />
           <small v-if="inlineDescriptionError" class="clone-inline-save-status error" role="alert">{{ inlineDescriptionError }}</small>
         </div>
         <section v-if="selectedTask.checklist?.length" class="clone-checklist-read" aria-label="检查项">
@@ -1121,6 +1121,7 @@
 <script setup>
 import {
   computed,
+  defineAsyncComponent,
   nextTick,
   onBeforeUnmount,
   onMounted,
@@ -1186,6 +1187,7 @@ import {
   Folder,
 } from "lucide-vue-next";
 import TaskRichTextEditor from "../components/tasks/TaskRichTextEditor.vue";
+const TaskMilkdownEditor = defineAsyncComponent(() => import("../components/tasks/TaskMilkdownEditor.vue"));
 import TaskSummaryWorkspace from "./TaskSummaryWorkspace.vue";
 import TaskFilterRuleEditor from "../components/tasks/TaskFilterRuleEditor.vue";
 import TaskColorPicker from "../components/TaskColorPicker.vue";
@@ -6296,13 +6298,16 @@ const SidebarSection = {
 .clone-detail-title h2 button:hover svg, .clone-detail-title h2 button:focus-visible svg { opacity: 1; }
 .clone-inline-title-input { min-width: 0; flex: 1; padding: 2px 5px; border: 1px solid var(--accent); border-radius: 4px; background: var(--card); color: var(--ink); font: inherit; font-size: 19px; }
 .clone-detail-description-block { position: static; min-width: 0; padding: 2px 0; }
-.clone-detail-description-block :deep(.task-rich-editor) { position: static; border: 0; border-radius: 0; background: transparent; overflow: visible; }
-.clone-detail-description-block :deep(.task-rich-toolbar) { position: absolute; right: clamp(0px, calc(var(--clone-detail-width) * .31 - 99px), 110px); bottom: 56px; z-index: 8; display: flex; flex-wrap: nowrap; width: max-content; max-width: calc(100% - 28px); max-height: 0; gap: 3px; overflow: hidden; margin: 0; padding: 0 8px; border: 1px solid transparent; border-radius: 9px; background: var(--card); box-shadow: 0 5px 20px rgb(15 23 42 / 14%); opacity: 0; visibility: hidden; pointer-events: none; transition: max-height 160ms ease, opacity 120ms ease, visibility 0s linear 160ms; }
+.clone-detail-description-block :deep(.task-rich-editor), .clone-detail-description-block :deep(.task-milkdown-editor) { position: static; border: 0; border-radius: 0; background: transparent; overflow: visible; }
+.clone-detail-description-block :deep(.task-rich-toolbar) { position: absolute; right: clamp(88px, calc(var(--clone-detail-width) * .2), 112px); bottom: 56px; z-index: 8; display: flex; flex-wrap: nowrap; width: max-content; max-width: calc(100% - 112px); max-height: 0; gap: 3px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; margin: 0; padding: 0 8px; border: 1px solid transparent; border-radius: 9px; background: var(--card); box-shadow: 0 5px 20px rgb(15 23 42 / 14%); opacity: 0; visibility: hidden; pointer-events: none; transition: max-height 160ms ease, opacity 120ms ease, visibility 0s linear 160ms; }
+.clone-detail-description-block :deep(.task-rich-toolbar::-webkit-scrollbar) { display: none; }
 .clone-detail-description-block.toolbar-open :deep(.task-rich-toolbar) { max-height: 42px; padding: 4px 8px; border-color: var(--line); opacity: 1; visibility: visible; pointer-events: auto; transition: max-height 160ms ease, opacity 120ms ease, visibility 0s; }
 .clone-detail-description-block :deep(.task-rich-toolbar button), .clone-detail-description-block :deep(.task-rich-color) { flex: 0 0 30px; min-width: 30px; height: 30px; }
 .clone-detail-description-block :deep(.task-rich-toolbar button:last-child) { display: none; }
 .clone-detail-description-block :deep(.task-rich-input) { min-height: 28px; max-height: 48vh; padding: 0; border: 0; resize: none; outline: 0 !important; box-shadow: none; background: transparent; font-size: 13px; line-height: 1.7; field-sizing: content; }
 .clone-detail-description-block :deep(.task-rich-input:focus) { border: 0; outline: 0 !important; box-shadow: none; }
+.clone-detail-description-block :deep(.task-milkdown-editor [data-milkdown-root]) { min-height: 28px; max-height: 48vh; padding: 0; overflow-y: auto; color: var(--ink2); font-size: 13px; line-height: 1.7; }
+.clone-detail-description-block :deep(.task-milkdown-editor .ProseMirror) { min-height: 28px; }
 .clone-detail-description-block :deep(.task-rich-hint) { display: none; }
 .clone-inline-save-status { display: block; min-height: 15px; padding-left: 1px; color: var(--muted); font-size: 10px; }
 .clone-inline-save-status.error { color: var(--danger, #c2413b); }
