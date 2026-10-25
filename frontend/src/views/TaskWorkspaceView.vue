@@ -174,10 +174,7 @@
           <button type="button" class="clone-icon-button" aria-label="清空垃圾桶" :title="store.online ? '清空垃圾桶' : '联网后才能清空垃圾桶'" :disabled="!trashedTaskCount || !store.online || trashClearBusy" @click="trashClearOpen = true"><BrushCleaning :size="19" /></button>
         </div>
         <div v-else class="clone-header-actions">
-          <span class="clone-sync-state" aria-live="polite">{{
-            syncLabel
-          }}</span
-          ><button
+          <button
             type="button"
             class="clone-icon-button"
             aria-label="搜索任务"
@@ -451,21 +448,6 @@
           <button type="button" :disabled="resolvingTaskConflict" @click="resolveTaskConflict(conflict, 'local')">保留本地并重试</button>
           <button type="button" :disabled="resolvingTaskConflict" @click="resolveTaskConflict(conflict, 'server')">采用服务端</button>
         </div>
-      </div>
-      <div
-        v-if="store.pending || !store.online || store.syncing || store.syncError"
-        class="clone-status"
-        role="status"
-      >
-        <WifiOff v-if="!store.online" :size="15" />{{
-          !store.online
-            ? "当前离线，变更已保存在本机"
-            : store.syncing
-              ? `正在后台同步${store.pending ? ` ${store.pending} 项变更` : ""}`
-              : store.syncError
-                ? `${store.syncError}${store.pending ? `（${store.pending} 项待同步）` : ""}`
-                : `${store.pending} 项待同步`
-        }}
       </div>
       <div v-if="activeWorkspaceView === 'LIST'" class="clone-list-toolbar"><span>{{ selectedIds.size ? `已选 ${selectedIds.size} 项` : `${visibleTasks.length} 项任务` }}</span></div>
       <div v-if="activeWorkspaceView === 'KANBAN'" class="clone-inline-board" aria-label="任务看板">
@@ -952,8 +934,7 @@
         </div>
         <div class="clone-detail-description-block" :class="{ 'toolbar-open': detailRichToolbarOpen }">
           <TaskRichTextEditor v-model="inlineDescriptionDraft" :toolbar-visible="detailRichToolbarOpen" label="任务描述" placeholder="输入内容或使用 / 快速插入" @update:model-value="scheduleInlineDescriptionSave" @blur="saveInlineDescription" />
-          <small v-if="inlineDescriptionSaving" class="clone-inline-save-status" role="status">正在保存</small>
-          <small v-else-if="inlineDescriptionError" class="clone-inline-save-status error" role="alert">{{ inlineDescriptionError }}</small>
+          <small v-if="inlineDescriptionError" class="clone-inline-save-status error" role="alert">{{ inlineDescriptionError }}</small>
         </div>
         <section v-if="selectedTask.checklist?.length" class="clone-checklist-read" aria-label="检查项">
           <header><strong>检查项</strong><span class="clone-checklist-progress-label">{{ selectedTask.checklist.filter((item) => item.completed).length }}/{{ selectedTask.checklist.length }}</span></header>
@@ -1200,7 +1181,6 @@ import {
   Timer,
   Trash2,
   Ungroup,
-  WifiOff,
   X,
   UserRound,
   Folder,
@@ -1964,15 +1944,6 @@ const parentOptions = computed(() =>
       task.publicId !== editing.value?.publicId &&
       task.listId === draft.listId,
   ),
-);
-const syncLabel = computed(() =>
-  !store.online
-    ? "离线"
-    : store.syncing
-      ? "同步中"
-      : store.pending
-        ? "待同步"
-        : "已同步",
 );
 const sourceTasks = computed(() =>
   store.tasks.filter((task) =>
@@ -2900,6 +2871,13 @@ async function persistInlineDescription(task, value) {
   if (value === (task.description || "")) return;
   if (inlineDescriptionSaving.value) {
     inlineDescriptionQueued = { task, value };
+    while (inlineDescriptionSaving.value) await new Promise(resolve => setTimeout(resolve, 10));
+    const queued = inlineDescriptionQueued;
+    if (queued) {
+      inlineDescriptionQueued = null;
+      const latest = store.tasks.find(item => item.publicId === queued.task.publicId) || queued.task;
+      if (queued.value !== (latest.description || "")) await persistInlineDescription(latest, queued.value);
+    }
     return;
   }
   inlineDescriptionSaving.value = true;
@@ -2915,7 +2893,7 @@ async function persistInlineDescription(task, value) {
       const queued = inlineDescriptionQueued;
       inlineDescriptionQueued = null;
       const latest = store.tasks.find(item => item.publicId === queued.task.publicId) || queued.task;
-      if (queued.value !== (latest.description || "")) void persistInlineDescription(latest, queued.value);
+      if (queued.value !== (latest.description || "")) await persistInlineDescription(latest, queued.value);
     }
   }
 }
@@ -2923,6 +2901,13 @@ function saveInlineDescription() {
   if (inlineDescriptionTimer) clearTimeout(inlineDescriptionTimer);
   inlineDescriptionTimer = null;
   return persistInlineDescription(selectedTask.value, inlineDescriptionDraft.value);
+}
+function handleManualSync(event) {
+  event.preventDefault();
+  void (async () => {
+    await saveInlineDescription();
+    await store.syncNow();
+  })();
 }
 function beginDetailChecklistEdit(item, index) {
   detailChecklistEditingIndex.value = index;
@@ -4752,6 +4737,7 @@ onMounted(() => {
   document.addEventListener("pointerdown", closeCompletionFilterOnOutsidePointer);
   window.addEventListener("scroll", loadMoreCompletedOnScroll, { passive: true });
   window.addEventListener("keydown", onKeydown);
+  window.addEventListener("task:manual-sync", handleManualSync);
   window.matchMedia("(max-width: 900px)").addEventListener("change", handleSidebarViewportChange);
 });
 watch(() => store.online, online => {
@@ -4766,6 +4752,7 @@ onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", closeCompletionFilterOnOutsidePointer);
   window.removeEventListener("scroll", loadMoreCompletedOnScroll);
   window.removeEventListener("keydown", onKeydown);
+  window.removeEventListener("task:manual-sync", handleManualSync);
   window.matchMedia("(max-width: 900px)").removeEventListener("change", handleSidebarViewportChange);
 });
 
@@ -5275,11 +5262,6 @@ const SidebarSection = {
 .clone-header-actions {
   justify-content: flex-end;
 }
-.clone-sync-state { display: none; }
-.clone-sync-state {
-  color: var(--muted);
-  font-size: 11px;
-}
 .clone-completion-filters { position: relative; z-index: 8; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 2px 0 18px 43px; }
 .clone-completion-filter { position: relative; }
 .clone-completion-filter-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 126px; min-height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
@@ -5580,7 +5562,6 @@ const SidebarSection = {
 .clone-quick-draft-tags label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
 .clone-quick-draft > footer button:not(.clone-primary-button) { border: 0; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-quick-draft > footer .clone-primary-button { min-height: 30px; }
-.clone-status,
 .clone-error {
   display: flex;
   gap: 7px;
@@ -6703,9 +6684,6 @@ const SidebarSection = {
   .clone-task-main.quick-action-open { z-index: 250; overflow: visible; }
   .clone-task-header {
     align-items: flex-start;
-  }
-  .clone-header-actions .clone-sync-state {
-    display: none;
   }
   .clone-primary-button {
     font-size: 0;

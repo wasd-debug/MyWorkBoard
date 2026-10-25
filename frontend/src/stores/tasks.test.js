@@ -62,7 +62,7 @@ test('task changes queued during an active sync are sent in a follow-up batch', 
     const firstSync = store.syncNow()
     await firstPullStarted
     await store.createList({ name: '同步竞态清单' })
-    await new Promise(resolve => setTimeout(resolve, 300))
+    await new Promise(resolve => setTimeout(resolve, 1300))
     releaseFirstPull()
     await firstSync
 

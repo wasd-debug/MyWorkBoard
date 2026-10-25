@@ -8,6 +8,7 @@ import { accountScopeFor, taskDatabaseName } from '../utils/accountScope.js'
 import { createClientId } from '../utils/clientId.js'
 
 const SCOPE = 'tasks'
+const SYNC_IDLE_DELAY_MS = 1200
 const LIST_GROUPS_CACHE_META_KEY = 'task-list-groups-cache'
 const transport = {
   push: async (_scope, operations) => {
@@ -579,9 +580,14 @@ export const useTasksStore = defineStore('tasks', {
     scheduleSync() {
       clearTimeout(syncTimer)
       const epoch = sessionEpoch
-      syncTimer = setTimeout(() => { if (epoch === sessionEpoch) void this.syncNow() }, 120)
+      syncTimer = setTimeout(() => {
+        syncTimer = undefined
+        if (epoch === sessionEpoch) void this.syncNow()
+      }, SYNC_IDLE_DELAY_MS)
     },
     async syncNow() {
+      clearTimeout(syncTimer)
+      syncTimer = undefined
       if (!this.online || !this.accountScope) return
       const epoch = sessionEpoch
       const scoped = engine

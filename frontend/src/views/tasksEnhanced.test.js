@@ -528,8 +528,27 @@ test('task detail edits title, description, and checklist in place without an ed
   assert.match(taskRichTextEditor, /defineEmits\(\['update:modelValue', 'blur'\]\)/)
   assert.match(taskRichTextEditor, /:aria-hidden="!toolbarVisible" :inert="!toolbarVisible"/)
   assert.match(taskRichTextEditor, /emit\('blur'\)/)
+  assert.match(taskRichTextEditor, /contenteditable="true"/)
+  assert.match(taskRichTextEditor, /element\.innerHTML = renderMarkdown\(markdown\)/)
+  assert.match(taskRichTextEditor, /compositionstart="composing = true"[\s\S]*compositionend="onCompositionEnd"/)
+  assert.match(taskRichTextEditor, /if \(composing\.value\) return/)
+  assert.doesNotMatch(taskRichTextEditor, /<textarea/)
   assert.match(workspaceView, /clone-detail-properties/)
   assert.match(workspaceView, /clone-detail-edit-fields/)
+})
+
+test('task sync waits for an idle window and is manually available from the module rail', async () => {
+  const store = await readFile(new URL('../stores/tasks.js', import.meta.url), 'utf8')
+  const rail = await readFile(new URL('../components/tasks/TaskModuleRail.vue', import.meta.url), 'utf8')
+  assert.match(store, /const SYNC_IDLE_DELAY_MS = 1200/)
+  assert.match(store, /setTimeout\([\s\S]*SYNC_IDLE_DELAY_MS\)/)
+  assert.match(store, /async syncNow\(\) \{\s+clearTimeout\(syncTimer\)/)
+  assert.match(rail, /class="task-rail-sync"[\s\S]*@click="requestSync"/)
+  assert.match(workspaceView, /function handleManualSync\(event\)[\s\S]*await saveInlineDescription\(\);[\s\S]*await store\.syncNow\(\)/)
+  assert.match(workspaceView, /if \(inlineDescriptionSaving\.value\) \{[\s\S]*while \(inlineDescriptionSaving\.value\) await new Promise/)
+  assert.match(workspaceView, /if \(queued\.value !== \(latest\.description \|\| ""\)\) await persistInlineDescription\(latest, queued\.value\)/)
+  assert.match(rail, /\.task-rail-sync\.is-syncing svg\{animation:task-rail-sync-spin/)
+  assert.doesNotMatch(workspaceView, /clone-sync-state|class="clone-status"/)
 })
 
 test('task row menu exposes contract-backed task operations and accurate metadata', () => {
