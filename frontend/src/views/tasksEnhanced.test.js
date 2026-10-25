@@ -427,6 +427,10 @@ test('task date, recurrence, and reminder popovers preserve task state boundarie
   assert.match(workspaceView, /@click\.stop="toggleDatePopover"/)
   assert.match(workspaceView, /@click\.stop="toggleRepeatPopover"/)
   assert.match(workspaceView, /@click\.stop="toggleReminderPopover"/)
+  assert.match(workspaceView, /clone-date-calendar-grid/)
+  assert.match(workspaceView, /datePickerDays/)
+  assert.match(workspaceView, /selectDatePickerDay/)
+  assert.match(workspaceView, /clone-priority-option/)
 })
 
 test('task detail header exposes status, content conversion, and checklist progress', () => {

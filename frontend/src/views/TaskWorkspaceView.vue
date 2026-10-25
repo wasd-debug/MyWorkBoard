@@ -660,7 +660,7 @@
         </div>
       </section>
       <template v-else>
-      <header v-if="selectedTask || editorOpen" class="clone-detail-toolbar">
+      <header v-if="selectedTask || editorOpen" class="clone-detail-toolbar" @pointerdown.stop>
         <div class="clone-detail-toolbar-main">
           <button v-if="!editorOpen" type="button" class="clone-detail-status-tool" :class="{ completed: selectedTask?.status === 'COMPLETED', abandoned: selectedTask?.status === 'ABANDONED' }" :aria-label="selectedTask?.status === 'COMPLETED' ? '重新打开任务' : '标记任务完成'" @click="toggleComplete(selectedTask)"><Check v-if="selectedTask?.status === 'COMPLETED'" :size="14" /></button>
           <button v-else type="button" class="clone-detail-status-tool" :class="{ completed: draft.status === 'COMPLETED', abandoned: draft.status === 'ABANDONED' }" aria-label="任务完成状态" @click="draft.status = draft.status === 'COMPLETED' ? 'OPEN' : 'COMPLETED'"><Check v-if="draft.status === 'COMPLETED'" :size="14" /></button>
@@ -671,14 +671,13 @@
             <Repeat2 :size="15" />
           </button>
           <div v-if="datePopoverOpen" class="clone-toolbar-popover clone-date-toolbar-popover" @click.stop>
-            <strong>日期和时间</strong>
-            <input v-if="editorOpen" v-model="draft.dueAt" type="datetime-local" aria-label="截止日期时间" />
-            <template v-else><input v-model="datePopoverDue" type="datetime-local" aria-label="截止日期时间" /><button type="button" class="clone-popover-save" :disabled="dateSaving" @click="saveTaskDueDate">{{ dateSaving ? '保存中…' : '保存日期' }}</button></template>
-            <div class="clone-popover-actions">
-              <button type="button" @click="editorOpen ? draft.dueAt = toLocal(new Date()) : applyTaskDueOffset(0)">今天</button>
-              <button type="button" @click="editorOpen ? draft.dueAt = toLocal(addDays(new Date(), 1)) : applyTaskDueOffset(1)">明天</button>
-              <button type="button" @click="editorOpen ? draft.dueAt = '' : applyTaskDueOffset(null)">清除</button>
-            </div>
+            <div class="clone-date-popover-tabs"><button type="button" :class="{ active: datePickerMode === 'DATE' }" @click="datePickerMode = 'DATE'">日期</button><button type="button" :class="{ active: datePickerMode === 'RANGE' }" @click="datePickerMode = 'RANGE'">时间段</button></div>
+            <div class="clone-date-quick-actions"><button type="button" @click="editorOpen ? draft.dueAt = toLocal(new Date()) : applyTaskDueOffset(0)">今天</button><button type="button" @click="editorOpen ? draft.dueAt = toLocal(addDays(new Date(), 1)) : applyTaskDueOffset(1)">明天</button><button type="button" @click="editorOpen ? draft.dueAt = toLocal(addDays(new Date(), 7)) : applyTaskDueOffset(7)">下周</button><button type="button" @click="editorOpen ? draft.dueAt = '' : applyTaskDueOffset(null)">清除</button></div>
+            <div class="clone-date-calendar-head"><button type="button" aria-label="上个月" @click="datePickerMonth = new Date(datePickerMonth.getFullYear(), datePickerMonth.getMonth() - 1, 1)">‹</button><strong>{{ datePickerMonthLabel }}</strong><button type="button" aria-label="下个月" @click="datePickerMonth = new Date(datePickerMonth.getFullYear(), datePickerMonth.getMonth() + 1, 1)">›</button></div>
+            <div class="clone-date-calendar-grid" role="grid" aria-label="选择日期"><span v-for="day in datePickerWeekdays" :key="day">{{ day }}</span><button v-for="cell in datePickerDays" :key="cell.key" type="button" :class="{ 'other-month': cell.otherMonth, selected: cell.selected, today: cell.today }" @click="selectDatePickerDay(cell.date)">{{ cell.date.getDate() }}</button></div>
+            <template v-if="datePickerMode === 'RANGE'"><label class="clone-date-time-field">开始<input v-if="editorOpen" v-model="draft.startAt" type="datetime-local" aria-label="开始时间" /><input v-else v-model="datePopoverStart" type="datetime-local" aria-label="开始时间" /></label><label class="clone-date-time-field">结束<input v-if="editorOpen" v-model="draft.dueAt" type="datetime-local" aria-label="结束时间" /><input v-else v-model="datePopoverDue" type="datetime-local" aria-label="结束时间" /></label></template>
+            <label v-else class="clone-date-time-field">时间<input v-if="editorOpen" v-model="draft.dueAt" type="datetime-local" aria-label="截止日期时间" /><input v-else v-model="datePopoverDue" type="datetime-local" aria-label="截止日期时间" /></label>
+            <template v-if="!editorOpen"><button type="button" class="clone-popover-save" :disabled="dateSaving" @click="saveTaskDueDate">{{ dateSaving ? '保存中…' : '确定' }}</button></template>
             <div class="clone-detail-date-reminder">
               <button type="button" class="clone-detail-date-reminder-trigger" :class="{ active: editorOpen ? draft.reminderEnabled : quickReminder.reminder }" aria-label="设置提醒" :aria-expanded="reminderPopoverOpen" @click.stop="toggleReminderPopover"><Bell :size="14" /><span>{{ editorOpen ? (draft.reminderEnabled ? '提醒已开启' : '添加提醒') : (quickReminder.reminder ? '提醒已开启' : '添加提醒') }}</span><ChevronRight :size="13" /></button>
               <div v-if="reminderPopoverOpen" class="clone-detail-date-reminder-popover" @click.stop>
@@ -706,7 +705,7 @@
           <button type="button" class="clone-detail-priority-tool" :data-priority="editorOpen ? draft.priority : selectedTask?.priority" aria-label="设置优先级" :aria-expanded="priorityPopoverOpen" @click.stop="togglePriorityPopover">⚑</button>
           <div v-if="priorityPopoverOpen" class="clone-toolbar-popover clone-priority-toolbar-popover" @click.stop>
             <strong>优先级</strong>
-            <button v-for="option in priorityOptions" :key="option.value" type="button" :class="{ active: (editorOpen ? draft.priority : selectedTask?.priority) === option.value }" @click="editorOpen ? (draft.priority = option.value) : setTaskPriority(option.value); priorityPopoverOpen = false">{{ option.label }}</button>
+            <button v-for="option in priorityOptions" :key="option.value" type="button" class="clone-priority-option" :class="[`priority-${option.value.toLowerCase()}`, { active: (editorOpen ? draft.priority : selectedTask?.priority) === option.value }]" @click="editorOpen ? (draft.priority = option.value) : setTaskPriority(option.value); priorityPopoverOpen = false"><i aria-hidden="true"></i><span>{{ option.label }}</span></button>
           </div>
         </div>
         <div v-if="selectedTask?.checklist?.length" class="clone-detail-header-progress" aria-hidden="true"><span :style="{ transform: `scaleX(${selectedTask.checklist.filter((item) => item.completed).length / selectedTask.checklist.length})` }"></span></div>
@@ -1453,6 +1452,9 @@ const datePopoverOpen = ref(false);
 const repeatPopoverOpen = ref(false);
 const reminderPopoverOpen = ref(false);
 const datePopoverDue = ref("");
+const datePopoverStart = ref("");
+const datePickerMonth = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+const datePickerMode = ref("DATE");
 const dateSaving = ref(false);
 const reminderLoading = ref(false);
 const reminderSaving = ref(false);
@@ -1976,6 +1978,20 @@ const priorityOptions = [
   { value: "HIGH", label: "高优先级" },
 ];
 const quickPriorityOptions = ["HIGH", "MEDIUM", "LOW", "NONE"].map(value => priorityOptions.find(option => option.value === value));
+const datePickerWeekdays = ["一", "二", "三", "四", "五", "六", "日"];
+const datePickerMonthLabel = computed(() => new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long" }).format(datePickerMonth.value));
+const datePickerDays = computed(() => {
+  const first = new Date(datePickerMonth.value.getFullYear(), datePickerMonth.value.getMonth(), 1);
+  const mondayOffset = (first.getDay() + 6) % 7;
+  const start = addDays(first, -mondayOffset);
+  const currentValue = editorOpen.value ? draft.dueAt : datePopoverDue.value;
+  const selectedKey = currentValue ? dateKey(new Date(currentValue)) : "";
+  const todayKey = dateKey(new Date());
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = addDays(start, index);
+    return { date, key: dateKey(date), otherMonth: date.getMonth() !== first.getMonth(), selected: dateKey(date) === selectedKey, today: dateKey(date) === todayKey };
+  });
+});
 const filterPriorityOptions = [
   { value: "HIGH", label: "高" },
   { value: "MEDIUM", label: "中" },
@@ -2464,7 +2480,20 @@ function toggleDatePopover() {
   repeatPopoverOpen.value = false;
   reminderPopoverOpen.value = false;
   priorityPopoverOpen.value = false;
-  if (datePopoverOpen.value) datePopoverDue.value = toLocal(selectedTask.value?.dueAt);
+  if (datePopoverOpen.value) {
+    datePopoverDue.value = toLocal(selectedTask.value?.dueAt);
+    datePopoverStart.value = toLocal(selectedTask.value?.startAt);
+    datePickerMode.value = "DATE";
+    const currentDate = selectedTask.value?.dueAt ? new Date(selectedTask.value.dueAt) : new Date();
+    datePickerMonth.value = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+  }
+}
+function selectDatePickerDay(date) {
+  const currentValue = editorOpen.value ? draft.dueAt : datePopoverDue.value;
+  const current = currentValue ? new Date(currentValue) : new Date();
+  date.setHours(current.getHours(), current.getMinutes(), 0, 0);
+  if (editorOpen.value) draft.dueAt = toLocal(date);
+  else datePopoverDue.value = toLocal(date);
 }
 function toggleRepeatPopover() {
   repeatPopoverOpen.value = !repeatPopoverOpen.value;
@@ -2495,7 +2524,10 @@ async function saveTaskDueDate() {
   if (!selectedTask.value || dateSaving.value) return;
   dateSaving.value = true;
   try {
-    selectedTask.value = await store.update(selectedTask.value, { dueAt: datePopoverDue.value ? new Date(datePopoverDue.value).toISOString() : "" });
+    selectedTask.value = await store.update(selectedTask.value, {
+      dueAt: datePopoverDue.value ? new Date(datePopoverDue.value).toISOString() : "",
+      ...(datePickerMode.value === "RANGE" ? { startAt: datePopoverStart.value ? new Date(datePopoverStart.value).toISOString() : "" } : {}),
+    });
     store.error = "";
     datePopoverOpen.value = false;
   } catch (error) { store.error = error?.response?.data?.detail || error?.message || "日期保存失败"; }
@@ -2516,7 +2548,6 @@ async function selectTaskRepeat(value) {
 }
 async function toggleReminderPopover() {
   reminderPopoverOpen.value = !reminderPopoverOpen.value;
-  datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
   priorityPopoverOpen.value = false;
   const loadSequence = ++reminderLoadSequence;
@@ -3609,6 +3640,10 @@ function closeAttributePopovers() {
   repeatPopoverOpen.value = false;
   reminderPopoverOpen.value = false;
   priorityPopoverOpen.value = false;
+}
+function closeAttributePopoversOnOutsidePointer(event) {
+  if (event.target.closest?.(".clone-detail-toolbar")) return;
+  closeAttributePopovers();
 }
 function toLocal(value) {
   if (!value) return "";
@@ -5363,6 +5398,7 @@ onMounted(() => {
   document.addEventListener("pointerdown", closeQuickAction);
   document.addEventListener("pointerdown", closeWorkspaceMenusOnOutsidePointer);
   document.addEventListener("pointerdown", closeCompletionFilterOnOutsidePointer);
+  document.addEventListener("pointerdown", closeAttributePopoversOnOutsidePointer);
   window.addEventListener("scroll", loadMoreCompletedOnScroll, { passive: true });
   window.addEventListener("keydown", onKeydown);
   window.addEventListener("task:manual-sync", handleManualSync);
@@ -5379,6 +5415,7 @@ onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", closeQuickAction);
   document.removeEventListener("pointerdown", closeWorkspaceMenusOnOutsidePointer);
   document.removeEventListener("pointerdown", closeCompletionFilterOnOutsidePointer);
+  document.removeEventListener("pointerdown", closeAttributePopoversOnOutsidePointer);
   window.removeEventListener("scroll", loadMoreCompletedOnScroll);
   window.removeEventListener("keydown", onKeydown);
   window.removeEventListener("task:manual-sync", handleManualSync);
@@ -6714,6 +6751,18 @@ const SidebarSection = {
 .clone-detail-status-tool.completed { border-color: var(--accent); background: var(--accent); }
 .clone-detail-status-tool.abandoned { border-color: var(--down); }
 .clone-detail-status-tool svg { stroke-width: 2.5; }
+.clone-detail-pane > header.clone-detail-toolbar .clone-detail-status-tool {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  max-width: 20px;
+  flex: 0 0 20px;
+  padding: 0;
+  border: 1.5px solid var(--muted);
+  border-radius: 5px;
+}
+.clone-detail-pane > header.clone-detail-toolbar .clone-detail-status-tool.completed { border-color: var(--accent); background: var(--accent); }
 .clone-detail-header-progress { position: absolute; right: 0; bottom: 0; left: 0; height: 2px; overflow: hidden; background: color-mix(in srgb, var(--line) 55%, transparent); pointer-events: none; }
 .clone-detail-header-progress span { display: block; width: 100%; height: 100%; transform-origin: left center; background: var(--accent); transition: transform 180ms ease; }
 .clone-detail-tool,
@@ -6754,7 +6803,7 @@ const SidebarSection = {
   padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--card);
   box-shadow: 0 14px 30px rgba(15,23,42,.18);
 }
-.clone-date-toolbar-popover { top: 54px; width: min(258px, calc(100vw - 32px)); }
+.clone-date-toolbar-popover { top: 54px; right: 12px; left: auto; width: min(330px, calc(100vw - 32px)); }
 .clone-toolbar-popover strong { color: var(--ink2); font-size: 12px; }
 .clone-toolbar-popover button { min-height: 29px; padding: 5px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ink2); text-align: left; cursor: pointer; }
 .clone-toolbar-popover button:focus-visible,
@@ -6762,6 +6811,21 @@ const SidebarSection = {
 .clone-toolbar-popover select:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 1px; }
 .clone-toolbar-popover button:hover, .clone-toolbar-popover button.active { background: var(--accent-soft); color: var(--accent); }
 .clone-toolbar-popover input { width: 100%; box-sizing: border-box; }
+.clone-date-popover-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border-radius: 7px; background: color-mix(in srgb, var(--line) 45%, var(--paper)); }
+.clone-date-popover-tabs button { min-height: 30px; text-align: center; }
+.clone-date-popover-tabs button.active { background: var(--card); color: var(--ink); box-shadow: 0 1px 4px rgb(15 23 42 / 10%); }
+.clone-date-quick-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.clone-date-quick-actions button { min-width: 0; padding-inline: 4px; text-align: center; font-size: 11px; }
+.clone-date-calendar-head { display: grid; grid-template-columns: 30px 1fr 30px; align-items: center; text-align: center; }
+.clone-date-calendar-head button { display: grid; min-height: 28px; place-items: center; padding: 0; font-size: 21px; }
+.clone-date-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; text-align: center; }
+.clone-date-calendar-grid > span { padding: 2px 0; color: var(--muted); font-size: 10px; }
+.clone-date-calendar-grid > button { display: grid; min-width: 0; min-height: 30px; place-items: center; padding: 0; border-radius: 50%; font-size: 12px; text-align: center; }
+.clone-date-calendar-grid > button.other-month { color: var(--muted); opacity: .5; }
+.clone-date-calendar-grid > button.today { box-shadow: inset 0 0 0 1px var(--accent); }
+.clone-date-calendar-grid > button.selected { background: var(--accent); color: var(--accent-contrast, #fff); }
+.clone-date-time-field { display: grid; grid-template-columns: 38px 1fr; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+.clone-date-time-field input { min-height: 31px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--ink); }
 .clone-repeat-toolbar-popover { left: 150px; }
 .clone-reminder-popover { right: 48px; left: auto; width: min(250px, calc(100vw - 28px)); }
 .clone-reminder-popover-field { display: grid; gap: 4px; color: var(--muted); font-size: 11px; }
@@ -7093,7 +7157,13 @@ const SidebarSection = {
   line-height: 1.7;
 }
 .clone-detail-description.placeholder { color: var(--muted); }
-.clone-priority-toolbar-popover { right: 12px; left: auto; min-width: 118px; }
+.clone-priority-toolbar-popover { right: 12px; left: auto; width: 168px; min-width: 168px; }
+.clone-priority-toolbar-popover .clone-priority-option { display: flex; width: 100%; align-items: center; gap: 9px; white-space: nowrap; }
+.clone-priority-option i { display: block; width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; background: var(--muted); }
+.clone-priority-option.priority-high i { background: #e34d59; }
+.clone-priority-option.priority-medium i { background: #e69b2d; }
+.clone-priority-option.priority-low i { background: #4d78db; }
+.clone-priority-option.priority-none i { border: 1px solid var(--muted); background: transparent; }
 .clone-detail-read dl {
   margin: 0;
 }
