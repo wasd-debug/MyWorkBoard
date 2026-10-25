@@ -986,3 +986,40 @@ test('task deletion uses an in-app dialog for single and batch actions', () => {
   const batchDeleteBody = workspaceView.match(/async function batchDelete\(\) \{([\s\S]*?)\n\}/)?.[1] ?? ''
   assert.doesNotMatch(batchDeleteBody, /window\.confirm/)
 })
+
+test('task multi-select panel matches the action sheet and exposes supported actions', () => {
+  for (const label of ['已选择 <b>{{ selectedIds.size }}</b> 项', '完成', '置顶', '关联主任务', '合并', '创建副本', '转换为笔记', '打开便签', '复制文本', '删除']) {
+    assert.ok(workspaceView.includes(label), `missing batch action: ${label}`)
+  }
+  assert.match(workspaceView, /batch-action-merge" disabled title="当前任务 API 没有安全合并任务的契约"/)
+  assert.match(workspaceView, /batch-action-note" disabled title="不能在多选模式下转换为笔记"/)
+  assert.doesNotMatch(workspaceView, /clone-batch-field[^\n]*批量关联主任务/)
+  assert.match(workspaceView, /batch-action-parent" :disabled="!batchParentCandidates\.length" @click="openBatchParentPicker"/)
+  assert.match(workspaceView, /const parentPickerCandidates = computed\(\(\) => \{[\s\S]*selectedIds\.size \? batchParentCandidates\.value : detailParentCandidates\.value/)
+  assert.match(workspaceView, /async function batchPin\(\)[\s\S]*store\.sortTask\(task, 0\)/)
+  assert.match(workspaceView, /async function setDetailParent\(parent\)[\s\S]*if \(selectedIds\.size\)[\s\S]*store\.update\(task, \{ parentId: parent\.publicId \}\)/)
+  assert.match(workspaceView, /async function batchDuplicate\(\)[\s\S]*title: `\$\{task\.title\} 副本`/)
+  assert.match(workspaceView, /function openBatchStickyNote\(\)[\s\S]*window\.open\("", "task-batch-note"/)
+  assert.match(workspaceView, /async function copyBatchTaskText\(\)[\s\S]*navigator\.clipboard\.writeText\(text\)/)
+})
+
+test('task detail subtasks can be completed, quickly renamed, dated, and added inline', () => {
+  assert.match(workspaceView, /class="clone-detail-subtask-row"[\s\S]*toggleComplete\(child\)/)
+  assert.match(workspaceView, /inlineSubtaskTitleId === child\.publicId[\s\S]*saveInlineSubtaskTitle\(child\)/)
+  assert.match(workspaceView, /clone-detail-subtask-date[\s\S]*openRowDateEditor\(child\)/)
+  assert.match(workspaceView, /clone-detail-subtask-draft[\s\S]*@submit\.prevent="saveDetailSubtask"/)
+  assert.match(workspaceView, /clone-detail-subtask-add[\s\S]*添加子任务/)
+  assert.match(workspaceView, /async function saveInlineSubtaskTitle\(task\)[\s\S]*store\.update\(task, \{ title \}\)/)
+})
+
+test('task row metadata shortcuts open their matching detail section or popover', () => {
+  assert.match(workspaceView, /查看\$\{task\.title\}详细内容[\s\S]*openTaskIndicator\(task, 'description'\)/)
+  assert.match(workspaceView, /查看\$\{task\.title\}检查项进度[\s\S]*openTaskIndicator\(task, 'checklist'\)/)
+  assert.match(workspaceView, /查看\$\{task\.title\}子任务[\s\S]*openTaskIndicator\(task, 'subtasks'\)/)
+  assert.match(workspaceView, /调整\$\{task\.title\}重复规则[\s\S]*openTaskIndicator\(task, 'repeat'\)/)
+  assert.match(workspaceView, /查看\$\{task\.title\}专注记录[\s\S]*openTaskIndicator\(task, 'focus'\)/)
+  assert.match(workspaceView, /查看\$\{task\.title\}附件[\s\S]*openTaskIndicator\(task, 'attachments'\)/)
+  assert.match(workspaceView, /class="clone-detail-focus-summary" aria-label="专注记录"/)
+  assert.match(workspaceView, /async function openTaskIndicator\(task, kind\)[\s\S]*toggleRepeatPopover\(\)[\s\S]*aria-label="专注记录"[\s\S]*scrollIntoView/)
+  assert.match(workspaceView, /v-if="!selectedIds\.has\(task\.publicId\)"[\s\S]*class="clone-row-more"/)
+})
