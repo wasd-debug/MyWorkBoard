@@ -229,7 +229,9 @@ test('task rich editor keeps the native caret during typing and renders markdown
   assert.match(taskRichTextEditor, /function insertCaretMarker\(element\)/)
   assert.match(taskRichTextEditor, /function restoreCaretMarker\(element, marker\)/)
   assert.match(taskRichTextEditor, /EMPTY_BLOCK_CARET/)
-  assert.match(taskRichTextEditor, /const isBlock = node\.nodeType === Node\.ELEMENT_NODE/)
+  assert.match(taskRichTextEditor, /map\(nodeMarkdown\)\.join\('\\n\\n'\)/)
+  assert.match(taskRichTextEditor, /task-rich-input :deep\(h1\)[\s\S]*font-size: 1\.65em/)
+  assert.match(taskRichTextEditor, /task-rich-input :deep\(h2\)[\s\S]*font-size: 1\.4em/)
 })
 
 test('task inbox mirrors ticktick shortcut navigation and mixed efficiency groups', () => {

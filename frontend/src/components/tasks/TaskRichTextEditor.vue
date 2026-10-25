@@ -89,22 +89,22 @@ function nodeMarkdown(node) {
   const children = [...node.childNodes].map(nodeMarkdown).join('')
   switch (node.tagName) {
     case 'BR': return '\n'
-    case 'P': return `${children}\n\n`
-    case 'H1': return `# ${children}\n\n`
-    case 'H2': return `## ${children}\n\n`
-    case 'H3': return `### ${children}\n\n`
+    case 'P': return children
+    case 'H1': return `# ${children}`
+    case 'H2': return `## ${children}`
+    case 'H3': return `### ${children}`
     case 'STRONG': case 'B': return `**${children}**`
     case 'EM': case 'I': return `*${children}*`
     case 'U': return `<u>${children}</u>`
     case 'S': case 'DEL': case 'STRIKE': return `~~${children}~~`
     case 'CODE': return `\`${children}\``
-    case 'PRE': return `\`\`\`\n${node.textContent || ''}\n\`\`\`\n\n`
+    case 'PRE': return `\`\`\`\n${node.textContent || ''}\n\`\`\``
     case 'A': {
       const href = node.getAttribute('href') || ''
       return /^(https?:|mailto:)/i.test(href) ? `[${children}](${href})` : children
     }
-    case 'BLOCKQUOTE': return `${children.trim().split('\n').map(line => line ? `> ${line}` : '>').join('\n')}\n\n`
-    case 'HR': return '\n---\n\n'
+    case 'BLOCKQUOTE': return children.trim().split('\n').map(line => line ? `> ${line}` : '>').join('\n')
+    case 'HR': return '---'
     case 'UL': case 'OL': {
       const ordered = node.tagName === 'OL'
       return [...node.children].filter(child => child.tagName === 'LI').map((item, index) => {
@@ -113,10 +113,10 @@ function nodeMarkdown(node) {
         const prefix = checkbox ? `- [${checkbox.checked ? 'x' : ' '}] ` : ordered ? `${index + 1}. ` : '- '
         const nested = [...item.children].filter(child => ['UL', 'OL'].includes(child.tagName)).map(nodeMarkdown).join('').trimEnd()
         return `${prefix}${text}${nested ? `\n${nested.split('\n').map(line => `  ${line}`).join('\n')}` : ''}`
-      }).join('\n') + '\n\n'
+      }).join('\n')
     }
     case 'LI': return children
-    case 'DIV': return `${children}\n`
+    case 'DIV': return children
     case 'SPAN': {
       const color = node.style?.color
       return color ? `<span style="color: ${color}">${children}</span>` : children
@@ -126,11 +126,7 @@ function nodeMarkdown(node) {
 }
 
 function markdownFromEditor() {
-  return [...(editor.value?.childNodes || [])].reduce((markdown, node) => {
-    const isBlock = node.nodeType === Node.ELEMENT_NODE && ['DIV', 'P', 'H1', 'H2', 'H3', 'BLOCKQUOTE', 'UL', 'OL', 'PRE', 'HR'].includes(node.tagName)
-    const separator = isBlock && markdown && !markdown.endsWith('\n') ? '\n' : ''
-    return markdown + separator + nodeMarkdown(node)
-  }, '').replace(/\n{3,}/g, '\n\n').trimEnd()
+  return [...(editor.value?.childNodes || [])].map(nodeMarkdown).join('\n\n').replace(/\n{3,}/g, '\n\n').trimEnd()
 }
 
 function insertCaretMarker(element) {
@@ -296,4 +292,13 @@ onBeforeUnmount(() => clearTimeout(renderTimer))
 
 <style scoped>
 .task-rich-editor{position:relative;border:1px solid var(--line);border-radius:8px;background:var(--paper);overflow:hidden}.task-rich-toolbar{display:flex;flex-wrap:wrap;gap:4px;padding:6px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--card) 92%,var(--paper))}.task-rich-toolbar button,.task-rich-color{display:grid;position:relative;min-width:30px;height:30px;place-items:center;border:0;border-radius:5px;background:transparent;color:var(--ink);font-weight:600;cursor:pointer}.task-rich-toolbar button:hover,.task-rich-color:hover{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent)}.task-rich-color input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}.task-rich-input-wrap{position:relative}.task-rich-input{display:block;width:100%;min-height:150px;padding:12px;border:0;resize:vertical;background:transparent;color:var(--ink);font:inherit;line-height:1.65;box-sizing:border-box;overflow-wrap:anywhere;outline:none;white-space:pre-wrap}.task-rich-input:empty::before{content:attr(data-placeholder);color:var(--muted);pointer-events:none}.task-rich-input:focus{outline:none}.task-rich-input :deep(p){margin:.45em 0}.task-rich-input :deep(h1),.task-rich-input :deep(h2),.task-rich-input :deep(h3){margin:.7em 0 .3em}.task-rich-input :deep(ul),.task-rich-input :deep(ol){padding-left:22px}.task-rich-input :deep(blockquote){margin:.5em 0;padding-left:11px;border-left:2px solid var(--line);color:var(--muted)}.task-rich-input :deep(a),.task-rich-preview :deep(a){color:var(--accent)}.task-rich-input :deep(code),.task-rich-preview :deep(code){padding:2px 4px;border-radius:3px;background:color-mix(in srgb,var(--ink) 8%,transparent)}.task-rich-preview{display:block;width:100%;min-height:150px;padding:12px;color:var(--ink);font:inherit;line-height:1.65;box-sizing:border-box}.task-rich-hint{display:block;padding:0 12px 8px;color:var(--muted);font-size:12px}.task-slash-menu{position:absolute;z-index:20;top:12px;left:12px;display:grid;min-width:190px;max-width:calc(100% - 24px);max-height:270px;overflow:auto;padding:6px;border:1px solid var(--line);border-radius:8px;background:var(--card);box-shadow:0 12px 28px rgba(15,23,42,.16)}.task-slash-menu button{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:center;padding:7px 9px;border:0;border-radius:6px;background:transparent;color:var(--ink);text-align:left;cursor:pointer}.task-slash-menu button:hover,.task-slash-menu button:focus-visible{background:var(--accent-soft);color:var(--accent);outline:none}.task-slash-menu small{color:var(--muted);font-size:11px}.markdown-body :deep(p){margin:.45em 0}.markdown-body :deep(h1),.markdown-body :deep(h2),.markdown-body :deep(h3){margin:.7em 0 .3em}.markdown-body :deep(a){color:var(--accent)}.markdown-body :deep(code){padding:2px 4px;border-radius:3px;background:color-mix(in srgb,var(--ink) 8%,transparent)}
+</style>
+
+<style scoped>
+.task-rich-input :deep(h1),
+.task-rich-preview :deep(h1) { font-size: 1.65em; font-weight: 700; line-height: 1.3; }
+.task-rich-input :deep(h2),
+.task-rich-preview :deep(h2) { font-size: 1.4em; font-weight: 700; line-height: 1.35; }
+.task-rich-input :deep(h3),
+.task-rich-preview :deep(h3) { font-size: 1.2em; font-weight: 700; line-height: 1.4; }
 </style>
