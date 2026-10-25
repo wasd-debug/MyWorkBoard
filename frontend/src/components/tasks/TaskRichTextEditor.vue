@@ -2,7 +2,7 @@
   <section class="task-rich-editor" :class="{ 'preview-only': previewOnly }" :aria-label="label">
     <div v-if="previewOnly" class="task-rich-preview markdown-body" v-html="rendered"></div>
     <template v-else>
-    <div class="task-rich-toolbar" role="toolbar" :aria-label="`${label}工具栏`">
+    <div class="task-rich-toolbar" role="toolbar" :aria-label="`${label}工具栏`" :aria-hidden="!toolbarVisible" :inert="!toolbarVisible">
       <button v-for="item in toolbar" :key="item.key" type="button" :aria-label="item.label" :title="item.label" @click="item.key === 'time' ? insertTime() : insert(item.before, item.after, item.placeholder)"><component :is="item.icon" :size="14" /></button>
       <label class="task-rich-color" title="文字颜色" aria-label="文字颜色"><Paintbrush :size="14" /><input type="color" aria-label="选择文字颜色" @input="applyColor($event.target.value)" /></label>
       <button type="button" aria-label="切换预览" title="切换预览" :class="{ active: preview }" @click="preview = !preview">预览</button>
@@ -27,7 +27,7 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { Bold, CheckSquare, Clock3, Code, Heading1, Italic, Link, List, ListOrdered, Minus, Paintbrush, Quote, Strikethrough, Underline } from 'lucide-vue-next'
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'blur'])
 const input = ref(null)
 const preview = ref(false)
 const slashOpen = ref(false)
@@ -62,7 +62,7 @@ const slashCommands = [
   { key: 'code', label: '代码', hint: '`代码`', value: '`代码`' },
   { key: 'link', label: '链接', hint: '[文本](https://)', value: '[链接文本](https://)' },
 ]
-const props = defineProps({ modelValue: { type: String, default: '' }, label: { type: String, default: '富文本' }, placeholder: { type: String, default: '输入内容…' }, previewOnly: { type: Boolean, default: false } })
+const props = defineProps({ modelValue: { type: String, default: '' }, label: { type: String, default: '富文本' }, placeholder: { type: String, default: '输入内容…' }, previewOnly: { type: Boolean, default: false }, toolbarVisible: { type: Boolean, default: true } })
 const rendered = computed(() => DOMPurify.sanitize(marked.parse(props.modelValue || '', { async: false }), { ALLOWED_URI_REGEXP: /^(?:https?:|mailto:)/i }))
 function insert(before, after, placeholder) {
   const element = input.value
@@ -117,6 +117,7 @@ function onBlur() {
     if (document.activeElement?.closest('.task-slash-menu')) return
     slashOpen.value = false
   })
+  emit('blur')
 }
 </script>
 

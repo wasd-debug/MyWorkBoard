@@ -946,26 +946,23 @@
       </form>
       <div v-else class="clone-detail-read">
         <div class="clone-detail-title">
-          <h2 v-if="!inlineTitleEditing"><button type="button" aria-label="编辑任务标题" @click="beginInlineTitleEdit">{{ selectedTask.title }}<Pencil :size="13" /></button></h2>
+          <h2 v-if="!inlineTitleEditing"><button type="button" aria-label="编辑任务标题" @click="beginInlineTitleEdit">{{ selectedTask.title }}</button></h2>
           <input v-else v-model="inlineTitleDraft" class="clone-inline-title-input" aria-label="任务标题" maxlength="500" autofocus @keydown.enter.prevent="$event.target.blur()" @keydown.esc.prevent="cancelInlineTitleEdit" @blur="saveInlineTitle" />
           <button type="button" class="clone-detail-content-toggle" aria-label="在描述和检查事项之间转换" :title="selectedTask.checklist?.length ? '转换为描述' : '转换为检查事项'" @click="toggleDescriptionChecklist(selectedTask)"><ListTodo v-if="selectedTask.checklist?.length" :size="16" /><AlignLeft v-else :size="16" /></button>
         </div>
-        <div v-if="!inlineDescriptionEditing" class="clone-detail-description-block">
-          <TaskRichTextEditor v-if="selectedTask.description" :model-value="selectedTask.description" label="任务描述" preview-only />
-          <p v-else class="clone-detail-description placeholder">输入内容或使用 / 快速插入</p>
-          <button type="button" class="clone-edit-description" aria-label="编辑任务描述" @click="beginInlineDescriptionEdit"><Pencil :size="13" /></button>
-        </div>
-        <div v-else class="clone-inline-description-editor">
-          <TaskRichTextEditor v-model="inlineDescriptionDraft" label="任务描述" placeholder="补充任务描述，输入 / 查看快捷菜单" />
-          <div><button type="button" @click="cancelInlineDescriptionEdit">取消</button><button type="button" class="clone-primary-button" :disabled="inlineDescriptionSaving" @click="saveInlineDescription">保存描述</button></div>
+        <div class="clone-detail-description-block" :class="{ 'toolbar-open': detailRichToolbarOpen }">
+          <TaskRichTextEditor v-model="inlineDescriptionDraft" :toolbar-visible="detailRichToolbarOpen" label="任务描述" placeholder="输入内容或使用 / 快速插入" @update:model-value="scheduleInlineDescriptionSave" @blur="saveInlineDescription" />
+          <small v-if="inlineDescriptionSaving" class="clone-inline-save-status" role="status">正在保存</small>
+          <small v-else-if="inlineDescriptionError" class="clone-inline-save-status error" role="alert">{{ inlineDescriptionError }}</small>
         </div>
         <section v-if="selectedTask.checklist?.length" class="clone-checklist-read" aria-label="检查项">
           <header><strong>检查项</strong><span class="clone-checklist-progress-label">{{ selectedTask.checklist.filter((item) => item.completed).length }}/{{ selectedTask.checklist.length }}</span></header>
           <div class="clone-detail-checklist-progress" role="progressbar" :aria-valuenow="selectedTask.checklist.filter((item) => item.completed).length" :aria-valuemin="0" :aria-valuemax="selectedTask.checklist.length"><span :style="{ width: `${selectedTask.checklist.filter((item) => item.completed).length / selectedTask.checklist.length * 100}%` }"></span></div>
-          <label v-for="item in selectedTask.checklist" :key="item.publicId || item.title" class="clone-checklist-row">
+          <div v-for="(item, index) in selectedTask.checklist" :key="item.publicId || `${index}:${item.title}`" class="clone-checklist-row" :data-checklist-index="index">
             <input type="checkbox" :checked="item.completed" @change="toggleChecklistItem(selectedTask, item)" />
-            <span :class="{ completed: item.completed }">{{ item.title }}</span>
-          </label>
+            <input v-if="detailChecklistEditingIndex === index" v-model="detailChecklistDraft" type="text" class="clone-detail-checklist-title-input" :aria-label="`编辑检查项 ${index + 1}`" @keydown.enter.prevent="$event.target.blur()" @keydown.esc.prevent="cancelDetailChecklistEdit(item)" @blur="saveDetailChecklistTitle(selectedTask, index)" />
+            <span v-else :class="{ completed: item.completed }" @click.stop.prevent="beginDetailChecklistEdit(item, index)">{{ item.title }}</span>
+          </div>
         </section>
         <div class="clone-detail-tags-row" v-if="selectedTask.tagIds?.length">
           <Tag :size="14" /><span v-for="tagId in selectedTask.tagIds" :key="tagId" class="clone-detail-tag">#{{ tagName(tagId) }}</span><button type="button" aria-label="添加标签" @click="openEdit(selectedTask)"><Plus :size="14" /></button>
@@ -1033,8 +1030,8 @@
       <footer v-if="selectedTask && !editorOpen" class="clone-detail-footer" aria-label="详情工具">
           <button type="button" class="clone-detail-footer-list" aria-label="任务清单" @click="openEdit(selectedTask)"><ListTodo :size="17" /><span>{{ listName(selectedTask.listId) }}</span></button>
           <div class="clone-detail-footer-actions">
-            <button type="button" aria-label="切换描述编辑器" :aria-pressed="inlineDescriptionEditing" @click="inlineDescriptionEditing ? cancelInlineDescriptionEdit() : beginInlineDescriptionEdit()"><AlignLeft :size="17" /></button>
-            <button type="button" aria-label="打开评论" :aria-pressed="commentComposerOpen" @click="commentComposerOpen = !commentComposerOpen; commentError = ''"><MessageCircle :size="17" /><small v-if="comments.length">{{ comments.length }}</small></button>
+            <button type="button" aria-label="文本样式" :aria-pressed="detailRichToolbarOpen" @click="detailRichToolbarOpen = !detailRichToolbarOpen; if (detailRichToolbarOpen) commentComposerOpen = false"><AlignLeft :size="17" /></button>
+            <button type="button" aria-label="打开评论" :aria-pressed="commentComposerOpen" @click="commentComposerOpen = !commentComposerOpen; if (commentComposerOpen) detailRichToolbarOpen = false; commentError = ''"><MessageCircle :size="17" /><small v-if="comments.length">{{ comments.length }}</small></button>
             <button type="button" aria-label="更多详情操作" aria-haspopup="menu" @click.stop="openContext(selectedTask, $event)"><Ellipsis :size="17" /></button>
           </div>
       </footer>
@@ -1169,6 +1166,7 @@ import {
   Columns3,
   ArrowDownUp,
   ArrowRight,
+  ArrowUp,
   Layers3,
   MessageCircle,
   ClipboardList,
@@ -1555,9 +1553,14 @@ const inlineRowTitleTaskId = ref("");
 const inlineRowTitleDraft = ref("");
 const rowDateTaskId = ref("");
 const rowDateDraft = ref("");
-const inlineDescriptionEditing = ref(false);
 const inlineDescriptionDraft = ref("");
 const inlineDescriptionSaving = ref(false);
+const inlineDescriptionError = ref("");
+const detailRichToolbarOpen = ref(false);
+const detailChecklistEditingIndex = ref(-1);
+const detailChecklistDraft = ref("");
+let inlineDescriptionTimer = null;
+let inlineDescriptionQueued = null;
 const dragged = ref(null);
 const dragOverTask = ref(null);
 const dragOverPlacement = ref("before");
@@ -2584,13 +2587,19 @@ async function setTaskPriority(value) {
 }
 async function toggleDescriptionChecklist(task) {
   if (!task) return;
+  if (selectedTask.value?.publicId === task.publicId && inlineDescriptionDraft.value !== (task.description || "")) {
+    await saveInlineDescription();
+    task = store.tasks.find(item => item.publicId === task.publicId) || task;
+  }
   const checklist = task.checklist?.length
     ? task.checklist.map(item => `${item.completed ? '- [x] ' : '- [ ] '}${item.title}`).join('\n')
     : String(task.description || '').split(/\r?\n/).map(line => line.replace(/^\s*[-*+]\s*(?:\[[ xX]\]\s*)?/, '').trim()).filter(Boolean).map((title, sortOrder) => ({ title, completed: false, sortOrder }));
   if (task.checklist?.length) {
     selectedTask.value = await store.update(task, { description: checklist, checklist: [] });
+    inlineDescriptionDraft.value = selectedTask.value.description || "";
   } else if (checklist.length) {
     selectedTask.value = await store.update(task, { description: '', checklist });
+    inlineDescriptionDraft.value = selectedTask.value.description || "";
   }
 }
 function addChecklistItem() {
@@ -2682,14 +2691,20 @@ async function copyContextTaskLink() {
 }
 function openDetail(task) {
   if (!task) return;
+  if (selectedTask.value && inlineDescriptionDraft.value !== (selectedTask.value.description || "")) {
+    void persistInlineDescription(selectedTask.value, inlineDescriptionDraft.value);
+  }
   listActivityOpen.value = false;
   reminderLoadSequence += 1;
   closeAttributePopovers();
   Object.assign(quickReminder, { enabled: false, kind: "RELATIVE", offsetMinutes: 30, remindLocal: "", dailyUntilDone: false, reminder: null });
   selectedTask.value = task;
+  inlineDescriptionDraft.value = task.description || "";
+  inlineDescriptionError.value = "";
   editorOpen.value = false;
   inlineTitleEditing.value = false;
-  inlineDescriptionEditing.value = false;
+  detailChecklistEditingIndex.value = -1;
+  detailRichToolbarOpen.value = false;
   detailSecondaryOpen.value = false;
   commentComposerOpen.value = false;
   commentDraft.value = "";
@@ -2870,28 +2885,78 @@ async function saveInlineTitle() {
     inlineTitleSaving.value = false;
   }
 }
-function beginInlineDescriptionEdit() {
-  inlineDescriptionDraft.value = selectedTask.value?.description || "";
-  inlineDescriptionEditing.value = true;
+function scheduleInlineDescriptionSave(value) {
+  inlineDescriptionError.value = "";
+  if (inlineDescriptionTimer) clearTimeout(inlineDescriptionTimer);
+  const task = selectedTask.value;
+  inlineDescriptionTimer = setTimeout(() => {
+    inlineDescriptionTimer = null;
+    void persistInlineDescription(task, value);
+  }, 650);
 }
-function cancelInlineDescriptionEdit() {
-  inlineDescriptionEditing.value = false;
-  inlineDescriptionDraft.value = selectedTask.value?.description || "";
-}
-async function saveInlineDescription() {
-  if (!selectedTask.value || inlineDescriptionSaving.value) return;
+async function persistInlineDescription(task, value) {
+  if (!task) return;
+  task = store.tasks.find(item => item.publicId === task.publicId) || task;
+  if (value === (task.description || "")) return;
+  if (inlineDescriptionSaving.value) {
+    inlineDescriptionQueued = { task, value };
+    return;
+  }
   inlineDescriptionSaving.value = true;
   try {
-    selectedTask.value = await store.update(selectedTask.value, { description: inlineDescriptionDraft.value });
-    inlineDescriptionEditing.value = false;
+    const updated = await store.update(task, { description: value });
+    if (selectedTask.value?.publicId === task.publicId) selectedTask.value = updated;
+    inlineDescriptionError.value = "";
   } catch (error) {
-    store.error = error?.response?.data?.detail || error?.message || "描述保存失败";
+    inlineDescriptionError.value = error?.response?.data?.detail || error?.message || "描述保存失败";
   } finally {
     inlineDescriptionSaving.value = false;
+    if (inlineDescriptionQueued) {
+      const queued = inlineDescriptionQueued;
+      inlineDescriptionQueued = null;
+      const latest = store.tasks.find(item => item.publicId === queued.task.publicId) || queued.task;
+      if (queued.value !== (latest.description || "")) void persistInlineDescription(latest, queued.value);
+    }
+  }
+}
+function saveInlineDescription() {
+  if (inlineDescriptionTimer) clearTimeout(inlineDescriptionTimer);
+  inlineDescriptionTimer = null;
+  return persistInlineDescription(selectedTask.value, inlineDescriptionDraft.value);
+}
+function beginDetailChecklistEdit(item, index) {
+  detailChecklistEditingIndex.value = index;
+  detailChecklistDraft.value = item.title || "";
+  void nextTick(() => document.querySelector(`[data-checklist-index="${index}"] .clone-detail-checklist-title-input`)?.focus());
+}
+function cancelDetailChecklistEdit(item) {
+  detailChecklistDraft.value = item.title || "";
+  detailChecklistEditingIndex.value = -1;
+}
+async function saveDetailChecklistTitle(task, index) {
+  if (detailChecklistEditingIndex.value !== index) return;
+  task = store.tasks.find(item => item.publicId === task?.publicId) || task;
+  const current = task?.checklist?.[index];
+  const title = detailChecklistDraft.value.trim();
+  detailChecklistEditingIndex.value = -1;
+  if (!current || !title || title === current.title) {
+    detailChecklistDraft.value = current?.title || "";
+    return;
+  }
+  const checklist = task.checklist.map((item, itemIndex) => itemIndex === index ? { ...item, title } : item);
+  try {
+    const updated = await store.update(task, { checklist });
+    if (selectedTask.value?.publicId === task.publicId) selectedTask.value = updated;
+  } catch (error) {
+    detailChecklistDraft.value = current.title || "";
+    store.error = error?.response?.data?.detail || error?.message || "检查项保存失败";
   }
 }
 async function openEdit(task) {
   if (!task) return;
+  if (selectedTask.value?.publicId === task.publicId && inlineDescriptionDraft.value !== (task.description || "")) {
+    await saveInlineDescription();
+  }
   reminderLoadSequence += 1;
   closeAttributePopovers();
   Object.assign(quickReminder, { enabled: false, kind: "RELATIVE", offsetMinutes: 30, remindLocal: "", dailyUntilDone: false, reminder: null });
@@ -3005,6 +3070,9 @@ function createSubtask(task) {
   draft.listId = task.listId || store.inbox?.publicId || "";
 }
 function closeDetail() {
+  if (selectedTask.value && inlineDescriptionDraft.value !== (selectedTask.value.description || "")) {
+    void saveInlineDescription();
+  }
   reminderLoadSequence += 1;
   listActivityOpen.value = false;
   listActivityRequest += 1;
@@ -3013,7 +3081,7 @@ function closeDetail() {
   editing.value = null;
   editorOpen.value = false;
   inlineTitleEditing.value = false;
-  inlineDescriptionEditing.value = false;
+  detailChecklistEditingIndex.value = -1;
   detailSecondaryOpen.value = false;
   commentComposerOpen.value = false;
   commentDraft.value = "";
@@ -6246,16 +6314,20 @@ const SidebarSection = {
 .clone-detail-title h2 button svg { flex: 0 0 auto; margin-top: 5px; color: var(--muted); opacity: 0; }
 .clone-detail-title h2 button:hover svg, .clone-detail-title h2 button:focus-visible svg { opacity: 1; }
 .clone-inline-title-input { min-width: 0; flex: 1; padding: 2px 5px; border: 1px solid var(--accent); border-radius: 4px; background: var(--card); color: var(--ink); font: inherit; font-size: 19px; }
-.clone-detail-description-block { position: relative; min-width: 0; padding: 2px 24px 2px 0; }
-.clone-detail-description-block :deep(.task-rich-editor) { border: 0; border-radius: 0; background: transparent; }
+.clone-detail-description-block { position: static; min-width: 0; padding: 2px 0; }
+.clone-detail-description-block :deep(.task-rich-editor) { position: static; border: 0; border-radius: 0; background: transparent; overflow: visible; }
+.clone-detail-description-block :deep(.task-rich-toolbar) { position: absolute; right: clamp(0px, calc(var(--clone-detail-width) * .31 - 99px), 110px); bottom: 56px; z-index: 8; display: flex; flex-wrap: nowrap; width: max-content; max-width: calc(100% - 28px); max-height: 0; gap: 3px; overflow: hidden; margin: 0; padding: 0 8px; border: 1px solid transparent; border-radius: 9px; background: var(--card); box-shadow: 0 5px 20px rgb(15 23 42 / 14%); opacity: 0; visibility: hidden; pointer-events: none; transition: max-height 160ms ease, opacity 120ms ease, visibility 0s linear 160ms; }
+.clone-detail-description-block.toolbar-open :deep(.task-rich-toolbar) { max-height: 42px; padding: 4px 8px; border-color: var(--line); opacity: 1; visibility: visible; pointer-events: auto; transition: max-height 160ms ease, opacity 120ms ease, visibility 0s; }
+.clone-detail-description-block :deep(.task-rich-toolbar button), .clone-detail-description-block :deep(.task-rich-color) { flex: 0 0 30px; min-width: 30px; height: 30px; }
+.clone-detail-description-block :deep(.task-rich-toolbar button:last-child) { display: none; }
+.clone-detail-description-block :deep(.task-rich-input) { min-height: 28px; max-height: 48vh; padding: 0; border: 0; resize: none; outline: 0 !important; box-shadow: none; background: transparent; font-size: 13px; line-height: 1.7; field-sizing: content; }
+.clone-detail-description-block :deep(.task-rich-input:focus) { border: 0; outline: 0 !important; box-shadow: none; }
+.clone-detail-description-block :deep(.task-rich-hint) { display: none; }
+.clone-inline-save-status { display: block; min-height: 15px; padding-left: 1px; color: var(--muted); font-size: 10px; }
+.clone-inline-save-status.error { color: var(--danger, #c2413b); }
 .clone-detail-description-block :deep(.task-rich-preview) { min-height: 0; padding: 0; overflow: visible; color: var(--ink2); font-size: 13px; line-height: 1.7; }
 .clone-detail-description { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: var(--ink2); font: inherit; font-size: 13px; line-height: 1.7; text-align: left; white-space: pre-wrap; cursor: text; }
 .clone-detail-description.placeholder { color: var(--muted); }
-.clone-edit-description { position: absolute; top: 0; right: 0; display: grid; width: 24px; height: 24px; place-items: center; border: 0; border-radius: 4px; background: transparent; color: var(--muted); opacity: 0; cursor: pointer; }
-.clone-detail-description-block:hover .clone-edit-description, .clone-edit-description:focus-visible { opacity: 1; }
-.clone-inline-description-editor { display: grid; gap: 8px; }
-.clone-inline-description-editor > div { display: flex; justify-content: flex-end; gap: 7px; }
-.clone-inline-description-editor > div > button:first-child { min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--ink2); }
 .clone-detail-properties { display: grid; border-top: 1px solid var(--line); }
 .clone-detail-properties button { display: flex; justify-content: space-between; gap: 12px; min-width: 0; padding: 9px 0; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--muted); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
 .clone-detail-property { display: flex; justify-content: space-between; gap: 12px; min-width: 0; padding: 9px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
@@ -6271,7 +6343,7 @@ const SidebarSection = {
 .clone-detail-tags-row button { display: grid; width: 26px; height: 26px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-checklist-editor > header button:hover,
 .clone-detail-tags-row button:hover { background: var(--accent-soft); color: var(--accent); }
-.clone-checklist-row { display: flex; align-items: center; gap: 8px; min-height: 38px; border-bottom: 1px solid color-mix(in srgb, var(--line) 75%, transparent); }
+.clone-checklist-row { display: flex; align-items: center; gap: 9px; min-height: 34px; border-bottom: 1px solid color-mix(in srgb, var(--line) 52%, transparent); }
 .clone-checklist-row.drop-target { border-top: 2px solid var(--accent); }
 .clone-checklist-row .clone-checklist-grip { opacity: .55; cursor: grab; touch-action: none; }
 .clone-checklist-row .clone-checklist-grip:active { cursor: grabbing; }
@@ -6279,7 +6351,9 @@ const SidebarSection = {
 .clone-checklist-row input[type="text"], .clone-checklist-row > input:not([type]) { flex: 1; min-width: 0; min-height: 30px; padding: 4px 0; border: 0; background: transparent; }
 .clone-checklist-row button { display: grid; place-items: center; width: 26px; height: 26px; border: 0; background: transparent; color: var(--muted); opacity: .35; cursor: pointer; }
 .clone-checklist-row:hover button { opacity: 1; }
-.clone-checklist-row span { flex: 1; color: var(--ink2); font-size: 13px; }
+.clone-checklist-row span { flex: 1; min-width: 0; padding: 4px 0; color: var(--ink2); font-size: 13px; cursor: text; }
+.clone-checklist-row span:hover { color: var(--ink); }
+.clone-checklist-row .clone-detail-checklist-title-input { flex: 1; min-width: 0; min-height: 28px; padding: 3px 0; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--accent) 52%, transparent); outline: 0; background: transparent; color: var(--ink2); font: inherit; font-size: 13px; }
 .clone-checklist-row .completed, .clone-checklist-row input.completed { color: var(--muted); text-decoration: line-through; }
 .clone-checklist-add { display: inline-flex; align-items: center; gap: 6px; justify-self: start; margin-top: 7px; padding: 5px 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
 .clone-checklist-add:hover { color: var(--accent); }
