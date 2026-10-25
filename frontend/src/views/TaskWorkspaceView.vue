@@ -6269,7 +6269,6 @@ const SidebarSection = {
 }
 .clone-task-row[data-depth]:not([data-depth="0"]) { width: calc(100% - 40px * var(--task-depth)); margin-left: calc(40px * var(--task-depth)); }
 .clone-subtask-toggle { position: absolute; z-index: 2; top: 50%; left: -3px; display: grid; width: 14px; height: 18px; place-items: center; padding: 0; transform: translateY(-50%); border: 0; background: transparent; color: var(--muted); cursor: pointer; }
-.clone-task-row.has-children .clone-check { margin-left: 16px; }
 .clone-task-row.has-children.is-note .clone-drag-handle { margin-left: 7px; }
 .clone-subtask-toggle:hover { color: var(--ink); }
 .clone-subtask-toggle svg { transition: transform 0.16s ease; }
