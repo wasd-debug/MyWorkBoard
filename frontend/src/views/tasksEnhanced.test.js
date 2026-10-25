@@ -384,6 +384,16 @@ test('task date, recurrence, and reminder popovers preserve task state boundarie
   assert.match(workspaceView, /@click\.stop="toggleReminderPopover"/)
 })
 
+test('task detail header exposes status, content conversion, and checklist progress', () => {
+  assert.match(workspaceView, /class="clone-detail-status-tool"/)
+  assert.match(workspaceView, /class="clone-detail-content-toggle"/)
+  assert.match(workspaceView, /class="clone-detail-checklist-progress" role="progressbar"/)
+  assert.ok(workspaceView.includes('async function toggleDescriptionChecklist(task)'))
+  assert.ok(workspaceView.includes('sortOrder }))'))
+  assert.ok(workspaceView.includes('description: checklist, checklist: []'))
+  assert.ok(workspaceView.includes("description: '', checklist }"))
+})
+
 test('quick add exposes inline date, priority, tag, and list controls that override parsed values', () => {
   for (const token of [
     '快速设置日期', '快速设置优先级', '快速选择标签', '快速选择清单',

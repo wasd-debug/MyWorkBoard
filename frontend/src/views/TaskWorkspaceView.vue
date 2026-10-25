@@ -670,6 +670,8 @@
       <template v-else>
       <header v-if="selectedTask || editorOpen" class="clone-detail-toolbar">
         <div class="clone-detail-toolbar-main">
+          <button v-if="!editorOpen" type="button" class="clone-detail-status-tool" :class="{ completed: selectedTask?.status === 'COMPLETED', abandoned: selectedTask?.status === 'ABANDONED' }" :aria-label="selectedTask?.status === 'COMPLETED' ? '重新打开任务' : '标记任务完成'" @click="toggleComplete(selectedTask)"><Check v-if="selectedTask?.status === 'COMPLETED'" :size="14" /></button>
+          <button v-else type="button" class="clone-detail-status-tool" :class="{ completed: draft.status === 'COMPLETED', abandoned: draft.status === 'ABANDONED' }" aria-label="任务完成状态" @click="draft.status = draft.status === 'COMPLETED' ? 'OPEN' : 'COMPLETED'"><Check v-if="draft.status === 'COMPLETED'" :size="14" /></button>
           <button type="button" class="clone-detail-tool clone-detail-list-tool" aria-label="任务清单" @click="editorOpen ? null : openEdit(selectedTask)">
             <ListTodo :size="15" /><span>{{ listName(editorOpen ? draft.listId : selectedTask?.listId) }}</span>
           </button>
@@ -946,15 +948,9 @@
       </form>
       <div v-else class="clone-detail-read">
         <div class="clone-detail-title">
-          <button
-            type="button"
-            class="clone-check"
-            @click="toggleComplete(selectedTask)"
-          >
-            <Check v-if="selectedTask.status === 'COMPLETED'" :size="14" />
-          </button>
           <h2 v-if="!inlineTitleEditing"><button type="button" aria-label="编辑任务标题" @click="beginInlineTitleEdit">{{ selectedTask.title }}<Pencil :size="13" /></button></h2>
           <input v-else v-model="inlineTitleDraft" class="clone-inline-title-input" aria-label="任务标题" maxlength="500" autofocus @keydown.enter.prevent="$event.target.blur()" @keydown.esc.prevent="cancelInlineTitleEdit" @blur="saveInlineTitle" />
+          <button type="button" class="clone-detail-content-toggle" aria-label="在描述和检查事项之间转换" :title="selectedTask.checklist?.length ? '转换为描述' : '转换为检查事项'" @click="toggleDescriptionChecklist(selectedTask)"><ListTodo v-if="selectedTask.checklist?.length" :size="16" /><AlignLeft v-else :size="16" /></button>
         </div>
         <div v-if="!inlineDescriptionEditing" class="clone-detail-description-block">
           <TaskRichTextEditor v-if="selectedTask.description" :model-value="selectedTask.description" label="任务描述" preview-only />
@@ -966,7 +962,8 @@
           <div><button type="button" @click="cancelInlineDescriptionEdit">取消</button><button type="button" class="clone-primary-button" :disabled="inlineDescriptionSaving" @click="saveInlineDescription">保存描述</button></div>
         </div>
         <section v-if="selectedTask.checklist?.length" class="clone-checklist-read" aria-label="检查项">
-          <header><strong>检查项</strong><span>{{ selectedTask.checklist.filter((item) => item.completed).length }}/{{ selectedTask.checklist.length }}</span></header>
+          <header><strong>检查项</strong><span class="clone-checklist-progress-label">{{ selectedTask.checklist.filter((item) => item.completed).length }}/{{ selectedTask.checklist.length }}</span></header>
+          <div class="clone-detail-checklist-progress" role="progressbar" :aria-valuenow="selectedTask.checklist.filter((item) => item.completed).length" :aria-valuemin="0" :aria-valuemax="selectedTask.checklist.length"><span :style="{ width: `${selectedTask.checklist.filter((item) => item.completed).length / selectedTask.checklist.length * 100}%` }"></span></div>
           <label v-for="item in selectedTask.checklist" :key="item.publicId || item.title" class="clone-checklist-row">
             <input type="checkbox" :checked="item.completed" @change="toggleChecklistItem(selectedTask, item)" />
             <span :class="{ completed: item.completed }">{{ item.title }}</span>
@@ -1142,6 +1139,7 @@ import {
 import { useRoute, useRouter, RouterLink } from "vue-router";
 import {
   Archive,
+  AlignLeft,
   BrushCleaning,
   CalendarClock,
   Bell,
@@ -2565,6 +2563,17 @@ async function setTaskRepeat(value) {
 async function setTaskPriority(value) {
   if (!selectedTask.value) return;
   selectedTask.value = await store.update(selectedTask.value, { priority: value });
+}
+async function toggleDescriptionChecklist(task) {
+  if (!task) return;
+  const checklist = task.checklist?.length
+    ? task.checklist.map(item => `${item.completed ? '- [x] ' : '- [ ] '}${item.title}`).join('\n')
+    : String(task.description || '').split(/\r?\n/).map(line => line.replace(/^\s*[-*+]\s*(?:\[[ xX]\]\s*)?/, '').trim()).filter(Boolean).map((title, sortOrder) => ({ title, completed: false, sortOrder }));
+  if (task.checklist?.length) {
+    selectedTask.value = await store.update(task, { description: checklist, checklist: [] });
+  } else if (checklist.length) {
+    selectedTask.value = await store.update(task, { description: '', checklist });
+  }
 }
 function addChecklistItem() {
   draft.checklistItems.push({ id: `new-${Date.now()}-${draft.checklistItems.length}`, title: "", completed: false });
@@ -5955,6 +5964,24 @@ const SidebarSection = {
 .clone-detail-toolbar-actions { display: flex; align-items: center; gap: 3px; min-width: 0; }
 .clone-detail-toolbar-main { flex: 1; overflow: visible; }
 .clone-detail-toolbar-actions { margin-left: auto; }
+.clone-detail-status-tool {
+  display: inline-grid;
+  width: 19px;
+  height: 19px;
+  flex: 0 0 19px;
+  place-items: center;
+  margin: 0 5px 0 1px;
+  padding: 0;
+  border: 1.5px solid var(--muted);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--accent-contrast, #fff);
+  cursor: pointer;
+}
+.clone-detail-status-tool:hover { border-color: var(--accent); background: var(--accent-soft); }
+.clone-detail-status-tool.completed { border-color: var(--accent); background: var(--accent); }
+.clone-detail-status-tool.abandoned { border-color: var(--down); }
+.clone-detail-status-tool svg { stroke-width: 2.5; }
 .clone-detail-tool,
 .clone-detail-priority-tool {
   display: inline-flex; align-items: center; gap: 5px; min-height: 32px; max-width: 132px;
@@ -5972,6 +5999,21 @@ const SidebarSection = {
 .clone-detail-priority-tool[data-priority="MEDIUM"] { color: var(--warn); }
 .clone-detail-repeat-icon { font-size: 18px !important; line-height: 1; }
 .clone-detail-close { margin-left: 2px; }
+.clone-detail-content-toggle {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.clone-detail-content-toggle:hover { background: var(--accent-soft); color: var(--accent); }
 .clone-toolbar-popover {
   position: absolute; z-index: 110; top: 46px; left: 12px; display: grid; gap: 7px; min-width: 170px;
   padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--card);
@@ -6199,6 +6241,21 @@ const SidebarSection = {
 .clone-checklist-add { display: inline-flex; align-items: center; gap: 6px; justify-self: start; margin-top: 7px; padding: 5px 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
 .clone-checklist-add:hover { color: var(--accent); }
 .clone-checklist-read > header span { color: var(--muted); font-size: 11px; }
+.clone-checklist-progress-label { min-width: 30px; text-align: right; }
+.clone-detail-checklist-progress {
+  height: 4px;
+  overflow: hidden;
+  margin: 0 0 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--line) 72%, transparent);
+}
+.clone-detail-checklist-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 180ms ease;
+}
 .clone-detail-tags-row { display: flex; align-items: center; gap: 6px; padding: 10px 0; border-top: 1px solid var(--line); color: var(--muted); }
 .clone-detail-tag { padding: 3px 7px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 11px; }
 .clone-detail-description {
