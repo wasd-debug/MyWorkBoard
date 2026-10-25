@@ -188,6 +188,10 @@ function runToolbar(key) {
     quote: [wrapInBlockquoteCommand.key]
   }
   const [command, payload] = commands[key] || []
+  if (key === 'check') {
+    wrapCurrentBlockInChecklist()
+    return
+  }
   if (command) crepeInstance.action(callCommand(command, payload))
 }
 
@@ -238,17 +242,7 @@ function applySlashCommand(item) {
         break
       }
     } else if (item.kind === 'check') {
-      crepeInstance.action(callCommand(wrapInBulletListCommand.key))
-      const state = view.state
-      const resolved = state.selection.$from
-      for (let depth = resolved.depth; depth > 0; depth -= 1) {
-        if (resolved.node(depth).type.name !== 'list_item') continue
-        const position = resolved.before(depth)
-        const listItem = resolved.node(depth)
-        const taskItemType = extendListItemSchemaForTask.type(crepeInstance.ctx)
-        view.dispatch(state.tr.setNodeMarkup(position, taskItemType, { ...listItem.attrs, checked: false }))
-        break
-      }
+      wrapCurrentBlockInChecklist()
     } else if (item.command) {
       crepeInstance.action(callCommand(item.command, item.payload))
     }
@@ -256,6 +250,23 @@ function applySlashCommand(item) {
   slashProvider.hide()
   slashRange = null
   slashQuery = ''
+}
+
+function wrapCurrentBlockInChecklist() {
+  const view = crepeInstance?.ctx.get(editorViewCtx)
+  if (!view) return
+  crepeInstance.action(callCommand(wrapInBulletListCommand.key))
+  const state = view.state
+  const resolved = state.selection.$from
+  for (let depth = resolved.depth; depth > 0; depth -= 1) {
+    if (resolved.node(depth).type.name !== 'list_item') continue
+    const position = resolved.before(depth)
+    const listItem = resolved.node(depth)
+    const taskItemType = extendListItemSchemaForTask.type(crepeInstance.ctx)
+    view.dispatch(state.tr.setNodeMarkup(position, taskItemType, { ...listItem.attrs, checked: false }))
+    view.focus()
+    return
+  }
 }
 
 defineExpose({ runToolbar })

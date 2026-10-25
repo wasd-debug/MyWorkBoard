@@ -18,7 +18,7 @@
 
 <script setup>
 import '@milkdown/kit/prose/view/style/prosemirror.css'
-import { Bold, Code, Heading1, Italic, List, ListOrdered, Minus, Quote, Strikethrough } from 'lucide-vue-next'
+import { Bold, CheckSquare, Code, Heading1, Italic, List, ListOrdered, Minus, Quote, Strikethrough } from 'lucide-vue-next'
 import { ref } from 'vue'
 import { MilkdownProvider } from '@milkdown/vue'
 import TaskMilkdownEditorSurface from './TaskMilkdownEditorSurface.vue'
@@ -36,6 +36,7 @@ const focused = ref(false)
 const toolbar = [
   { key: 'heading', label: '标题', icon: Heading1 },
   { key: 'bold', label: '加粗', icon: Bold },
+  { key: 'check', label: '检查项', icon: CheckSquare },
   { key: 'list', label: '无序列表', icon: List },
   { key: 'ordered', label: '有序列表', icon: ListOrdered },
   { key: 'italic', label: '斜体', icon: Italic },

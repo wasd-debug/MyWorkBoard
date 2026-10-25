@@ -713,10 +713,11 @@
       >
         <label>标题<input v-model="draft.title" required autofocus /></label
         ><label
-          >描述<TaskRichTextEditor
+          >描述<TaskMilkdownEditor
             v-model="draft.description"
             label="任务描述"
             placeholder="补充任务描述"
+            :toolbar-visible="true"
         /></label>
           <div class="clone-form-grid clone-detail-section">
           <label
@@ -730,7 +731,7 @@
               </option>
             </select></label
           ><label
-            >父任务<select v-model="draft.parentId">
+            >父任务<select v-model="draft.parentId" aria-label="父任务">
               <option value="">无</option>
               <option
                 v-for="task in parentOptions"
@@ -1013,8 +1014,40 @@
           <div class="clone-detail-footer-actions">
             <button type="button" aria-label="文本样式" :aria-pressed="detailRichToolbarOpen" @click="detailRichToolbarOpen = !detailRichToolbarOpen; if (detailRichToolbarOpen) commentComposerOpen = false"><AlignLeft :size="17" /></button>
             <button type="button" aria-label="打开评论" :aria-pressed="commentComposerOpen" @click="commentComposerOpen = !commentComposerOpen; if (commentComposerOpen) detailRichToolbarOpen = false; commentError = ''"><MessageCircle :size="17" /><small v-if="comments.length">{{ comments.length }}</small></button>
-            <button type="button" aria-label="更多详情操作" aria-haspopup="menu" @click.stop="openContext(selectedTask, $event)"><Ellipsis :size="17" /></button>
+            <button type="button" aria-label="更多详情操作" aria-haspopup="menu" :aria-expanded="detailMoreOpen" @click.stop="detailMoreOpen = !detailMoreOpen; detailMoreSection = ''"><Ellipsis :size="17" /></button>
           </div>
+          <div v-if="detailMoreOpen" class="clone-detail-more-menu" role="menu" aria-label="任务详情更多操作" @pointerdown.stop @click.stop>
+            <button role="menuitem" type="button" @click="detailMoreOpen = false; createSubtask(selectedTask)"><ListPlus :size="17" />添加子任务</button>
+            <button role="menuitem" type="button" @click="associateTaskParent"><ListTree :size="17" />关联主任务</button>
+            <button role="menuitem" type="button" @click="pinDetailTask"><Pin :size="17" />置顶</button>
+            <button role="menuitem" type="button" @click="abandonDetailTask"><CircleX :size="17" />放弃</button>
+            <button role="menuitem" type="button" :aria-expanded="detailMoreSection === 'tags'" @click="detailMoreSection = detailMoreSection === 'tags' ? '' : 'tags'"><Tag :size="17" />标签<ChevronRight :size="15" /></button>
+            <div v-if="detailMoreSection === 'tags'" class="clone-detail-more-submenu" role="group" aria-label="任务标签">
+              <label v-for="tag in sortedTags" :key="tag.publicId"><input type="checkbox" :checked="selectedTask.tagIds?.includes(tag.publicId)" @change="toggleDetailTaskTag(tag)" />#{{ tag.name }}</label>
+              <span v-if="!sortedTags.length">暂无标签</span>
+            </div>
+            <button role="menuitem" type="button" @click="chooseDetailAttachment"><Paperclip :size="17" />上传附件</button>
+            <button role="menuitem" type="button" @click="startDetailFocus"><CircleDot :size="17" />开始专注<ChevronRight :size="15" /></button>
+            <div class="clone-detail-more-separator" aria-hidden="true"></div>
+            <button role="menuitem" type="button" @click="showDetailActivity"><SlidersHorizontal :size="17" />任务动态</button>
+            <button role="menuitem" type="button" @click="saveSelectedTaskAsTemplate"><FileText :size="17" />保存为模板</button>
+            <button role="menuitem" type="button" @click="duplicateDetailTask"><CopyPlus :size="17" />创建副本</button>
+            <button role="menuitem" type="button" @click="copyDetailTaskLink"><Link :size="17" />复制链接</button>
+            <button role="menuitem" type="button" :aria-expanded="detailMoreSection === 'note'" @click="detailMoreSection = detailMoreSection === 'note' ? '' : 'note'"><StickyNote :size="17" />转换为笔记<ChevronRight :size="15" /></button>
+            <div v-if="detailMoreSection === 'note'" class="clone-detail-more-submenu" role="group" aria-label="选择笔记清单">
+              <button v-for="list in noteLists" :key="list.publicId" type="button" @click="convertDetailTaskToNote(list)">{{ list.name }}</button>
+              <span v-if="!noteLists.length">请先创建笔记清单</span>
+            </div>
+            <button role="menuitem" type="button" :aria-expanded="detailMoreSection === 'export'" @click="detailMoreSection = detailMoreSection === 'export' ? '' : 'export'"><Download :size="17" />导出<ChevronRight :size="15" /></button>
+            <div v-if="detailMoreSection === 'export'" class="clone-detail-more-submenu" role="group" aria-label="选择导出格式">
+              <button type="button" @click="exportDetailTask('markdown')">Markdown (.md)</button>
+              <button type="button" @click="exportDetailTask('text')">纯文本 (.txt)</button>
+            </div>
+            <button role="menuitem" type="button" @click="printDetailTask"><Printer :size="17" />打印</button>
+            <button role="menuitem" type="button" @click="openDetailTaskNote"><StickyNote :size="17" />打开便签</button>
+            <button role="menuitem" type="button" class="danger" @click="deleteDetailTask"><Trash2 :size="17" />删除</button>
+          </div>
+          <input ref="detailAttachmentInput" class="clone-detail-attachment-input" type="file" aria-label="选择任务附件" @change="uploadAttachment" />
       </footer>
       </template>
     </aside>
@@ -1115,6 +1148,18 @@
     <Dialog v-model:open="listCopyOpen" title="复制清单"><form class="clone-organization-form" @submit.prevent="confirmListCopy"><fieldset><legend>复制任务</legend><label><input v-model="listCopy.mode" type="radio" value="OPEN_ONLY" />只复制未完成任务</label><label><input v-model="listCopy.mode" type="radio" value="ALL_PRESERVE" />复制全部任务，保留已完成状态</label><label><input v-model="listCopy.mode" type="radio" value="ALL_OPEN" />复制全部任务，并将任务设为未完成</label></fieldset><p class="clone-dialog-note">新清单将命名为“{{ listCopy.name }}”。</p><footer><button type="button" :disabled="listCopy.busy" @click="listCopyOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="listCopy.busy">{{ listCopy.busy ? '复制中…' : '复制' }}</button></footer></form></Dialog>
     <Dialog v-model:open="organizationConfirmOpen" :title="organizationConfirmation.title"><template #title v-if="organizationConfirmation.action === 'delete-list'">删除清单“<TaskOrganizationIcon v-if="organizationConfirmation.item?.icon" class="clone-confirmation-title-icon" :value="organizationConfirmation.item.icon" :size="16" /><ListTodo v-else class="clone-confirmation-title-icon" :size="16" /> {{ organizationConfirmation.item?.name }}”？</template><div class="clone-confirmation"><p v-if="organizationConfirmation.action === 'dissolve-group'">解散后，文件夹（<TaskOrganizationIcon v-if="organizationConfirmation.item?.icon" class="clone-confirmation-title-icon" :value="organizationConfirmation.item.icon" :size="16" /><Folder v-else class="clone-confirmation-title-icon" :size="16" /> {{ organizationConfirmation.item?.name }}）中的清单将直接显示在侧边栏。</p><p v-else>{{ organizationConfirmation.message }}</p><footer><button type="button" :disabled="organizationConfirmation.busy" @click="organizationConfirmOpen = false">取消</button><button type="button" class="clone-danger-button" :disabled="organizationConfirmation.busy" @click="confirmOrganizationAction">{{ organizationConfirmation.busy ? '处理中…' : organizationConfirmation.confirmLabel }}</button></footer></div></Dialog>
     <Dialog v-model:open="tagMergeOpen" title="合并标签到…"><form class="clone-organization-form" @submit.prevent="confirmTagMerge"><p>你可以将标签“{{ tagMerge.source?.name }}”下的任务合并到另一个标签。合并后，标签“{{ tagMerge.source?.name }}”将被删除；其子标签会迁移至目标标签层级。</p><label>选择标签<select v-model="tagMerge.targetId" required><option value="" disabled>选择标签</option><option v-for="tag in mergeTargets" :key="tag.publicId" :value="tag.publicId">{{ tag.name }}</option></select></label><footer><button type="button" :disabled="tagMerge.busy" @click="tagMergeOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="tagMerge.busy || !mergeTargets.length">{{ tagMerge.busy ? '合并中…' : '确定' }}</button></footer></form></Dialog>
+    <Dialog v-model:open="detailParentPickerOpen" title="关联主任务" content-class="clone-parent-picker-dialog">
+      <div class="clone-parent-picker">
+        <label class="clone-parent-picker-search"><Search :size="15" /><input v-model="detailParentQuery" type="search" placeholder="搜索任务" aria-label="搜索主任务" /></label>
+        <button type="button" class="clone-parent-picker-none" @click="setDetailParent(null)">无主任务</button>
+        <div class="clone-parent-picker-list">
+          <button v-for="candidate in detailParentCandidates" :key="candidate.publicId" type="button" @click="setDetailParent(candidate)">
+            <span>{{ candidate.title }}</span><small>{{ listName(candidate.listId) }}</small>
+          </button>
+          <p v-if="!detailParentCandidates.length">没有可关联的任务</p>
+        </div>
+      </div>
+    </Dialog>
   </section>
 </template>
 
@@ -1143,7 +1188,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Circle,
+  CircleDot,
   CircleMinus,
+  CircleX,
   CalendarDays,
   Columns3,
   ArrowDownUp,
@@ -1153,18 +1200,23 @@ import {
   MessageCircle,
   ClipboardList,
   Copy,
+  CopyPlus,
   Ellipsis,
   Download,
   Eye,
   EyeOff,
   Flag,
+  FileText,
   GanttChart,
   History,
   GripVertical,
   Inbox,
   ListFilter,
   List,
+  ListPlus,
+  ListTree,
   ListTodo,
+  Link,
   Merge,
   PanelLeft,
   PanelLeftClose,
@@ -1178,6 +1230,7 @@ import {
   Save,
   Repeat2,
   SlidersHorizontal,
+  StickyNote,
   Tag,
   Timer,
   Trash2,
@@ -1454,6 +1507,8 @@ const filterDraftValid = computed(() => {
   return organizationDialog.filter.dueRange !== "CUSTOM" || Boolean(organizationDialog.filter.dueStart && organizationDialog.filter.dueEnd && organizationDialog.filter.dueEnd > organizationDialog.filter.dueStart);
 });
 const selectedTask = ref(null);
+const detailParentPickerOpen = ref(false);
+const detailParentQuery = ref("");
 const trashClearOpen = ref(false);
 const trashClearBusy = ref(false);
 const completionFilterMenu = ref("");
@@ -1563,6 +1618,24 @@ const workspaceViews = [
 const selectedWorkspaceView = ref(route.query.workspaceView === "KANBAN" ? "KANBAN" : route.query.workspaceView === "TIMELINE" ? "TIMELINE" : "LIST");
 const activeWorkspaceView = computed(() => selectedWorkspaceView.value);
 const noteLists = computed(() => store.lists.filter(item => !item.archived && item.objectType === "NOTE"));
+const detailParentCandidates = computed(() => {
+  const task = selectedTask.value;
+  if (!task?.publicId) return [];
+  const blocked = new Set([task.publicId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const item of store.tasks) {
+      if (item.parentId && blocked.has(item.parentId) && !blocked.has(item.publicId)) {
+        blocked.add(item.publicId);
+        changed = true;
+      }
+    }
+  }
+  const query = detailParentQuery.value.trim().toLocaleLowerCase();
+  return store.tasks.filter(item => item.publicId && !blocked.has(item.publicId) && item.status !== "DELETED"
+    && (!query || `${item.title} ${listName(item.listId)}`.toLocaleLowerCase().includes(query)));
+});
 const quickAddIsNote = computed(() => noteLists.value.some(item => item.publicId === quickEntry.listId)
   || (route.name === "tasks-list" && noteLists.value.some(item => item.publicId === route.params.publicId)));
 const quickTaskTemplates = [
@@ -1572,8 +1645,9 @@ const quickTaskTemplates = [
 ];
 const filteredQuickTaskTemplates = computed(() => {
   const query = taskTemplateQuery.value.trim().toLocaleLowerCase();
-  if (!query) return quickTaskTemplates;
-  return quickTaskTemplates.filter(template => `${template.title} ${template.description} ${template.checklist.join(" ")}`.toLocaleLowerCase().includes(query));
+  const templates = [...quickTaskTemplates, ...savedTaskTemplates.value];
+  if (!query) return templates;
+  return templates.filter(template => `${template.title} ${template.description} ${template.checklist.join(" ")}`.toLocaleLowerCase().includes(query));
 });
 const quickSuggestionLabel = computed(() => ({ priority: "优先级候选", tag: "标签候选", list: "清单候选" })[quickSuggestion.value?.kind] || "候选");
 const quickSuggestionOptions = computed(() => {
@@ -1684,6 +1758,10 @@ const activityLoading = ref(false);
 const comments = ref([]);
 const attachments = ref([]);
 const detailSecondaryOpen = ref(false);
+const detailMoreOpen = ref(false);
+const detailMoreSection = ref("");
+const detailAttachmentInput = ref(null);
+const savedTaskTemplates = ref([]);
 const commentComposerOpen = ref(false);
 const commentDraft = ref("");
 const commentEditDraft = ref("");
@@ -2664,6 +2742,243 @@ async function copyContextTaskLink() {
     message.warning("复制失败，请检查浏览器剪贴板权限");
   }
 }
+function closeDetailMoreOnOutsidePointer(event) {
+  if (detailMoreOpen.value && !event.target.closest?.(".clone-detail-footer")) {
+    detailMoreOpen.value = false;
+    detailMoreSection.value = "";
+  }
+}
+function closeDetailMore() {
+  detailMoreOpen.value = false;
+  detailMoreSection.value = "";
+}
+async function associateTaskParent() {
+  closeDetailMore();
+  if (!selectedTask.value) return;
+  detailParentQuery.value = "";
+  detailParentPickerOpen.value = true;
+}
+async function setDetailParent(parent) {
+  const task = selectedTask.value;
+  if (!task) return;
+  try {
+    selectedTask.value = await store.update(task, { parentId: parent?.publicId || null });
+    detailParentPickerOpen.value = false;
+    message.success(parent ? `已关联主任务“${parent.title}”` : "已取消主任务关联");
+  } catch (error) {
+    message.error(error?.response?.data?.detail || error?.message || "关联主任务失败");
+  }
+}
+async function pinDetailTask() {
+  const task = selectedTask.value;
+  closeDetailMore();
+  if (!task) return;
+  try {
+    selectedTask.value = await store.sortTask(task, 0);
+    message.success("任务已置顶到当前清单和状态的首位");
+  } catch (error) {
+    message.error(error?.message || "任务置顶失败");
+  }
+}
+async function abandonDetailTask() {
+  const task = selectedTask.value;
+  closeDetailMore();
+  if (!task || task.status === "ABANDONED") return;
+  try {
+    await store.abandon(task);
+    selectedTask.value = store.tasks.find(item => item.publicId === task.publicId) || null;
+  } catch (error) {
+    message.error(error?.message || "放弃任务失败");
+  }
+}
+async function toggleDetailTaskTag(tag) {
+  const task = selectedTask.value;
+  if (!task || !tag) return;
+  const tagIds = task.tagIds || [];
+  try {
+    const updated = await store.update(task, {
+      tagIds: tagIds.includes(tag.publicId)
+        ? tagIds.filter(id => id !== tag.publicId)
+        : [...tagIds, tag.publicId],
+    });
+    selectedTask.value = updated;
+  } catch (error) {
+    message.error(error?.response?.data?.detail || error?.message || "更新标签失败");
+  }
+}
+function chooseDetailAttachment() {
+  closeDetailMore();
+  detailAttachmentInput.value?.click();
+}
+async function startDetailFocus() {
+  const task = selectedTask.value;
+  closeDetailMore();
+  if (!task) return;
+  try {
+    await focusStore.start({ taskId: task.publicId });
+    await router.push("/tasks/focus");
+  } catch (error) {
+    message.error(error?.response?.data?.detail || error?.message || "无法开始专注");
+  }
+}
+async function showDetailActivity() {
+  closeDetailMore();
+  detailSecondaryOpen.value = true;
+  await nextTick();
+  document.querySelector(".clone-detail-secondary .clone-activity-section")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+function taskTemplateStorageKey() {
+  return `task-detail-templates:${store.accountScope || "anonymous"}`;
+}
+function loadSavedTaskTemplates() {
+  try {
+    const templates = JSON.parse(localStorage.getItem(taskTemplateStorageKey()) || "[]");
+    savedTaskTemplates.value = Array.isArray(templates) ? templates : [];
+  } catch {
+    savedTaskTemplates.value = [];
+  }
+}
+function saveSelectedTaskAsTemplate() {
+  const task = selectedTask.value;
+  closeDetailMore();
+  if (!task) return;
+  const name = window.prompt("模板名称", task.title);
+  if (!name?.trim()) return;
+  const template = {
+    id: crypto.randomUUID(),
+    title: task.title,
+    templateName: name.trim(),
+    description: task.description || "",
+    checklist: (task.checklist || []).map(item => item.title),
+  };
+  try {
+    const templates = [...savedTaskTemplates.value, template];
+    localStorage.setItem(taskTemplateStorageKey(), JSON.stringify(templates));
+    savedTaskTemplates.value = templates;
+    message.success("模板已保存到当前账号的本地浏览器");
+  } catch {
+    message.error("模板保存失败，请检查本地存储空间");
+  }
+}
+async function duplicateDetailTask() {
+  const task = selectedTask.value;
+  closeDetailMore();
+  if (!task) return;
+  try {
+    const copy = await store.create({
+      ...task,
+      title: `${task.title} 副本`,
+      status: "OPEN",
+      completedAt: null,
+      abandonedAt: null,
+      publicId: undefined,
+    });
+    selectedTask.value = copy;
+    openDetail(copy);
+  } catch (error) {
+    message.error(error?.response?.data?.detail || error?.message || "创建副本失败");
+  }
+}
+async function copyDetailTaskLink() {
+  const task = selectedTask.value;
+  closeDetailMore();
+  if (!task) return;
+  try {
+    const url = new URL("/tasks/all", window.location.origin);
+    url.searchParams.set("task", task.publicId);
+    await navigator.clipboard.writeText(url.href);
+    message.success("任务链接已复制");
+  } catch {
+    message.warning("复制失败，请检查浏览器剪贴板权限");
+  }
+}
+async function convertDetailTaskToNote(list) {
+  const task = selectedTask.value;
+  closeDetailMore();
+  if (!task || !list) return;
+  try {
+    selectedTask.value = await store.update(task, { listId: list.publicId, priority: "NONE" });
+    message.success(`已转换并移动到笔记清单“${list.name}”`);
+  } catch (error) {
+    message.error(error?.response?.data?.detail || error?.message || "转换为笔记失败");
+  }
+}
+function exportDetailTask(format = "markdown") {
+  const task = selectedTask.value;
+  closeDetailMore();
+  if (!task) return;
+  const checklist = (task.checklist || []).map(item => `- [${item.completed ? "x" : " "}] ${item.title}`).join("\n");
+  const markdown = `# ${task.title}\n\n${task.description || ""}${checklist ? `\n\n${checklist}` : ""}\n`;
+  const content = format === "text"
+    ? [task.title, task.description || "", (task.checklist || []).map(item => `${item.completed ? "[x]" : "[ ]"} ${item.title}`).join("\n")].filter(Boolean).join("\n\n")
+    : markdown;
+  const extension = format === "text" ? "txt" : "md";
+  const mimeType = format === "text" ? "text/plain;charset=utf-8" : "text/markdown;charset=utf-8";
+  const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${task.title.replace(/[\\/:*?"<>|]/g, "-") || "task"}.${extension}`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function openDetailTaskNote() {
+  const task = selectedTask.value;
+  closeDetailMore();
+  if (!task) return;
+  const popup = window.open("", `task-note-${task.publicId}`, "popup,width=420,height=620,resizable=yes,scrollbars=yes");
+  if (!popup) return message.warning("浏览器阻止了便签窗口，请允许弹窗后重试");
+  popup.document.title = `${task.title} - 便签`;
+  const style = popup.document.createElement("style");
+  style.textContent = "body{margin:0;padding:24px;background:#f7f7f5;color:#242424;font:14px/1.65 system-ui,sans-serif}main{max-width:620px;margin:0 auto}h1{margin:0 0 18px;font-size:21px;line-height:1.35}article{white-space:pre-wrap;overflow-wrap:anywhere}ul{padding-left:22px}li{margin:6px 0}.meta{margin-top:22px;color:#777;font-size:12px}";
+  const main = popup.document.createElement("main");
+  const title = popup.document.createElement("h1");
+  title.textContent = task.title;
+  const body = popup.document.createElement("article");
+  body.textContent = task.description || "";
+  main.append(title, body);
+  if (task.checklist?.length) {
+    const list = popup.document.createElement("ul");
+    for (const item of task.checklist) {
+      const row = popup.document.createElement("li");
+      row.textContent = `${item.completed ? "☑" : "☐"} ${item.title}`;
+      list.append(row);
+    }
+    main.append(list);
+  }
+  const meta = popup.document.createElement("p");
+  meta.className = "meta";
+  meta.textContent = listName(task.listId);
+  main.append(meta);
+  popup.document.head.append(style);
+  popup.document.body.replaceChildren(main);
+  popup.focus();
+}
+function printDetailTask() {
+  const task = selectedTask.value;
+  closeDetailMore();
+  if (!task) return;
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) return message.warning("浏览器阻止了打印窗口，请允许弹窗后重试");
+  printWindow.document.title = task.title;
+  const heading = printWindow.document.createElement("h1");
+  heading.textContent = task.title;
+  const description = printWindow.document.createElement("pre");
+  description.textContent = task.description || "";
+  printWindow.document.body.replaceChildren(heading, description);
+  printWindow.document.head.insertAdjacentHTML("beforeend", "<style>body{font:16px/1.6 system-ui,sans-serif;margin:40px}pre{font:inherit;white-space:pre-wrap}</style>");
+  printWindow.document.close();
+  window.setTimeout(() => {
+    if (!printWindow.closed) {
+      printWindow.focus();
+      printWindow.print();
+    }
+  }, 180);
+}
+function deleteDetailTask() {
+  const task = selectedTask.value;
+  closeDetailMore();
+  if (task) void deleteTask(task);
+}
 function openDetail(task) {
   if (!task) return;
   if (selectedTask.value && inlineDescriptionDraft.value !== (selectedTask.value.description || "")) {
@@ -2674,6 +2989,7 @@ function openDetail(task) {
   closeAttributePopovers();
   Object.assign(quickReminder, { enabled: false, kind: "RELATIVE", offsetMinutes: 30, remindLocal: "", dailyUntilDone: false, reminder: null });
   selectedTask.value = task;
+  closeDetailMore();
   inlineDescriptionDraft.value = task.description || "";
   inlineDescriptionError.value = "";
   editorOpen.value = false;
@@ -3083,6 +3399,7 @@ function closeDetail() {
   listActivityRequest += 1;
   listActivityLoading.value = false;
   selectedTask.value = null;
+  detailParentPickerOpen.value = false;
   editing.value = null;
   editorOpen.value = false;
   inlineTitleEditing.value = false;
@@ -3190,7 +3507,7 @@ function applyQuickTaskTemplate(template) {
     description: template.description || "",
     checklist: template.checklist.map((title, sortOrder) => ({ title, completed: false, sortOrder })),
   };
-  quickTitle.value = template.title;
+  quickTitle.value = template.templateName || template.title;
   taskTemplatesOpen.value = false;
   quickAddExpanded.value = true;
   nextTick(() => quickTitleInput.value?.focus());
@@ -3603,12 +3920,13 @@ async function removeComment(comment) {
 async function uploadAttachment(event) {
   const file = event.target.files?.[0];
   event.target.value = "";
-  if (!file || !editing.value) return;
+  if (!file || !(editing.value || selectedTask.value)?.publicId) return;
   pendingAttachment.value = file;
   await uploadAttachmentFile(file);
 }
 async function uploadAttachmentFile(file) {
-  if (!editing.value || !file) return;
+  const task = editing.value || selectedTask.value;
+  if (!task?.publicId || !file) return;
   if (!store.online) {
     attachmentError.value = "当前离线，附件未上传；联网后可重试";
     return;
@@ -3616,9 +3934,9 @@ async function uploadAttachmentFile(file) {
   attachmentError.value = "";
   attachmentProgress.value = 1;
   try {
-    await apiUploadTaskAttachment(editing.value.publicId, file, (value) => { attachmentProgress.value = value; });
+    await apiUploadTaskAttachment(task.publicId, file, (value) => { attachmentProgress.value = value; });
     pendingAttachment.value = null;
-    await Promise.all([loadCollaboration(editing.value), loadActivity(editing.value)]);
+    await Promise.all([loadCollaboration(task), loadActivity(task)]);
   } catch (error) {
     attachmentError.value = error?.response?.data?.detail || error?.message || "上传附件失败";
   } finally {
@@ -4686,6 +5004,10 @@ async function loadFilters() {
 }
 function onKeydown(event) {
   if (event.key === "Escape") {
+    if (detailMoreOpen.value) {
+      closeDetailMore();
+      return;
+    }
     if (quickAction.value) {
       quickAction.value = "";
       return;
@@ -4745,6 +5067,7 @@ onMounted(() => {
   const sidebarPreferencesLoad = loadSidebarPreferences(filtersLoad);
   miniCalendarMonth.value = new Date(selectedDate.value.getFullYear(), selectedDate.value.getMonth(), 1);
   const storeInit = store.init({ waitForRemote: false });
+  watch(() => store.accountScope, loadSavedTaskTemplates, { immediate: true });
   const taskSettingsLoad = apiGetTaskSettings().then(settings => { if (settings) quickAddSettings.value = settings; }).catch(() => {});
   const miniCalendarLoad = loadMiniCalendar();
   void Promise.allSettled([storeInit, taskSettingsLoad, filtersLoad, sidebarPreferencesLoad, miniCalendarLoad]).then(results => {
@@ -4752,6 +5075,7 @@ onMounted(() => {
     if (failed) store.error = failed.reason?.message || "任务工作区加载失败";
   });
   document.addEventListener("pointerdown", closeContext);
+  document.addEventListener("pointerdown", closeDetailMoreOnOutsidePointer);
   document.addEventListener("pointerdown", closeQuickAction);
   document.addEventListener("pointerdown", closeWorkspaceMenusOnOutsidePointer);
   document.addEventListener("pointerdown", closeCompletionFilterOnOutsidePointer);
@@ -4767,6 +5091,7 @@ onBeforeUnmount(() => {
   stopDetailResize();
   stopSidebarResize();
   document.removeEventListener("pointerdown", closeContext);
+  document.removeEventListener("pointerdown", closeDetailMoreOnOutsidePointer);
   document.removeEventListener("pointerdown", closeQuickAction);
   document.removeEventListener("pointerdown", closeWorkspaceMenusOnOutsidePointer);
   document.removeEventListener("pointerdown", closeCompletionFilterOnOutsidePointer);
@@ -6174,6 +6499,16 @@ const SidebarSection = {
   gap: 16px;
   padding: 20px;
 }
+.clone-detail-form > label:first-child input { min-height: 42px; padding: 9px 12px; border-color: var(--line); font-size: 18px; }
+.clone-detail-form > label:nth-child(2) { gap: 8px; }
+.clone-detail-form .task-milkdown-editor { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.clone-detail-form .task-milkdown-editor :deep([data-milkdown-root]) { min-height: 220px; background: var(--paper); }
+.clone-detail-form .task-rich-toolbar { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--card); }
+.clone-detail-form .task-rich-toolbar button { display: grid; width: 34px; height: 32px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--ink2); cursor: pointer; }
+.clone-detail-form .task-rich-toolbar button:hover { background: var(--paper); color: var(--accent); }
+.clone-detail-form .clone-form-grid { padding: 14px 0; border-top: 1px solid var(--line); }
+.clone-detail-form .clone-form-grid select,
+.clone-detail-form .clone-form-grid input:not([type="checkbox"]) { min-height: 42px; border-radius: 8px; }
 .clone-detail-read { flex: 1 1 auto; min-height: 0; overflow: auto; align-content: start; padding: 16px 22px 108px; gap: 0; scrollbar-gutter: stable; }
 .clone-detail-section { padding-top: 12px; border-top: 1px solid var(--line); }
 .clone-popover-field { position: relative; }
@@ -6386,12 +6721,37 @@ const SidebarSection = {
 .clone-detail-tag { padding: 3px 7px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 11px; }
 .clone-detail-secondary { display: grid; gap: 16px; padding-top: 12px; }
 .clone-detail-footer { position: absolute; right: 0; bottom: 0; left: 0; z-index: 4; display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--card) 98%, var(--paper)); }
+.clone-detail-footer-actions { position: relative; }
 .clone-detail-footer button { display: inline-flex; align-items: center; gap: 6px; min-width: 28px; min-height: 30px; padding: 5px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
 .clone-detail-footer button:hover, .clone-detail-footer button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
 .clone-detail-footer-list { min-width: 0 !important; max-width: 50%; overflow: hidden; }
 .clone-detail-footer-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clone-detail-footer-actions { display: flex; align-items: center; gap: 8px; }
 .clone-detail-footer-actions small { color: var(--accent); font-size: 10px; }
+.clone-detail-more-menu { position: absolute; right: 8px; bottom: calc(100% + 8px); z-index: 20; width: 246px; max-height: min(72vh, 680px); overflow: auto; padding: 7px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); box-shadow: 0 14px 40px rgb(15 23 42 / 20%); }
+.clone-detail-more-menu > button { display: flex; width: 100%; min-height: 38px; align-items: center; gap: 12px; padding: 7px 10px; border-radius: 6px; color: var(--ink2); text-align: left; font-size: 13px; }
+.clone-detail-more-menu > button svg:first-child { flex: none; color: var(--ink2); }
+.clone-detail-more-menu > button svg:last-child:not(:first-child) { margin-left: auto; color: var(--muted); }
+.clone-detail-more-menu > button:hover { background: var(--paper); color: var(--ink); }
+.clone-detail-more-menu > button.danger { color: var(--down); }
+.clone-detail-more-separator { height: 1px; margin: 5px 0; background: var(--line); }
+.clone-detail-more-submenu { display: grid; max-height: 160px; gap: 2px; overflow: auto; padding: 4px 8px 8px 40px; color: var(--muted); font-size: 12px; }
+.clone-detail-more-submenu label { display: flex; min-height: 28px; align-items: center; gap: 7px; color: var(--ink2); cursor: pointer; }
+.clone-detail-more-submenu input { accent-color: var(--accent); }
+.clone-detail-more-submenu > button { min-height: 30px; padding: 5px 6px; border: 0; background: transparent; color: var(--ink2); text-align: left; cursor: pointer; }
+.clone-detail-more-submenu > button:hover { color: var(--accent); }
+.clone-detail-attachment-input { display: none; }
+:global(.clone-parent-picker-dialog) { width: min(460px, calc(100vw - 32px)); }
+.clone-parent-picker { display: grid; gap: 8px; min-width: 0; }
+.clone-parent-picker-search { display: flex; min-height: 36px; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); }
+.clone-parent-picker-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 12px; }
+.clone-parent-picker-none { min-height: 32px; padding: 0 9px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); text-align: left; cursor: pointer; }
+.clone-parent-picker-none:hover, .clone-parent-picker-list > button:hover { background: var(--paper); color: var(--ink); }
+.clone-parent-picker-list { display: grid; max-height: min(42vh, 320px); gap: 2px; overflow: auto; }
+.clone-parent-picker-list > button { display: grid; min-height: 42px; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 5px 9px; border: 0; border-radius: 5px; background: transparent; color: var(--ink2); text-align: left; cursor: pointer; }
+.clone-parent-picker-list > button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clone-parent-picker-list > button small { color: var(--muted); font-size: 11px; }
+.clone-parent-picker-list > p { margin: 0; padding: 14px 9px; color: var(--muted); font-size: 12px; text-align: center; }
 .clone-detail-comment-composer { position: absolute; right: 12px; bottom: 48px; left: 12px; z-index: 4; display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border: 1px solid color-mix(in srgb, var(--accent) 58%, var(--line)); border-radius: 7px; background: var(--card); box-shadow: 0 3px 12px rgb(15 23 42 / 8%); }
 .clone-detail-comment-composer textarea { width: 100%; min-width: 0; min-height: 30px; max-height: 96px; padding: 6px 0; border: 0; outline: 0; resize: vertical; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; }
 .clone-detail-comment-composer button { display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; border: 0; border-radius: 5px; background: var(--accent); color: var(--accent-contrast, #fff); cursor: pointer; }
