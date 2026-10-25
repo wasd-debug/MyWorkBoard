@@ -477,7 +477,7 @@
       </div>
       <div v-else class="clone-task-groups">
         <section
-          v-for="group in groups"
+          v-for="group in listGroups"
           :key="group.key"
           class="clone-task-group"
           :class="{ 'drag-target': dragOverGroupKey === group.key }"
@@ -494,17 +494,18 @@
               :size="16"
               :class="{ rotated: collapsed[group.key] }"
             /><strong>{{ group.label }}</strong
-            ><span>{{ group.tasks.length }}</span>
+            ><span>{{ group.visibleCount }}</span>
           </button>
           <div class="clone-collapse-panel" :class="{ 'is-collapsed': collapsed[group.key] }" :aria-hidden="Boolean(collapsed[group.key])"><TransitionGroup name="clone-sort" tag="div" class="clone-task-rows clone-collapse-inner" :inert="Boolean(collapsed[group.key])">
             <article
-              v-for="task in group.tasks"
+              v-for="task in group.rows"
               :key="task.publicId"
               class="clone-task-row"
               :class="{
                 selected: selectedTask?.publicId === task.publicId,
                 checked: task.status === 'COMPLETED',
                 'is-note': isNoteTask(task),
+                'has-children': task.hasVisibleChildren,
                 multi: selectedIds.has(task.publicId),
                 'print-content': printMode === 'CONTENT',
                 dragging: dragged?.publicId === task.publicId,
@@ -512,13 +513,15 @@
                 'drop-before': dragOverTask?.publicId === task.publicId && dragOverPlacement === 'before',
                 'drop-after': dragOverTask?.publicId === task.publicId && dragOverPlacement === 'after',
               }"
+              :data-depth="task.treeDepth"
               :data-priority="task.priority"
-              :style="{ '--task-group-color': groupColor(task) }"
+              :style="{ '--task-group-color': groupColor(task), '--task-depth': task.treeDepth }"
               @dragover.prevent.stop="setTaskDragTarget(task, $event)"
               @drop.prevent.stop="dropTask(task, group.tasks.indexOf(task), group.key)"
               @dragend="endTaskDrag"
               @contextmenu.prevent="openContext(task, $event)"
             >
+              <button v-if="task.hasVisibleChildren" type="button" class="clone-subtask-toggle" :aria-label="`${collapsedSubtaskIds.has(task.publicId) ? '展开' : '收起'}${task.title}的子任务`" :aria-expanded="!collapsedSubtaskIds.has(task.publicId)" @click.stop="toggleSubtaskBranch(task.publicId)"><ChevronDown :size="14" :class="{ rotated: collapsedSubtaskIds.has(task.publicId) }" /></button>
               <button
                 v-if="!isNoteTask(task)"
                 type="button"
@@ -1294,6 +1297,7 @@ import Dialog from "../components/ui/Dialog.vue";
 import { organizationIconCategories, searchOrganizationIcons } from "./taskOrganizationIcons.js";
 import { getListDropPlacement, moveItem, reorderListDrop } from "./taskSidebar.js";
 import { groupTaskItems, sortTaskItems, taskGroupDropPatch } from "./taskList.js";
+import { buildTaskListGroups } from "./taskWorkspaceTree.js";
 import { moveChecklistItem as reorderChecklistItems } from "./taskChecklist.js";
 import { matchesFilterRules, serializeFilterRules } from "./taskFilterRules.js";
 import { advancedFilterConditionsFromRules, advancedFilterConditionsValid, buildAdvancedFilterRules } from "./taskAdvancedFilter.js";
@@ -2178,6 +2182,13 @@ const completedTasks = computed(() =>
   visibleTasks.value.filter((task) => task.status === "COMPLETED"),
 );
 const completedPreviewTasks = computed(() => completedTasks.value.slice(0, completedLimit.value));
+const collapsedSubtaskIds = ref(new Set());
+function toggleSubtaskBranch(publicId) {
+  const next = new Set(collapsedSubtaskIds.value);
+  if (next.has(publicId)) next.delete(publicId);
+  else next.add(publicId);
+  collapsedSubtaskIds.value = next;
+}
 const groups = computed(() => {
   if (groupBy.value !== "time" && groupBy.value !== "none") return groupTaskItems(openTasks.value, groupBy.value, store.lists, new Date(), store.tags, { includeEmptyLists: route.name === "tasks-all" });
   if (groupBy.value === "none") return [{ key: "all", label: "所有任务", tasks: openTasks.value }];
@@ -2190,6 +2201,7 @@ const groups = computed(() => {
   }
   return result;
 });
+const listGroups = computed(() => buildTaskListGroups(groups.value, openTasks.value, collapsedSubtaskIds.value));
 const todayCountdowns = computed(() => route.name === "tasks-today" && !route.query.date ? store.countdowns.filter((item) => !item.archived && !item.deleted) : []);
 const todayHabits = computed(() => route.name === "tasks-today" && !route.query.date ? store.habits.filter((item) => !item.archived && !item.deleted) : []);
 const completedLimit = ref(5);
@@ -6255,6 +6267,13 @@ const SidebarSection = {
   border-left: 3px solid var(--task-group-color, transparent);
   transition: background 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease, transform 0.12s ease;
 }
+.clone-task-row[data-depth]:not([data-depth="0"]) { width: calc(100% - 40px * var(--task-depth)); margin-left: calc(40px * var(--task-depth)); }
+.clone-subtask-toggle { position: absolute; z-index: 2; top: 50%; left: -3px; display: grid; width: 14px; height: 18px; place-items: center; padding: 0; transform: translateY(-50%); border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-task-row.has-children .clone-check { margin-left: 16px; }
+.clone-task-row.has-children.is-note .clone-drag-handle { margin-left: 7px; }
+.clone-subtask-toggle:hover { color: var(--ink); }
+.clone-subtask-toggle svg { transition: transform 0.16s ease; }
+.clone-subtask-toggle svg.rotated { transform: rotate(-90deg); }
 .clone-task-row.dragging { opacity: .42; }
 .clone-task-row.drag-over { box-shadow: inset 0 3px 0 var(--accent), inset 3px 0 0 var(--task-group-color, var(--accent)); }
 .clone-task-row.drop-before::after,
@@ -6345,7 +6364,7 @@ const SidebarSection = {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.clone-task-metadata { display: flex; align-items: center; gap: 7px; flex: none; max-width: 52%; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; container: task-meta / inline-size; }
+.clone-task-metadata { display: flex; align-items: center; gap: 7px; width: 52%; flex: 0 1 52%; max-width: 52%; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; container: task-meta / inline-size; }
 .clone-task-tags { position: relative; display: flex; align-items: center; gap: 5px; min-width: 0; overflow: visible; }
 .clone-task-tag-wrap { position: relative; display: inline-flex; align-items: center; flex: none; min-width: 0; }
 .clone-task-tag { display: inline-flex; align-items: center; max-width: 92px; overflow: hidden; padding: 2px 8px; border-radius: 12px; background: color-mix(in srgb, var(--task-tag-color, var(--accent)) 22%, var(--card)); color: color-mix(in srgb, var(--task-tag-color, var(--accent)) 70%, var(--ink)); text-overflow: ellipsis; }
