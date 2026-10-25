@@ -10,6 +10,7 @@ test('builds supported preset and custom RRULE values', () => {
   assert.equal(buildQuickRepeatRule({ ...createQuickRepeatState(), preset: 'CUSTOM', frequency: 'MONTHLY', monthMode: 'WORKDAY', workdayPosition: -1 }), 'FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1')
   assert.equal(buildQuickRepeatRule({ ...createQuickRepeatState(), preset: 'CUSTOM', frequency: 'YEARLY', monthMode: 'DATE', month: 8, monthDay: 15 }), 'FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=15')
   assert.equal(buildQuickRepeatRule({ ...createQuickRepeatState(), preset: 'CUSTOM', frequency: 'DAILY', skipWeekends: true }), 'FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR')
+  assert.equal(buildQuickRepeatRule({ ...createQuickRepeatState(), preset: 'CUSTOM', mode: 'COMPLETION_DATE', frequency: 'WEEKLY', weekdays: ['MO'], endMode: 'UNTIL', until: '2026-12-31' }), 'FREQ=WEEKLY;BYDAY=MO;UNTIL=20261231T235959Z')
 })
 
 test('validates custom weekly and end conditions', () => {

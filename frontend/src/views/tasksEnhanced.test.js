@@ -242,6 +242,14 @@ test('task rich editor keeps the native caret during typing and renders markdown
   assert.match(taskRichTextEditor, /task-rich-input :deep\(h2\)[\s\S]*font-size: 1\.4em/)
 })
 
+test('task detail repeat is a passive marker and is configured from the date popover', () => {
+  assert.match(workspaceView, /v-if="editorOpen \? \(draft\.rrule === 'CUSTOM' \? draft\.customRrule : draft\.rrule\) : selectedTask\?\.rrule"[\s\S]*class="clone-detail-repeat-indicator"/)
+  assert.doesNotMatch(workspaceView, /clone-detail-repeat-indicator[^>]*@click/)
+  assert.match(workspaceView, /class="clone-date-repeat-section"[\s\S]*@click\.stop="toggleRepeatPopover"/)
+  assert.match(workspaceView, /function toggleRepeatPopover\(\) \{[\s\S]*repeatPopoverOpen\.value = !repeatPopoverOpen\.value;\n  reminderPopoverOpen\.value = false/)
+  assert.doesNotMatch(workspaceView.match(/function toggleRepeatPopover\(\) \{[\s\S]*?\n\}/)?.[0] || '', /datePopoverOpen\.value = false/)
+})
+
 test('task detail description uses the isolated Milkdown editor prototype', async () => {
   assert.match(workspaceView, /<TaskMilkdownEditor v-model="inlineDescriptionDraft"/)
   assert.match(workspaceView, /defineAsyncComponent\(\(\) => import\("\.\.\/components\/tasks\/TaskMilkdownEditor\.vue"\)\)/)
@@ -959,10 +967,13 @@ test('task organization icons use categorized Lucide icons and preserve emoji fa
 })
 
 test('task detail pane follows TickTick toolbar and bottom action hierarchy', () => {
-  const toolbar = workspaceView.match(/<header v-if="selectedTask \|\| editorOpen" class="clone-detail-toolbar">([\s\S]*?)<\/header>/)?.[1] || ''
+  const toolbar = workspaceView.match(/<header v-if="selectedTask \|\| editorOpen" class="clone-detail-toolbar"[^>]*>([\s\S]*?)<\/header>/)?.[1] || ''
   assert.match(toolbar, /class="clone-detail-status-tool"/)
   assert.match(toolbar, /aria-label="设置日期"/)
-  assert.match(toolbar, /v-if="\(editorOpen \? draft\.rrule : selectedTask\?\.rrule\)"[\s\S]*class="clone-detail-repeat-tool"/)
+  assert.match(toolbar, /class="clone-detail-repeat-indicator"/)
+  assert.doesNotMatch(toolbar.match(/<span v-if="editorOpen \? \(draft\.rrule[\s\S]*?<\/span>/)?.[0] || '', /@click/)
+  assert.match(toolbar, /class="clone-date-repeat-section"/)
+  assert.match(toolbar, /class="clone-detail-repeat-inline"/)
   assert.match(toolbar, /aria-label="设置优先级"/)
   assert.doesNotMatch(toolbar, /aria-label="更多详情操作"|aria-label="关闭任务详情"/)
   assert.match(workspaceView, /class="clone-detail-footer" aria-label="详情工具"/)
