@@ -224,6 +224,14 @@ test('task detail collaboration and slash insertion stay in the replacement work
   for (const token of ['slashCommands', 'task-slash-menu', 'chooseSlash', 'Escape', '标题', '检查项']) assert.match(editor, new RegExp(token))
 })
 
+test('task rich editor keeps the native caret during typing and renders markdown after idle', async () => {
+  assert.match(taskRichTextEditor, /function onInput\(\) \{[\s\S]*?emit\('update:modelValue', markdown\)[\s\S]*?setTimeout\(renderEditorMarkdown, 300\)/)
+  assert.match(taskRichTextEditor, /function insertCaretMarker\(element\)/)
+  assert.match(taskRichTextEditor, /function restoreCaretMarker\(element, marker\)/)
+  assert.match(taskRichTextEditor, /EMPTY_BLOCK_CARET/)
+  assert.match(taskRichTextEditor, /const isBlock = node\.nodeType === Node\.ELEMENT_NODE/)
+})
+
 test('task inbox mirrors ticktick shortcut navigation and mixed efficiency groups', () => {
   assert.match(router, /path: '\/tasks\/shortcut\/:shortcut'/)
   for (const label of ['指派给我', '摘要', '归档']) assert.match(inboxView, new RegExp(label))
@@ -529,7 +537,7 @@ test('task detail edits title, description, and checklist in place without an ed
   assert.match(taskRichTextEditor, /:aria-hidden="!toolbarVisible" :inert="!toolbarVisible"/)
   assert.match(taskRichTextEditor, /emit\('blur'\)/)
   assert.match(taskRichTextEditor, /contenteditable="true"/)
-  assert.match(taskRichTextEditor, /element\.innerHTML = renderMarkdown\(markdown\)/)
+  assert.match(taskRichTextEditor, /setTimeout\(renderEditorMarkdown, 300\)/)
   assert.match(taskRichTextEditor, /compositionstart="composing = true"[\s\S]*compositionend="onCompositionEnd"/)
   assert.match(taskRichTextEditor, /if \(composing\.value\) return/)
   assert.doesNotMatch(taskRichTextEditor, /<textarea/)

@@ -27,13 +27,13 @@
           </button>
         </div>
       </div>
-      <small class="task-rich-hint">Markdown · 输入时即时渲染，支持 / 插入基础格式</small>
+      <small class="task-rich-hint">Markdown · 支持 / 插入基础格式</small>
     </template>
   </section>
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { Bold, CheckSquare, Clock3, Code, Heading1, Italic, Link, List, ListOrdered, Minus, Paintbrush, Quote, Strikethrough, Underline } from 'lucide-vue-next'
@@ -43,6 +43,9 @@ const editor = ref(null)
 const slashOpen = ref(false)
 const composing = ref(false)
 let slashRange = null
+let renderTimer = null
+let caretMarkerSequence = 0
+const EMPTY_BLOCK_CARET = '\u200b'
 const toolbar = [
   { key: 'heading', label: '标题', icon: Heading1 },
   { key: 'bold', label: '加粗', icon: Bold },
@@ -123,50 +126,77 @@ function nodeMarkdown(node) {
 }
 
 function markdownFromEditor() {
-  return [...(editor.value?.childNodes || [])].map(nodeMarkdown).join('').replace(/\n{3,}/g, '\n\n').trimEnd()
+  return [...(editor.value?.childNodes || [])].reduce((markdown, node) => {
+    const isBlock = node.nodeType === Node.ELEMENT_NODE && ['DIV', 'P', 'H1', 'H2', 'H3', 'BLOCKQUOTE', 'UL', 'OL', 'PRE', 'HR'].includes(node.tagName)
+    const separator = isBlock && markdown && !markdown.endsWith('\n') ? '\n' : ''
+    return markdown + separator + nodeMarkdown(node)
+  }, '').replace(/\n{3,}/g, '\n\n').trimEnd()
 }
 
-function selectionOffsets(element) {
+function insertCaretMarker(element) {
   const selection = window.getSelection()
-  if (!selection?.rangeCount || !element.contains(selection.anchorNode)) return null
+  if (!selection?.rangeCount || !selection.isCollapsed || !element.contains(selection.anchorNode)) return null
+  const marker = `taskeditormarker${++caretMarkerSequence}end`
   const range = selection.getRangeAt(0)
-  const before = range.cloneRange()
-  before.selectNodeContents(element)
-  before.setEnd(range.startContainer, range.startOffset)
-  const start = before.toString().length
-  return { start, end: start + range.toString().length }
+  range.insertNode(document.createTextNode(marker))
+  return marker
 }
 
-function restoreSelection(element, offsets) {
-  if (!offsets) return
-  const locate = target => {
-    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
-    let node; let remaining = target
-    while ((node = walker.nextNode())) {
-      if (remaining <= node.nodeValue.length) return [node, remaining]
-      remaining -= node.nodeValue.length
+function restoreCaretMarker(element, marker) {
+  if (!marker) return false
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+  let node
+  while ((node = walker.nextNode())) {
+    const index = node.nodeValue.indexOf(marker)
+    if (index < 0) continue
+    const markerNode = node.splitText(index)
+    const afterMarker = markerNode.splitText(marker.length)
+    const parent = markerNode.parentNode
+    const parentOffset = [...parent.childNodes].indexOf(markerNode)
+    markerNode.remove()
+    const range = document.createRange()
+    if (index === 0) {
+      if (!node.nodeValue) {
+        node.nodeValue = EMPTY_BLOCK_CARET
+        if (!afterMarker.nodeValue) afterMarker.remove()
+        range.setStart(node, node.nodeValue.length)
+      } else {
+        range.setStart(parent, Math.min(parentOffset, parent.childNodes.length))
+      }
+    } else {
+      range.setStart(node, index)
     }
-    return [element, element.childNodes.length]
+    range.collapse(true)
+    const selection = window.getSelection()
+    selection.removeAllRanges()
+    selection.addRange(range)
+    return true
   }
-  const start = locate(offsets.start)
-  const end = locate(offsets.end)
-  const range = document.createRange()
-  range.setStart(...start)
-  range.setEnd(...end)
-  const selection = window.getSelection()
-  selection.removeAllRanges()
-  selection.addRange(range)
+  return false
+}
+
+function currentMarkdown() {
+  return markdownFromEditor().replaceAll(EMPTY_BLOCK_CARET, '')
+}
+
+function renderEditorMarkdown() {
+  const element = editor.value
+  if (!element) return
+  const marker = insertCaretMarker(element)
+  const rawMarkdown = markdownFromEditor()
+  const renderedMarkdown = rawMarkdown.replaceAll(EMPTY_BLOCK_CARET, '')
+  const markdown = marker ? renderedMarkdown.replace(marker, '') : renderedMarkdown
+  emit('update:modelValue', markdown)
+  element.innerHTML = renderMarkdown(renderedMarkdown)
+  restoreCaretMarker(element, marker)
 }
 
 function onInput() {
-  const element = editor.value
-  if (!element) return
-  const offsets = selectionOffsets(element)
-  const markdown = markdownFromEditor()
+  const markdown = currentMarkdown()
   emit('update:modelValue', markdown)
+  clearTimeout(renderTimer)
   if (composing.value) return
-  element.innerHTML = renderMarkdown(markdown)
-  restoreSelection(element, offsets)
+  renderTimer = setTimeout(renderEditorMarkdown, 300)
 }
 
 function onCompositionEnd() {
@@ -244,6 +274,8 @@ function chooseSlash(command) {
 }
 
 function onBlur() {
+  clearTimeout(renderTimer)
+  renderEditorMarkdown()
   requestAnimationFrame(() => {
     if (document.activeElement?.closest('.task-slash-menu')) return
     slashOpen.value = false
@@ -259,6 +291,7 @@ function syncEditorValue(value) {
 
 onMounted(() => syncEditorValue(props.modelValue))
 watch(() => props.modelValue, syncEditorValue)
+onBeforeUnmount(() => clearTimeout(renderTimer))
 </script>
 
 <style scoped>
