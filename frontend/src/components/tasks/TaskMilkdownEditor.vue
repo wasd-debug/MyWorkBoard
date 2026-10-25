@@ -107,6 +107,52 @@ function leaveEditor(event) {
 .task-milkdown-editor :deep(.ProseMirror ul) { list-style: disc outside; }
 .task-milkdown-editor :deep(.ProseMirror ol) { list-style: decimal outside; }
 .task-milkdown-editor :deep(.ProseMirror li) { display: list-item; }
+.task-milkdown-editor :deep(.ProseMirror li[data-item-type="task"]) {
+  position: relative;
+  list-style: none;
+}
+
+.task-milkdown-editor :deep(.ProseMirror li[data-item-type="task"]::before) {
+  position: absolute;
+  top: 0.3em;
+  left: -21px;
+  width: 13px;
+  height: 13px;
+  border: 1.5px solid var(--muted);
+  border-radius: 3px;
+  background: var(--card);
+  box-sizing: border-box;
+  content: '';
+  cursor: pointer;
+}
+
+.task-milkdown-editor :deep(.ProseMirror li[data-item-type="task"]::after) {
+  position: absolute;
+  top: 0.34em;
+  left: -17px;
+  width: 4px;
+  height: 7px;
+  border: solid var(--card);
+  border-width: 0 1.5px 1.5px 0;
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+  transform: rotate(45deg);
+}
+
+.task-milkdown-editor :deep(.ProseMirror li[data-item-type="task"][data-checked="true"]::before) {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.task-milkdown-editor :deep(.ProseMirror li[data-item-type="task"][data-checked="true"]::after) {
+  opacity: 1;
+}
+
+.task-milkdown-editor :deep(.ProseMirror li[data-item-type="task"][data-checked="true"] > p) {
+  color: var(--muted);
+  text-decoration: line-through;
+}
 
 .task-milkdown-editor :deep(.ProseMirror blockquote) {
   margin: 0.5em 0;
