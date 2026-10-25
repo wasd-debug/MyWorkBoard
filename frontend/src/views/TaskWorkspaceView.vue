@@ -949,6 +949,26 @@
         <div class="clone-detail-tags-row" v-if="selectedTask.tagIds?.length">
           <Tag :size="14" /><span v-for="tagId in selectedTask.tagIds" :key="tagId" class="clone-detail-tag">#{{ tagName(tagId) }}</span><button type="button" aria-label="添加标签" @click="openEdit(selectedTask)"><Plus :size="14" /></button>
         </div>
+        <section v-if="detailSubtasks.length || detailSubtaskDraftOpen" class="clone-detail-subtasks" aria-label="子任务">
+          <header><strong>子任务</strong><span>{{ detailSubtasks.length }}</span></header>
+          <button v-for="child in detailSubtasks" :key="child.publicId" type="button" class="clone-detail-subtask-row" @click="openDetail(child)"><CheckCircle2 v-if="child.status === 'COMPLETED'" :size="15" /><Circle v-else :size="15" /><span>{{ child.title || '无标题' }}</span><time v-if="child.dueAt">{{ formatDate(child.dueAt) }}</time></button>
+        </section>
+        <section v-if="detailFieldsOpen" class="clone-detail-secondary" aria-label="更多任务字段">
+          <section class="clone-detail-properties" aria-label="任务属性编辑">
+            <label>清单<select v-model="detailFieldsDraft.listId"><option v-for="list in activeLists" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select></label>
+            <label>父任务<select v-model="detailFieldsDraft.parentId"><option value="">无</option><option v-for="task in detailParentOptions" :key="task.publicId" :value="task.publicId">{{ task.title }}</option></select></label>
+            <label>开始时间<input v-model="detailFieldsDraft.startAt" type="datetime-local" /></label>
+            <label>持续分钟数<input v-model.number="detailFieldsDraft.durationMinutes" type="number" min="0" step="5" /></label>
+            <label class="clone-inline-check"><input v-model="detailFieldsDraft.allDay" type="checkbox" />全天任务</label>
+            <div class="clone-detail-property"><span>创建时间</span><strong>{{ formatCreatedAt(selectedTask.createdAt) }}</strong></div>
+            <div class="clone-detail-field-actions"><button type="button" @click="detailFieldsOpen = false">取消</button><button type="button" class="clone-primary-button" :disabled="detailFieldsSaving" @click="saveDetailFields">{{ detailFieldsSaving ? '保存中…' : '保存字段' }}</button></div>
+          </section>
+        </section>
+        <section v-if="detailSubtaskDraftOpen" class="clone-detail-subtask-draft" aria-label="添加子任务">
+          <input ref="detailSubtaskInput" v-model="detailSubtaskDraft" aria-label="子任务名称" placeholder="输入子任务名称" @keydown.enter.prevent="saveDetailSubtask" @keydown.esc.prevent="cancelDetailSubtask" />
+          <button type="button" :disabled="!detailSubtaskDraft.trim() || detailSubtaskSaving" @click="saveDetailSubtask">添加</button>
+          <button type="button" aria-label="取消添加子任务" @click="cancelDetailSubtask"><X :size="15" /></button>
+        </section>
         <section v-if="detailSecondaryOpen" class="clone-detail-secondary" aria-label="任务附加信息">
         <section class="clone-collaboration-section">
           <header class="clone-section-heading">
@@ -1001,7 +1021,7 @@
           <button type="button" @click="openEdit(selectedTask)"><span>全天</span><strong>{{ selectedTask.allDay ? '是' : '否' }}</strong></button>
           <div class="clone-detail-property"><span>创建时间</span><strong>{{ formatCreatedAt(selectedTask.createdAt) }}</strong></div>
         </section>
-        <button type="button" class="clone-detail-edit-fields" @click="openEdit(selectedTask)"><Pencil :size="14" />编辑更多字段</button>
+        <button type="button" class="clone-detail-edit-fields" :aria-expanded="detailFieldsOpen" @click="toggleDetailFields"><Pencil :size="14" />{{ detailFieldsOpen ? '收起更多字段' : '编辑更多字段' }}</button>
         </section>
       </div>
       <form v-if="commentComposerOpen && !editorOpen" class="clone-detail-comment-composer" aria-label="添加评论" @submit.prevent="addComment">
@@ -1758,6 +1778,15 @@ const activityLoading = ref(false);
 const comments = ref([]);
 const attachments = ref([]);
 const detailSecondaryOpen = ref(false);
+const detailFieldsOpen = ref(false);
+const detailFieldsSaving = ref(false);
+const detailFieldsDraft = reactive({ listId: "", parentId: "", startAt: "", durationMinutes: 0, allDay: false });
+const detailParentOptions = computed(() => store.tasks.filter(task => !task.deleted && task.status !== "COMPLETED" && task.publicId !== selectedTask.value?.publicId && task.listId === selectedTask.value?.listId));
+const detailSubtasks = computed(() => selectedTask.value ? store.tasks.filter(task => !task.deleted && task.parentId === selectedTask.value.publicId).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)) : []);
+const detailSubtaskDraftOpen = ref(false);
+const detailSubtaskDraft = ref("");
+const detailSubtaskSaving = ref(false);
+const detailSubtaskInput = ref(null);
 const detailMoreOpen = ref(false);
 const detailMoreSection = ref("");
 const detailAttachmentInput = ref(null);
@@ -2997,6 +3026,8 @@ function openDetail(task) {
   detailChecklistEditingIndex.value = -1;
   detailRichToolbarOpen.value = false;
   detailSecondaryOpen.value = false;
+  detailFieldsOpen.value = false;
+  cancelDetailSubtask();
   commentComposerOpen.value = false;
   commentDraft.value = "";
   void loadActivity(task);
@@ -3387,8 +3418,43 @@ function openCreate(parentId = "") {
 }
 function createSubtask(task) {
   if (!task) return;
-  openCreate(task.publicId);
-  draft.listId = task.listId || store.inbox?.publicId || "";
+  if (selectedTask.value?.publicId !== task.publicId) openDetail(task);
+  detailMoreOpen.value = false;
+  detailMoreSection.value = "";
+  detailSubtaskDraft.value = "";
+  detailSubtaskDraftOpen.value = true;
+  void nextTick(() => detailSubtaskInput.value?.focus());
+}
+function toggleDetailFields() {
+  if (detailFieldsOpen.value) { detailFieldsOpen.value = false; return; }
+  const task = selectedTask.value;
+  if (!task) return;
+  Object.assign(detailFieldsDraft, { listId: task.listId || store.inbox?.publicId || "", parentId: task.parentId || "", startAt: toLocal(task.startAt), durationMinutes: Number(task.durationMinutes) || 0, allDay: Boolean(task.allDay) });
+  detailFieldsOpen.value = true;
+}
+async function saveDetailFields() {
+  const task = selectedTask.value;
+  if (!task || detailFieldsSaving.value) return;
+  detailFieldsSaving.value = true;
+  try {
+    selectedTask.value = await store.update(task, { listId: detailFieldsDraft.listId, parentId: detailFieldsDraft.parentId || null, startAt: detailFieldsDraft.startAt ? new Date(detailFieldsDraft.startAt).toISOString() : "", durationMinutes: Number(detailFieldsDraft.durationMinutes) || 0, allDay: Boolean(detailFieldsDraft.allDay) });
+    detailFieldsOpen.value = false;
+  } catch (error) { store.error = error?.response?.data?.detail || error?.message || "任务字段保存失败"; }
+  finally { detailFieldsSaving.value = false; }
+}
+function cancelDetailSubtask() { detailSubtaskDraftOpen.value = false; detailSubtaskDraft.value = ""; }
+async function saveDetailSubtask() {
+  const parent = selectedTask.value;
+  const title = detailSubtaskDraft.value.trim();
+  if (!parent || !title || detailSubtaskSaving.value) return;
+  detailSubtaskSaving.value = true;
+  try {
+    await store.create({ title, listId: parent.listId || store.inbox?.publicId || "", parentId: parent.publicId });
+    detailSubtaskDraftOpen.value = false;
+    detailSubtaskDraft.value = "";
+    message.success("子任务已添加");
+  } catch (error) { store.error = error?.response?.data?.detail || error?.message || "子任务添加失败"; }
+  finally { detailSubtaskSaving.value = false; }
 }
 function closeDetail() {
   if (selectedTask.value && inlineDescriptionDraft.value !== (selectedTask.value.description || "")) {
@@ -6673,6 +6739,21 @@ const SidebarSection = {
 .clone-detail-description { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: var(--ink2); font: inherit; font-size: 13px; line-height: 1.7; text-align: left; white-space: pre-wrap; cursor: text; }
 .clone-detail-description.placeholder { color: var(--muted); }
 .clone-detail-properties { display: grid; border-top: 1px solid var(--line); }
+.clone-detail-properties label { display: grid; gap: 5px; padding: 8px 0; color: var(--muted); font-size: 12px; }
+.clone-detail-properties select, .clone-detail-properties input:not([type="checkbox"]) { min-width: 0; min-height: 34px; padding: 0 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); font: inherit; }
+.clone-detail-field-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 10px; }
+.clone-detail-field-actions button, .clone-detail-subtask-draft button { min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
+.clone-detail-field-actions .clone-primary-button { border-color: var(--accent); background: var(--accent); color: white; }
+.clone-detail-subtasks { display: grid; gap: 3px; padding: 8px 0 12px; }
+.clone-detail-subtasks > header { display: flex; align-items: center; gap: 7px; padding: 4px 0 6px; color: var(--muted); font-size: 12px; }
+.clone-detail-subtasks > header span { color: var(--muted); font-variant-numeric: tabular-nums; }
+.clone-detail-subtask-row { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 34px; padding: 0 7px; border: 0; border-radius: 5px; background: transparent; color: var(--ink2); text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
+.clone-detail-subtask-row:hover { background: var(--paper); }
+.clone-detail-subtask-row span { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clone-detail-subtask-row time { color: var(--muted); font-size: 11px; }
+.clone-detail-subtask-draft { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; padding: 7px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); }
+.clone-detail-subtask-draft input { flex: 1 1 auto; min-width: 0; height: 32px; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; }
+.clone-detail-subtask-draft button:disabled { opacity: .45; cursor: default; }
 .clone-detail-properties button { display: flex; justify-content: space-between; gap: 12px; min-width: 0; padding: 9px 0; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--muted); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
 .clone-detail-property { display: flex; justify-content: space-between; gap: 12px; min-width: 0; padding: 9px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .clone-detail-properties button:hover strong { color: var(--accent); }

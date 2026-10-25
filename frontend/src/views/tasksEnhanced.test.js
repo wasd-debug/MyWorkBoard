@@ -583,6 +583,12 @@ test('task detail edits title, description, and checklist in place without an ed
   assert.doesNotMatch(taskRichTextEditor, /<textarea/)
   assert.match(workspaceView, /clone-detail-properties/)
   assert.match(workspaceView, /clone-detail-edit-fields/)
+  assert.match(workspaceView, /@click="toggleDetailFields"/)
+  assert.match(workspaceView, /async function saveDetailFields()/)
+  assert.match(workspaceView, /v-if="detailSubtaskDraftOpen"[\s\S]*aria-label="添加子任务"/)
+  assert.match(workspaceView, /async function saveDetailSubtask()[\s\S]*store\.create\(\{ title, listId: parent\.listId[\s\S]*parentId: parent\.publicId \}/)
+  assert.match(workspaceView, /@keydown\.esc\.prevent="cancelDetailSubtask"/)
+  assert.doesNotMatch(workspaceView, /function createSubtask\(task\)\s*\{\s*if \(!task\) return;\s*openCreate\(task\.publicId\)/)
 })
 
 test('task sync waits for an idle window and is manually available from the module rail', async () => {
