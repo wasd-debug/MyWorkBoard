@@ -6763,6 +6763,20 @@ const SidebarSection = {
   border-radius: 5px;
 }
 .clone-detail-pane > header.clone-detail-toolbar .clone-detail-status-tool.completed { border-color: var(--accent); background: var(--accent); }
+.clone-detail-pane > header.clone-detail-toolbar .clone-toolbar-popover button {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  max-width: none;
+  flex: initial;
+  border: 0;
+  border-radius: 5px;
+  font: inherit;
+}
+.clone-detail-pane > header.clone-detail-toolbar .clone-date-popover-tabs button,
+.clone-detail-pane > header.clone-detail-toolbar .clone-date-quick-actions button { width: 100%; }
+.clone-detail-pane > header.clone-detail-toolbar .clone-date-calendar-head button { width: 30px; height: 28px; min-height: 28px; }
+.clone-detail-pane > header.clone-detail-toolbar .clone-date-calendar-grid > button { width: 100%; height: 30px; min-height: 30px; }
 .clone-detail-header-progress { position: absolute; right: 0; bottom: 0; left: 0; height: 2px; overflow: hidden; background: color-mix(in srgb, var(--line) 55%, transparent); pointer-events: none; }
 .clone-detail-header-progress span { display: block; width: 100%; height: 100%; transform-origin: left center; background: var(--accent); transition: transform 180ms ease; }
 .clone-detail-tool,
