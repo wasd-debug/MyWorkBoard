@@ -617,7 +617,7 @@
       aria-orientation="vertical"
       aria-label="调整详情栏宽度"
       :aria-valuemin="320"
-      :aria-valuemax="560"
+      :aria-valuemax="720"
       :aria-valuenow="detailWidth"
       tabindex="0"
       @pointerdown="startDetailResize"
@@ -672,14 +672,11 @@
         <div class="clone-detail-toolbar-main">
           <button v-if="!editorOpen" type="button" class="clone-detail-status-tool" :class="{ completed: selectedTask?.status === 'COMPLETED', abandoned: selectedTask?.status === 'ABANDONED' }" :aria-label="selectedTask?.status === 'COMPLETED' ? '重新打开任务' : '标记任务完成'" @click="toggleComplete(selectedTask)"><Check v-if="selectedTask?.status === 'COMPLETED'" :size="14" /></button>
           <button v-else type="button" class="clone-detail-status-tool" :class="{ completed: draft.status === 'COMPLETED', abandoned: draft.status === 'ABANDONED' }" aria-label="任务完成状态" @click="draft.status = draft.status === 'COMPLETED' ? 'OPEN' : 'COMPLETED'"><Check v-if="draft.status === 'COMPLETED'" :size="14" /></button>
-          <button type="button" class="clone-detail-tool clone-detail-list-tool" aria-label="任务清单" @click="editorOpen ? null : openEdit(selectedTask)">
-            <ListTodo :size="15" /><span>{{ listName(editorOpen ? draft.listId : selectedTask?.listId) }}</span>
-          </button>
           <button type="button" class="clone-detail-tool" aria-label="设置日期" @click.stop="toggleDatePopover">
             <CalendarClock :size="15" /><span>{{ editorOpen && draft.dueAt ? formatDate(draft.dueAt) : selectedTask?.dueAt ? formatDate(selectedTask.dueAt) : '设置日期' }}</span>
           </button>
-          <button type="button" class="clone-detail-tool" aria-label="设置重复" :aria-expanded="repeatPopoverOpen" @click.stop="toggleRepeatPopover">
-            <span class="clone-detail-repeat-icon">↻</span><span>{{ recurrenceLabel(editorOpen ? draft.rrule : selectedTask?.rrule) }}</span>
+          <button v-if="(editorOpen ? draft.rrule : selectedTask?.rrule)" type="button" class="clone-detail-repeat-tool" aria-label="设置重复" :aria-expanded="repeatPopoverOpen" @click.stop="toggleRepeatPopover">
+            <Repeat2 :size="15" />
           </button>
           <div v-if="datePopoverOpen" class="clone-toolbar-popover clone-date-toolbar-popover" @click.stop>
             <strong>日期和时间</strong>
@@ -690,6 +687,23 @@
               <button type="button" @click="editorOpen ? draft.dueAt = toLocal(addDays(new Date(), 1)) : applyTaskDueOffset(1)">明天</button>
               <button type="button" @click="editorOpen ? draft.dueAt = '' : applyTaskDueOffset(null)">清除</button>
             </div>
+            <div class="clone-detail-date-reminder">
+              <button type="button" class="clone-detail-date-reminder-trigger" :class="{ active: editorOpen ? draft.reminderEnabled : quickReminder.reminder }" aria-label="设置提醒" :aria-expanded="reminderPopoverOpen" @click.stop="toggleReminderPopover"><Bell :size="14" /><span>{{ editorOpen ? (draft.reminderEnabled ? '提醒已开启' : '添加提醒') : (quickReminder.reminder ? '提醒已开启' : '添加提醒') }}</span><ChevronRight :size="13" /></button>
+              <div v-if="reminderPopoverOpen" class="clone-detail-date-reminder-popover" @click.stop>
+                <strong>提醒</strong>
+                <p v-if="reminderLoading" class="clone-muted">正在读取提醒…</p>
+                <template v-else>
+                  <label class="clone-inline-check"><input v-model="reminderEnabledModel" type="checkbox" />启用站内提醒</label>
+                  <template v-if="reminderEnabledModel">
+                    <label class="clone-reminder-popover-field">方式<select v-model="reminderKindModel"><option value="RELATIVE">相对截止时间</option><option value="ABSOLUTE">指定时间</option></select></label>
+                    <label v-if="reminderKindModel === 'RELATIVE'" class="clone-reminder-popover-field">提前<select v-model.number="reminderOffsetModel"><option :value="0">准时</option><option :value="5">5 分钟</option><option :value="15">15 分钟</option><option :value="30">30 分钟</option><option :value="60">1 小时</option><option :value="1440">1 天</option></select></label>
+                    <label v-else class="clone-reminder-popover-field">提醒时间<input v-model="remindLocalModel" type="datetime-local" /></label>
+                    <label class="clone-inline-check"><input v-model="dailyUntilDoneModel" type="checkbox" />未完成时每日提醒</label>
+                  </template>
+                  <div class="clone-popover-actions"><button v-if="!editorOpen && quickReminder.reminder" type="button" @click="disableTaskReminder">关闭提醒</button><button v-if="editorOpen" type="button" @click="reminderPopoverOpen = false">完成后保存</button><button v-else type="button" class="clone-popover-save" :disabled="reminderSaving" @click="saveTaskReminder">{{ reminderSaving ? '保存中…' : '保存提醒' }}</button></div>
+                </template>
+              </div>
+            </div>
           </div>
           <div v-if="repeatPopoverOpen" class="clone-toolbar-popover clone-repeat-toolbar-popover" @click.stop>
             <strong>重复</strong>
@@ -697,29 +711,13 @@
           </div>
         </div>
         <div class="clone-detail-toolbar-actions">
-          <button type="button" class="clone-detail-tool clone-reminder-tool" :class="{ active: editorOpen ? draft.reminderEnabled : quickReminder.reminder }" aria-label="设置提醒" :aria-expanded="reminderPopoverOpen" @click.stop="toggleReminderPopover"><Bell :size="15" /></button>
-          <div v-if="reminderPopoverOpen" class="clone-toolbar-popover clone-reminder-popover" @click.stop>
-            <strong>提醒</strong>
-            <p v-if="reminderLoading" class="clone-muted">正在读取提醒…</p>
-            <template v-else>
-              <label class="clone-inline-check"><input v-model="reminderEnabledModel" type="checkbox" />启用站内提醒</label>
-              <template v-if="reminderEnabledModel">
-                <label class="clone-reminder-popover-field">方式<select v-model="reminderKindModel"><option value="RELATIVE">相对截止时间</option><option value="ABSOLUTE">指定时间</option></select></label>
-                <label v-if="reminderKindModel === 'RELATIVE'" class="clone-reminder-popover-field">提前<select v-model.number="reminderOffsetModel"><option :value="0">准时</option><option :value="5">5 分钟</option><option :value="15">15 分钟</option><option :value="30">30 分钟</option><option :value="60">1 小时</option><option :value="1440">1 天</option></select></label>
-                <label v-else class="clone-reminder-popover-field">提醒时间<input v-model="remindLocalModel" type="datetime-local" /></label>
-                <label class="clone-inline-check"><input v-model="dailyUntilDoneModel" type="checkbox" />未完成时每日提醒</label>
-              </template>
-              <div class="clone-popover-actions"><button v-if="!editorOpen && quickReminder.reminder" type="button" @click="disableTaskReminder">关闭提醒</button><button v-if="editorOpen" type="button" @click="reminderPopoverOpen = false">完成后保存</button><button v-else type="button" class="clone-popover-save" :disabled="reminderSaving" @click="saveTaskReminder">{{ reminderSaving ? '保存中…' : '保存提醒' }}</button></div>
-            </template>
-          </div>
           <button type="button" class="clone-detail-priority-tool" :data-priority="editorOpen ? draft.priority : selectedTask?.priority" aria-label="设置优先级" :aria-expanded="priorityPopoverOpen" @click.stop="togglePriorityPopover">⚑</button>
           <div v-if="priorityPopoverOpen" class="clone-toolbar-popover clone-priority-toolbar-popover" @click.stop>
             <strong>优先级</strong>
             <button v-for="option in priorityOptions" :key="option.value" type="button" :class="{ active: (editorOpen ? draft.priority : selectedTask?.priority) === option.value }" @click="editorOpen ? (draft.priority = option.value) : setTaskPriority(option.value); priorityPopoverOpen = false">{{ option.label }}</button>
           </div>
-          <button type="button" class="clone-detail-tool" aria-label="更多详情操作" @click.stop="openContext(editing || selectedTask, $event)"><Ellipsis :size="17" /></button>
-          <button type="button" class="clone-detail-tool clone-detail-close" aria-label="关闭任务详情" @click="closeDetail"><X :size="17" /></button>
         </div>
+        <div v-if="selectedTask?.checklist?.length" class="clone-detail-header-progress" aria-hidden="true"><span :style="{ transform: `scaleX(${selectedTask.checklist.filter((item) => item.completed).length / selectedTask.checklist.length})` }"></span></div>
       </header>
       <div v-if="!selectedTask && !editorOpen" class="clone-detail-empty">
         <span class="clone-detail-empty-icon">✦</span>
@@ -972,6 +970,7 @@
         <div class="clone-detail-tags-row" v-if="selectedTask.tagIds?.length">
           <Tag :size="14" /><span v-for="tagId in selectedTask.tagIds" :key="tagId" class="clone-detail-tag">#{{ tagName(tagId) }}</span><button type="button" aria-label="添加标签" @click="openEdit(selectedTask)"><Plus :size="14" /></button>
         </div>
+        <section v-if="detailSecondaryOpen" class="clone-detail-secondary" aria-label="任务附加信息">
         <section class="clone-collaboration-section">
           <header class="clone-section-heading">
             <h3>评论 <span>{{ comments.length }}</span></h3>
@@ -1024,7 +1023,21 @@
           <div class="clone-detail-property"><span>创建时间</span><strong>{{ formatCreatedAt(selectedTask.createdAt) }}</strong></div>
         </section>
         <button type="button" class="clone-detail-edit-fields" @click="openEdit(selectedTask)"><Pencil :size="14" />编辑更多字段</button>
+        </section>
       </div>
+      <form v-if="commentComposerOpen && !editorOpen" class="clone-detail-comment-composer" aria-label="添加评论" @submit.prevent="addComment">
+        <textarea v-model="commentDraft" rows="1" aria-label="添加评论" placeholder="添加评论" :disabled="!store.online" @keydown.enter.exact.prevent="addComment" />
+        <button v-if="commentDraft.trim()" type="submit" :disabled="!store.online" aria-label="发表评论"><ArrowUp :size="16" /></button>
+        <p v-if="commentError" class="clone-error" role="alert">{{ commentError }}</p>
+      </form>
+      <footer v-if="selectedTask && !editorOpen" class="clone-detail-footer" aria-label="详情工具">
+          <button type="button" class="clone-detail-footer-list" aria-label="任务清单" @click="openEdit(selectedTask)"><ListTodo :size="17" /><span>{{ listName(selectedTask.listId) }}</span></button>
+          <div class="clone-detail-footer-actions">
+            <button type="button" aria-label="切换描述编辑器" :aria-pressed="inlineDescriptionEditing" @click="inlineDescriptionEditing ? cancelInlineDescriptionEdit() : beginInlineDescriptionEdit()"><AlignLeft :size="17" /></button>
+            <button type="button" aria-label="打开评论" :aria-pressed="commentComposerOpen" @click="commentComposerOpen = !commentComposerOpen; commentError = ''"><MessageCircle :size="17" /><small v-if="comments.length">{{ comments.length }}</small></button>
+            <button type="button" aria-label="更多详情操作" aria-haspopup="menu" @click.stop="openContext(selectedTask, $event)"><Ellipsis :size="17" /></button>
+          </div>
+      </footer>
       </template>
     </aside>
 
@@ -1046,6 +1059,7 @@
       <button type="button" @click="createSubtask(context.task); closeContext()"><Plus :size="14" />添加子任务</button>
       <button type="button" @click="startContextFocus"><Timer :size="14" />开始专注</button>
       <button type="button" @click="copyContextTaskLink"><Copy :size="14" />复制任务链接</button>
+      <button v-if="selectedTask?.publicId === context.task?.publicId" type="button" @click="detailSecondaryOpen = !detailSecondaryOpen; closeContext()"><Layers3 :size="14" />{{ detailSecondaryOpen ? '隐藏附加信息' : '显示附件、动态与属性' }}</button>
       <div class="clone-context-divider" aria-hidden="true"></div>
       <button type="button" @click="duplicateTask(context.task); closeContext()"><Copy :size="14" />创建副本</button>
       <button type="button" class="danger" @click="deleteTask(context.task); closeContext()"><Trash2 :size="14" />删除任务</button>
@@ -1156,6 +1170,7 @@ import {
   ArrowDownUp,
   ArrowRight,
   Layers3,
+  MessageCircle,
   ClipboardList,
   Copy,
   Ellipsis,
@@ -1345,7 +1360,8 @@ const miniCalendarResponse = ref({ tasks: [], lunar: [], holidays: [] });
 const miniCalendarError = ref("");
 let miniCalendarRequest = 0;
 const sidebarPreferenceScope = ref("");
-const detailWidth = ref(390);
+const defaultDetailWidth = Math.round(Math.min(680, Math.max(420, window.innerWidth * 0.35)));
+const detailWidth = ref(defaultDetailWidth);
 const detailPreferenceScope = ref("");
 let detailResizeState = null;
 let detailPreviousUserSelect = "";
@@ -1680,6 +1696,8 @@ const activities = ref([]);
 const activityLoading = ref(false);
 const comments = ref([]);
 const attachments = ref([]);
+const detailSecondaryOpen = ref(false);
+const commentComposerOpen = ref(false);
 const commentDraft = ref("");
 const commentEditDraft = ref("");
 const editingCommentId = ref("");
@@ -2417,10 +2435,10 @@ function detailWidthKey() {
 function loadDetailWidth() {
   const scope = store.accountScope || "anonymous";
   detailPreferenceScope.value = scope;
-  detailWidth.value = 390;
+  detailWidth.value = defaultDetailWidth;
   try {
     const value = Number(localStorage.getItem(detailWidthKey()));
-    if (Number.isFinite(value) && value >= 320 && value <= 560) detailWidth.value = value;
+    if (Number.isFinite(value) && value >= 320 && value <= 720 && value !== 390) detailWidth.value = value;
   } catch {}
 }
 function persistDetailWidth() {
@@ -2440,7 +2458,7 @@ function startDetailResize(event) {
 }
 function updateDetailResize(event) {
   if (!detailResizeState) return;
-  detailWidth.value = Math.min(560, Math.max(320, detailResizeState.startWidth - (event.clientX - detailResizeState.startX)));
+  detailWidth.value = Math.min(720, Math.max(320, detailResizeState.startWidth - (event.clientX - detailResizeState.startX)));
 }
 function stopDetailResize() {
   if (!detailResizeState) return;
@@ -2451,14 +2469,14 @@ function stopDetailResize() {
   persistDetailWidth();
 }
 function resetDetailWidth() {
-  detailWidth.value = 390;
+  detailWidth.value = defaultDetailWidth;
   persistDetailWidth();
 }
 function resizeDetailByKey(event) {
   if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
   event.preventDefault();
   const step = event.shiftKey ? 48 : 16;
-  detailWidth.value = Math.min(560, Math.max(320, detailWidth.value + (event.key === 'ArrowLeft' ? step : -step)));
+  detailWidth.value = Math.min(720, Math.max(320, detailWidth.value + (event.key === 'ArrowLeft' ? step : -step)));
   persistDetailWidth();
 }
 function sidebarPreferenceKey() {
@@ -2672,6 +2690,9 @@ function openDetail(task) {
   editorOpen.value = false;
   inlineTitleEditing.value = false;
   inlineDescriptionEditing.value = false;
+  detailSecondaryOpen.value = false;
+  commentComposerOpen.value = false;
+  commentDraft.value = "";
   void loadActivity(task);
   void loadCollaboration(task);
 }
@@ -2918,6 +2939,8 @@ async function openEdit(task) {
     checklistItems: (task.checklist || []).map((item, index) => ({ id: item.publicId || `item-${index}`, title: item.title || "", completed: Boolean(item.completed) })),
   });
   editorOpen.value = true;
+  detailSecondaryOpen.value = false;
+  commentComposerOpen.value = false;
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
   priorityPopoverOpen.value = false;
@@ -2991,6 +3014,9 @@ function closeDetail() {
   editorOpen.value = false;
   inlineTitleEditing.value = false;
   inlineDescriptionEditing.value = false;
+  detailSecondaryOpen.value = false;
+  commentComposerOpen.value = false;
+  commentDraft.value = "";
   resetCollaboration();
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
@@ -3450,16 +3476,17 @@ async function loadCollaboration(task) {
   else attachmentError.value = attachmentResult.reason?.response?.data?.detail || attachmentResult.reason?.message || "附件加载失败";
 }
 async function addComment() {
-  if (!editing.value || !commentDraft.value.trim()) return;
+  const task = editing.value || selectedTask.value;
+  if (!task || !commentDraft.value.trim()) return;
   if (!store.online) {
     commentError.value = "评论需要联网保存";
     return;
   }
   commentError.value = "";
   try {
-    await apiCreateTaskComment(editing.value.publicId, { bodyMarkdown: commentDraft.value.trim() });
+    await apiCreateTaskComment(task.publicId, { bodyMarkdown: commentDraft.value.trim() });
     commentDraft.value = "";
-    await Promise.all([loadCollaboration(editing.value), loadActivity(editing.value)]);
+    await Promise.all([loadCollaboration(task), loadActivity(task)]);
   } catch (error) {
     commentError.value = error?.response?.data?.detail || error?.message || "发表评论失败";
   }
@@ -4686,7 +4713,7 @@ const SidebarSection = {
 <style scoped>
 .clone-task-shell {
   display: grid;
-  grid-template-columns: var(--clone-sidebar-width, 248px) minmax(420px, 1fr) 5px var(--clone-detail-width, 390px);
+  grid-template-columns: var(--clone-sidebar-width, 248px) minmax(420px, 1fr) 5px var(--clone-detail-width, 680px);
   height: 100vh;
   margin: 0;
   background: var(--card);
@@ -4726,7 +4753,7 @@ const SidebarSection = {
   background: rgb(15 23 42 / 22%);
   cursor: default;
 }
-.clone-task-shell.sidebar-hidden { grid-template-columns: 0 minmax(420px, 1fr) 5px var(--clone-detail-width, 390px); }
+.clone-task-shell.sidebar-hidden { grid-template-columns: 0 minmax(420px, 1fr) 5px var(--clone-detail-width, 680px); }
 .clone-task-shell.workspace-overlay-view.sidebar-hidden { grid-template-columns: 0 minmax(0, 1fr); }
 .clone-task-shell.sidebar-hidden .clone-task-sidebar { align-items: center; gap: 0; padding: 0; border-right: 0; overflow: hidden; pointer-events: none; }
 .clone-task-shell.sidebar-hidden .clone-sidebar-head { display: flex; justify-content: center; width: 100%; padding: 0; }
@@ -5935,8 +5962,12 @@ const SidebarSection = {
 .clone-batch-actions button span { color: var(--ink2); font-size: 13px; }
 .clone-batch-actions button.danger { color: var(--down); }
 .clone-detail-pane {
+  position: relative;
   min-width: 0;
-  overflow: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-left: 1px solid var(--line);
   background: color-mix(in srgb, var(--card) 98%, var(--paper));
 }
@@ -5956,8 +5987,9 @@ const SidebarSection = {
 }
 .clone-detail-toolbar {
   position: relative;
-  min-height: 52px !important;
-  padding: 0 12px !important;
+  flex: 0 0 56px;
+  min-height: 56px !important;
+  padding: 0 14px !important;
   color: var(--ink2) !important;
 }
 .clone-detail-toolbar-main,
@@ -5982,6 +6014,8 @@ const SidebarSection = {
 .clone-detail-status-tool.completed { border-color: var(--accent); background: var(--accent); }
 .clone-detail-status-tool.abandoned { border-color: var(--down); }
 .clone-detail-status-tool svg { stroke-width: 2.5; }
+.clone-detail-header-progress { position: absolute; right: 0; bottom: 0; left: 0; height: 2px; overflow: hidden; background: color-mix(in srgb, var(--line) 55%, transparent); pointer-events: none; }
+.clone-detail-header-progress span { display: block; width: 100%; height: 100%; transform-origin: left center; background: var(--accent); transition: transform 180ms ease; }
 .clone-detail-tool,
 .clone-detail-priority-tool {
   display: inline-flex; align-items: center; gap: 5px; min-height: 32px; max-width: 132px;
@@ -5990,15 +6024,16 @@ const SidebarSection = {
 }
 .clone-detail-tool span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clone-detail-tool:hover { background: var(--accent-soft); color: var(--accent); }
+.clone-detail-toolbar-main > .clone-detail-tool[aria-label="设置日期"] { color: var(--down); }
+.clone-detail-toolbar-main > .clone-detail-tool[aria-label="设置日期"]:hover { color: var(--down); background: color-mix(in srgb, var(--down) 9%, transparent); }
 .clone-detail-list-tool { width: 28px; padding-inline: 6px; color: var(--ink2); font-weight: 600; }
 .clone-detail-list-tool span { display: none; }
-.clone-detail-toolbar-main > .clone-detail-tool:nth-child(2) { max-width: 95px; }
-.clone-detail-toolbar-main > .clone-detail-tool:nth-child(3) { max-width: 72px; }
+.clone-detail-toolbar-main > .clone-detail-tool[aria-label="设置日期"] { max-width: 150px; }
+.clone-detail-repeat-tool { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-detail-repeat-tool:hover, .clone-detail-repeat-tool[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
 .clone-detail-priority-tool { color: var(--muted); font-size: 20px; line-height: 1; }
 .clone-detail-priority-tool[data-priority="HIGH"] { color: var(--down); }
 .clone-detail-priority-tool[data-priority="MEDIUM"] { color: var(--warn); }
-.clone-detail-repeat-icon { font-size: 18px !important; line-height: 1; }
-.clone-detail-close { margin-left: 2px; }
 .clone-detail-content-toggle {
   display: grid;
   width: 28px;
@@ -6019,7 +6054,7 @@ const SidebarSection = {
   padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--card);
   box-shadow: 0 14px 30px rgba(15,23,42,.18);
 }
-.clone-date-toolbar-popover { width: min(258px, calc(100vw - 32px)); }
+.clone-date-toolbar-popover { top: 54px; width: min(258px, calc(100vw - 32px)); }
 .clone-toolbar-popover strong { color: var(--ink2); font-size: 12px; }
 .clone-toolbar-popover button { min-height: 29px; padding: 5px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ink2); text-align: left; cursor: pointer; }
 .clone-toolbar-popover button:focus-visible,
@@ -6036,6 +6071,13 @@ const SidebarSection = {
 .clone-toolbar-popover .clone-popover-save { justify-self: end; background: var(--accent); color: var(--accent-contrast, #fff); }
 .clone-toolbar-popover .clone-popover-save:hover { background: var(--accent); color: var(--accent-contrast, #fff); }
 .clone-reminder-tool.active { color: var(--accent); }
+.clone-detail-date-reminder { position: relative; display: grid; }
+.clone-detail-date-reminder-trigger { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 30px; padding: 5px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.clone-detail-date-reminder-trigger:hover, .clone-detail-date-reminder-trigger.active { background: var(--accent-soft); color: var(--accent); }
+.clone-detail-date-reminder-trigger svg:last-child { margin-left: auto; }
+.clone-detail-date-reminder-popover { position: absolute; z-index: 120; top: 0; left: calc(100% + 6px); display: grid; gap: 8px; width: min(248px, calc(100vw - 32px)); padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); box-shadow: 0 14px 30px rgb(15 23 42 / 18%); }
+.clone-detail-date-reminder-popover strong { color: var(--ink2); font-size: 12px; }
+.clone-detail-date-reminder-popover .clone-inline-check { min-height: 28px; }
 .clone-popover-current { color: var(--muted); font-size: 12px; }
 .clone-detail-pane.is-empty > header { display: none; }
 .clone-detail-pane > header button {
@@ -6058,6 +6100,7 @@ const SidebarSection = {
   gap: 16px;
   padding: 20px;
 }
+.clone-detail-read { flex: 1 1 auto; min-height: 0; overflow: auto; align-content: start; padding: 16px 22px 108px; gap: 0; scrollbar-gutter: stable; }
 .clone-detail-section { padding-top: 12px; border-top: 1px solid var(--line); }
 .clone-popover-field { position: relative; }
 .clone-field-trigger {
@@ -6258,6 +6301,19 @@ const SidebarSection = {
 }
 .clone-detail-tags-row { display: flex; align-items: center; gap: 6px; padding: 10px 0; border-top: 1px solid var(--line); color: var(--muted); }
 .clone-detail-tag { padding: 3px 7px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 11px; }
+.clone-detail-secondary { display: grid; gap: 16px; padding-top: 12px; }
+.clone-detail-footer { position: absolute; right: 0; bottom: 0; left: 0; z-index: 4; display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--card) 98%, var(--paper)); }
+.clone-detail-footer button { display: inline-flex; align-items: center; gap: 6px; min-width: 28px; min-height: 30px; padding: 5px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.clone-detail-footer button:hover, .clone-detail-footer button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.clone-detail-footer-list { min-width: 0 !important; max-width: 50%; overflow: hidden; }
+.clone-detail-footer-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clone-detail-footer-actions { display: flex; align-items: center; gap: 8px; }
+.clone-detail-footer-actions small { color: var(--accent); font-size: 10px; }
+.clone-detail-comment-composer { position: absolute; right: 12px; bottom: 48px; left: 12px; z-index: 4; display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border: 1px solid color-mix(in srgb, var(--accent) 58%, var(--line)); border-radius: 7px; background: var(--card); box-shadow: 0 3px 12px rgb(15 23 42 / 8%); }
+.clone-detail-comment-composer textarea { width: 100%; min-width: 0; min-height: 30px; max-height: 96px; padding: 6px 0; border: 0; outline: 0; resize: vertical; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; }
+.clone-detail-comment-composer button { display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; border: 0; border-radius: 5px; background: var(--accent); color: var(--accent-contrast, #fff); cursor: pointer; }
+.clone-detail-comment-composer button:disabled { opacity: .5; cursor: default; }
+.clone-detail-comment-composer .clone-error { position: absolute; right: 0; bottom: calc(100% + 4px); left: 0; margin: 0; padding: 5px 8px; border-radius: 5px; background: var(--card); }
 .clone-detail-description {
   margin: 0;
   white-space: pre-wrap;
