@@ -20,7 +20,7 @@ const props = defineProps({
   modelValue: { type: String, default: '' }
 })
 
-const emit = defineEmits(['update:modelValue', 'blur'])
+const emit = defineEmits(['update:modelValue', 'focus', 'blur'])
 let crepeInstance
 
 const { loading } = useEditor((root) => {
@@ -37,6 +37,7 @@ const { loading } = useEditor((root) => {
     .config((ctx) => {
       const manager = ctx.get(listenerCtx)
       manager.markdownUpdated((_ctx, markdown) => emit('update:modelValue', markdown))
+      manager.focus(() => emit('focus'))
       manager.blur(() => emit('blur'))
     })
 

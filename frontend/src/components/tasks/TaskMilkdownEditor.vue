@@ -9,6 +9,7 @@
         ref="surface"
         :model-value="modelValue"
         @update:model-value="emit('update:modelValue', $event)"
+        @focus="emit('focus')"
         @blur="emit('blur')"
       />
     </MilkdownProvider>
@@ -29,7 +30,7 @@ const props = defineProps({
   toolbarVisible: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['update:modelValue', 'blur'])
+const emit = defineEmits(['update:modelValue', 'focus', 'blur'])
 const surface = ref(null)
 const focused = ref(false)
 const toolbar = [

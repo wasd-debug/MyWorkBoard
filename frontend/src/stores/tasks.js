@@ -35,6 +35,9 @@ let syncRetryTimer
 let syncRetryAttempt = 0
 let activeSyncPromise
 let activeRefreshPromise
+const syncHoldTokens = new Set()
+let syncHoldSequence = 0
+let syncDeferredByEditor = false
 
 function clearState(store) {
   Object.assign(store, { ready: false, loading: false, syncing: false, listGroups: [], lists: [], deletedLists: [], tags: [], tasks: [], total: 0, undoStack: [],
@@ -144,6 +147,8 @@ export const useTasksStore = defineStore('tasks', {
       syncRetryAttempt = 0
       activeSyncPromise = null
       activeRefreshPromise = null
+      syncHoldTokens.clear()
+      syncDeferredByEditor = false
       clearState(this)
       this.accountScope = nextScope
       engine = createTaskSyncEngine({ dbName: taskDatabaseName(nextScope), transport })
@@ -585,10 +590,24 @@ export const useTasksStore = defineStore('tasks', {
         if (epoch === sessionEpoch) void this.syncNow()
       }, SYNC_IDLE_DELAY_MS)
     },
+    holdSync() {
+      const token = `editor-${++syncHoldSequence}`
+      syncHoldTokens.add(token)
+      return token
+    },
+    releaseSyncHold(token) {
+      if (!syncHoldTokens.delete(token) || syncHoldTokens.size || !syncDeferredByEditor) return
+      syncDeferredByEditor = false
+      queueMicrotask(() => { void this.syncNow() })
+    },
     async syncNow() {
       clearTimeout(syncTimer)
       syncTimer = undefined
       if (!this.online || !this.accountScope) return
+      if (syncHoldTokens.size) {
+        syncDeferredByEditor = true
+        return
+      }
       const epoch = sessionEpoch
       const scoped = engine
       if (activeSyncPromise?.epoch === epoch) {
@@ -601,8 +620,16 @@ export const useTasksStore = defineStore('tasks', {
           let result
           let reconcilePass = 0
           do {
+            if (syncHoldTokens.size) {
+              syncDeferredByEditor = true
+              break
+            }
             if (activeSyncPromise?.promise === promise) activeSyncPromise.rerun = false
             await reconcileSafeListConflicts(scoped)
+            if (syncHoldTokens.size) {
+              syncDeferredByEditor = true
+              break
+            }
             result = await scoped.sync(SCOPE)
             if (result?.resetRequired) result = await scoped.sync(SCOPE)
             const reconciliation = await reconcileSafeListConflicts(scoped)
@@ -612,7 +639,11 @@ export const useTasksStore = defineStore('tasks', {
               continue
             }
             if (epoch === sessionEpoch && scoped === engine) await this.hydrate()
-          } while (epoch === sessionEpoch && scoped === engine && activeSyncPromise?.rerun)
+            if (syncHoldTokens.size && activeSyncPromise?.rerun) {
+              activeSyncPromise.rerun = false
+              syncDeferredByEditor = true
+            }
+          } while (epoch === sessionEpoch && scoped === engine && activeSyncPromise?.rerun && !syncHoldTokens.size)
           if (epoch === sessionEpoch && scoped === engine) {
             await this.hydrate()
             this.syncError = ''
@@ -627,7 +658,15 @@ export const useTasksStore = defineStore('tasks', {
             scheduleSyncRetry(this, epoch)
           }
         } finally {
-          if (activeSyncPromise?.promise === promise) { this.syncing = false; activeSyncPromise = null }
+          if (activeSyncPromise?.promise === promise) {
+            const rerun = activeSyncPromise.rerun
+            this.syncing = false
+            activeSyncPromise = null
+            if (rerun) {
+              if (syncHoldTokens.size) syncDeferredByEditor = true
+              else queueMicrotask(() => { void this.syncNow() })
+            }
+          }
         }
       })
       activeSyncPromise = { epoch, promise, rerun: false }

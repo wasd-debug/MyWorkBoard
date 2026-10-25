@@ -933,7 +933,7 @@
           <button type="button" class="clone-detail-content-toggle" aria-label="在描述和检查事项之间转换" :title="selectedTask.checklist?.length ? '转换为描述' : '转换为检查事项'" @click="toggleDescriptionChecklist(selectedTask)"><ListTodo v-if="selectedTask.checklist?.length" :size="16" /><AlignLeft v-else :size="16" /></button>
         </div>
         <div class="clone-detail-description-block" :class="{ 'toolbar-open': detailRichToolbarOpen }">
-          <TaskMilkdownEditor v-model="inlineDescriptionDraft" :toolbar-visible="detailRichToolbarOpen" label="任务描述" placeholder="输入内容…" @update:model-value="scheduleInlineDescriptionSave" @blur="saveInlineDescription" />
+          <TaskMilkdownEditor v-model="inlineDescriptionDraft" :toolbar-visible="detailRichToolbarOpen" label="任务描述" placeholder="输入内容…" @update:model-value="scheduleInlineDescriptionSave" @focus="holdInlineDescriptionSync" @blur="releaseInlineDescriptionSync" />
           <small v-if="inlineDescriptionError" class="clone-inline-save-status error" role="alert">{{ inlineDescriptionError }}</small>
         </div>
         <section v-if="selectedTask.checklist?.length" class="clone-checklist-read" aria-label="检查项">
@@ -1536,13 +1536,15 @@ const inlineRowTitleDraft = ref("");
 const rowDateTaskId = ref("");
 const rowDateDraft = ref("");
 const inlineDescriptionDraft = ref("");
-const inlineDescriptionSaving = ref(false);
 const inlineDescriptionError = ref("");
 const detailRichToolbarOpen = ref(false);
 const detailChecklistEditingIndex = ref(-1);
 const detailChecklistDraft = ref("");
 let inlineDescriptionTimer = null;
+let inlineDescriptionSavePromise = null;
 let inlineDescriptionQueued = null;
+let inlineDescriptionVersion = 0;
+let inlineDescriptionSyncHold = null;
 const dragged = ref(null);
 const dragOverTask = ref(null);
 const dragOverPlacement = ref("before");
@@ -2665,7 +2667,7 @@ async function copyContextTaskLink() {
 function openDetail(task) {
   if (!task) return;
   if (selectedTask.value && inlineDescriptionDraft.value !== (selectedTask.value.description || "")) {
-    void persistInlineDescription(selectedTask.value, inlineDescriptionDraft.value);
+    void saveInlineDescription().catch(() => {});
   }
   listActivityOpen.value = false;
   reminderLoadSequence += 1;
@@ -2860,43 +2862,42 @@ async function saveInlineTitle() {
 }
 function scheduleInlineDescriptionSave(value) {
   inlineDescriptionError.value = "";
+  inlineDescriptionVersion += 1;
   if (inlineDescriptionTimer) clearTimeout(inlineDescriptionTimer);
   const task = selectedTask.value;
   inlineDescriptionTimer = setTimeout(() => {
     inlineDescriptionTimer = null;
-    void persistInlineDescription(task, value);
+    void persistInlineDescription(task, inlineDescriptionDraft.value).catch(() => {});
   }, 650);
 }
 async function persistInlineDescription(task, value) {
   if (!task) return;
-  task = store.tasks.find(item => item.publicId === task.publicId) || task;
-  if (value === (task.description || "")) return;
-  if (inlineDescriptionSaving.value) {
-    inlineDescriptionQueued = { task, value };
-    while (inlineDescriptionSaving.value) await new Promise(resolve => setTimeout(resolve, 10));
-    const queued = inlineDescriptionQueued;
-    if (queued) {
-      inlineDescriptionQueued = null;
-      const latest = store.tasks.find(item => item.publicId === queued.task.publicId) || queued.task;
-      if (queued.value !== (latest.description || "")) await persistInlineDescription(latest, queued.value);
-    }
-    return;
-  }
-  inlineDescriptionSaving.value = true;
-  try {
-    const updated = await store.update(task, { description: value });
-    if (selectedTask.value?.publicId === task.publicId) selectedTask.value = updated;
-    inlineDescriptionError.value = "";
-  } catch (error) {
-    inlineDescriptionError.value = error?.response?.data?.detail || error?.message || "描述保存失败";
-  } finally {
-    inlineDescriptionSaving.value = false;
-    if (inlineDescriptionQueued) {
+  inlineDescriptionQueued = { taskId: task.publicId, value, version: inlineDescriptionVersion, fallback: task };
+  if (inlineDescriptionSavePromise) return inlineDescriptionSavePromise;
+  const promise = (async () => {
+    while (inlineDescriptionQueued) {
       const queued = inlineDescriptionQueued;
       inlineDescriptionQueued = null;
-      const latest = store.tasks.find(item => item.publicId === queued.task.publicId) || queued.task;
-      if (queued.value !== (latest.description || "")) await persistInlineDescription(latest, queued.value);
+      const latest = store.tasks.find(item => item.publicId === queued.taskId) || queued.fallback;
+      if (queued.value === (latest.description || "")) continue;
+      try {
+        const updated = await store.update(latest, { description: queued.value });
+        if (selectedTask.value?.publicId === queued.taskId && inlineDescriptionVersion === queued.version) selectedTask.value = updated;
+        if (selectedTask.value?.publicId === queued.taskId && inlineDescriptionVersion !== queued.version) {
+          inlineDescriptionQueued = { taskId: queued.taskId, value: inlineDescriptionDraft.value, version: inlineDescriptionVersion, fallback: selectedTask.value };
+        }
+      } catch (error) {
+        inlineDescriptionError.value = error?.response?.data?.detail || error?.message || "描述保存失败";
+        throw error;
+      }
     }
+  })();
+  inlineDescriptionSavePromise = promise;
+  try {
+    await promise;
+    inlineDescriptionError.value = "";
+  } finally {
+    if (inlineDescriptionSavePromise === promise) inlineDescriptionSavePromise = null;
   }
 }
 function saveInlineDescription() {
@@ -2904,12 +2905,29 @@ function saveInlineDescription() {
   inlineDescriptionTimer = null;
   return persistInlineDescription(selectedTask.value, inlineDescriptionDraft.value);
 }
+function holdInlineDescriptionSync() {
+  if (!inlineDescriptionSyncHold) inlineDescriptionSyncHold = store.holdSync();
+}
+async function releaseInlineDescriptionSync() {
+  try {
+    await saveInlineDescription();
+  } catch {
+    return;
+  }
+  if (!inlineDescriptionSyncHold) return;
+  store.releaseSyncHold(inlineDescriptionSyncHold);
+  inlineDescriptionSyncHold = null;
+}
 function handleManualSync(event) {
   event.preventDefault();
   void (async () => {
-    await saveInlineDescription();
-    await store.syncNow();
-  })();
+    try {
+      await saveInlineDescription();
+      await store.syncNow();
+    } catch (error) {
+      inlineDescriptionError.value = error?.response?.data?.detail || error?.message || "描述保存失败，同步已暂停";
+    }
+  })().catch(() => {});
 }
 function beginDetailChecklistEdit(item, index) {
   detailChecklistEditingIndex.value = index;
@@ -4755,6 +4773,11 @@ onBeforeUnmount(() => {
   window.removeEventListener("scroll", loadMoreCompletedOnScroll);
   window.removeEventListener("keydown", onKeydown);
   window.removeEventListener("task:manual-sync", handleManualSync);
+  if (inlineDescriptionSyncHold) {
+    const token = inlineDescriptionSyncHold;
+    inlineDescriptionSyncHold = null;
+    void saveInlineDescription().catch(() => {}).finally(() => store.releaseSyncHold(token));
+  }
   window.matchMedia("(max-width: 900px)").removeEventListener("change", handleSidebarViewportChange);
 });
 

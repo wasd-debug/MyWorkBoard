@@ -77,6 +77,75 @@ test('task changes queued during an active sync are sent in a follow-up batch', 
   }
 })
 
+test('task sync is deferred while a detail editor holds the sync lock', async () => {
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine: true } })
+  setActivePinia(createPinia())
+  const store = useTasksStore()
+  await store.switchUser({ id: 'sync-held-editor' })
+  const previousAdapter = api.defaults.adapter
+  let pullCount = 0
+  api.defaults.adapter = async config => {
+    if (config.url.includes('/api/v1/tasks/sync/pull')) {
+      pullCount += 1
+      return { data: { data: { cursor: 0, operations: [], hasMore: false } }, status: 200, statusText: 'OK', headers: {}, config }
+    }
+    throw new Error(`Unexpected API request ${config.method} ${config.url}`)
+  }
+
+  try {
+    const token = store.holdSync()
+    await store.syncNow()
+    assert.equal(pullCount, 0)
+    store.releaseSyncHold(token)
+    await new Promise(resolve => setTimeout(resolve, 30))
+    assert.equal(pullCount, 1)
+  } finally {
+    api.defaults.adapter = previousAdapter
+    await store.clearSession()
+  }
+})
+
+test('an active task sync defers its queued follow-up until the editor releases its lock', async () => {
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine: true } })
+  setActivePinia(createPinia())
+  const store = useTasksStore()
+  await store.switchUser({ id: 'sync-rerun-held-editor' })
+  const previousAdapter = api.defaults.adapter
+  let releasePull
+  let markPullStarted
+  const pullStarted = new Promise(resolve => { markPullStarted = resolve })
+  let pullCount = 0
+  api.defaults.adapter = async config => {
+    if (config.url.includes('/api/v1/tasks/sync/pull')) {
+      pullCount += 1
+      if (pullCount === 1) {
+        markPullStarted()
+        await new Promise(resolve => { releasePull = resolve })
+      }
+      return { data: { data: { cursor: 0, operations: [], hasMore: false } }, status: 200, statusText: 'OK', headers: {}, config }
+    }
+    throw new Error(`Unexpected API request ${config.method} ${config.url}`)
+  }
+
+  try {
+    const activeSync = store.syncNow()
+    await pullStarted
+    void store.syncNow()
+    const token = store.holdSync()
+    releasePull()
+    await activeSync
+    assert.equal(pullCount, 1)
+    assert.equal(store.syncing, false)
+    store.releaseSyncHold(token)
+    await new Promise(resolve => setTimeout(resolve, 30))
+    assert.equal(pullCount, 2)
+  } finally {
+    releasePull?.()
+    api.defaults.adapter = previousAdapter
+    await store.clearSession()
+  }
+})
+
 test('offline task lifecycle updates local projection and one compacted operation', async () => {
   offline()
   setActivePinia(createPinia())
