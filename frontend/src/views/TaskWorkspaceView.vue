@@ -1165,6 +1165,13 @@
       <div class="clone-icon-picker"><input v-model.trim="organizationIconSearch" aria-label="搜索图标" placeholder="搜索中文名称或图标名" /><div class="clone-icon-categories" role="tablist" aria-label="图标分类"><button v-for="category in organizationIconCategories" :key="category.value" type="button" role="tab" :aria-selected="organizationIconCategory === category.value" @click="organizationIconCategory = category.value">{{ category.label }}</button></div><div class="clone-icon-grid" role="listbox" aria-label="可选图标"><button v-for="icon in filteredOrganizationIcons" :key="icon.value" type="button" role="option" :aria-selected="currentOrganizationIcon === icon.value" :aria-label="icon.label" :title="`${icon.label} · ${icon.value}`" @click="selectOrganizationIcon(icon.value)"><component :is="icon.component" v-if="icon.component" :size="19" :stroke-width="2" aria-hidden="true" /><span v-else>{{ icon.value }}</span></button><p v-if="!filteredOrganizationIcons.length" class="clone-icon-empty">没有匹配的图标</p></div><small class="clone-icon-count">{{ filteredOrganizationIcons.length }} 个可选图标</small></div>
     </Dialog>
     <Dialog v-model:open="trashClearOpen" title="清空垃圾桶"><div class="clone-confirmation"><p>将永久删除垃圾桶中的 {{ trashedTaskCount }} 项任务，且无法恢复。</p><footer><button type="button" :disabled="trashClearBusy" @click="trashClearOpen = false">取消</button><button type="button" class="clone-danger-button" :disabled="trashClearBusy || !trashedTaskCount" @click="clearTrashPermanently">{{ trashClearBusy ? '清除中…' : '永久清除' }}</button></footer></div></Dialog>
+    <Dialog v-model:open="deleteTaskConfirmOpen" :title="deleteTaskTargets.length > 1 ? `删除 ${deleteTaskTargets.length} 项任务` : '删除任务'" content-class="clone-delete-task-dialog">
+      <div class="clone-confirmation">
+        <p v-if="deleteTaskTargets.length === 1">确定删除任务“{{ deleteTaskTargets[0].title }}”吗？</p>
+        <p v-else>确定删除选中的 {{ deleteTaskTargets.length }} 项任务吗？删除后可在垃圾桶中恢复。</p>
+        <footer><button type="button" :disabled="deleteTaskBusy" @click="cancelDeleteTasks">取消</button><button type="button" class="clone-danger-button" :disabled="deleteTaskBusy || !deleteTaskTargets.length" @click="confirmDeleteTasks">{{ deleteTaskBusy ? '删除中…' : '删除' }}</button></footer>
+      </div>
+    </Dialog>
     <Dialog v-model:open="listCopyOpen" title="复制清单"><form class="clone-organization-form" @submit.prevent="confirmListCopy"><fieldset><legend>复制任务</legend><label><input v-model="listCopy.mode" type="radio" value="OPEN_ONLY" />只复制未完成任务</label><label><input v-model="listCopy.mode" type="radio" value="ALL_PRESERVE" />复制全部任务，保留已完成状态</label><label><input v-model="listCopy.mode" type="radio" value="ALL_OPEN" />复制全部任务，并将任务设为未完成</label></fieldset><p class="clone-dialog-note">新清单将命名为“{{ listCopy.name }}”。</p><footer><button type="button" :disabled="listCopy.busy" @click="listCopyOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="listCopy.busy">{{ listCopy.busy ? '复制中…' : '复制' }}</button></footer></form></Dialog>
     <Dialog v-model:open="organizationConfirmOpen" :title="organizationConfirmation.title"><template #title v-if="organizationConfirmation.action === 'delete-list'">删除清单“<TaskOrganizationIcon v-if="organizationConfirmation.item?.icon" class="clone-confirmation-title-icon" :value="organizationConfirmation.item.icon" :size="16" /><ListTodo v-else class="clone-confirmation-title-icon" :size="16" /> {{ organizationConfirmation.item?.name }}”？</template><div class="clone-confirmation"><p v-if="organizationConfirmation.action === 'dissolve-group'">解散后，文件夹（<TaskOrganizationIcon v-if="organizationConfirmation.item?.icon" class="clone-confirmation-title-icon" :value="organizationConfirmation.item.icon" :size="16" /><Folder v-else class="clone-confirmation-title-icon" :size="16" /> {{ organizationConfirmation.item?.name }}）中的清单将直接显示在侧边栏。</p><p v-else>{{ organizationConfirmation.message }}</p><footer><button type="button" :disabled="organizationConfirmation.busy" @click="organizationConfirmOpen = false">取消</button><button type="button" class="clone-danger-button" :disabled="organizationConfirmation.busy" @click="confirmOrganizationAction">{{ organizationConfirmation.busy ? '处理中…' : organizationConfirmation.confirmLabel }}</button></footer></div></Dialog>
     <Dialog v-model:open="tagMergeOpen" title="合并标签到…"><form class="clone-organization-form" @submit.prevent="confirmTagMerge"><p>你可以将标签“{{ tagMerge.source?.name }}”下的任务合并到另一个标签。合并后，标签“{{ tagMerge.source?.name }}”将被删除；其子标签会迁移至目标标签层级。</p><label>选择标签<select v-model="tagMerge.targetId" required><option value="" disabled>选择标签</option><option v-for="tag in mergeTargets" :key="tag.publicId" :value="tag.publicId">{{ tag.name }}</option></select></label><footer><button type="button" :disabled="tagMerge.busy" @click="tagMergeOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="tagMerge.busy || !mergeTargets.length">{{ tagMerge.busy ? '合并中…' : '确定' }}</button></footer></form></Dialog>
@@ -1437,6 +1444,10 @@ const remindLocalModel = computed({ get: () => editorOpen.value ? draft.remindLo
 const dailyUntilDoneModel = computed({ get: () => editorOpen.value ? draft.dailyUntilDone : quickReminder.dailyUntilDone, set: (value) => { if (editorOpen.value) draft.dailyUntilDone = value; else quickReminder.dailyUntilDone = value; } });
 const priorityPopoverOpen = ref(false);
 const selectedIds = reactive(new Set());
+const deleteTaskConfirmOpen = ref(false);
+const deleteTaskBusy = ref(false);
+const deleteTaskTargets = ref([]);
+const deleteTaskMode = ref("single");
 const batchMode = computed(() => selectedIds.size > 0);
 const batchPriority = ref("NONE");
 const batchDueAt = ref("");
@@ -4142,9 +4153,38 @@ async function duplicateTask(task) {
   });
 }
 async function deleteTask(task) {
-  if (!task || !window.confirm(`删除任务“${task.title}”？`)) return;
-  await store.remove(task);
-  if (selectedTask.value?.publicId === task.publicId) closeDetail();
+  if (!task) return;
+  closeContext();
+  closeWorkspaceMenus();
+  detailMoreOpen.value = false;
+  detailMoreSection.value = "";
+  deleteTaskMode.value = "single";
+  deleteTaskTargets.value = [task];
+  deleteTaskConfirmOpen.value = true;
+}
+function cancelDeleteTasks() {
+  if (deleteTaskBusy.value) return;
+  deleteTaskConfirmOpen.value = false;
+  deleteTaskTargets.value = [];
+}
+async function confirmDeleteTasks() {
+  const targets = [...deleteTaskTargets.value];
+  if (!targets.length || deleteTaskBusy.value) return;
+  deleteTaskBusy.value = true;
+  try {
+    if (deleteTaskMode.value === "batch") {
+      await applyBatch("DELETE");
+    } else {
+      await store.remove(targets[0]);
+      if (selectedTask.value?.publicId === targets[0].publicId) closeDetail();
+    }
+    deleteTaskConfirmOpen.value = false;
+    deleteTaskTargets.value = [];
+  } catch (error) {
+    store.error = error?.response?.data?.detail || error?.message || "任务删除失败";
+  } finally {
+    deleteTaskBusy.value = false;
+  }
 }
 function toggleSelected(task) {
   selectedIds.has(task.publicId)
@@ -4191,8 +4231,10 @@ async function batchComplete() {
   await applyBatch("COMPLETE");
 }
 async function batchDelete() {
-  if (!window.confirm(`删除选中的 ${selectedIds.size} 项任务？`)) return;
-  await applyBatch("DELETE");
+  if (!selectedTasks.value.length) return;
+  deleteTaskMode.value = "batch";
+  deleteTaskTargets.value = [...selectedTasks.value];
+  deleteTaskConfirmOpen.value = true;
 }
 async function applyBatch(action, values = {}) {
   const targets = selectedTasks.value;

@@ -973,3 +973,16 @@ test('task detail pane follows TickTick toolbar and bottom action hierarchy', ()
   assert.match(workspaceView, /\.clone-detail-read \{ flex: 1 1 auto; min-height: 0; overflow: auto;/)
   assert.match(workspaceView, /\.clone-detail-footer \{ position: absolute; right: 0; bottom: 0; left: 0;/)
 })
+
+test('task deletion uses an in-app dialog for single and batch actions', () => {
+  assert.match(workspaceView, /<Dialog v-model:open="deleteTaskConfirmOpen"[\s\S]*clone-delete-task-dialog/)
+  assert.match(workspaceView, /deleteTaskTargets\.length > 1 \? `删除 \$\{deleteTaskTargets\.length\} 项任务` : '删除任务'/)
+  assert.match(workspaceView, /function cancelDeleteTasks\(\)[\s\S]*deleteTaskTargets\.value = \[\]/)
+  assert.match(workspaceView, /async function confirmDeleteTasks\(\)[\s\S]*await store\.remove\(targets\[0\]\)/)
+  assert.match(workspaceView, /deleteTaskMode\.value === "batch"[\s\S]*await applyBatch\("DELETE"\)/)
+  assert.match(workspaceView, /async function deleteTask\(task\)[\s\S]*closeContext\(\)[\s\S]*closeWorkspaceMenus\(\)[\s\S]*detailMoreOpen\.value = false[\s\S]*deleteTaskConfirmOpen\.value = true/)
+  assert.match(workspaceView, /async function batchDelete\(\)[\s\S]*deleteTaskMode\.value = "batch"[\s\S]*deleteTaskConfirmOpen\.value = true/)
+  assert.doesNotMatch(workspaceView, /if \(!task \|\| !window\.confirm\(`删除任务/)
+  const batchDeleteBody = workspaceView.match(/async function batchDelete\(\) \{([\s\S]*?)\n\}/)?.[1] ?? ''
+  assert.doesNotMatch(batchDeleteBody, /window\.confirm/)
+})
