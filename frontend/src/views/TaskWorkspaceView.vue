@@ -319,44 +319,45 @@
       <div v-if="quickAction" class="clone-quick-action-panel" :class="`is-${quickAction}`" @click.stop>
         <template v-if="quickAction === 'more'"><strong>更多</strong><button type="button" aria-label="快速选择标签" @click="toggleQuickAction('tags')"><Tag :size="14" />标签<small v-if="quickEntry.tagIds.length">{{ quickEntry.tagIds.length }}</small></button><button type="button" v-if="!quickAddIsNote" @click="toggleQuickAction('repeat')"><Repeat2 :size="14" />重复</button><button type="button" @click="openQuickAttachmentPicker"><Paperclip :size="14" />附件</button><button type="button" @click="openTaskTemplates"><ClipboardList :size="14" />从模板添加</button><button type="button" :disabled="quickAddIsNote || !noteLists.length" :title="quickAddIsNote ? '当前已是笔记' : noteLists.length ? '' : '请先创建笔记清单'" @click="convertQuickAddToNote"><ListTodo :size="14" />转换为笔记</button><button type="button" @click="openQuickInputSettings"><SlidersHorizontal :size="14" />输入框设置</button></template>
         <template v-else-if="quickAction === 'date'">
-          <div class="clone-quick-date-panel">
-            <div class="clone-quick-date-tabs" role="tablist" aria-label="日期类型">
-              <button type="button" role="tab" :aria-selected="quickDateMode === 'DATE'" :class="{ active: quickDateMode === 'DATE' }" @click="quickDateMode = 'DATE'">日期</button>
-              <button type="button" role="tab" :aria-selected="quickDateMode === 'RANGE'" :class="{ active: quickDateMode === 'RANGE' }" @click="setQuickDateMode('RANGE')">时间段</button>
-            </div>
-            <div class="clone-quick-date-presets" aria-label="快捷日期">
-              <button type="button" @click="chooseQuickDatePreset('TODAY')">今天</button>
-              <button type="button" @click="chooseQuickDatePreset('TOMORROW')">明天</button>
-              <button type="button" @click="chooseQuickDatePreset('NEXT_WEEK')">下周</button>
-              <button type="button" @click="chooseQuickDatePreset('NEXT_MONTH')">下月</button>
-            </div>
-            <div class="clone-quick-calendar-heading"><button type="button" aria-label="上个月" @click="moveQuickMonth(-1)"><ChevronLeft :size="15" /></button><strong>{{ quickCalendarTitle }}</strong><button type="button" aria-label="下个月" @click="moveQuickMonth(1)"><ChevronRight :size="15" /></button></div>
-            <div class="clone-quick-calendar-grid" role="grid" aria-label="选择日期">
-              <span v-for="weekday in quickWeekdays" :key="weekday" role="columnheader">{{ weekday }}</span>
-              <button v-for="day in quickCalendarDays" :key="day.key" type="button" role="gridcell" :aria-label="day.key" :aria-selected="isQuickDateSelected(day.key)" :class="{ 'outside-month': !day.inMonth, selected: isQuickDateSelected(day.key), 'range-endpoint': isQuickRangeEndpoint(day.key) }" @click="selectQuickCalendarDate(day.key)">{{ day.date.getDate() }}</button>
-            </div>
-            <div v-if="quickDateMode === 'DATE'" class="clone-quick-date-time-row">
-              <label><input type="checkbox" :checked="quickEntry.allDay" @change="setQuickAllDay($event.target.checked)" />全天</label>
-              <label v-if="!quickEntry.allDay">时间<input v-model="quickDateTime" type="time" aria-label="快速新增时间" @change="applyQuickDateTime" /></label>
-            </div>
-            <div v-else class="clone-quick-range-fields">
+          <TaskDateTimePopover
+            :mode="quickDateMode"
+            :month="quickCalendarMonth"
+            :calendar-days="quickDateTimeCalendarDays"
+            :selected-key="quickSelectedDate"
+            :time="quickEntry.allDay ? '' : quickDateTime"
+            :all-day="quickEntry.allDay"
+            :month-label="quickCalendarTitle"
+            apply-label="完成"
+            @update:mode="setQuickDateMode"
+            @quick-date="chooseQuickDatePreset"
+            @move-month="moveQuickMonth"
+            @select-date="selectQuickCalendarDate"
+            @select-time="selectQuickTime"
+            @clear-time="clearQuickTime"
+            @clear-date="clearQuickDate"
+            @toggle-all-day="setQuickAllDay"
+            @apply="applyQuickDate"
+          >
+            <template #reminder>
+              <section class="clone-quick-reminder-section" aria-label="提醒设置">
+                <button type="button" class="clone-quick-reminder-toggle" :aria-pressed="quickAddReminder.enabled" @click="toggleQuickReminder"><Bell :size="15" /><span>{{ quickAddReminder.enabled ? quickReminderLabel : '添加提醒' }}</span><ChevronDown :size="14" /></button>
+                <div v-if="quickAddReminder.enabled" class="clone-quick-reminder-options" role="listbox" aria-label="提醒时间" aria-multiselectable="true">
+                  <button v-for="option in quickReminderOptions" :key="option.value" type="button" role="option" :aria-selected="quickAddReminder.presets.includes(option.value)" :class="{ active: quickAddReminder.presets.includes(option.value) }" @click="selectQuickReminder(option.value)">{{ option.label }}<Check v-if="quickAddReminder.presets.includes(option.value)" :size="14" /></button>
+                </div>
+                <div v-if="quickAddReminder.enabled && quickAddReminder.presets.includes('CUSTOM')" class="clone-quick-reminder-custom">
+                  <label><span>提前</span><input v-model.number="quickAddReminder.amount" type="number" min="1" :max="quickEntry.allDay ? 365 : quickAddReminder.unit === 'WEEK' ? 1 : 10080" aria-label="自定义提醒数量" /><select v-model="quickAddReminder.unit" aria-label="自定义提醒单位"><option v-if="!quickEntry.allDay" value="MINUTE">分钟</option><option v-if="!quickEntry.allDay" value="HOUR">小时</option><option value="DAY">天</option><option value="WEEK">周</option></select></label>
+                  <label v-if="quickEntry.allDay">提醒时间<input v-model="quickAddReminder.time" type="time" aria-label="自定义提醒时间" /></label>
+                </div>
+                <label v-if="quickAddReminder.enabled" class="clone-quick-reminder-repeat"><input v-model="quickAddReminder.dailyUntilDone" type="checkbox" />持续提醒直到完成</label>
+              </section>
+            </template>
+            <template #repeat><button type="button" class="clone-date-slot-trigger" @click="quickAction = 'repeat'"><Repeat2 :size="14" /><span>{{ quickRepeatLabel(quickRepeat) || '重复' }}</span><ChevronRight :size="14" /></button></template>
+            <template #range>
               <label>开始<input v-model="quickRangeStartTime" type="time" aria-label="时间段开始时间" /></label>
               <label>结束<input v-model="quickRangeEndTime" type="time" aria-label="时间段结束时间" /></label>
               <span>{{ quickRangeStart || '选择开始日期' }}<template v-if="quickRangeEnd"> 至 {{ quickRangeEnd }}</template></span>
-            </div>
-            <section class="clone-quick-reminder-section" aria-label="提醒设置">
-              <button type="button" class="clone-quick-reminder-toggle" :aria-pressed="quickAddReminder.enabled" @click="toggleQuickReminder"><Bell :size="15" /><span>{{ quickAddReminder.enabled ? quickReminderLabel : '添加提醒' }}</span><ChevronDown :size="14" /></button>
-              <div v-if="quickAddReminder.enabled" class="clone-quick-reminder-options" role="listbox" aria-label="提醒时间" aria-multiselectable="true">
-                <button v-for="option in quickReminderOptions" :key="option.value" type="button" role="option" :aria-selected="quickAddReminder.presets.includes(option.value)" :class="{ active: quickAddReminder.presets.includes(option.value) }" @click="selectQuickReminder(option.value)">{{ option.label }}<Check v-if="quickAddReminder.presets.includes(option.value)" :size="14" /></button>
-              </div>
-              <div v-if="quickAddReminder.enabled && quickAddReminder.presets.includes('CUSTOM')" class="clone-quick-reminder-custom">
-                <label><span>提前</span><input v-model.number="quickAddReminder.amount" type="number" min="1" :max="quickEntry.allDay ? 365 : quickAddReminder.unit === 'WEEK' ? 1 : 10080" aria-label="自定义提醒数量" /><select v-model="quickAddReminder.unit" aria-label="自定义提醒单位"><option v-if="!quickEntry.allDay" value="MINUTE">分钟</option><option v-if="!quickEntry.allDay" value="HOUR">小时</option><option value="DAY">天</option><option value="WEEK">周</option></select></label>
-                <label v-if="quickEntry.allDay">提醒时间<input v-model="quickAddReminder.time" type="time" aria-label="自定义提醒时间" /></label>
-              </div>
-              <label v-if="quickAddReminder.enabled" class="clone-quick-reminder-repeat"><input v-model="quickAddReminder.dailyUntilDone" type="checkbox" />持续提醒直到完成</label>
-            </section>
-            <footer class="clone-quick-date-footer"><button type="button" @click="clearQuickDate">清除</button><button type="button" class="clone-quick-date-apply" @click="applyQuickDate">完成</button></footer>
-          </div>
+            </template>
+          </TaskDateTimePopover>
         </template>
         <template v-else-if="quickAction === 'priority'"><strong>优先级</strong><button v-for="option in quickPriorityOptions" :key="option.value" type="button" class="clone-quick-priority-option" :data-priority="option.value" :class="{ active: quickEntry.priority === option.value }" @click="quickEntry.priority = option.value; quickEntry.prioritySelected = true; quickAction = ''"><Flag :size="17" /><span>{{ option.label }}</span><Check v-if="quickEntry.priority === option.value" :size="15" /></button></template>
         <template v-else-if="quickAction === 'repeat'">
@@ -1320,6 +1321,7 @@ import TaskSummaryWorkspace from "./TaskSummaryWorkspace.vue";
 import TaskFilterRuleEditor from "../components/tasks/TaskFilterRuleEditor.vue";
 import TaskColorPicker from "../components/TaskColorPicker.vue";
 import TaskOrganizationIcon from "../components/tasks/TaskOrganizationIcon.vue";
+import TaskDateTimePopover from "../components/tasks/TaskDateTimePopover.vue";
 import TasksTimelineView from "./TasksTimelineView.vue";
 import Dialog from "../components/ui/Dialog.vue";
 import { organizationIconCategories, searchOrganizationIcons } from "./taskOrganizationIcons.js";
@@ -1446,6 +1448,7 @@ const quickDateTime = ref("");
 const quickAddReminder = reactive({ enabled: false, presets: [], amount: 1, unit: "DAY", time: "09:00", dailyUntilDone: false });
 const quickWeekdays = ["一", "二", "三", "四", "五", "六", "日"];
 const quickCalendarDays = computed(() => calendarMonthDays(quickCalendarMonth.value));
+const quickDateTimeCalendarDays = computed(() => quickCalendarDays.value.map((day) => ({ ...day, otherMonth: !day.inMonth, selected: isQuickDateSelected(day.key), today: day.key === localDateKey(new Date()) })));
 const quickRepeatCalendarDays = computed(() => {
   const dueDate = quickEntry.dueAt ? new Date(quickEntry.dueAt) : new Date();
   const year = dueDate.getFullYear();
@@ -4182,6 +4185,22 @@ function setQuickDateMode(mode) {
   if (mode === "RANGE") setQuickAllDay(false);
 }
 
+function selectQuickTime(time) {
+  quickEntry.allDay = false;
+  quickDateTime.value = time;
+  applyQuickDateTime();
+}
+
+function clearQuickTime() {
+  quickDateTime.value = "";
+  quickEntry.allDay = true;
+  if (quickEntry.dueAt) {
+    const date = new Date(quickEntry.dueAt);
+    date.setHours(0, 0, 0, 0);
+    quickEntry.dueAt = toLocal(date);
+  }
+}
+
 function applyQuickDateTime() {
   const key = quickSelectedDate.value || (quickEntry.dueAt ? localDateKey(new Date(quickEntry.dueAt)) : localDateKey(new Date()));
   const time = quickEntry.allDay ? "00:00" : quickDateTime.value || configuredQuickTime();
@@ -6493,8 +6512,11 @@ const SidebarSection = {
 .clone-quick-action-panel.is-priority { display: grid; min-width: 184px; gap: 2px; }
 .clone-quick-action-panel.is-priority > strong { margin: 0 4px 3px; }
 .clone-quick-action-panel label:has(input[type="checkbox"]) { padding: 3px 5px; border-radius: 4px; color: var(--ink); }
-.clone-quick-action-panel.is-date { display: block; width: min(420px, calc(100vw - 36px)); max-height: min(660px, calc(100dvh - 210px)); overflow: auto; padding: 0; }
-.clone-quick-action-panel.is-repeat { display: block; width: min(410px, calc(100vw - 36px)); max-width: calc(100vw - 36px); box-sizing: border-box; overflow: auto; }
+.clone-quick-action-panel.is-date,
+.clone-quick-action-panel.is-repeat { position: absolute; z-index: 260; top: calc(100% + 8px); left: 0; margin: 0; box-sizing: border-box; }
+.clone-quick-action-panel.is-date { display: block; width: min(378px, calc(100vw - 36px)); max-height: min(690px, calc(100dvh - 120px)); overflow: visible; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.clone-quick-action-panel.is-date > .task-date-time-popover { width: 100%; }
+.clone-quick-action-panel.is-repeat { display: block; width: min(410px, calc(100vw - 36px)); max-width: calc(100vw - 36px); max-height: min(690px, calc(100dvh - 120px)); overflow: auto; }
 .clone-quick-date-panel { display: grid; gap: 10px; padding: 12px; }
 .clone-quick-date-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; border-radius: 6px; background: var(--paper); }
 .clone-quick-action-panel .clone-quick-date-tabs button { min-height: 29px; color: var(--muted); }
@@ -6554,8 +6576,9 @@ const SidebarSection = {
 .clone-quick-action-panel .clone-quick-date-footer { display: flex; justify-content: space-between; padding-top: 4px; border-top: 1px solid var(--line); }
 .clone-quick-action-panel .clone-quick-date-footer .clone-quick-date-apply { padding-inline: 14px; background: var(--accent); color: var(--accent-contrast, #fff); }
 @media (max-width: 600px) {
-  .clone-quick-action-panel.is-date { position: fixed; z-index: 250; top: 72px; right: 8px; bottom: auto; left: 8px; width: auto; max-height: calc(100dvh - 316px); margin: 0; }
-  .clone-quick-action-panel.is-repeat { position: fixed; z-index: 250; top: 72px; right: 8px; bottom: auto; left: 8px; width: auto; max-width: none; max-height: calc(100dvh - 280px); margin: 0; }
+  .clone-quick-action-panel.is-date,
+  .clone-quick-action-panel.is-repeat { position: fixed; z-index: 260; top: 72px; right: 8px; bottom: auto; left: 8px; width: auto; max-width: none; max-height: calc(100dvh - 96px); margin: 0; }
+  .clone-quick-action-panel.is-date > .task-date-time-popover { width: 100%; max-height: calc(100dvh - 96px); }
   .clone-quick-repeat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .clone-quick-date-footer { position: sticky; bottom: 0; z-index: 1; background: var(--card); }

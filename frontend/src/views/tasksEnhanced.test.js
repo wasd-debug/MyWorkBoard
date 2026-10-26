@@ -10,6 +10,7 @@ const workspaceView = await readFile(new URL('./TaskWorkspaceView.vue', import.m
 const taskRichTextEditor = await readFile(new URL('../components/tasks/TaskRichTextEditor.vue', import.meta.url), 'utf8')
 const taskMilkdownEditor = await readFile(new URL('../components/tasks/TaskMilkdownEditor.vue', import.meta.url), 'utf8')
 const taskFilterRuleEditor = await readFile(new URL('../components/tasks/TaskFilterRuleEditor.vue', import.meta.url), 'utf8')
+const taskDateTimePopover = await readFile(new URL('../components/tasks/TaskDateTimePopover.vue', import.meta.url), 'utf8')
 const themeStyles = await readFile(new URL('../styles/theme.css', import.meta.url), 'utf8')
 const calendarView = await readFile(new URL('./TasksCalendarView.vue', import.meta.url), 'utf8')
 const router = await readFile(new URL('../router/index.js', import.meta.url), 'utf8')
@@ -470,12 +471,23 @@ test('quick add exposes two-row date, priority, list controls and keeps tags in 
     'quickEntry.prioritySelected ? quickEntry.priority',
     'quickEntry.listSelected ? quickEntry.listId',
     '...quickEntry.tagIds', 'function chooseQuickDatePreset(preset)', 'function closeQuickAction(event)',
-    'quickCalendarDays', 'role="tablist" aria-label="日期类型"', '选择日期', '时间段开始时间',
+    'quickCalendarDays', '选择日期',
     'quickReminderOptions', '持续提醒直到完成', 'quickReminderPayloads', 'aria-multiselectable="true"', 'for (const reminderPayload of reminderPayloads) await apiCreateTaskReminder(saved.publicId, reminderPayload)',
     'clone-quick-action-panel',
   ]) assert.ok(workspaceView.includes(token), `missing quick-add behavior ${token}`)
+  for (const token of ['role="tablist" aria-label="日期类型"', '选择日期']) assert.ok(taskDateTimePopover.includes(token), `missing date popover behavior ${token}`)
+  assert.match(workspaceView, /<template #range>[\s\S]*时间段开始时间/)
   assert.match(workspaceView, /function cancelQuickDraft()[\s\S]*Object\.assign\(quickEntry, \{ dueAt: "", startAt: "", allDay: false, dateSelected: false/)
   assert.match(workspaceView, /if \(quickAction\.value\) \{[\s\S]*quickAction\.value = "";[\s\S]*return;/)
+})
+
+test('quick add date controls use one floating popover with ordered date fields', () => {
+  assert.match(workspaceView, /<TaskDateTimePopover[\s\S]*<template #reminder>[\s\S]*<template #repeat>/)
+  assert.match(workspaceView, /\.clone-quick-action-panel\.is-date,\s+\.clone-quick-action-panel\.is-repeat \{ position: absolute;/)
+  assert.match(workspaceView, /\.clone-quick-action-panel\.is-date > \.task-date-time-popover \{ width: 100%; \}/)
+  assert.doesNotMatch(workspaceView, /<div class="clone-quick-date-panel">/)
+  assert.match(taskDateTimePopover, /task-date-time-time-row[\s\S]*slot name="reminder"[\s\S]*slot name="repeat"[\s\S]*task-date-time-footer/)
+  assert.match(taskDateTimePopover, /max-height: min\(690px, calc\(100dvh - 24px\)\)/)
 })
 
 test('quick-add priority menus render color-coded flags for every priority', () => {
