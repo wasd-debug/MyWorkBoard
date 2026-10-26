@@ -16,3 +16,5 @@ deploy/.env
 outputs/p2-i7-ticktick-import-sample/滴答清单_导入测试样本.xlsx
 backups/salary-before-task-focus-import-20261013-085828.sql
 backups/salary-before-task-focus-import-20261013-085901.sql.gz
+/.playwright-cli/
+/tmp/
