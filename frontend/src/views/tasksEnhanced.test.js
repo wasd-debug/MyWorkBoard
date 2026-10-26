@@ -138,9 +138,16 @@ test('board groups expose quick-add dialogs that keep the selected group dimensi
   assert.match(view, /store\.create\(payload\);boardAddOpen\.value=false;await loadBoard\(\)/)
 })
 
-test('workspace board columns open quick-add with group defaults and persistent task fields', () => {
+test('workspace board columns open inline quick-add with group defaults and persistent task fields', () => {
   assert.match(workspaceView, /在\$\{group\.label\}添加任务/)
-  assert.match(workspaceView, /class="clone-board-quick-dialog" role="dialog" aria-modal="true" aria-label="添加看板任务"/)
+  assert.match(workspaceView, /class="clone-board-quick-inline"/)
+  assert.match(workspaceView, /:style="detailPaneStyle"/)
+  assert.match(workspaceView, /const clickY = Number\(event\?\.clientY\)/)
+  assert.match(workspaceView, /const requestedTop = rect\.clickY > 0 \? rect\.clickY - 24 : rect\.top/)
+  assert.match(workspaceView, /const availableHeight = window\.innerHeight - top - 16/)
+  assert.match(workspaceView, /rect\.clickX \+ gap \+ paneWidth <= window\.innerWidth - 16/)
+  assert.match(workspaceView, /updatedRect = anchorElement\.getBoundingClientRect\(\)/)
+  assert.match(workspaceView, /closeBoardQuickAddOnOutsidePointer/)
   assert.match(workspaceView, /placeholder="准备做什么？" aria-label="看板任务标题"/)
   assert.match(workspaceView, /aria-label="设置日期"[\s\S]*aria-label="设置优先级"[\s\S]*aria-label="选择标签"[\s\S]*aria-label="选择清单"/)
   assert.match(workspaceView, /function openBoardQuickAdd\(group\)[\s\S]*groupBy\.value === "list"[\s\S]*groupBy\.value === "priority"[\s\S]*groupBy\.value === "tag"[\s\S]*groupBy\.value === "time"/)
@@ -149,7 +156,7 @@ test('workspace board columns open quick-add with group defaults and persistent 
   assert.match(workspaceView, /names\.get\(label\) > 1 && list\.systemKey !== "INBOX" \? `\$\{label\}（清单）`/)
   assert.match(workspaceView, /v-for="list in boardQuickAddLists"/)
   assert.match(workspaceView, /async function saveBoardQuickAdd\(\)[\s\S]*await store\.create\(\{[\s\S]*description: boardQuickAddDescription\.value\.trim\(\)[\s\S]*priority: boardQuickAddPriority\.value[\s\S]*tagIds: \[\.\.\.boardQuickAddTagIds\.value\][\s\S]*rrule: boardQuickAddRrule\.value/)
-  assert.match(workspaceView, /@click\.self="closeBoardQuickAdd"/)
+  assert.match(workspaceView, /@keydown\.esc\.stop\.prevent="closeBoardQuickAdd"/)
 })
 
 test('search highlights matches and scopes recent history by account', () => {
@@ -326,7 +333,7 @@ test('task rows expose a viewport-safe context menu with contract actions', () =
 
 test('middle task workspace matches the note-row, date, view, display, and print interactions', () => {
   assert.match(workspaceView, /isNoteTask\(task\)[\s\S]*?clone-check/)
-  assert.match(workspaceView, /function openTaskRow\(task\)[\s\S]*openDetail\(task\)[\s\S]*inlineRowTitleTaskId\.value = task\.publicId/)
+  assert.match(workspaceView, /function openTaskRow\(task, event\)[\s\S]*openDetail\(task\)[\s\S]*inlineRowTitleTaskId\.value = task\.publicId/)
   assert.match(workspaceView, /class="clone-drag-handle" :draggable="!batchMode"/)
   assert.match(workspaceView, /taskGroupDropPatch\(dragged\.value, groupBy\.value, groupKey\)/)
   assert.match(workspaceView, /clone-task-tag-remove/)

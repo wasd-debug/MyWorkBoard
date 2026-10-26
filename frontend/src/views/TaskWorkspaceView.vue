@@ -376,30 +376,6 @@
         <template v-else-if="quickAction === 'tags'"><strong>标签</strong><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="quickEntry.tagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label><button type="button" @click="quickAction = ''">完成</button></template>
         <template v-else><label>所属清单<select v-model="quickEntry.listId" aria-label="快速新增所属清单" @change="quickEntry.listSelected = true"><option value="">{{ store.inbox?.name || '收集箱' }}</option><option v-for="list in store.lists.filter((item) => !item.archived && item.publicId !== store.inbox?.publicId)" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select></label><button type="button" @click="quickAction = ''">完成</button></template>
       </div>
-      <div v-if="boardQuickAddOpen" class="clone-modal-backdrop clone-board-quick-backdrop" @click.self="closeBoardQuickAdd">
-        <section class="clone-board-quick-dialog" role="dialog" aria-modal="true" aria-label="添加看板任务" @keydown.esc.stop.prevent="closeBoardQuickAdd">
-          <header><div><strong>{{ boardQuickAddGroup?.label || title }}</strong><small>{{ boardQuickAddGroup?.tasks.length || 0 }}</small></div><button type="button" aria-label="关闭添加任务" @click="closeBoardQuickAdd"><X :size="19" /></button></header>
-          <form @submit.prevent="saveBoardQuickAdd">
-            <div class="clone-board-quick-entry" :class="{ 'has-error': boardQuickAddError }">
-              <input ref="boardQuickAddInput" v-model.trim="boardQuickAddTitle" autofocus maxlength="500" placeholder="准备做什么？" aria-label="看板任务标题" />
-              <div class="clone-board-quick-actions">
-                <button type="button" aria-label="设置日期" title="设置日期" :aria-expanded="boardQuickAddPanel === 'date'" @click="toggleBoardQuickPanel('date')"><CalendarDays :size="22" /></button>
-                <button type="button" aria-label="设置优先级" title="设置优先级" :aria-expanded="boardQuickAddPanel === 'priority'" @click="toggleBoardQuickPanel('priority')"><Flag :size="22" /></button>
-                <button type="button" aria-label="选择标签" title="选择标签" :aria-expanded="boardQuickAddPanel === 'tags'" @click="toggleBoardQuickPanel('tags')"><Tag :size="22" /><small v-if="boardQuickAddTagIds.length">{{ boardQuickAddTagIds.length }}</small></button>
-                <button type="button" aria-label="选择清单" title="选择清单" :aria-expanded="boardQuickAddPanel === 'list'" @click="toggleBoardQuickPanel('list')"><ListTodo :size="22" /></button>
-                <button type="button" aria-label="更多任务属性" title="更多任务属性" :aria-expanded="boardQuickAddPanel === 'more'" @click="toggleBoardQuickPanel('more')"><Ellipsis :size="22" /></button>
-                <button type="submit" class="clone-board-quick-submit" aria-label="添加任务" title="添加任务" :disabled="!boardQuickAddTitle || boardQuickAddSaving"><ArrowRight :size="21" /></button>
-              </div>
-              <div v-if="boardQuickAddPanel === 'date'" class="clone-board-quick-popover"><label>日期<input v-model="boardQuickAddDue" type="datetime-local" aria-label="看板任务日期" /></label><button type="button" @click="boardQuickAddDue = ''">清除日期</button></div>
-              <div v-else-if="boardQuickAddPanel === 'priority'" class="clone-board-quick-popover"><strong>优先级</strong><button v-for="option in quickPriorityOptions" :key="option.value" type="button" class="clone-board-quick-priority-option" :data-priority="option.value" :class="{ active: boardQuickAddPriority === option.value }" @click="boardQuickAddPriority = option.value; boardQuickAddPanel = ''"><Flag :size="17" /><span>{{ option.label }}</span><Check v-if="boardQuickAddPriority === option.value" :size="15" /></button></div>
-              <div v-else-if="boardQuickAddPanel === 'tags'" class="clone-board-quick-popover clone-board-quick-tags"><strong>标签</strong><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="boardQuickAddTagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label><button type="button" @click="boardQuickAddPanel = ''">完成</button></div>
-              <div v-else-if="boardQuickAddPanel === 'list'" class="clone-board-quick-popover"><label>所属清单<select v-model="boardQuickAddListId" aria-label="看板任务所属清单"><option v-for="list in boardQuickAddLists" :key="list.publicId" :value="list.publicId">{{ list.label }}</option></select></label><button type="button" @click="boardQuickAddPanel = ''">完成</button></div>
-              <div v-else-if="boardQuickAddPanel === 'more'" class="clone-board-quick-popover clone-board-quick-more"><label>描述<textarea v-model="boardQuickAddDescription" rows="2" aria-label="看板任务描述" /></label><label>重复<select v-model="boardQuickAddRrule" aria-label="看板任务重复"><option value="">不重复</option><option value="FREQ=DAILY">每天</option><option value="FREQ=WEEKLY">每周</option><option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">每个工作日</option><option value="FREQ=MONTHLY">每月</option><option value="FREQ=YEARLY">每年</option></select></label></div>
-            </div>
-            <p v-if="boardQuickAddError" class="clone-board-quick-error" role="alert">{{ boardQuickAddError }}</p>
-          </form>
-        </section>
-      </div>
       <div v-if="displaySettingsOpen" class="clone-modal-backdrop" @click.self="displaySettingsOpen = false">
         <section class="clone-display-settings" role="dialog" aria-modal="true" aria-label="显示设置">
           <header><h2>显示设置</h2><button type="button" aria-label="关闭显示设置" @click="displaySettingsOpen = false"><X :size="16" /></button></header>
@@ -453,7 +429,26 @@
       <div v-if="activeWorkspaceView === 'KANBAN'" class="clone-inline-board" aria-label="任务看板">
         <section v-for="group in groups" :key="group.key" class="clone-inline-board-column">
           <header class="clone-inline-board-column-head"><div><strong>{{ group.label }}</strong><small>{{ group.tasks.length }}</small></div><button type="button" :aria-label="`在${group.label}添加任务`" :title="`在${group.label}添加任务`" @click="openBoardQuickAdd(group)"><Plus :size="17" /></button></header>
-          <article v-for="task in group.tasks" :key="task.publicId" class="clone-inline-board-card" :class="{ selected: selectedTask?.publicId === task.publicId, checked: task.status === 'COMPLETED', 'is-note': isNoteTask(task) }" :data-priority="task.priority" tabindex="0" @click="openTaskRow(task)" @keydown.enter.prevent="openTaskRow(task)">
+          <form v-if="boardQuickAddOpen && boardQuickAddGroup?.key === group.key" class="clone-board-quick-inline" @submit.prevent="saveBoardQuickAdd" @keydown.esc.stop.prevent="closeBoardQuickAdd">
+            <div class="clone-board-quick-entry" :class="{ 'has-error': boardQuickAddError }">
+              <input ref="boardQuickAddInput" v-model.trim="boardQuickAddTitle" autofocus maxlength="500" placeholder="准备做什么？" aria-label="看板任务标题" />
+              <div class="clone-board-quick-actions">
+                <button type="button" aria-label="设置日期" title="设置日期" :aria-expanded="boardQuickAddPanel === 'date'" @click="toggleBoardQuickPanel('date')"><CalendarDays :size="18" /></button>
+                <button type="button" aria-label="设置优先级" title="设置优先级" :aria-expanded="boardQuickAddPanel === 'priority'" @click="toggleBoardQuickPanel('priority')"><Flag :size="18" /></button>
+                <button type="button" aria-label="选择标签" title="选择标签" :aria-expanded="boardQuickAddPanel === 'tags'" @click="toggleBoardQuickPanel('tags')"><Tag :size="18" /><small v-if="boardQuickAddTagIds.length">{{ boardQuickAddTagIds.length }}</small></button>
+                <button type="button" aria-label="选择清单" title="选择清单" :aria-expanded="boardQuickAddPanel === 'list'" @click="toggleBoardQuickPanel('list')"><ListTodo :size="18" /></button>
+                <button type="button" aria-label="更多任务属性" title="更多任务属性" :aria-expanded="boardQuickAddPanel === 'more'" @click="toggleBoardQuickPanel('more')"><Ellipsis :size="18" /></button>
+                <button type="submit" class="clone-board-quick-submit" aria-label="添加任务" title="添加任务" :disabled="!boardQuickAddTitle || boardQuickAddSaving"><ArrowRight :size="18" /></button>
+              </div>
+              <div v-if="boardQuickAddPanel === 'date'" class="clone-board-quick-popover"><label>日期<input v-model="boardQuickAddDue" type="datetime-local" aria-label="看板任务日期" /></label><button type="button" @click="boardQuickAddDue = ''">清除日期</button></div>
+              <div v-else-if="boardQuickAddPanel === 'priority'" class="clone-board-quick-popover"><strong>优先级</strong><button v-for="option in quickPriorityOptions" :key="option.value" type="button" class="clone-board-quick-priority-option" :data-priority="option.value" :class="{ active: boardQuickAddPriority === option.value }" @click="boardQuickAddPriority = option.value; boardQuickAddPanel = ''"><Flag :size="15" /><span>{{ option.label }}</span><Check v-if="boardQuickAddPriority === option.value" :size="14" /></button></div>
+              <div v-else-if="boardQuickAddPanel === 'tags'" class="clone-board-quick-popover clone-board-quick-tags"><strong>标签</strong><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="boardQuickAddTagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label><button type="button" @click="boardQuickAddPanel = ''">完成</button></div>
+              <div v-else-if="boardQuickAddPanel === 'list'" class="clone-board-quick-popover"><label>所属清单<select v-model="boardQuickAddListId" aria-label="看板任务所属清单"><option v-for="list in boardQuickAddLists" :key="list.publicId" :value="list.publicId">{{ list.label }}</option></select></label><button type="button" @click="boardQuickAddPanel = ''">完成</button></div>
+              <div v-else-if="boardQuickAddPanel === 'more'" class="clone-board-quick-popover clone-board-quick-more"><label>描述<textarea v-model="boardQuickAddDescription" rows="2" aria-label="看板任务描述" /></label><label>重复<select v-model="boardQuickAddRrule" aria-label="看板任务重复"><option value="">不重复</option><option value="FREQ=DAILY">每天</option><option value="FREQ=WEEKLY">每周</option><option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">每个工作日</option><option value="FREQ=MONTHLY">每月</option><option value="FREQ=YEARLY">每年</option></select></label></div>
+            </div>
+            <p v-if="boardQuickAddError" class="clone-board-quick-error" role="alert">{{ boardQuickAddError }}</p>
+          </form>
+          <article v-for="task in group.tasks" :key="task.publicId" class="clone-inline-board-card" :class="{ selected: selectedTask?.publicId === task.publicId, checked: task.status === 'COMPLETED', 'is-note': isNoteTask(task) }" :data-priority="task.priority" tabindex="0" @click="openTaskRow(task, $event)" @keydown.enter.prevent="openTaskRow(task, $event)">
             <div class="clone-inline-board-card-title">
               <button v-if="!isNoteTask(task)" type="button" class="clone-inline-board-check" :class="{ completed: task.status === 'COMPLETED' }" :aria-label="`${task.status === 'COMPLETED' ? '重新打开' : '完成'}${task.title}`" @click.stop="toggleComplete(task)"><Check v-if="task.status === 'COMPLETED'" :size="12" /></button>
               <FileText v-else class="clone-inline-board-note-icon" :size="15" aria-hidden="true" />
@@ -628,6 +623,7 @@
 
     <aside
       class="clone-detail-pane"
+      :style="detailPaneStyle"
       :class="{ 'is-empty': !selectedTask && !editorOpen && !selectedIds.size && !listActivityOpen, 'is-batch': Boolean(selectedIds.size), 'is-list-activity': listActivityOpen }"
       :aria-label="selectedIds.size ? '批量操作' : listActivityOpen ? '清单动态' : '任务详情'"
       :role="selectedIds.size || listActivityOpen || (activeWorkspaceView !== 'LIST' && (selectedTask || editorOpen)) ? 'dialog' : undefined"
@@ -1730,6 +1726,29 @@ const workspaceViews = [
 ];
 const selectedWorkspaceView = ref(route.query.workspaceView === "KANBAN" ? "KANBAN" : route.query.workspaceView === "TIMELINE" ? "TIMELINE" : "LIST");
 const activeWorkspaceView = computed(() => selectedWorkspaceView.value);
+const boardDetailAnchor = ref(null);
+const detailPaneStyle = computed(() => {
+  if (activeWorkspaceView.value === "LIST" || !boardDetailAnchor.value || window.matchMedia("(max-width: 900px)").matches) return undefined;
+  const rect = boardDetailAnchor.value;
+  const paneWidth = Math.min(480, Math.max(320, window.innerWidth - 48));
+  const paneMaxHeight = Math.min(window.innerHeight - 32, 720);
+  const gap = 14;
+  const fitsRight = rect.right + gap + paneWidth <= window.innerWidth - 16;
+  const fitsLeft = rect.left - gap - paneWidth >= 16;
+  const left = fitsRight
+    ? rect.right + gap
+    : fitsLeft
+      ? rect.left - paneWidth - gap
+      : rect.clickX + gap + paneWidth <= window.innerWidth - 16
+        ? rect.clickX + gap
+        : rect.clickX - paneWidth - gap >= 16
+          ? rect.clickX - paneWidth - gap
+          : Math.min(Math.max(16, rect.centerX - paneWidth / 2), window.innerWidth - paneWidth - 16);
+  const requestedTop = rect.clickY > 0 ? rect.clickY - 24 : rect.top;
+  const top = Math.min(Math.max(16, requestedTop), Math.max(16, window.innerHeight - Math.min(320, paneMaxHeight) - 16));
+  const availableHeight = window.innerHeight - top - 16;
+  return { position: "fixed", top: `${top}px`, left: `${left}px`, right: "auto", width: `${paneWidth}px`, maxHeight: `${Math.min(paneMaxHeight, availableHeight)}px`, transform: "none" };
+});
 const noteLists = computed(() => store.lists.filter(item => !item.archived && item.objectType === "NOTE"));
 const detailParentCandidates = computed(() => {
   const task = selectedTask.value;
@@ -2398,7 +2417,10 @@ function openBoardQuickAdd(group) {
     if (dayOffset !== undefined) boardQuickAddDue.value = toLocal(addDays(new Date(), dayOffset));
   }
   boardQuickAddOpen.value = true;
-  nextTick(() => boardQuickAddInput.value?.focus());
+  nextTick(() => {
+    const input = Array.isArray(boardQuickAddInput.value) ? boardQuickAddInput.value[0] : boardQuickAddInput.value;
+    input?.focus();
+  });
 }
 
 function toggleBoardQuickPanel(panel) {
@@ -2409,6 +2431,10 @@ function closeBoardQuickAdd() {
   boardQuickAddOpen.value = false;
   boardQuickAddPanel.value = "";
   boardQuickAddError.value = "";
+}
+
+function closeBoardQuickAddOnOutsidePointer(event) {
+  if (boardQuickAddOpen.value && !event.target.closest?.(".clone-board-quick-inline, .clone-inline-board-column-head")) closeBoardQuickAdd();
 }
 
 async function saveBoardQuickAdd() {
@@ -3346,11 +3372,37 @@ async function openTaskIndicator(task, kind) {
       : ".clone-detail-description-block";
   document.querySelector(selector)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
-function openTaskRow(task) {
+function openTaskRow(task, event) {
+  const anchorElement = event?.currentTarget;
+  const rect = anchorElement?.getBoundingClientRect?.();
+  const clickX = Number(event?.clientX);
+  const clickY = Number(event?.clientY);
+  boardDetailAnchor.value = rect ? {
+    top: rect.top,
+    right: rect.right,
+    left: rect.left,
+    clickX: clickX > 0 ? clickX : (rect.left + rect.right) / 2,
+    clickY: clickY > 0 ? clickY : 0,
+    centerX: clickX > 0 ? clickX : (rect.left + rect.right) / 2,
+  } : null;
   openDetail(task);
   inlineRowTitleTaskId.value = task.publicId;
   inlineRowTitleDraft.value = task.title;
-  void nextTick(() => document.querySelector(".clone-task-content input")?.focus());
+  void nextTick(() => {
+    document.querySelector(".clone-task-content input")?.focus();
+    window.requestAnimationFrame(() => {
+      if (!anchorElement?.isConnected) return;
+      const updatedRect = anchorElement.getBoundingClientRect();
+      boardDetailAnchor.value = {
+        top: updatedRect.top,
+        right: updatedRect.right,
+        left: updatedRect.left,
+        clickX: clickX > 0 ? clickX : (updatedRect.left + updatedRect.right) / 2,
+        clickY: clickY > 0 ? clickY : 0,
+        centerX: clickX > 0 ? clickX : (updatedRect.left + updatedRect.right) / 2,
+      };
+    });
+  });
 }
 function openListActivity() {
   const list = route.name === "tasks-inbox" ? store.inbox : currentTaskList.value;
@@ -3798,6 +3850,7 @@ function closeDetail() {
   listActivityRequest += 1;
   listActivityLoading.value = false;
   selectedTask.value = null;
+  boardDetailAnchor.value = null;
   detailParentPickerOpen.value = false;
   editing.value = null;
   editorOpen.value = false;
@@ -5500,6 +5553,10 @@ async function loadFilters() {
 }
 function onKeydown(event) {
   if (event.key === "Escape") {
+    if (boardQuickAddOpen.value) {
+      closeBoardQuickAdd();
+      return;
+    }
     if (detailMoreOpen.value) {
       closeDetailMore();
       return;
@@ -5573,6 +5630,7 @@ onMounted(() => {
   document.addEventListener("pointerdown", closeContext);
   document.addEventListener("pointerdown", closeDetailMoreOnOutsidePointer);
   document.addEventListener("pointerdown", closeQuickAction);
+  document.addEventListener("pointerdown", closeBoardQuickAddOnOutsidePointer);
   document.addEventListener("pointerdown", closeWorkspaceMenusOnOutsidePointer);
   document.addEventListener("pointerdown", closeCompletionFilterOnOutsidePointer);
   document.addEventListener("pointerdown", closeAttributePopoversOnOutsidePointer);
@@ -5592,6 +5650,7 @@ onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", closeContext);
   document.removeEventListener("pointerdown", closeDetailMoreOnOutsidePointer);
   document.removeEventListener("pointerdown", closeQuickAction);
+  document.removeEventListener("pointerdown", closeBoardQuickAddOnOutsidePointer);
   document.removeEventListener("pointerdown", closeWorkspaceMenusOnOutsidePointer);
   document.removeEventListener("pointerdown", closeCompletionFilterOnOutsidePointer);
   document.removeEventListener("pointerdown", closeAttributePopoversOnOutsidePointer);
@@ -6621,6 +6680,13 @@ const SidebarSection = {
 .clone-inline-board-column-head small { color: var(--muted); font-size: 12px; }
 .clone-inline-board-column-head button { display: grid; flex: 0 0 28px; width: 28px; height: 28px; place-items: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-inline-board-column-head button:hover { background: color-mix(in srgb, var(--accent) 11%, transparent); color: var(--accent); }
+.clone-board-quick-inline { position: relative; z-index: 4; margin: -2px 0 2px; }
+.clone-board-quick-inline .clone-board-quick-entry { min-height: 82px; padding: 10px 11px; border-width: 1px; border-radius: 8px; box-shadow: 0 4px 14px rgb(15 23 42 / 10%); }
+.clone-board-quick-inline .clone-board-quick-entry > input { min-height: 30px; font-size: 14px; }
+.clone-board-quick-inline .clone-board-quick-actions { gap: 3px; }
+.clone-board-quick-inline .clone-board-quick-actions > button { width: 28px; height: 28px; flex-basis: 28px; }
+.clone-board-quick-inline .clone-board-quick-actions > .clone-board-quick-submit { width: 32px; height: 28px; flex-basis: 32px; }
+.clone-board-quick-inline .clone-board-quick-popover { top: calc(100% + 7px); bottom: auto; }
 .clone-inline-board-card { display: grid; gap: 8px; width: 100%; min-height: 92px; padding: 13px 13px 11px; border: 1px solid color-mix(in srgb, var(--line) 78%, transparent); border-radius: 9px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; box-shadow: 0 2px 9px rgb(15 23 42 / 6%); transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease, background .15s ease; }
 .clone-inline-board-card:hover, .clone-inline-board-card:focus-visible, .clone-inline-board-card.selected { border-color: color-mix(in srgb, var(--accent) 65%, var(--line)); background: color-mix(in srgb, var(--accent) 4%, var(--surface)); box-shadow: 0 7px 18px rgb(15 23 42 / 11%); outline: none; transform: translateY(-1px); }
 .clone-inline-board-card.checked { opacity: .72; }
