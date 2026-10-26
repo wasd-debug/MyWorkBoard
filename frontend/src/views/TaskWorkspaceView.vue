@@ -285,21 +285,24 @@
       <div v-if="!isTrashRoute" class="clone-quick-add" :class="{ 'is-simple': quickInputMode === 'SIMPLE', 'is-collapsed': !quickAddExpanded }">
         <button v-if="!quickAddExpanded" type="button" class="clone-quick-add-collapsed" @click="expandQuickAdd"><Plus :size="17" /><span>添加任务至“{{ title === '今天' ? '收集箱' : title }}”</span></button>
         <form v-else class="clone-quick-add-form" @submit.prevent="quickAdd">
-          <input
-            ref="quickTitleInput"
-            v-model="quickTitle"
-            aria-label="快速添加任务标题"
-            placeholder="准备做什么？"
-            @input="updateQuickSuggestion"
-            @keydown="handleQuickSuggestionKeydown"
-          />
-          <button type="button" class="clone-quick-action" aria-label="快速设置日期和提醒" :aria-expanded="quickAction === 'date'" @click="toggleQuickAction('date')"><CalendarDays :size="15" /><span>{{ quickDateSummary }}</span></button>
-          <button v-if="!quickAddIsNote" type="button" class="clone-quick-action" aria-label="快速设置优先级" :aria-expanded="quickAction === 'priority'" @click="toggleQuickAction('priority')"><Flag :size="15" /><span>{{ priorityLabel(quickEntry.priority) }}</span></button>
-          <button v-if="!quickAddIsNote" type="button" class="clone-quick-action" aria-label="快速设置重复" :aria-expanded="quickAction === 'repeat'" @click="toggleQuickAction('repeat')"><Repeat2 :size="15" /><span>{{ quickRepeatLabel(quickRepeat) }}</span></button>
-          <button v-if="store.tags.length" type="button" class="clone-quick-icon-action" aria-label="快速选择标签" :aria-expanded="quickAction === 'tags'" @click="toggleQuickAction('tags')"><Tag :size="15" /><span v-if="quickEntry.tagIds.length">{{ quickEntry.tagIds.length }}</span></button>
-          <button type="button" class="clone-quick-action clone-quick-list-action" aria-label="快速选择清单" :aria-expanded="quickAction === 'list'" @click="toggleQuickAction('list')"><ListTodo :size="15" /><span>{{ quickEntry.listId ? listName(quickEntry.listId) : '清单' }}</span></button>
-          <button type="button" class="clone-quick-icon-action" aria-label="快速新增更多操作" :aria-expanded="quickAction === 'more'" @click="toggleQuickAction('more')"><Ellipsis :size="16" /></button>
-          <button type="submit" class="clone-quick-submit" :disabled="!quickTitle.trim() || quickParsing || quickSaving">{{ quickParsing ? '解析中…' : quickSaving ? '添加中…' : '添加' }}</button><kbd>N</kbd>
+          <div class="clone-quick-title-row">
+            <input
+              ref="quickTitleInput"
+              v-model="quickTitle"
+              aria-label="快速添加任务标题"
+              placeholder="准备做什么？"
+              @input="updateQuickSuggestion"
+              @keydown="handleQuickSuggestionKeydown"
+            />
+          </div>
+          <div class="clone-quick-actions-row">
+            <button type="button" class="clone-quick-action clone-quick-date-action" :class="{ active: quickEntry.dateSelected && Boolean(quickEntry.dueAt) }" aria-label="快速设置日期和提醒" :aria-expanded="quickAction === 'date'" @click="toggleQuickAction('date')"><CalendarDays :size="15" /><span>{{ quickDateSummary }}</span></button>
+            <button v-if="!quickAddIsNote" type="button" class="clone-quick-action clone-quick-priority-action" :class="{ active: quickEntry.priority !== 'NONE' }" :data-priority="quickEntry.priority" aria-label="快速设置优先级" :aria-expanded="quickAction === 'priority'" @click="toggleQuickAction('priority')"><Flag :size="15" /><span>{{ priorityLabel(quickEntry.priority) }}</span></button>
+            <button v-if="!quickAddIsNote" type="button" class="clone-quick-action clone-quick-repeat-action" :class="{ active: Boolean(buildQuickRepeatRule(quickRepeat)) }" aria-label="快速设置重复" :aria-expanded="quickAction === 'repeat'" @click="toggleQuickAction('repeat')"><Repeat2 :size="15" /><span>{{ quickRepeatLabel(quickRepeat) }}</span></button>
+            <button type="button" class="clone-quick-action clone-quick-list-action" :class="{ active: quickEntry.listSelected && Boolean(quickEntry.listId) }" aria-label="快速选择清单" :aria-expanded="quickAction === 'list'" @click="toggleQuickAction('list')"><TaskOrganizationIcon v-if="quickSelectedList?.icon" :value="quickSelectedList.icon" :size="15" /><ListTodo v-else :size="15" /><i v-if="quickSelectedList?.color" class="clone-quick-list-dot" :style="{ backgroundColor: quickSelectedList.color }" aria-hidden="true"></i><span>{{ quickListSummary }}</span></button>
+            <button type="button" class="clone-quick-icon-action" aria-label="快速新增更多操作" :aria-expanded="quickAction === 'more'" @click="toggleQuickAction('more')"><Ellipsis :size="16" /></button>
+            <button type="submit" class="clone-quick-submit" :disabled="!quickTitle.trim() || quickParsing || quickSaving">{{ quickParsing ? '解析中…' : quickSaving ? '添加中…' : '添加' }}</button><kbd>N</kbd>
+          </div>
         </form>
         <input ref="quickAttachmentInput" class="clone-quick-file-input" type="file" multiple aria-label="选择快捷新增附件" @change="selectQuickAttachments" />
         <div v-if="quickSuggestion && quickSuggestionOptions.length" class="clone-quick-suggestions" role="listbox" :aria-label="quickSuggestionLabel">
@@ -314,7 +317,7 @@
       </div>
       <p v-if="quickAttachmentMessage" class="clone-quick-attachment-state" :role="quickAttachmentError || quickAttachmentSelectionError ? 'alert' : 'status'">{{ quickAttachmentMessage }}<button v-if="pendingQuickAttachmentBatches.length && (quickAttachmentError || !store.online)" type="button" :disabled="quickAttachmentUploading" @click="retryQuickAttachments">{{ quickAttachmentUploading ? `上传中 ${quickAttachmentProgress}%` : '重试附件上传' }}</button></p>
       <div v-if="quickAction" class="clone-quick-action-panel" :class="`is-${quickAction}`" @click.stop>
-        <template v-if="quickAction === 'more'"><strong>更多</strong><button type="button" @click="openQuickAttachmentPicker"><Paperclip :size="14" />附件</button><button type="button" @click="openTaskTemplates"><ClipboardList :size="14" />从模板添加</button><button type="button" :disabled="quickAddIsNote || !noteLists.length" :title="quickAddIsNote ? '当前已是笔记' : noteLists.length ? '' : '请先创建笔记清单'" @click="convertQuickAddToNote"><ListTodo :size="14" />转换为笔记</button><button type="button" @click="openQuickInputSettings"><SlidersHorizontal :size="14" />输入框设置</button></template>
+        <template v-if="quickAction === 'more'"><strong>更多</strong><button type="button" aria-label="快速选择标签" @click="toggleQuickAction('tags')"><Tag :size="14" />标签<small v-if="quickEntry.tagIds.length">{{ quickEntry.tagIds.length }}</small></button><button type="button" v-if="!quickAddIsNote" @click="toggleQuickAction('repeat')"><Repeat2 :size="14" />重复</button><button type="button" @click="openQuickAttachmentPicker"><Paperclip :size="14" />附件</button><button type="button" @click="openTaskTemplates"><ClipboardList :size="14" />从模板添加</button><button type="button" :disabled="quickAddIsNote || !noteLists.length" :title="quickAddIsNote ? '当前已是笔记' : noteLists.length ? '' : '请先创建笔记清单'" @click="convertQuickAddToNote"><ListTodo :size="14" />转换为笔记</button><button type="button" @click="openQuickInputSettings"><SlidersHorizontal :size="14" />输入框设置</button></template>
         <template v-else-if="quickAction === 'date'">
           <div class="clone-quick-date-panel">
             <div class="clone-quick-date-tabs" role="tablist" aria-label="日期类型">
@@ -433,19 +436,20 @@
             <div class="clone-board-quick-entry" :class="{ 'has-error': boardQuickAddError }">
               <input ref="boardQuickAddInput" v-model.trim="boardQuickAddTitle" autofocus maxlength="500" placeholder="准备做什么？" aria-label="看板任务标题" />
               <div class="clone-board-quick-actions">
-                <button type="button" aria-label="设置日期" title="设置日期" :aria-expanded="boardQuickAddPanel === 'date'" @click="toggleBoardQuickPanel('date')"><CalendarDays :size="18" /></button>
-                <button type="button" aria-label="设置优先级" title="设置优先级" :aria-expanded="boardQuickAddPanel === 'priority'" @click="toggleBoardQuickPanel('priority')"><Flag :size="18" /></button>
-                <button type="button" aria-label="选择标签" title="选择标签" :aria-expanded="boardQuickAddPanel === 'tags'" @click="toggleBoardQuickPanel('tags')"><Tag :size="18" /><small v-if="boardQuickAddTagIds.length">{{ boardQuickAddTagIds.length }}</small></button>
-                <button type="button" aria-label="选择清单" title="选择清单" :aria-expanded="boardQuickAddPanel === 'list'" @click="toggleBoardQuickPanel('list')"><ListTodo :size="18" /></button>
+                <button type="button" class="clone-board-quick-action clone-board-quick-date-action" :class="{ active: Boolean(boardQuickAddDue) }" aria-label="设置日期" title="设置日期" :aria-expanded="boardQuickAddPanel === 'date'" @click="toggleBoardQuickPanel('date')"><CalendarDays :size="18" /><span>{{ boardQuickDateSummary }}</span></button>
+                <button type="button" class="clone-board-quick-action clone-board-quick-priority-action" :class="{ active: boardQuickAddPriority !== 'NONE' }" :data-priority="boardQuickAddPriority" aria-label="设置优先级" title="设置优先级" :aria-expanded="boardQuickAddPanel === 'priority'" @click="toggleBoardQuickPanel('priority')"><Flag :size="18" /><span>{{ priorityLabel(boardQuickAddPriority) }}</span></button>
+                <button type="button" class="clone-board-quick-action clone-board-quick-list-action" :class="{ active: Boolean(boardQuickAddListId) }" aria-label="选择清单" title="选择清单" :aria-expanded="boardQuickAddPanel === 'list'" @click="toggleBoardQuickPanel('list')"><TaskOrganizationIcon v-if="boardQuickSelectedList?.icon" :value="boardQuickSelectedList.icon" :size="18" /><ListTodo v-else :size="18" /><i v-if="boardQuickSelectedList?.color" class="clone-quick-list-dot" :style="{ backgroundColor: boardQuickSelectedList.color }" aria-hidden="true"></i><span>{{ boardQuickListSummary }}</span></button>
                 <button type="button" aria-label="更多任务属性" title="更多任务属性" :aria-expanded="boardQuickAddPanel === 'more'" @click="toggleBoardQuickPanel('more')"><Ellipsis :size="18" /></button>
                 <button type="submit" class="clone-board-quick-submit" aria-label="添加任务" title="添加任务" :disabled="!boardQuickAddTitle || boardQuickAddSaving"><ArrowRight :size="18" /></button>
               </div>
-              <div v-if="boardQuickAddPanel === 'date'" class="clone-board-quick-popover"><label>日期<input v-model="boardQuickAddDue" type="datetime-local" aria-label="看板任务日期" /></label><button type="button" @click="boardQuickAddDue = ''">清除日期</button></div>
+              <div v-if="boardQuickAddPanel === 'date'" class="clone-board-quick-popover"><label>日期<input v-model="boardQuickAddDue" type="datetime-local" aria-label="看板任务日期" /></label><label class="clone-board-quick-all-day"><input v-model="boardQuickAddAllDay" type="checkbox" />全天</label><button type="button" @click="boardQuickAddDue = ''; boardQuickAddAllDay = false">清除日期</button></div>
               <div v-else-if="boardQuickAddPanel === 'priority'" class="clone-board-quick-popover"><strong>优先级</strong><button v-for="option in quickPriorityOptions" :key="option.value" type="button" class="clone-board-quick-priority-option" :data-priority="option.value" :class="{ active: boardQuickAddPriority === option.value }" @click="boardQuickAddPriority = option.value; boardQuickAddPanel = ''"><Flag :size="15" /><span>{{ option.label }}</span><Check v-if="boardQuickAddPriority === option.value" :size="14" /></button></div>
               <div v-else-if="boardQuickAddPanel === 'tags'" class="clone-board-quick-popover clone-board-quick-tags"><strong>标签</strong><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="boardQuickAddTagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label><button type="button" @click="boardQuickAddPanel = ''">完成</button></div>
               <div v-else-if="boardQuickAddPanel === 'list'" class="clone-board-quick-popover"><label>所属清单<select v-model="boardQuickAddListId" aria-label="看板任务所属清单"><option v-for="list in boardQuickAddLists" :key="list.publicId" :value="list.publicId">{{ list.label }}</option></select></label><button type="button" @click="boardQuickAddPanel = ''">完成</button></div>
-              <div v-else-if="boardQuickAddPanel === 'more'" class="clone-board-quick-popover clone-board-quick-more"><label>描述<textarea v-model="boardQuickAddDescription" rows="2" aria-label="看板任务描述" /></label><label>重复<select v-model="boardQuickAddRrule" aria-label="看板任务重复"><option value="">不重复</option><option value="FREQ=DAILY">每天</option><option value="FREQ=WEEKLY">每周</option><option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">每个工作日</option><option value="FREQ=MONTHLY">每月</option><option value="FREQ=YEARLY">每年</option></select></label></div>
+              <div v-else-if="boardQuickAddPanel === 'more'" class="clone-board-quick-popover clone-board-quick-more"><button type="button" @click="boardQuickAddPanel = 'tags'"><Tag :size="14" />标签<small v-if="boardQuickAddTagIds.length">{{ boardQuickAddTagIds.length }}</small></button><button type="button" @click="openBoardAttachmentPicker"><Paperclip :size="14" />附件</button><label>描述<textarea v-model="boardQuickAddDescription" rows="2" aria-label="看板任务描述" /></label><label>重复<select v-model="boardQuickAddRrule" aria-label="看板任务重复"><option value="">不重复</option><option value="FREQ=DAILY">每天</option><option value="FREQ=WEEKLY">每周</option><option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">每个工作日</option><option value="FREQ=MONTHLY">每月</option><option value="FREQ=YEARLY">每年</option></select></label></div>
             </div>
+            <input ref="boardQuickAttachmentInput" class="clone-quick-file-input" type="file" multiple aria-label="选择看板新增附件" @change="selectBoardQuickAttachments" />
+            <div v-if="boardQuickAddAttachments.length" class="clone-board-quick-attachments" aria-label="已选择看板附件"><span v-for="item in boardQuickAddAttachments" :key="item.id"><Paperclip :size="12" /><span>{{ item.name }}</span><button type="button" :aria-label="`移除附件 ${item.name}`" @click="boardQuickAddAttachments = boardQuickAddAttachments.filter(value => value.id !== item.id)"><X :size="12" /></button></span></div>
             <p v-if="boardQuickAddError" class="clone-board-quick-error" role="alert">{{ boardQuickAddError }}</p>
           </form>
           <article v-for="task in group.tasks" :key="task.publicId" class="clone-inline-board-card" :class="{ selected: selectedTask?.publicId === task.publicId, checked: task.status === 'COMPLETED', 'is-note': isNoteTask(task) }" :data-priority="task.priority" tabindex="0" @click="openTaskRow(task, $event)" @keydown.enter.prevent="openTaskRow(task, $event)">
@@ -1410,8 +1414,11 @@ const boardQuickAddGroup = ref(null);
 const boardQuickAddTitle = ref("");
 const boardQuickAddListId = ref("");
 const boardQuickAddDue = ref("");
+const boardQuickAddAllDay = ref(false);
 const boardQuickAddPriority = ref("NONE");
 const boardQuickAddTagIds = ref([]);
+const boardQuickAttachmentInput = ref(null);
+const boardQuickAddAttachments = ref([]);
 const boardQuickAddDescription = ref("");
 const boardQuickAddRrule = ref("");
 const boardQuickAddPanel = ref("");
@@ -1425,7 +1432,7 @@ const showListLink = ref(true);
 const quickEntry = reactive({ dueAt: "", startAt: "", allDay: false, dateSelected: false, priority: "NONE", prioritySelected: false, listId: "", listSelected: false, tagIds: [] });
 const quickRepeat = reactive(createQuickRepeatState());
 const detailRepeat = reactive(createQuickRepeatState());
-const quickAddSettings = ref({ defaultDueDate: "TODAY", defaultDueTime: "NEXT_HOUR", defaultReminderMinutes: null });
+const quickAddSettings = ref({ defaultListId: "", defaultDueDate: "TODAY", defaultDueTime: "NEXT_HOUR", defaultReminderMinutes: null });
 const quickRepeatError = ref("");
 const detailRepeatError = ref("");
 const quickDateMode = ref("DATE");
@@ -1460,7 +1467,21 @@ const quickCalendarTitle = computed(() => new Intl.DateTimeFormat("zh-CN", { yea
 const quickReminderOptions = computed(() => getQuickReminderOptions(quickEntry.allDay));
 const quickReminderLabel = computed(() => quickAddReminder.presets.map(value => quickReminderOptions.value.find(option => option.value === value)?.label || "自定义").join("、") || "提醒");
 const quickReminderOptionsForDraft = computed(() => (quickDraftReminder.value?.presets || []).map(value => getQuickReminderOptions(quickDraftAllDay.value).find(option => option.value === value)?.label || "自定义"));
-const quickDateSummary = computed(() => quickEntry.dueAt ? (quickEntry.startAt ? `${formatDate(quickEntry.startAt)} - ${formatDate(quickEntry.dueAt)}` : formatDate(quickEntry.dueAt)) : quickEntry.dateSelected ? "日期" : quickAddSettings.value.defaultDueDate === "TODAY" ? "今天" : "日期");
+const quickDateContext = computed(() => {
+  if (route.name === "tasks-today") return calendarDate.value || new Date();
+  if (route.name === "tasks-tomorrow") return addDays(new Date(), 1);
+  return null;
+});
+const quickSelectedList = computed(() => store.lists.find(item => item.publicId === quickEntry.listId) || null);
+const quickListSummary = computed(() => quickSelectedList.value ? (quickSelectedList.value.systemKey === "INBOX" ? "收集箱" : quickSelectedList.value.name) : "清单");
+const boardQuickSelectedList = computed(() => store.lists.find(item => item.publicId === boardQuickAddListId.value) || null);
+const boardQuickListSummary = computed(() => boardQuickSelectedList.value ? (boardQuickSelectedList.value.systemKey === "INBOX" ? "收集箱" : boardQuickSelectedList.value.name) : "清单");
+const quickDateSummary = computed(() => {
+  if (quickEntry.dueAt) return quickEntry.startAt ? `${quickDateLabel(quickEntry.startAt, false)} - ${quickDateLabel(quickEntry.dueAt, quickEntry.allDay)}` : quickDateLabel(quickEntry.dueAt, quickEntry.allDay);
+  if (quickDateContext.value) return quickDateLabel(quickDateContext.value, true);
+  return quickEntry.dateSelected ? "日期" : quickAddSettings.value.defaultDueDate === "TODAY" ? "今天" : "日期";
+});
+const boardQuickDateSummary = computed(() => boardQuickAddDue.value ? quickDateLabel(boardQuickAddDue.value, boardQuickAddAllDay.value) : "日期");
 const checklistDragIndex = ref(null);
 const checklistDropTarget = ref(null);
 const sidebarHidden = ref(false);
@@ -2378,6 +2399,20 @@ function formatDate(value) {
     minute: "2-digit",
   }).format(new Date(value));
 }
+function quickDateLabel(value, allDay = false) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "日期";
+  const today = new Date();
+  const tomorrow = addDays(new Date(today.getFullYear(), today.getMonth(), today.getDate()), 1);
+  const key = localDateKey(date);
+  const prefix = key === localDateKey(today)
+    ? "今天"
+    : key === localDateKey(tomorrow)
+      ? "明天"
+      : new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(date);
+  if (allDay || (!date.getHours() && !date.getMinutes())) return prefix;
+  return `${prefix} ${new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(date)}`;
+}
 function formatCreatedAt(value) {
   if (!value) return "未知";
   return new Intl.DateTimeFormat("zh-CN", {
@@ -2393,13 +2428,53 @@ function listName(id) {
   return list?.systemKey === "INBOX" ? "收集箱" : list?.name || "收集箱";
 }
 
+function configuredQuickTime() {
+  const configured = quickAddSettings.value.defaultDueTime;
+  if (!configured || configured === "NONE") return "";
+  if (configured === "NEXT_HOUR") return nextWholeHour().slice(11, 16);
+  return /^\d{2}:\d{2}$/.test(configured) ? configured : "";
+}
+
+function quickDefaultListId() {
+  if (route.name === "tasks-list") return route.params.publicId || store.inbox?.publicId || "";
+  if (quickAddSettings.value.defaultListId && store.lists.some(item => item.publicId === quickAddSettings.value.defaultListId && !item.archived)) return quickAddSettings.value.defaultListId;
+  return store.inbox?.publicId || "";
+}
+
+function quickDefaultTaskFields(dateOverride = null) {
+  const contextDate = dateOverride || quickDateContext.value || (quickAddSettings.value.defaultDueDate === "TODAY" ? new Date() : null);
+  if (!contextDate) return { dueAt: "", allDay: false };
+  const time = configuredQuickTime();
+  return { dueAt: `${localDateKey(contextDate)}T${time || "00:00"}`, allDay: !time };
+}
+
+function applyQuickAddDefaults() {
+  const defaults = quickDefaultTaskFields();
+  Object.assign(quickEntry, {
+    dueAt: defaults.dueAt,
+    startAt: "",
+    allDay: defaults.allDay,
+    dateSelected: Boolean(defaults.dueAt),
+    priority: "NONE",
+    prioritySelected: false,
+    listId: quickDefaultListId(),
+    listSelected: Boolean(quickDefaultListId()),
+    tagIds: [],
+  });
+  quickSelectedDate.value = defaults.dueAt ? defaults.dueAt.slice(0, 10) : "";
+  quickDateTime.value = defaults.allDay ? "" : configuredQuickTime();
+}
+
 function openBoardQuickAdd(group) {
   boardQuickAddGroup.value = group;
   boardQuickAddTitle.value = "";
-  boardQuickAddListId.value = route.name === "tasks-list" ? route.params.publicId : store.inbox?.publicId || "";
-  boardQuickAddDue.value = "";
+  const defaults = quickDefaultTaskFields();
+  boardQuickAddListId.value = quickDefaultListId();
+  boardQuickAddDue.value = defaults.dueAt;
+  boardQuickAddAllDay.value = defaults.allDay;
   boardQuickAddPriority.value = "NONE";
   boardQuickAddTagIds.value = [];
+  boardQuickAddAttachments.value = [];
   boardQuickAddDescription.value = "";
   boardQuickAddRrule.value = "";
   boardQuickAddPanel.value = "";
@@ -2414,7 +2489,12 @@ function openBoardQuickAdd(group) {
     if (tagId && tagId !== "no-tag") boardQuickAddTagIds.value = [tagId];
   } else if (groupBy.value === "time") {
     const dayOffset = { overdue: -1, today: 0, later: 1 }[group.key];
-    if (dayOffset !== undefined) boardQuickAddDue.value = toLocal(addDays(new Date(), dayOffset));
+    if (dayOffset !== undefined) {
+      const groupDate = addDays(new Date(), dayOffset);
+      const groupDefaults = quickDefaultTaskFields(groupDate);
+      boardQuickAddDue.value = groupDefaults.dueAt;
+      boardQuickAddAllDay.value = groupDefaults.allDay;
+    }
   }
   boardQuickAddOpen.value = true;
   nextTick(() => {
@@ -2431,6 +2511,18 @@ function closeBoardQuickAdd() {
   boardQuickAddOpen.value = false;
   boardQuickAddPanel.value = "";
   boardQuickAddError.value = "";
+  boardQuickAddAttachments.value = [];
+}
+
+function openBoardAttachmentPicker() {
+  boardQuickAttachmentInput.value?.click();
+}
+
+function selectBoardQuickAttachments(event) {
+  const files = Array.from(event.target.files || []);
+  event.target.value = "";
+  const { accepted } = validateQuickAttachmentFiles(files);
+  boardQuickAddAttachments.value.push(...accepted.map(file => ({ id: crypto.randomUUID(), file, name: file.name, size: file.size })));
 }
 
 function closeBoardQuickAddOnOutsidePointer(event) {
@@ -2443,15 +2535,20 @@ async function saveBoardQuickAdd() {
   boardQuickAddSaving.value = true;
   boardQuickAddError.value = "";
   try {
-    await store.create({
+    const saved = await store.create({
       title: titleText,
       description: boardQuickAddDescription.value.trim(),
       listId: boardQuickAddListId.value || store.inbox?.publicId || "",
       priority: boardQuickAddPriority.value,
       dueAt: boardQuickAddDue.value ? new Date(boardQuickAddDue.value).toISOString() : "",
+      allDay: boardQuickAddAllDay.value,
       tagIds: [...boardQuickAddTagIds.value],
       rrule: boardQuickAddRrule.value,
     });
+    if (saved?.publicId && boardQuickAddAttachments.value.length) {
+      const result = await uploadQuickAttachments(saved.publicId, boardQuickAddAttachments.value, apiUploadTaskAttachment);
+      if (result.error) message.warning("任务已添加，但部分附件上传失败");
+    }
     closeBoardQuickAdd();
     message.success("任务已添加");
   } catch (error) {
@@ -3886,9 +3983,9 @@ function toggleQuickAction(action) {
   if (nextAction !== "date") return;
   const selected = quickEntry.dueAt ? new Date(quickEntry.dueAt) : new Date();
   quickSelectedDate.value = quickEntry.dueAt ? localDateKey(selected)
-    : quickEntry.dateSelected ? "" : quickAddSettings.value.defaultDueDate === "TODAY" ? localDateKey(selected) : "";
+    : quickEntry.dateSelected ? "" : quickDateContext.value ? localDateKey(quickDateContext.value) : quickAddSettings.value.defaultDueDate === "TODAY" ? localDateKey(selected) : "";
   quickCalendarMonth.value = new Date(selected.getFullYear(), selected.getMonth(), 1);
-  quickDateTime.value = quickEntry.dueAt ? toLocal(quickEntry.dueAt).slice(11, 16) : defaultQuickTime();
+  quickDateTime.value = quickEntry.dueAt && !quickEntry.allDay ? toLocal(quickEntry.dueAt).slice(11, 16) : configuredQuickTime();
   quickRangeStart.value = quickEntry.startAt ? localDateKey(new Date(quickEntry.startAt)) : "";
   quickRangeEnd.value = quickEntry.startAt && quickEntry.dueAt ? localDateKey(new Date(quickEntry.dueAt)) : "";
   if (quickEntry.startAt) {
@@ -4087,13 +4184,14 @@ function setQuickDateMode(mode) {
 
 function applyQuickDateTime() {
   const key = quickSelectedDate.value || (quickEntry.dueAt ? localDateKey(new Date(quickEntry.dueAt)) : localDateKey(new Date()));
-  quickEntry.dueAt = `${key}T${quickEntry.allDay ? "00:00" : quickDateTime.value || "09:00"}`;
+  const time = quickEntry.allDay ? "00:00" : quickDateTime.value || configuredQuickTime();
+  if (!time) quickEntry.allDay = true;
+  quickEntry.dueAt = `${key}T${time || "00:00"}`;
   quickEntry.dateSelected = true;
 }
 
 function defaultQuickTime() {
-  const configured = quickAddSettings.value.defaultDueTime;
-  return configured && configured !== "NEXT_HOUR" ? configured : nextWholeHour().slice(11, 16);
+  return configuredQuickTime() || "00:00";
 }
 
 function applyQuickDate() {
@@ -4194,11 +4292,10 @@ async function quickAdd() {
         ...quickEntry.tagIds,
       ])],
     };
-    quickDraftDue.value = quickEntry.dateSelected ? quickEntry.dueAt : parsed.dueAt ? toLocal(parsed.dueAt)
-      : quickAddSettings.value.defaultDueDate === "TODAY" || route.name === "tasks-today"
-        ? `${localDateKey(new Date())}T${defaultQuickTime()}` : "";
+    const fallbackDefaults = quickDefaultTaskFields();
+    quickDraftDue.value = quickEntry.dateSelected ? quickEntry.dueAt : parsed.dueAt ? toLocal(parsed.dueAt) : fallbackDefaults.dueAt;
     quickDraftStart.value = quickEntry.dateSelected ? quickEntry.startAt : "";
-    quickDraftAllDay.value = quickEntry.dateSelected ? quickEntry.allDay : false;
+    quickDraftAllDay.value = quickEntry.dateSelected ? quickEntry.allDay : fallbackDefaults.allDay;
     quickDraftReminder.value = { ...quickAddReminder, presets: [...quickAddReminder.presets] };
     quickAction.value = "";
     await createQuickAddTask();
@@ -4277,6 +4374,7 @@ async function createQuickAddTask() {
 }
 function expandQuickAdd() {
   quickAddExpanded.value = true;
+  applyQuickAddDefaults();
   nextTick(() => quickTitleInput.value?.focus());
 }
 function resetCollaboration() {
@@ -6301,10 +6399,10 @@ const SidebarSection = {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent), 0 2px 6px rgba(20, 27, 38, 0.05);
 }
 .clone-quick-add form {
-  display: flex;
-  align-items: center;
+  display: grid;
+  align-items: stretch;
   flex: 1 1 100%;
-  gap: 8px;
+  gap: 3px 8px;
 }
 .clone-quick-add > svg { display: none; }
 .clone-quick-add input {
@@ -6338,7 +6436,10 @@ const SidebarSection = {
 .clone-quick-add form button.clone-quick-icon-action { display: inline-flex; }
 .clone-quick-add form button.clone-quick-submit,
 .clone-quick-add form kbd { display: inline-flex; }
-.clone-quick-add-form { min-width: 0; flex-wrap: wrap; }
+.clone-quick-add-form { min-width: 0; }
+.clone-quick-title-row { display: flex; min-width: 0; align-items: center; min-height: 28px; }
+.clone-quick-actions-row { display: flex; min-width: 0; align-items: center; gap: 4px; }
+.clone-quick-actions-row .clone-quick-submit { margin-left: auto; }
 .clone-quick-file-input { display: none; }
 .clone-quick-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 10px 24px; }
 .clone-quick-attachments > span { display: inline-flex; min-width: 0; align-items: center; gap: 6px; max-width: 100%; padding: 5px 7px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--ink2); font-size: 11px; }
@@ -6360,6 +6461,15 @@ const SidebarSection = {
 .clone-quick-add form .clone-quick-icon-action span { position: absolute; top: -2px; right: -1px; min-width: 13px; height: 13px; padding: 0 3px; border-radius: 8px; background: var(--accent); color: var(--accent-contrast, #fff); font-size: 9px; line-height: 13px; }
 .clone-quick-add form .clone-quick-submit { min-height: 30px; padding: 0 10px; font-size: 12px; white-space: nowrap; }
 .clone-quick-add form kbd { display: inline-flex; }
+.clone-quick-add form .clone-quick-action.active,
+.clone-quick-add form .clone-quick-icon-action.active { color: var(--accent); }
+.clone-quick-add form .clone-quick-priority-action[data-priority="HIGH"] { color: var(--down); }
+.clone-quick-add form .clone-quick-priority-action[data-priority="MEDIUM"] { color: var(--warn); }
+.clone-quick-add form .clone-quick-priority-action[data-priority="LOW"] { color: #4f82dd; }
+.clone-quick-add form .clone-quick-priority-action[data-priority="NONE"] { color: var(--muted); }
+.clone-quick-list-dot { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: var(--line2); }
+.clone-quick-action-panel.is-more > button { display: inline-flex; align-items: center; gap: 7px; }
+.clone-quick-action-panel.is-more > button small { margin-left: auto; color: var(--muted); font-size: 10px; }
 .clone-quick-action-panel { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; width: fit-content; max-width: 100%; margin: -8px 0 12px 24px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); box-shadow: 0 5px 18px rgba(20, 27, 38, .12); }
 .clone-quick-action-panel strong { width: 100%; color: var(--muted); font-size: 11px; font-weight: 600; }
 .clone-quick-action-panel label { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
@@ -6681,10 +6791,10 @@ const SidebarSection = {
 .clone-inline-board-column-head button { display: grid; flex: 0 0 28px; width: 28px; height: 28px; place-items: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-inline-board-column-head button:hover { background: color-mix(in srgb, var(--accent) 11%, transparent); color: var(--accent); }
 .clone-board-quick-inline { position: relative; z-index: 4; margin: -2px 0 2px; }
-.clone-board-quick-inline .clone-board-quick-entry { min-height: 82px; padding: 10px 11px; border-width: 1px; border-radius: 8px; box-shadow: 0 4px 14px rgb(15 23 42 / 10%); }
+.clone-board-quick-inline .clone-board-quick-entry { min-height: 0; padding: 10px 11px; border-width: 1px; border-radius: 8px; box-shadow: 0 4px 14px rgb(15 23 42 / 10%); }
 .clone-board-quick-inline .clone-board-quick-entry > input { min-height: 30px; font-size: 14px; }
 .clone-board-quick-inline .clone-board-quick-actions { gap: 3px; }
-.clone-board-quick-inline .clone-board-quick-actions > button { width: 28px; height: 28px; flex-basis: 28px; }
+.clone-board-quick-inline .clone-board-quick-actions > button { width: auto; height: 28px; min-width: 28px; flex-basis: auto; padding: 0 6px; }
 .clone-board-quick-inline .clone-board-quick-actions > .clone-board-quick-submit { width: 32px; height: 28px; flex-basis: 32px; }
 .clone-board-quick-inline .clone-board-quick-popover { top: calc(100% + 7px); bottom: auto; }
 .clone-inline-board-card { display: grid; gap: 8px; width: 100%; min-height: 92px; padding: 13px 13px 11px; border: 1px solid color-mix(in srgb, var(--line) 78%, transparent); border-radius: 9px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; box-shadow: 0 2px 9px rgb(15 23 42 / 6%); transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease, background .15s ease; }
@@ -6721,13 +6831,19 @@ const SidebarSection = {
 .clone-board-quick-dialog > header small { color: var(--muted); font-size: 15px; }
 .clone-board-quick-dialog > header button { display: grid; width: 32px; height: 32px; flex: 0 0 32px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-board-quick-dialog > header button:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
-.clone-board-quick-entry { position: relative; display: grid; gap: 12px; min-height: 126px; padding: 18px; border: 2px solid var(--accent); border-radius: 12px; background: var(--surface); }
+.clone-board-quick-entry { position: relative; display: grid; gap: 3px; min-height: 126px; padding: 18px; border: 2px solid var(--accent); border-radius: 12px; background: var(--surface); }
 .clone-board-quick-entry > input { width: 100%; min-width: 0; min-height: 45px; padding: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 20px; }
 .clone-board-quick-entry > input::placeholder { color: var(--muted); }
 .clone-board-quick-entry.has-error { border-color: var(--danger, #ef4444); }
-.clone-board-quick-actions { display: flex; align-items: center; gap: 8px; }
+.clone-board-quick-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .clone-board-quick-actions > button { position: relative; display: grid; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-board-quick-actions > button:hover, .clone-board-quick-actions > button[aria-expanded="true"] { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
+.clone-board-quick-actions > button.clone-board-quick-action { display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: auto; flex: 0 1 auto; padding: 0 6px; font-size: 11px; white-space: nowrap; }
+.clone-board-quick-actions > button.clone-board-quick-action.active { color: var(--accent); }
+.clone-board-quick-actions > button.clone-board-quick-priority-action[data-priority="HIGH"] { color: var(--down); }
+.clone-board-quick-actions > button.clone-board-quick-priority-action[data-priority="MEDIUM"] { color: var(--warn); }
+.clone-board-quick-actions > button.clone-board-quick-priority-action[data-priority="LOW"] { color: #4f82dd; }
+.clone-board-quick-actions > button.clone-board-quick-priority-action[data-priority="NONE"] { color: var(--muted); }
 .clone-board-quick-actions > button > small { position: absolute; top: 0; right: 0; min-width: 14px; border-radius: 8px; background: var(--accent); color: var(--accent-contrast, white); font-size: 9px; line-height: 14px; }
 .clone-board-quick-actions > .clone-board-quick-submit { width: 48px; height: 40px; flex-basis: 48px; margin-left: auto; background: var(--accent); color: var(--accent-contrast, white); }
 .clone-board-quick-actions > .clone-board-quick-submit:hover { background: var(--accent); color: var(--accent-contrast, white); filter: brightness(1.08); }
@@ -6742,6 +6858,13 @@ const SidebarSection = {
 .clone-board-quick-priority-option span { flex: 1; }
 .clone-board-quick-tags label { display: flex; align-items: center; gap: 7px; min-height: 28px; color: var(--ink2); }
 .clone-board-quick-tags input { width: 15px; height: 15px; accent-color: var(--accent); }
+.clone-board-quick-more > button { display: inline-flex; align-items: center; gap: 7px; width: 100%; }
+.clone-board-quick-more > button small { margin-left: auto; color: var(--muted); }
+.clone-board-quick-all-day { display: flex !important; grid-template-columns: none !important; align-items: center; gap: 7px !important; }
+.clone-board-quick-attachments { display: flex; flex-wrap: wrap; gap: 5px; padding-top: 4px; }
+.clone-board-quick-attachments > span { display: inline-flex; max-width: 100%; align-items: center; gap: 5px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink2); font-size: 10px; }
+.clone-board-quick-attachments > span > span { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clone-board-quick-attachments button { display: grid; width: 18px; height: 18px; place-items: center; padding: 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-board-quick-error { margin: -8px 0 0; color: var(--danger, #ef4444); font-size: 12px; }
 @media (max-width: 600px) {
   .clone-board-quick-dialog { gap: 14px; padding: 16px; }

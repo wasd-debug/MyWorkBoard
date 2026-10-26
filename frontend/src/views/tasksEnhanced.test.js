@@ -152,7 +152,8 @@ test('workspace board columns open inline quick-add with group defaults and pers
   assert.match(workspaceView, /updatedRect = anchorElement\.getBoundingClientRect\(\)/)
   assert.match(workspaceView, /closeBoardQuickAddOnOutsidePointer/)
   assert.match(workspaceView, /placeholder="准备做什么？" aria-label="看板任务标题"/)
-  assert.match(workspaceView, /aria-label="设置日期"[\s\S]*aria-label="设置优先级"[\s\S]*aria-label="选择标签"[\s\S]*aria-label="选择清单"/)
+  assert.match(workspaceView, /aria-label="设置日期"[\s\S]*aria-label="设置优先级"[\s\S]*aria-label="选择清单"/)
+  assert.match(workspaceView, /clone-board-quick-more[\s\S]*标签[\s\S]*附件/)
   assert.match(workspaceView, /function openBoardQuickAdd\(group\)[\s\S]*groupBy\.value === "list"[\s\S]*groupBy\.value === "priority"[\s\S]*groupBy\.value === "tag"[\s\S]*groupBy\.value === "time"/)
   assert.match(workspaceView, /includeEmptyLists: route\.name === "tasks-all"/)
   assert.match(workspaceView, /const boardQuickAddLists = computed\(\(\) => \{[\s\S]*seen\.has\(list\.publicId\)[\s\S]*list\.objectType === "NOTE"/)
@@ -462,9 +463,9 @@ test('task detail header exposes status, content conversion, and checklist progr
   assert.ok(workspaceView.includes("description: '', checklist }"))
 })
 
-test('quick add exposes inline date, priority, tag, and list controls that override parsed values', () => {
+test('quick add exposes two-row date, priority, list controls and keeps tags in more actions', () => {
   for (const token of [
-    '快速设置日期', '快速设置优先级', '快速选择标签', '快速选择清单',
+    '快速设置日期', '快速设置优先级', '快速选择清单', 'clone-quick-title-row', 'clone-quick-actions-row', 'clone-quick-action-panel.is-more', '快速选择标签',
     'quickAction', 'quickEntry.dateSelected ? quickEntry.dueAt',
     'quickEntry.prioritySelected ? quickEntry.priority',
     'quickEntry.listSelected ? quickEntry.listId',
