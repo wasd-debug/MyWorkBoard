@@ -452,10 +452,26 @@
       <div v-if="activeWorkspaceView === 'LIST'" class="clone-list-toolbar"><span>{{ selectedIds.size ? `已选 ${selectedIds.size} 项` : `${visibleTasks.length} 项任务` }}</span></div>
       <div v-if="activeWorkspaceView === 'KANBAN'" class="clone-inline-board" aria-label="任务看板">
         <section v-for="group in groups" :key="group.key" class="clone-inline-board-column">
-          <header><div><strong>{{ group.label }}</strong><small>{{ group.tasks.length }}</small></div><button type="button" :aria-label="`在${group.label}添加任务`" :title="`在${group.label}添加任务`" @click="openBoardQuickAdd(group)"><Plus :size="17" /></button></header>
-          <button v-for="task in group.tasks" :key="task.publicId" type="button" class="clone-inline-board-card" :class="{ selected: selectedTask?.publicId === task.publicId }" @click="openTaskRow(task)">
-            <strong>{{ task.title }}</strong><span>{{ taskDateLabel(task) }}</span><small>{{ listName(task.listId) }}</small>
-          </button>
+          <header class="clone-inline-board-column-head"><div><strong>{{ group.label }}</strong><small>{{ group.tasks.length }}</small></div><button type="button" :aria-label="`在${group.label}添加任务`" :title="`在${group.label}添加任务`" @click="openBoardQuickAdd(group)"><Plus :size="17" /></button></header>
+          <article v-for="task in group.tasks" :key="task.publicId" class="clone-inline-board-card" :class="{ selected: selectedTask?.publicId === task.publicId, checked: task.status === 'COMPLETED', 'is-note': isNoteTask(task) }" :data-priority="task.priority" tabindex="0" @click="openTaskRow(task)" @keydown.enter.prevent="openTaskRow(task)">
+            <div class="clone-inline-board-card-title">
+              <button v-if="!isNoteTask(task)" type="button" class="clone-inline-board-check" :class="{ completed: task.status === 'COMPLETED' }" :aria-label="`${task.status === 'COMPLETED' ? '重新打开' : '完成'}${task.title}`" @click.stop="toggleComplete(task)"><Check v-if="task.status === 'COMPLETED'" :size="12" /></button>
+              <FileText v-else class="clone-inline-board-note-icon" :size="15" aria-hidden="true" />
+              <strong>{{ task.title }}</strong>
+            </div>
+            <div v-if="showTags && task.tagIds?.length" class="clone-inline-board-tags" :aria-label="taskTagSummary(task)">
+              <span v-for="tagId in visibleTaskTagIds(task)" :key="tagId" class="clone-inline-board-tag" :style="taskTagStyle(tagId)">#{{ tagName(tagId) }}</span>
+              <span v-if="task.tagIds.length > visibleTaskTagIds(task).length" class="clone-inline-board-tag-more">+{{ task.tagIds.length - visibleTaskTagIds(task).length }}</span>
+            </div>
+            <div class="clone-inline-board-meta">
+              <button v-if="task.dueAt" type="button" class="clone-inline-board-date" :class="{ overdue: isTaskOverdue(task), today: isTaskDueToday(task) }" @click.stop="openRowDateEditor(task)"><CalendarClock :size="13" />{{ taskDateLabel(task) }}</button>
+              <span v-if="task.rrule" class="clone-inline-board-indicator" :title="recurrenceLabel(task.rrule)"><Repeat2 :size="13" /></span>
+              <span v-if="task.checklist?.length" class="clone-inline-board-indicator clone-inline-board-checklist" :title="`检查项 ${task.checklist.filter(item => item.completed).length}/${task.checklist.length}`"><span class="clone-inline-board-checklist-ring" :style="{ '--check-progress': `${task.checklist.filter(item => item.completed).length / task.checklist.length * 100}%` }"></span>{{ task.checklist.filter(item => item.completed).length }}/{{ task.checklist.length }}</span>
+              <span v-if="task.description" class="clone-inline-board-indicator" title="有详细内容"><FileText :size="13" /></span>
+              <span v-if="task.attachmentCount || task.attachments?.length" class="clone-inline-board-indicator" :title="`附件 ${task.attachmentCount || task.attachments.length} 个`"><Paperclip :size="13" />{{ task.attachmentCount || task.attachments.length }}</span>
+              <span v-if="showListLink" class="clone-inline-board-list" @click.stop="navigateToTaskList(task)"><span class="clone-inline-board-list-dot" :style="{ backgroundColor: taskListColor(task) }"></span>{{ listName(task.listId) }}</span>
+            </div>
+          </article>
           <p v-if="!group.tasks.length" class="clone-inline-board-empty">无任务</p>
         </section>
       </div>
@@ -5628,20 +5644,20 @@ const SidebarSection = {
   position: fixed;
   z-index: 301;
   top: 50%;
-  left: 50%;
-  width: min(620px, calc(100vw - 40px));
-  max-height: min(86vh, 860px);
-  transform: translate(-50%, -50%);
+  right: 24px;
+  width: min(480px, calc(100vw - 48px));
+  max-height: min(82vh, 720px);
+  transform: translateY(-50%);
   border: 1px solid var(--line);
   border-radius: 12px;
-  box-shadow: 0 20px 64px rgb(15 23 42 / 24%);
+  box-shadow: 0 18px 52px rgb(15 23 42 / 25%);
 }
 .clone-workspace-detail-backdrop {
   position: fixed;
   z-index: 300;
   inset: 0;
   border: 0;
-  background: rgb(15 23 42 / 22%);
+  background: transparent;
   cursor: default;
 }
 .clone-task-shell.sidebar-hidden { grid-template-columns: 0 minmax(420px, 1fr) 5px var(--clone-detail-width, 680px); }
@@ -6597,18 +6613,40 @@ const SidebarSection = {
 .clone-task-list-link { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 120px; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--ink2); font: inherit; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .clone-task-list-link:hover { color: var(--accent); }
 .clone-task-list-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; }
-.clone-inline-board { display: grid; grid-auto-columns: minmax(220px, 1fr); grid-auto-flow: column; align-items: start; gap: 12px; min-width: 0; overflow-x: auto; padding: 8px 2px 24px; }
-.clone-inline-board-column { display: grid; align-content: start; gap: 8px; min-width: 220px; max-height: 100%; }
-.clone-inline-board-column > header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; min-height: 38px; padding: 0 4px; background: var(--surface); }
-.clone-inline-board-column > header > div { display: flex; align-items: center; gap: 7px; min-width: 0; }
-.clone-inline-board-column > header small { color: var(--muted); }
-.clone-inline-board-column > header button { display: grid; flex: 0 0 30px; width: 30px; height: 30px; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
-.clone-inline-board-column > header button:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
-.clone-inline-board-card { display: grid; gap: 7px; width: 100%; padding: 10px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
-.clone-inline-board-card:hover, .clone-inline-board-card.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, var(--card)); }
-.clone-inline-board-card strong { overflow-wrap: anywhere; font-size: 13px; font-weight: 550; }
-.clone-inline-board-card span, .clone-inline-board-card small, .clone-inline-board-empty { color: var(--muted); font-size: 11px; }
-.clone-inline-board-empty { margin: 0; padding: 8px 4px; }
+.clone-inline-board { display: grid; grid-auto-columns: minmax(252px, 1fr); grid-auto-flow: column; align-items: start; gap: 18px; min-width: 0; height: 100%; overflow-x: auto; overflow-y: hidden; padding: 16px 18px 28px; background: color-mix(in srgb, var(--paper) 78%, var(--card)); }
+.clone-inline-board-column { display: grid; align-content: start; gap: 10px; min-width: 252px; max-height: 100%; overflow: auto; padding: 0 2px 12px; scrollbar-width: thin; }
+.clone-inline-board-column-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; min-height: 38px; padding: 0 4px; background: color-mix(in srgb, var(--paper) 78%, var(--card)); }
+.clone-inline-board-column-head > div { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.clone-inline-board-column-head strong { overflow: hidden; color: var(--ink2); font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.clone-inline-board-column-head small { color: var(--muted); font-size: 12px; }
+.clone-inline-board-column-head button { display: grid; flex: 0 0 28px; width: 28px; height: 28px; place-items: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-inline-board-column-head button:hover { background: color-mix(in srgb, var(--accent) 11%, transparent); color: var(--accent); }
+.clone-inline-board-card { display: grid; gap: 8px; width: 100%; min-height: 92px; padding: 13px 13px 11px; border: 1px solid color-mix(in srgb, var(--line) 78%, transparent); border-radius: 9px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; box-shadow: 0 2px 9px rgb(15 23 42 / 6%); transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease, background .15s ease; }
+.clone-inline-board-card:hover, .clone-inline-board-card:focus-visible, .clone-inline-board-card.selected { border-color: color-mix(in srgb, var(--accent) 65%, var(--line)); background: color-mix(in srgb, var(--accent) 4%, var(--surface)); box-shadow: 0 7px 18px rgb(15 23 42 / 11%); outline: none; transform: translateY(-1px); }
+.clone-inline-board-card.checked { opacity: .72; }
+.clone-inline-board-card-title { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.clone-inline-board-card-title strong { min-width: 0; overflow-wrap: anywhere; font-size: 13px; font-weight: 600; line-height: 1.45; }
+.clone-inline-board-card.checked .clone-inline-board-card-title strong { text-decoration: line-through; }
+.clone-inline-board-check { display: grid; width: 17px; height: 17px; flex: 0 0 17px; place-items: center; margin-top: 1px; padding: 0; border: 1.5px solid var(--muted); border-radius: 5px; background: transparent; color: var(--accent-contrast, #fff); cursor: pointer; }
+.clone-inline-board-check:hover { border-color: var(--accent); }
+.clone-inline-board-check.completed { border-color: var(--accent); background: var(--accent); }
+.clone-inline-board-card[data-priority="HIGH"] .clone-inline-board-check { border-color: var(--down); }
+.clone-inline-board-card[data-priority="MEDIUM"] .clone-inline-board-check { border-color: var(--warn); }
+.clone-inline-board-note-icon { flex: 0 0 auto; margin-top: 2px; color: var(--accent); }
+.clone-inline-board-tags { display: flex; flex-wrap: wrap; gap: 4px; padding-left: 25px; }
+.clone-inline-board-tag, .clone-inline-board-tag-more { display: inline-flex; max-width: 120px; align-items: center; min-height: 20px; padding: 1px 7px; overflow: hidden; border-radius: 10px; background: color-mix(in srgb, var(--task-tag-color, var(--accent)) 14%, transparent); color: color-mix(in srgb, var(--task-tag-color, var(--accent)) 74%, var(--ink)); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.clone-inline-board-tag-more { background: color-mix(in srgb, var(--muted) 13%, transparent); color: var(--muted); }
+.clone-inline-board-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; min-width: 0; padding-left: 25px; color: var(--muted); font-size: 10px; }
+.clone-inline-board-date, .clone-inline-board-list { display: inline-flex; min-width: 0; align-items: center; gap: 3px; padding: 0; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 10px; cursor: pointer; }
+.clone-inline-board-date:hover, .clone-inline-board-list:hover { color: var(--accent); }
+.clone-inline-board-date.today { color: var(--accent); }
+.clone-inline-board-date.overdue { color: var(--down); }
+.clone-inline-board-indicator { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); }
+.clone-inline-board-checklist-ring { display: inline-block; width: 11px; height: 11px; border: 1px solid var(--line2); border-radius: 50%; background: conic-gradient(var(--accent) var(--check-progress), transparent 0); position: relative; }
+.clone-inline-board-checklist-ring::after { position: absolute; inset: 2px; border-radius: 50%; background: var(--surface); content: ""; }
+.clone-inline-board-list { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clone-inline-board-list-dot { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: var(--line2); }
+.clone-inline-board-empty { margin: 0; padding: 12px 8px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); font-size: 11px; text-align: center; }
 .clone-board-quick-backdrop { z-index: 1100; }
 .clone-board-quick-dialog { display: grid; gap: 18px; width: min(720px, 100%); padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink); box-shadow: 0 24px 70px rgb(0 0 0 / 28%); }
 .clone-board-quick-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -7226,7 +7264,7 @@ const SidebarSection = {
 .clone-detail-title h2 button svg { flex: 0 0 auto; margin-top: 5px; color: var(--muted); opacity: 0; }
 .clone-detail-title h2 button:hover svg, .clone-detail-title h2 button:focus-visible svg { opacity: 1; }
 .clone-inline-title-input { min-width: 0; flex: 1; padding: 2px 5px; border: 1px solid var(--accent); border-radius: 4px; background: var(--card); color: var(--ink); font: inherit; font-size: 19px; }
-.clone-detail-description-block { position: static; min-width: 0; padding: 2px 0; }
+.clone-detail-description-block { position: relative; min-width: 0; padding: 2px 0; }
 .clone-detail-description-block :deep(.task-rich-editor), .clone-detail-description-block :deep(.task-milkdown-editor) { position: static; border: 0; border-radius: 0; background: transparent; overflow: visible; }
 .clone-detail-description-block :deep(.task-rich-toolbar) { position: absolute; right: clamp(88px, calc(var(--clone-detail-width) * .2), 112px); bottom: 56px; z-index: 8; display: flex; flex-wrap: nowrap; width: max-content; max-width: calc(100% - 112px); max-height: 0; gap: 3px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; margin: 0; padding: 0 8px; border: 1px solid transparent; border-radius: 9px; background: var(--card); box-shadow: 0 5px 20px rgb(15 23 42 / 14%); opacity: 0; visibility: hidden; pointer-events: none; transition: max-height 160ms ease, opacity 120ms ease, visibility 0s linear 160ms; }
 .clone-detail-description-block :deep(.task-rich-toolbar::-webkit-scrollbar) { display: none; }
@@ -7702,11 +7740,15 @@ const SidebarSection = {
   .clone-batch-actions button { min-height: 68px; }
   .clone-task-shell.workspace-overlay-view.workspace-detail-open .clone-detail-pane {
     display: block !important;
-    top: 50%;
-    width: min(620px, calc(100vw - 24px));
-    max-height: calc(100dvh - 32px);
+    top: 8px;
+    right: 12px;
+    bottom: 8px;
+    left: 12px;
+    width: auto;
+    max-height: none;
     margin: 0;
     border-radius: 10px;
+    transform: none;
   }
   .clone-batch-bar {
     right: 14px;
