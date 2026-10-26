@@ -2,9 +2,19 @@
   <section class="timeline-page">
     <header class="timeline-head" :class="{ 'is-embedded': embedded }">
       <div v-if="!embedded"><p class="eyebrow">TASKS · TIMELINE</p><h1>时间线 / 甘特</h1></div>
-      <div class="timeline-controls">
-        <label>分组<select v-model="groupBy" aria-label="时间线分组"><option value="list">清单</option><option value="tag">标签</option><option value="priority">优先级</option><option value="none">无</option></select></label>
-        <label>排序<select v-model="sortBy" aria-label="时间线排序"><option value="default">默认</option><option value="time">按时间</option></select></label>
+      <div class="timeline-controls" aria-label="时间线显示设置">
+        <div class="timeline-menu" ref="groupMenuRef">
+          <button type="button" class="timeline-menu-trigger" aria-haspopup="menu" :aria-expanded="groupMenuOpen" aria-label="时间线分组" @click.stop="toggleMenu('group')"><span>分组</span><strong>{{ groupLabel }}</strong><ChevronDown :size="14" /></button>
+          <div v-if="groupMenuOpen" class="timeline-menu-popover" role="menu" aria-label="时间线分组选项">
+            <button v-for="option in groupOptions" :key="option.value" type="button" role="menuitemradio" :aria-checked="groupBy === option.value" :class="{ active: groupBy === option.value }" @click="selectGroup(option.value)"><span>{{ option.label }}</span><span v-if="groupBy === option.value" aria-hidden="true">✓</span></button>
+          </div>
+        </div>
+        <div class="timeline-menu" ref="sortMenuRef">
+          <button type="button" class="timeline-menu-trigger" aria-haspopup="menu" :aria-expanded="sortMenuOpen" aria-label="时间线排序" @click.stop="toggleMenu('sort')"><span>排序</span><strong>{{ sortLabel }}</strong><ChevronDown :size="14" /></button>
+          <div v-if="sortMenuOpen" class="timeline-menu-popover" role="menu" aria-label="时间线排序选项">
+            <button v-for="option in sortOptions" :key="option.value" type="button" role="menuitemradio" :aria-checked="sortBy === option.value" :class="{ active: sortBy === option.value }" @click="selectSort(option.value)"><span>{{ option.label }}</span><span v-if="sortBy === option.value" aria-hidden="true">✓</span></button>
+          </div>
+        </div>
       </div>
     </header>
     <div class="timeline-period">
@@ -37,7 +47,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch, nextTick } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, nextTick } from 'vue'
 import { RouterLink } from 'vue-router'
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { useTasksStore } from '../stores/tasks.js'
@@ -50,6 +60,14 @@ const densityOptions = [{ value: 'day', label: '日' }, { value: 'week', label: 
 const density = ref('week')
 const groupBy = ref('list')
 const sortBy = ref('default')
+const groupMenuOpen = ref(false)
+const sortMenuOpen = ref(false)
+const groupMenuRef = ref(null)
+const sortMenuRef = ref(null)
+const groupOptions = [{ value: 'list', label: '清单' }, { value: 'tag', label: '标签' }, { value: 'priority', label: '优先级' }, { value: 'none', label: '无' }]
+const sortOptions = [{ value: 'default', label: '默认' }, { value: 'time', label: '按时间' }]
+const groupLabel = computed(() => groupOptions.find(option => option.value === groupBy.value)?.label || '清单')
+const sortLabel = computed(() => sortOptions.find(option => option.value === sortBy.value)?.label || '默认')
 const anchor = ref(startOfDay(new Date()))
 const scroller = ref(null)
 const todayMarker = ref(null)
@@ -92,7 +110,12 @@ const rangeLabel = computed(() => {
 })
 const gridStyle = computed(() => ({ '--timeline-label-width': '210px', '--timeline-tick-width': density.value === 'day' ? '54px' : density.value === 'week' ? '104px' : '142px', '--timeline-column-count': ticks.value.length }))
 const todayIndex = computed(() => ticks.value.findIndex(tick => tick.today || sameDay(tick.date, new Date())))
-const todayLineStyle = computed(() => ({ left: `${Math.max(0, todayIndex.value) * 100 / ticks.value.length}%` }))
+const todayPosition = computed(() => {
+  const from = rangeStart.value.getTime()
+  const span = rangeEnd.value.getTime() - from
+  return Math.min(100, Math.max(0, (Date.now() - from) / span * 100))
+})
+const todayLineStyle = computed(() => ({ left: `${todayPosition.value}%` }))
 const datedTasks = computed(() => (props.tasks || store.tasks).filter(task => !task.deleted && task.status !== 'ABANDONED' && (task.startAt || task.dueAt)))
 const groups = computed(() => {
   const rows = sortBy.value === 'time'
@@ -125,6 +148,17 @@ function barStyle(task) {
   return { left: `${left}%`, width: isMilestone(task) ? '12px' : `${width}%` }
 }
 function setDensity(value) { density.value = value }
+function toggleMenu(menu) {
+  if (menu === 'group') {
+    groupMenuOpen.value = !groupMenuOpen.value
+    sortMenuOpen.value = false
+  } else {
+    sortMenuOpen.value = !sortMenuOpen.value
+    groupMenuOpen.value = false
+  }
+}
+function selectGroup(value) { groupBy.value = value; groupMenuOpen.value = false }
+function selectSort(value) { sortBy.value = value; sortMenuOpen.value = false }
 function movePeriod(direction) {
   const date = new Date(anchor.value)
   if (density.value === 'day') date.setDate(date.getDate() + direction * 14)
@@ -147,7 +181,22 @@ async function goToday() {
   }
 }
 watch(density, () => { void nextTick(() => { if (scroller.value) scroller.value.scrollLeft = 0 }) })
-onMounted(() => store.init())
+function closeMenus(event) {
+  if (!groupMenuRef.value?.contains(event.target)) groupMenuOpen.value = false
+  if (!sortMenuRef.value?.contains(event.target)) sortMenuOpen.value = false
+}
+function onKeydown(event) {
+  if (event.key === 'Escape') { groupMenuOpen.value = false; sortMenuOpen.value = false }
+}
+onMounted(() => {
+  store.init()
+  document.addEventListener('pointerdown', closeMenus)
+  document.addEventListener('keydown', onKeydown)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', closeMenus)
+  document.removeEventListener('keydown', onKeydown)
+})
 </script>
 
 <style scoped>
@@ -157,8 +206,15 @@ onMounted(() => store.init())
 .timeline-head h1 { margin: 3px 0 0; font-size: 22px; }
 .eyebrow { margin: 0; color: var(--primary); font-size: 11px; font-weight: 700; }
 .timeline-controls { display: flex; align-items: end; gap: 8px; flex-wrap: wrap; }
-.timeline-controls label { display: grid; gap: 3px; color: var(--muted); font-size: 11px; }
-.timeline-controls select,.timeline-period button,.timeline-period select { min-height: 32px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); padding: 4px 9px; font-size: 12px; }
+.timeline-menu { position: relative; }
+.timeline-menu-trigger { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--muted); font-size: 12px; cursor: pointer; }
+.timeline-menu-trigger strong { color: var(--text); font-weight: 550; }
+.timeline-menu-trigger svg { color: var(--muted); }
+.timeline-menu-trigger:hover,.timeline-menu-trigger[aria-expanded="true"] { border-color: color-mix(in srgb, var(--primary) 48%, var(--border)); background: color-mix(in srgb, var(--surface) 88%, var(--primary) 12%); }
+.timeline-menu-popover { position: absolute; z-index: 30; top: calc(100% + 7px); right: 0; display: grid; min-width: 142px; padding: 6px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); box-shadow: 0 14px 34px rgb(15 23 42 / 18%); }
+.timeline-menu-popover button { display: flex; align-items: center; justify-content: space-between; min-height: 34px; padding: 6px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text); text-align: left; font-size: 13px; cursor: pointer; }
+.timeline-menu-popover button:hover,.timeline-menu-popover button.active { background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); }
+.timeline-period button,.timeline-period select { min-height: 32px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); padding: 4px 9px; font-size: 12px; }
 .timeline-period { display: flex; align-items: center; justify-content: space-between; gap: 14px; color: var(--muted); font-size: 12px; }
 .timeline-period-range,.timeline-period-controls { display: flex; align-items: center; gap: 6px; }
 .timeline-period-range strong { margin-right: 6px; }
@@ -173,17 +229,18 @@ onMounted(() => store.init())
 .timeline-tick { position: relative; display: flex; align-items: center; padding: 0 8px; border-left: 1px solid var(--border); color: var(--muted); font-size: 11px; white-space: nowrap; }
 .timeline-tick.is-today { color: var(--primary); font-weight: 700; }
 .timeline-tick i,.timeline-today-line { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--primary); opacity: .72; }
-.timeline-group-heading { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 10px; border: 0; border-bottom: 1px solid var(--border); background: color-mix(in srgb,var(--surface) 92%,var(--primary) 8%); color: var(--text); text-align: left; font: inherit; font-size: 12px; cursor: pointer; }
+.timeline-group-heading { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 10px; border: 0; border-bottom: 1px solid var(--border); background: color-mix(in srgb,var(--surface) 88%,var(--primary) 12%); color: var(--text); text-align: left; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .timeline-group-heading svg { transition: transform .18s ease; }.timeline-group-heading svg.rotated { transform: rotate(-90deg); }.timeline-group-heading small { color: var(--muted); }
 .timeline-row { min-height: 48px; grid-template-columns: var(--timeline-label-width) minmax(0,1fr) auto; align-items: center; }
 .timeline-label { position: sticky; left: 0; z-index: 2; align-self: stretch; display: grid; align-content: center; gap: 3px; padding: 4px 10px; border-right: 1px solid var(--border); background: var(--surface); min-width: 0; }
 .timeline-label strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 550; }.timeline-label small { color: var(--muted); font-size: 10px; }
 .timeline-track { position: relative; align-self: stretch; display: block; background: repeating-linear-gradient(90deg, transparent 0 calc(var(--timeline-tick-width) - 1px), var(--border) calc(var(--timeline-tick-width) - 1px) var(--timeline-tick-width)); }
-.timeline-bar { position: absolute; top: 16px; height: 16px; min-width: 8px; border-radius: 4px; background: var(--primary); }
+.timeline-bar { position: absolute; top: 14px; height: 20px; min-width: 8px; border-radius: 5px; background: var(--primary); box-shadow: 0 2px 5px rgb(15 23 42 / 16%); transition: filter .15s ease, transform .15s ease; }
+.timeline-bar:hover { filter: brightness(1.08); transform: translateY(-1px); }
 .timeline-bar.milestone { top: 18px; width: 12px!important; height: 12px; border-radius: 2px; transform: rotate(45deg); }
 .timeline-bar.priority-high { background: #dc2626; }.timeline-bar.priority-medium { background: #d97706; }.timeline-bar.priority-low { background: #2563eb; }
 .timeline-row>a { align-self: center; margin: 0 10px; color: var(--primary); font-size: 11px; white-space: nowrap; }
 .timeline-empty { margin: 0; color: var(--muted); font-size: 13px; }
 .timeline-open-task { align-self: center; margin: 0 10px; border: 0; background: transparent; color: var(--primary); font-size: 11px; white-space: nowrap; cursor: pointer; }
-@media(max-width:700px) { .timeline-head.is-embedded { justify-content: flex-start; }.timeline-controls { width: 100%; }.timeline-row,.timeline-axis-row { grid-template-columns: 160px minmax(0,1fr) auto; }.timeline-grid { --timeline-label-width:160px!important; }.timeline-controls label { flex: 1; }.timeline-controls select { width: 100%; }.timeline-period { justify-content: space-between; }.timeline-period-range { gap: 3px; }.timeline-period-range strong { max-width: 35vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.timeline-period-controls { gap: 4px; }.timeline-period select { max-width: 72px; } }
+@media(max-width:700px) { .timeline-head.is-embedded { justify-content: flex-start; }.timeline-controls { width: 100%; }.timeline-row,.timeline-axis-row { grid-template-columns: 160px minmax(0,1fr) auto; }.timeline-grid { --timeline-label-width:160px!important; }.timeline-controls { gap: 6px; }.timeline-menu { flex: 1; }.timeline-menu-trigger { width: 100%; justify-content: space-between; }.timeline-menu-popover { right: auto; left: 0; min-width: 100%; }.timeline-period { justify-content: space-between; }.timeline-period-range { gap: 3px; }.timeline-period-range strong { max-width: 35vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.timeline-period-controls { gap: 4px; }.timeline-period select { max-width: 72px; } }
 </style>
