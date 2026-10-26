@@ -282,6 +282,7 @@
           </div>
         </div>
       </div>
+      <div class="clone-quick-add-anchor">
       <div v-if="!isTrashRoute" class="clone-quick-add" :class="{ 'is-simple': quickInputMode === 'SIMPLE', 'is-collapsed': !quickAddExpanded }">
         <button v-if="!quickAddExpanded" type="button" class="clone-quick-add-collapsed" @click="expandQuickAdd"><Plus :size="17" /><span>添加任务至“{{ title === '今天' ? '收集箱' : title }}”</span></button>
         <form v-else class="clone-quick-add-form" @submit.prevent="quickAdd">
@@ -379,6 +380,7 @@
         </template>
         <template v-else-if="quickAction === 'tags'"><strong>标签</strong><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="quickEntry.tagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label><button type="button" @click="quickAction = ''">完成</button></template>
         <template v-else><label>所属清单<select v-model="quickEntry.listId" aria-label="快速新增所属清单" @change="quickEntry.listSelected = true"><option value="">{{ store.inbox?.name || '收集箱' }}</option><option v-for="list in store.lists.filter((item) => !item.archived && item.publicId !== store.inbox?.publicId)" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select></label><button type="button" @click="quickAction = ''">完成</button></template>
+      </div>
       </div>
       <div v-if="displaySettingsOpen" class="clone-modal-backdrop" @click.self="displaySettingsOpen = false">
         <section class="clone-display-settings" role="dialog" aria-modal="true" aria-label="显示设置">
@@ -1434,7 +1436,7 @@ const showListLink = ref(true);
 const quickEntry = reactive({ dueAt: "", startAt: "", allDay: false, dateSelected: false, priority: "NONE", prioritySelected: false, listId: "", listSelected: false, tagIds: [] });
 const quickRepeat = reactive(createQuickRepeatState());
 const detailRepeat = reactive(createQuickRepeatState());
-const quickAddSettings = ref({ defaultListId: "", defaultDueDate: "TODAY", defaultDueTime: "NEXT_HOUR", defaultReminderMinutes: null });
+const quickAddSettings = ref({ defaultListId: "", defaultDueDate: "TODAY", defaultDueTime: "NONE", defaultReminderMinutes: null });
 const quickRepeatError = ref("");
 const detailRepeatError = ref("");
 const quickDateMode = ref("DATE");
@@ -1516,6 +1518,7 @@ const datePopoverAnchor = ref(null);
 const priorityPopoverAnchor = ref(null);
 const datePopoverDue = ref("");
 const datePopoverStart = ref("");
+const datePopoverAllDay = ref(false);
 const datePickerMonth = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 const datePickerMode = ref("DATE");
 const dateSaving = ref(false);
@@ -2085,6 +2088,12 @@ const datePickerDays = computed(() => {
     return { date, key: dateKey(date), otherMonth: date.getMonth() !== first.getMonth(), selected: dateKey(date) === selectedKey, today: dateKey(date) === todayKey };
   });
 });
+const detailDateTimeValue = computed(() => {
+  const value = editorOpen.value ? draft.dueAt : datePopoverDue.value;
+  if (!value || (editorOpen.value ? draft.allDay : datePopoverAllDay.value)) return "";
+  return toLocal(value).slice(11, 16);
+});
+const detailDateAllDay = computed(() => editorOpen.value ? Boolean(draft.allDay) : datePopoverAllDay.value);
 const filterPriorityOptions = [
   { value: "HIGH", label: "高" },
   { value: "MEDIUM", label: "中" },
@@ -2708,6 +2717,64 @@ function setDatePopoverOffset(offset) {
   if (editorOpen.value) draft.dueAt = toLocal(date);
   else datePopoverDue.value = toLocal(date);
   datePickerMonth.value = new Date(date.getFullYear(), date.getMonth(), 1);
+}
+function chooseDetailDatePreset(preset) {
+  if (preset === "NEXT_MONTH") {
+    const current = editorOpen.value ? draft.dueAt : datePopoverDue.value;
+    const base = current ? new Date(current) : new Date();
+    const date = new Date(base.getFullYear(), base.getMonth() + 1, 1);
+    selectDatePickerDay(date);
+    datePickerMonth.value = new Date(date.getFullYear(), date.getMonth(), 1);
+    return;
+  }
+  const offsets = { TODAY: 0, TOMORROW: 1, NEXT_WEEK: 7 };
+  setDatePopoverOffset(Object.prototype.hasOwnProperty.call(offsets, preset) ? offsets[preset] : 0);
+}
+function moveDetailMonth(offset) {
+  datePickerMonth.value = new Date(datePickerMonth.value.getFullYear(), datePickerMonth.value.getMonth() + offset, 1);
+}
+function selectDetailDateKey(key) {
+  const date = new Date(`${key}T00:00:00`);
+  selectDatePickerDay(date);
+}
+function selectDetailTime(time) {
+  const current = editorOpen.value ? draft.dueAt : datePopoverDue.value;
+  const date = current ? new Date(current) : new Date();
+  const [hours, minutes] = time.split(":").map(Number);
+  date.setHours(hours, minutes, 0, 0);
+  if (editorOpen.value) {
+    draft.dueAt = toLocal(date);
+    draft.allDay = false;
+  } else {
+    datePopoverDue.value = toLocal(date);
+    datePopoverAllDay.value = false;
+  }
+}
+function clearDetailTime() {
+  const current = editorOpen.value ? draft.dueAt : datePopoverDue.value;
+  if (current) {
+    const date = new Date(current);
+    date.setHours(0, 0, 0, 0);
+    if (editorOpen.value) draft.dueAt = toLocal(date);
+    else datePopoverDue.value = toLocal(date);
+  }
+  setDetailAllDay(true);
+}
+function clearDetailDate() {
+  if (editorOpen.value) {
+    draft.startAt = "";
+    draft.dueAt = "";
+    draft.allDay = true;
+  } else {
+    datePopoverStart.value = "";
+    datePopoverDue.value = "";
+    datePopoverAllDay.value = true;
+  }
+}
+function setDetailAllDay(value) {
+  if (editorOpen.value) draft.allDay = Boolean(value);
+  else datePopoverAllDay.value = Boolean(value);
+  if (value) clearDetailTime();
 }
 async function confirmTaskDueDate() {
   const start = editorOpen.value ? draft.startAt : datePopoverStart.value;
@@ -6354,6 +6421,7 @@ const SidebarSection = {
   box-shadow: 0 1px 2px rgba(20, 27, 38, 0.035);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+.clone-quick-add-anchor { position: relative; z-index: 20; }
 .clone-quick-add.is-collapsed { padding: 0; border-color: transparent; background: color-mix(in srgb, var(--ink) 4%, var(--card)); box-shadow: none; }
 .clone-quick-add-collapsed { display: flex; width: 100%; min-height: 44px; align-items: center; gap: 9px; padding: 0 14px; border: 0; border-radius: inherit; background: transparent; color: var(--muted); font: inherit; text-align: left; cursor: text; }
 .clone-quick-add-collapsed:hover { color: var(--ink2); background: color-mix(in srgb, var(--ink) 3%, transparent); }
