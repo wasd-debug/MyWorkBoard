@@ -18,3 +18,4 @@ backups/salary-before-task-focus-import-20261013-085828.sql
 backups/salary-before-task-focus-import-20261013-085901.sql.gz
 /.playwright-cli/
 /tmp/
+/*.yaml
