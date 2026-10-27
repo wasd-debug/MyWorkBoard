@@ -443,6 +443,11 @@
         </div>
       </teleport>
       <teleport to="body">
+        <div v-if="tagFlyout.taskId" class="clone-tag-flyout" :style="tagFlyout.style" @mouseenter="cancelTagFlyoutHide" @mouseleave="hideTagFlyoutSoon">
+          <span v-for="tagId in tagFlyout.tagIds" :key="tagId" class="clone-task-tag-wrap" :style="taskTagStyle(tagId)"><RouterLink :to="`/tasks/tag/${tagId}`" class="clone-task-tag" @click="hideTagFlyout">{{ tagName(tagId) }}</RouterLink></span>
+        </div>
+      </teleport>
+      <teleport to="body">
         <div v-if="rowDateTaskId" ref="rowDatePanelRef" class="clone-row-date-panel" :style="rowDateStyle" @click.stop>
           <TaskDateTimePopover
             :mode="rowDatePanel.mode"
@@ -633,7 +638,7 @@
             </div>
             <div v-if="showTags && task.tagIds?.length" class="clone-inline-board-tags" :aria-label="taskTagSummary(task)">
               <span v-for="tagId in visibleTaskTagIds(task)" :key="tagId" class="clone-inline-board-tag" :style="taskTagStyle(tagId)">#{{ tagName(tagId) }}</span>
-              <span v-if="task.tagIds.length > visibleTaskTagIds(task).length" class="clone-inline-board-tag-more" tabindex="0" :aria-label="taskTagSummary(task)">+{{ task.tagIds.length - visibleTaskTagIds(task).length }}<span class="clone-task-tag-tooltip"><span v-for="tagId in task.tagIds" :key="tagId" class="clone-task-tag-wrap" :style="taskTagStyle(tagId)"><RouterLink :to="`/tasks/tag/${tagId}`" class="clone-task-tag" @click.stop>{{ tagName(tagId) }}</RouterLink></span></span></span>
+              <span v-if="task.tagIds.length > visibleTaskTagIds(task).length" class="clone-inline-board-tag-more" tabindex="0" :aria-label="taskTagSummary(task)" @mouseenter="showTagFlyout(task, $event)" @mouseleave="hideTagFlyoutSoon" @focus="showTagFlyout(task, $event)" @blur="hideTagFlyoutSoon">+{{ task.tagIds.length - visibleTaskTagIds(task).length }}</span>
             </div>
             <div class="clone-inline-board-meta">
               <button v-if="task.dueAt" type="button" class="clone-inline-board-date" :class="{ overdue: isTaskOverdue(task), today: isTaskDueToday(task) }" data-row-date-trigger @click.stop="openRowDateEditor(task, $event.currentTarget)"><CalendarClock :size="13" />{{ taskDateLabel(task) }}</button>
@@ -730,9 +735,9 @@
                 <template v-if="inlineRowTitleTaskId === task.publicId"><input v-model="inlineRowTitleDraft" type="text" maxlength="500" :aria-label="`编辑${task.title}标题`" @click.stop @keydown.enter.prevent="saveInlineRowTitle(task)" @keydown.esc.prevent="cancelInlineRowTitle" @blur="saveInlineRowTitle(task)" /></template><template v-else><span class="clone-print-task-copy"><strong>{{ task.title }}</strong><small v-if="task.description" class="clone-print-description">{{ printDescription(task.description) }}</small></span></template
                 ></button
               ><div class="clone-task-metadata">
-                <span v-if="showTags && task.tagIds?.length" class="clone-task-tags" :aria-label="taskTagSummary(task)" :title="taskTagSummary(task)">
+                <span v-if="showTags && task.tagIds?.length" class="clone-task-tags" :aria-label="taskTagSummary(task)">
                   <span v-for="tagId in task.tagIds" :key="tagId" class="clone-task-tag-wrap" :style="taskTagStyle(tagId)"><RouterLink :to="`/tasks/tag/${tagId}`" class="clone-task-tag" @click.stop>{{ tagName(tagId) }}</RouterLink><button type="button" class="clone-task-tag-remove" :aria-label="`移除标签${tagName(tagId)}`" @click.stop="removeTaskTag(task, tagId)"><X :size="11" /></button></span>
-                  <span class="clone-task-tag-count" :data-total="task.tagIds.length" :data-h4="Math.max(0, task.tagIds.length - 4)" :data-h2="Math.max(0, task.tagIds.length - 2)" :data-h1="Math.max(0, task.tagIds.length - 1)" :aria-label="taskTagSummary(task)" tabindex="0"><span class="clone-task-tag-tooltip"><span v-for="tagId in task.tagIds" :key="tagId" class="clone-task-tag-wrap" :style="taskTagStyle(tagId)"><RouterLink :to="`/tasks/tag/${tagId}`" class="clone-task-tag" @click.stop>{{ tagName(tagId) }}</RouterLink></span></span></span>
+                  <span class="clone-task-tag-count" :data-total="task.tagIds.length" :data-h4="Math.max(0, task.tagIds.length - 4)" :data-h2="Math.max(0, task.tagIds.length - 2)" :data-h1="Math.max(0, task.tagIds.length - 1)" :aria-label="taskTagSummary(task)" tabindex="0" @mouseenter="showTagFlyout(task, $event)" @mouseleave="hideTagFlyoutSoon" @focus="showTagFlyout(task, $event)" @blur="hideTagFlyoutSoon"></span>
                 </span>
                 <button v-if="showDescription && task.description" type="button" class="clone-task-indicator clone-task-indicator-action" :title="task.description" :aria-label="`查看${task.title}详细内容`" @click.stop="openTaskIndicator(task, 'description')"><FileText :size="14" /></button>
                 <button v-if="showChecklist && task.checklist?.length" type="button" class="clone-task-indicator clone-task-indicator-action" :title="`检查项 ${task.checklist.filter(item => item.completed).length}/${task.checklist.length}`" :aria-label="`查看${task.title}检查项进度`" @click.stop="openTaskIndicator(task, 'checklist')"><span class="clone-checklist-progress" :style="{ '--check-progress': `${task.checklist.filter(item => item.completed).length / task.checklist.length * 100}%` }"></span><small>{{ task.checklist.filter(item => item.completed).length }}/{{ task.checklist.length }}</small></button>
@@ -2604,6 +2609,44 @@ async function removeTaskTag(task, tagId) {
 function taskTagSummary(task) {
   return (task.tagIds || []).map(tagName).join("、");
 }
+// 标签 +N 悬浮浮层：teleport 到 body + fixed 定位（按触发元素锚定、视口钳制、滚动跟随），
+// 替代纯 CSS absolute——顶部/左侧行在视口边缘时浮层会被裁掉或超出可视范围
+const tagFlyout = ref({ taskId: "", tagIds: [], style: { visibility: "hidden" } });
+const tagFlyoutAnchor = ref(null);
+let tagFlyoutHideTimer = null;
+function showTagFlyout(task, event) {
+  cancelTagFlyoutHide();
+  tagFlyoutAnchor.value = event.currentTarget;
+  tagFlyout.value = { taskId: task.publicId, tagIds: task.tagIds || [], style: { visibility: "hidden" } };
+  nextTick(positionTagFlyout);
+}
+function positionTagFlyout() {
+  const anchor = tagFlyoutAnchor.value;
+  if (!anchor || !tagFlyout.value.taskId) return;
+  const el = document.querySelector(".clone-tag-flyout");
+  if (!el) return;
+  const rect = anchor.getBoundingClientRect();
+  const GAP = 7;
+  const top = rect.top - el.offsetHeight - GAP >= 8 ? rect.top - el.offsetHeight - GAP : rect.bottom + GAP;
+  const clampedTop = Math.max(8, Math.min(top, window.innerHeight - el.offsetHeight - 8));
+  const left = Math.max(8, Math.min(rect.right - el.offsetWidth, window.innerWidth - el.offsetWidth - 8));
+  tagFlyout.value = { ...tagFlyout.value, style: { top: `${Math.round(clampedTop)}px`, left: `${Math.round(left)}px`, visibility: "visible" } };
+}
+function hideTagFlyout() {
+  cancelTagFlyoutHide();
+  tagFlyoutAnchor.value = null;
+  tagFlyout.value = { taskId: "", tagIds: [], style: { visibility: "hidden" } };
+}
+function hideTagFlyoutSoon() {
+  if (tagFlyoutHideTimer) clearTimeout(tagFlyoutHideTimer);
+  tagFlyoutHideTimer = setTimeout(hideTagFlyout, 120);
+}
+function cancelTagFlyoutHide() {
+  if (tagFlyoutHideTimer) {
+    clearTimeout(tagFlyoutHideTimer);
+    tagFlyoutHideTimer = null;
+  }
+}
 function isTaskDueToday(task) {
   if (!task.dueAt) return false;
   return new Date(task.dueAt).toDateString() === new Date().toDateString();
@@ -2916,7 +2959,10 @@ function toggleDatePopover() {
     datePickerMonth.value = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
   }
 }
-function refreshAttributePopoverLayout() { popoverViewportRevision.value += 1; }
+function refreshAttributePopoverLayout() {
+  popoverViewportRevision.value += 1;
+  positionTagFlyout();
+}
 function attributePopoverStyle(kind) {
   void popoverViewportRevision.value;
   const anchor = ({ date: datePopoverAnchor, priority: priorityPopoverAnchor })[kind]?.value;
@@ -6790,6 +6836,10 @@ async function loadFilters() {
 }
 function onKeydown(event) {
   if (event.key === "Escape") {
+    if (tagFlyout.value.taskId) {
+      hideTagFlyout();
+      return;
+    }
     if (boardQuickAddOpen.value) {
       closeBoardQuickAdd();
       return;
@@ -6905,6 +6955,10 @@ onBeforeUnmount(() => {
   stopQuickFlyoutObserver();
   stopQuickBarObserver();
   stopQuickPanelObserver();
+  if (tagFlyoutHideTimer) {
+    clearTimeout(tagFlyoutHideTimer);
+    tagFlyoutHideTimer = null;
+  }
   document.removeEventListener("pointerdown", closeContext);
   document.removeEventListener("pointerdown", closeDetailMoreOnOutsidePointer);
   document.removeEventListener("pointerdown", closeQuickAction);
@@ -7990,14 +8044,10 @@ const SidebarSection = {
 /* 档位判定与隐藏只作用于标签行的直接子元素——+N 悬浮浮层里的同名 chips 不参与分档，避免被隐藏 */
 .clone-task-tags:has(> .clone-task-tag-wrap:nth-child(5)) .clone-task-tag-count { display: inline-flex; font-size: 0; }
 .clone-task-tags:has(> .clone-task-tag-wrap:nth-child(5)) .clone-task-tag-count::before { content: "+" attr(data-h4); font-size: 11px; }
-.clone-task-tag-tooltip { position: absolute; z-index: 40; right: 0; bottom: calc(100% + 7px); display: none; width: max-content; max-width: min(260px, 70vw); flex-wrap: wrap; gap: 5px; font-size: 12px; white-space: normal; padding: 6px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--ink); box-shadow: 0 4px 14px rgba(0,0,0,.18); }
-.clone-task-tag-count:hover .clone-task-tag-tooltip,
-.clone-task-tag-count:focus-within .clone-task-tag-tooltip,
-.clone-inline-board-tag-more:hover .clone-task-tag-tooltip,
-.clone-inline-board-tag-more:focus-within .clone-task-tag-tooltip { display: flex; }
-/* metadata 默认 overflow hidden 防行溢出，悬浮 +N 时临时放开避免裁剪标签浮层 */
-.clone-task-metadata:has(.clone-task-tag-count:hover),
-.clone-task-metadata:has(.clone-task-tag-count:focus-within) { overflow: visible; }
+.clone-tag-flyout { position: fixed; z-index: 90; display: flex; flex-wrap: wrap; gap: 5px; width: max-content; max-width: min(260px, 70vw); padding: 6px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--ink); font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+/* metadata 默认 overflow hidden 防行溢出，悬浮标签时临时放开，避免行尾标签的移除按钮被裁剪 */
+.clone-task-metadata:has(.clone-task-tag-wrap:hover),
+.clone-task-metadata:has(.clone-task-tag-remove:focus-visible) { overflow: visible; }
 .clone-checklist-progress { width: 14px; height: 14px; flex: none; border-radius: 50%; background: conic-gradient(var(--accent) var(--check-progress), color-mix(in srgb, var(--line2) 60%, transparent) 0); }
 .clone-task-indicator { display: inline-flex; align-items: center; gap: 2px; flex: none; color: var(--muted); }
 .clone-task-indicator-action { min-height: 22px; padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; }

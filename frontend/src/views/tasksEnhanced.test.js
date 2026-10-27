@@ -372,15 +372,17 @@ test('middle task workspace matches the note-row, date, view, display, and print
 })
 
 test('标签 +N 悬浮展开隐藏标签，行内日期弹层支持时间段与全天', () => {
-  // 列表行 +N 计数 chip 悬浮显示全部标签 chips（可跳转），并临时放开 metadata 裁剪
-  assert.match(workspaceView, /class="clone-task-tag-tooltip"><span v-for="tagId in task\.tagIds"[\s\S]*?clone-task-tag" @click\.stop/)
-  assert.match(workspaceView, /\.clone-task-tag-count:hover \.clone-task-tag-tooltip,\n\.clone-task-tag-count:focus-within/)
-  assert.match(workspaceView, /\.clone-task-metadata:has\(\.clone-task-tag-count:hover\),\n\.clone-task-metadata:has\(\.clone-task-tag-count:focus-within\) \{ overflow: visible; \}/)
-  // tooltip 不能继承计数 chip 的 font-size: 0（否则文字/芯片不可见）
-  assert.match(workspaceView, /clone-task-tag-tooltip \{ position: absolute;[^}]*font-size: 12px;/)
-  // 看板 +N 同样悬浮展开，且容器不裁剪浮层
-  assert.match(workspaceView, /clone-inline-board-tag-more" tabindex="0" :aria-label="taskTagSummary\(task\)">\+\{\{ task\.tagIds\.length - visibleTaskTagIds\(task\)\.length \}\}<span class="clone-task-tag-tooltip"/)
-  assert.match(workspaceView, /\.clone-inline-board-tag-more \{ position: relative; overflow: visible;/)
+  // 列表行 +N 计数 chip 与看板 tag-more 悬浮时打开 teleport 浮层（fixed 定位、视口钳制），不超出可视范围
+  assert.match(workspaceView, /clone-task-tag-count"[\s\S]*?tabindex="0" @mouseenter="showTagFlyout\(task, \$event\)" @mouseleave="hideTagFlyoutSoon" @focus="showTagFlyout\(task, \$event\)" @blur="hideTagFlyoutSoon"/)
+  assert.match(workspaceView, /clone-inline-board-tag-more" tabindex="0" :aria-label="taskTagSummary\(task\)" @mouseenter="showTagFlyout\(task, \$event\)" @mouseleave="hideTagFlyoutSoon" @focus="showTagFlyout\(task, \$event\)" @blur="hideTagFlyoutSoon">/)
+  assert.match(workspaceView, /<teleport to="body">[\s\S]*?class="clone-tag-flyout" :style="tagFlyout\.style" @mouseenter="cancelTagFlyoutHide" @mouseleave="hideTagFlyoutSoon"/)
+  assert.match(workspaceView, /function positionTagFlyout\(\)[\s\S]*?window\.innerWidth - el\.offsetWidth - 8/)
+  assert.match(workspaceView, /refreshAttributePopoverLayout\(\) \{\n  popoverViewportRevision\.value \+= 1;\n  positionTagFlyout\(\);\n\}/)
+  // 原生 title 提示移除（不受控、会超出视口），改用自定义浮层
+  assert.doesNotMatch(workspaceView, /class="clone-task-tags" :aria-label="taskTagSummary\(task\)" :title=/)
+  assert.doesNotMatch(workspaceView, /clone-task-tag-tooltip/)
+  // 行尾标签悬浮时放开 metadata 裁剪，移除按钮（X）不被剪掉
+  assert.match(workspaceView, /\.clone-task-metadata:has\(\.clone-task-tag-wrap:hover\),\n\.clone-task-metadata:has\(\.clone-task-tag-remove:focus-visible\) \{ overflow: visible; \}/)
   // 行内日期弹层：时间段模式保存 startAt/dueAt，清除同时清空 startAt
   assert.match(workspaceView, /rowDatePanel\.mode = task\.startAt \? "RANGE" : "DATE"/)
   assert.match(workspaceView, /await saveRowDate\(task, newDueAt, \{ startAt, allDay: rowDatePanel\.allDay, rrule: rule, recurrenceAnchor: anchor \}\)/)
