@@ -1048,3 +1048,38 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 - **双日历重叠**：点击开始/结束日期输入时，Chrome 原生日期选择器与自定义农历月历同时弹出。修复：date input 加 `readonly`（原生 picker 不再触发），日期值统一经自定义月历写入（`@change` 随之移除，月历路径 `select-date` → `selectQuickCalendarDate` 不受影响）。
 - **时区行删除**：按用户要求移除 RANGE 模式的「上海， GMT+8」行（`task-range-timezone` DOM/CSS/`timezoneLabel` 常量/ChevronDown import）。
 - 门禁 210/210（断言同步：移除 task-range-timezone token、新增 readonly 与 doesNotMatch）、typecheck、build、diff-check 通过；实测点日期输入仅弹自定义月历、区间 10-28~10-30 选择后自动收起（截图 tmp/qa10-*.png）。
+
+### P2-FE110 列表视图两处偏差修正（2026-10-27）
+
+核对列表视图与滴答描述后的两处偏差调整：
+
+- **详细内容图标改文本形**：任务行「详细内容」指示器由 ListTodo（列表形）改为 FileText（文档形，含折角），与滴答一致。
+- **拖动排序在任意排序模式下持久生效**：`dropTask` 同组拖动原先仅在「手动」排序下落库，其他模式为静默 no-op。现同组拖动时若非手动排序则**自动切换排序为手动**（经 `watch` 持久化视图偏好）并调用 `store.sortTask` 落库；跨组拖拽改属性逻辑不变。
+- **连带修复（手动排序刷新回退，根因）**：`stores/tasks.js` `hydrate` 中 `this.tasks = tasks.map(localTask)` 未按 `sortOrder` 排序，manual 视图依赖的基序在刷新后丢失（拖动结果看似生效、刷新即回退）。补 `sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))`，与 lists/tags/habits 的既有处理一致；非手动排序模式显式排序不受影响。
+- 门禁 210/210（新增断言：FileText 图标、dropTask 自动切手动、hydrate sortOrder 排序）、typecheck、build、diff-check 通过。浏览器实测：时间排序下拖动重排 → 排序自动切手动（localStorage `sort:"manual"`）→ 刷新后顺序保持 [v2, v1]；带描述任务行渲染文档形图标（SVG 路径核对 FileText 折角）。截图 tmp/qa12-filetext-icon.png。
+
+### P2-FE111 任务行元数据右对齐与标签分档修正（2026-10-27）
+
+对照滴答实际截图，任务行元数据区（标签→指示图标→日期→清单）两项修正：
+
+- **右对齐**：`.clone-task-metadata` 由固定 `width: 52%`（跟在标题后）改为 `flex: 0 1 auto + justify-content: flex-end`——标题弹性占左，元数据整体贴行尾（与 more 按钮间距 9px），各行右缘元素垂直对齐，同滴答形态。
+- **标签全量渲染 + 行宽分档**：删除 `visibleTaskTagIds` 的 `slice(0, 2)` 硬上限在主任务行的使用（函数保留给看板卡片与子任务行），主行渲染全部标签；计数 chip 改为**行宽容器查询分档**驱动——容器从 metadata 自身（改 flex auto 后宽度塌缩，档位永远命中窄档）移到 `.clone-task-row`（行宽=中间栏可用宽度，正对齐滴答「随中栏收窄」语义）：>860px 最多 4 个标签、≤860 两个、≤720 一个、≤640 仅计数，chip 用 `:has(.clone-task-tag-wrap:nth-child(N))` 判定是否溢出并经 `data-h4/h2/h1/total` 属性渲染对应数字（宽档 4 个以内永不出现 +N）。
+- 门禁 210/210（新增断言：全量 v-for、无 has-overflow、metadata 右对齐、容器在行上、四档 chip 规则）、typecheck、build、diff-check 通过。浏览器实测三档：行宽 1067 → 4 标签全显无 chip；~780 → 2 标签 + "+2"；~547 → 仅计数。截图 tmp/qa13-final-*.png。
+
+### P2-FE112 修复已完成分组白屏与顶部菜单偏离（2026-10-27，用户实测反馈）
+
+用户账号（8706 任务，滴答导入）实测暴露两个问题：
+
+- **已完成分组白屏（根因）**：P2-FE111 删除了 `visibleTaskTagIds` 函数，但**看板卡片、已完成行的模板仍在调用**——主任务行（改为全量渲染）不受影响，而已完成任务带标签时渲染即抛 `TypeError: _ctx.visibleTaskTagIds is not a function`，已完成分组整组消失（用户看到「完成任务出不来/显示不完整」），连带破坏同帧后续渲染（浮层错位）。修复：恢复函数（紧凑场景最多 2 个标签语义不变），并新增回归断言——函数定义必须存在且引用数 ≥3，防止「删函数留引用」再次发生。此前测试未发现：QA 账号的已完成任务没有标签，v-if 短路未触发崩溃。
+- **分组/排序菜单偏离按钮**：`.clone-floating-menu` 硬编码 `position: fixed; top: 118px; right: 24px` 贴窗口右上角，窄窗口 + 右侧详情面板打开时菜单飘到详情面板上。改为 `positionWorkspaceMenu()` 按触发按钮实测坐标定位（菜单右缘对齐按钮右缘、下移 8px、钳制在视口内），分组排序菜单与中间栏更多选项菜单共用。
+- **排查基建**：main.js 的全局 errorHandler 错误条（P2-FE111 反馈轮加入）直接暴露了崩溃栈，定位耗时大幅缩短；用后端 JWT secret 铸造用户账号只读 token + Playwright 路由拦截 `/auth/refresh` 注入会话，得以在用户真实数据（含标签的已完成任务）上复现与回归。
+- 门禁 210/210（新增 visibleTaskTagIds 定义与引用数断言）、typecheck、build、diff-check 通过。用户数据实测：已完成行渲染（15 行含 4 行带标签）、查看更多展开无崩溃、两个菜单锚定（gap=8px、右缘对齐误差 <3px）。截图 tmp/qa16-*.png。
+
+### P2-FE113/P2-FE114 行内日期弹层复用、提醒重复行与 +N 标签悬浮展开（2026-10-27，用户实测反馈）
+
+列表/看板/子任务的日期按钮与隐藏标签计数 chip 两项改造：
+
+- **行内日期按钮复用 TaskDateTimePopover（P2-FE113）**：列表行（含已完成行）、看板卡片、详情子任务的日期按钮统一改为打开与快添一致的日期弹层（teleport 到 body，按触发按钮实测坐标定位、滚动跟随、外部点击/Escape 关闭），彻底移除旧 `datetime-local` 内联编辑器（`.clone-row-date-editor`）。保存支持单日（日期+时间，不填时间即全天）与时间段（startAt/dueAt）两种模式，沿用「明天/后天/下周一…」快捷项与农历月历。
+- **弹层内补「提醒 / 重复 / 结束重复」行（P2-FE113 补充，用户指出弹窗与滴答形态不符）**：弹层 rows 按快添同构——提醒菜单（不提醒/准时/提前 5~60 分钟/一天/两天，含自定义相对提醒浮层）、重复菜单（每天/每周/每月/每年/工作日/周末/法定工作日/法定节假日/农历月重复/农历年重复/按自选日期，含自定义重复面板）与结束重复（永不/按次数/按日期）。选重复后行内实时出现「永不结束」行。规则解析泛化 `syncDetailRepeatFromRule(rule, anchor)` 供详情与行弹层共用；打开时从任务 `rrule`/`recurrenceAnchor` 回显、`apiListTaskReminders` 加载已有提醒。保存时 `applyRowDatePanel` 一并提交 `rrule` 与提醒 payload（相对提醒=按 dueAt 换算 remindAt）。
+- **+N 标签悬浮展开（P2-FE114）**：列表行 `.clone-task-tag-count` 与看板 `.clone-inline-board-tag-more` 的 +N chip 悬浮（hover/focus）时以彩色 chip 弹出显示被隐藏的全部标签（可点击跳转），替代原纯文本 tooltip；修复 tooltip 因继承 metadata 容器 `font-size: 0` 导致文字不可见的问题，并在悬浮时临时放开 metadata 的 `overflow: hidden` 裁剪。容器查询档位规则（隐藏第 N 个后的标签）限定为 `.clone-task-tags` 的直接子元素选择器，避免波及悬浮层内部 chips（`!important` 全隐藏档曾导致悬浮层空白）。
+- 门禁 211/211（新增：弹层复用、reminders 加载、rrule 保存、回显断言、直接子元素档位规则等）、typecheck、build、diff-check 通过。用户数据实测：+N 悬浮展开 4 个彩色标签（宽度/颜色正常，未被裁剪）；日期弹层三处入口形态与滴答一致（日期/时间段 tab、快捷项、时间列表）；设「明天 09:00 + 提前 5 分钟 + 每天」保存后行内出现重复图标，落库 `rrule=FREQ=DAILY`、`task_reminder` 生成 `RELATIVE/offset 5/08:55/IN_APP`，重开弹层回显「09:00 / 提前 5 分钟 / 每天 / 永不结束」；时间段 10-28~10-29 应用后行内显示区间。截图 tmp/qa17-*.png。
