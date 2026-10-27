@@ -21,24 +21,27 @@
       <div class="timeline-period-range"><strong>{{ rangeLabel }}</strong><button type="button" aria-label="上一时间段" @click="movePeriod(-1)"><ChevronLeft :size="16" /></button><button type="button" aria-label="下一时间段" @click="movePeriod(1)"><ChevronRight :size="16" /></button></div>
       <div class="timeline-period-controls"><button type="button" class="timeline-today" @click="goToday">今天</button><label><select :value="density" aria-label="时间线密度" @change="setDensity($event.target.value)"><option v-for="option in densityOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label></div>
     </div>
-    <p v-if="!groups.length" class="timeline-empty">没有包含时间范围的任务</p>
+    <p v-if="!rows.length" class="timeline-empty">没有包含时间范围的任务</p>
     <div v-else ref="scroller" class="timeline-scroll">
       <div class="timeline-grid" :style="gridStyle">
-        <div class="timeline-axis-row"><div class="timeline-task-heading">任务</div><div class="timeline-axis">
-          <div v-for="(tick, index) in ticks" :key="tick.key" class="timeline-tick" :class="{ 'is-today': tick.today }"><span>{{ tick.label }}</span><i v-if="tick.today" ref="todayMarker" aria-label="今天"></i></div>
+        <div class="timeline-axis-row"><div class="timeline-task-heading">{{ monthLabel }}</div><div class="timeline-axis">
+          <div v-for="tick in ticks" :key="tick.key" class="timeline-tick" :class="{ 'is-today': tick.today, 'is-weekend': tick.weekend, 'is-month-start': tick.monthStart }"><span>{{ tick.label }}</span><i v-if="tick.today" ref="todayMarker" aria-label="今天"></i></div>
         </div></div>
-        <template v-for="group in groups" :key="group.key">
-          <button v-if="groupBy !== 'none'" class="timeline-group-heading" type="button" :aria-expanded="!collapsed[group.key]" @click="collapsed[group.key] = !collapsed[group.key]">
-            <ChevronDown :size="14" :class="{ rotated: collapsed[group.key] }" /><span>{{ group.label }}</span><small>{{ group.tasks.length }}</small>
-          </button>
-          <div v-for="task in (collapsed[group.key] ? [] : group.tasks)" :key="task.publicId" class="timeline-row">
-            <div class="timeline-label"><strong>{{ task.title }}</strong><small>{{ dateLabel(task.startAt || task.dueAt) }} - {{ dateLabel(task.dueAt || task.startAt) }}</small></div>
-            <div class="timeline-track" :class="{ 'is-outside': !intersectsRange(task) }">
+        <template v-for="row in rows" :key="row.key">
+          <div class="timeline-row" :class="{ 'is-group-row': !row.single }">
+            <button v-if="!row.single" type="button" class="timeline-label timeline-group-label" :aria-expanded="!collapsed[row.key]" @click="collapsed[row.key] = !collapsed[row.key]">
+              <ChevronDown :size="13" :class="{ rotated: collapsed[row.key] }" /><i v-if="groupSwatch(row)" class="timeline-group-swatch" :style="{ backgroundColor: groupSwatch(row) }"></i><strong>{{ row.label }}</strong><small>{{ row.tasks.length }}</small>
+            </button>
+            <div v-else class="timeline-label"><strong>{{ row.label }}</strong><small>{{ dateLabel(row.task.startAt || row.task.dueAt) }} - {{ dateLabel(row.task.dueAt || row.task.startAt) }}</small></div>
+            <div class="timeline-track" :style="trackStyle(row)">
               <div class="timeline-today-line" :style="todayLineStyle"></div>
-              <span v-if="intersectsRange(task)" class="timeline-bar" :class="[`priority-${String(task.priority).toLowerCase()}`, { milestone: isMilestone(task) }]" :style="barStyle(task)" :title="task.title"></span>
+              <template v-if="row.single">
+                <span v-if="intersectsRange(row.task)" class="timeline-bar" :class="[`priority-${String(row.task.priority).toLowerCase()}`, { milestone: isMilestone(row.task) }]" :style="barStyle(row.task)" :title="row.task.title" @click="emit('select-task', row.task)"></span>
+              </template>
+              <template v-else-if="!collapsed[row.key]">
+                <span v-for="item in groupBars(row)" :key="item.task.publicId" class="timeline-bar" :class="{ milestone: isMilestone(item.task) }" :style="item.style" :title="item.task.title" @click="emit('select-task', item.task)"><em v-if="item.wide">{{ item.task.title }}</em></span>
+              </template>
             </div>
-            <button v-if="embedded" type="button" class="timeline-open-task" @click="emit('select-task', task)">详情</button>
-            <RouterLink v-else :to="`/tasks/list/${task.listId}`">打开任务列表</RouterLink>
           </div>
         </template>
       </div>
@@ -48,7 +51,6 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, nextTick } from 'vue'
-import { RouterLink } from 'vue-router'
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { useTasksStore } from '../stores/tasks.js'
 import { groupTaskItems } from './taskList.js'
@@ -77,16 +79,17 @@ const ticks = computed(() => {
   const start = rangeStart.value
   if (density.value === 'day') return Array.from({ length: 14 }, (_, index) => {
     const date = addDays(start, index)
-    return { key: dateKey(date), date, label: new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(date), today: sameDay(date, new Date()) }
+    return { key: dateKey(date), date, label: new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(date), today: sameDay(date, new Date()), weekend: isWeekend(date) }
   })
   if (density.value === 'week') return Array.from({ length: 12 }, (_, index) => {
     const date = addDays(start, index * 7)
     const end = addDays(date, 6)
-    return { key: dateKey(date), date, end, label: `${date.getMonth() + 1}/${date.getDate()}`, today: new Date() >= date && new Date() <= end }
+    return { key: dateKey(date), date, end, label: `${date.getMonth() + 1}/${date.getDate()}`, today: new Date() >= date && new Date() <= end, weekend: false }
   })
-  return Array.from({ length: 12 }, (_, index) => {
-    const date = new Date(start.getFullYear(), start.getMonth() + index, 1)
-    return { key: dateKey(date), date, end: new Date(date.getFullYear(), date.getMonth() + 1, 0), label: `${date.getFullYear()}.${date.getMonth() + 1}`, today: date.getFullYear() === new Date().getFullYear() && date.getMonth() === new Date().getMonth() }
+  return Array.from({ length: 120 }, (_, index) => {
+    const date = addDays(start, index)
+    const monthStart = date.getDate() === 1
+    return { key: dateKey(date), date, end: date, label: String(date.getDate()), today: sameDay(date, new Date()), weekend: isWeekend(date), monthStart }
   })
 })
 const rangeStart = computed(() => {
@@ -96,11 +99,9 @@ const rangeStart = computed(() => {
     start.setDate(start.getDate() - ((start.getDay() + 6) % 7) - 28)
     return start
   }
-  return new Date(anchor.value.getFullYear(), anchor.value.getMonth() - 5, 1)
+  return new Date(anchor.value.getFullYear(), anchor.value.getMonth(), 1)
 })
-const rangeEnd = computed(() => density.value === 'month'
-  ? new Date(rangeStart.value.getFullYear(), rangeStart.value.getMonth() + 12, 1)
-  : addDays(rangeStart.value, density.value === 'day' ? 14 : 84))
+const rangeEnd = computed(() => addDays(rangeStart.value, density.value === 'day' ? 14 : density.value === 'week' ? 84 : 120))
 const rangeLabel = computed(() => {
   const first = ticks.value[0]?.date
   const last = ticks.value.at(-1)?.end || ticks.value.at(-1)?.date
@@ -108,7 +109,11 @@ const rangeLabel = computed(() => {
   const format = value => new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' }).format(value)
   return `${format(first)} - ${format(last)}`
 })
-const gridStyle = computed(() => ({ '--timeline-label-width': '210px', '--timeline-tick-width': density.value === 'day' ? '54px' : density.value === 'week' ? '104px' : '142px', '--timeline-column-count': ticks.value.length }))
+const monthLabel = computed(() => {
+  const first = ticks.value[0]?.date
+  return first ? new Intl.DateTimeFormat('zh-CN', { month: 'long' }).format(first) : ''
+})
+const gridStyle = computed(() => ({ '--timeline-label-width': '196px', '--timeline-tick-width': density.value === 'day' ? '54px' : density.value === 'week' ? '104px' : '18px', '--timeline-column-count': ticks.value.length }))
 const todayIndex = computed(() => ticks.value.findIndex(tick => tick.today || sameDay(tick.date, new Date())))
 const todayPosition = computed(() => {
   const from = rangeStart.value.getTime()
@@ -117,28 +122,34 @@ const todayPosition = computed(() => {
 })
 const todayLineStyle = computed(() => ({ left: `${todayPosition.value}%` }))
 const datedTasks = computed(() => (props.tasks || store.tasks).filter(task => !task.deleted && task.status !== 'ABANDONED' && (task.startAt || task.dueAt)))
-const groups = computed(() => {
-  const rows = sortBy.value === 'time'
+const rows = computed(() => {
+  const sorted = sortBy.value === 'time'
     ? [...datedTasks.value].sort((a, b) => new Date(a.startAt || a.dueAt) - new Date(b.startAt || b.dueAt))
     : [...datedTasks.value].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
-  if (groupBy.value === 'none') return rows.length ? [{ key: 'all', label: '所有任务', tasks: rows }] : []
-  return groupTaskItems(rows, groupBy.value, store.lists, new Date(), store.tags, { includeEmptyLists: groupBy.value === 'list' })
+  if (groupBy.value === 'none') return sorted.map(task => ({ key: `task:${task.publicId}`, label: task.title, task, tasks: [task], single: true }))
+  return groupTaskItems(sorted, groupBy.value, store.lists, new Date(), store.tags, { includeEmptyLists: groupBy.value === 'list' })
 })
 
 function startOfDay(value) { const date = new Date(value); date.setHours(0, 0, 0, 0); return date }
 function addDays(value, days) { const date = new Date(value); date.setDate(date.getDate() + days); return date }
 function sameDay(left, right) { return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate() }
+function isWeekend(value) { return value.getDay() === 0 || value.getDay() === 6 }
 function dateKey(value) { return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}` }
 function dateLabel(value) { return value ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(new Date(value)) : '无日期' }
 function taskRange(task) {
-  const start = new Date(task.startAt || task.dueAt).getTime()
   const due = task.dueAt ? new Date(task.dueAt).getTime() : null
-  const duration = Math.max(60, Number(task.durationMinutes || 60)) * 60000
-  const end = due && due > start ? due : task.startAt ? start + duration : start + 60000
+  const start = task.startAt ? new Date(task.startAt).getTime() : due
+  let end
+  if (task.allDay) {
+    end = startOfDay(new Date(task.dueAt || task.startAt)).getTime() + 86400000
+  } else {
+    const duration = Math.max(60, Number(task.durationMinutes || 60)) * 60000
+    end = due && due > start ? due : task.startAt ? start + duration : start + 60000
+  }
   return { start, end }
 }
 function intersectsRange(task) { const { start, end } = taskRange(task); return end >= rangeStart.value.getTime() && start < rangeEnd.value.getTime() }
-function isMilestone(task) { return !task.startAt || !task.dueAt || new Date(task.dueAt).getTime() <= new Date(task.startAt || task.dueAt).getTime() }
+function isMilestone(task) { return !task.allDay && (!task.startAt || !task.dueAt || new Date(task.dueAt).getTime() <= new Date(task.startAt || task.dueAt).getTime()) }
 function barStyle(task) {
   const { start, end } = taskRange(task)
   const from = rangeStart.value.getTime(), span = rangeEnd.value.getTime() - from
@@ -146,6 +157,49 @@ function barStyle(task) {
   const left = Math.max(0, (clippedStart - from) / span * 100)
   const width = Math.max(density.value === 'month' ? 0.7 : 0.4, (clippedEnd - clippedStart) / span * 100)
   return { left: `${left}%`, width: isMilestone(task) ? '12px' : `${width}%` }
+}
+function groupSwatch(row) {
+  if (groupBy.value === 'list') {
+    const id = row.key.startsWith('list:') ? row.key.slice(5) : ''
+    return store.lists.find(item => item.publicId === id)?.color || ''
+  }
+  if (groupBy.value === 'tag') {
+    const id = row.key.startsWith('tag:') ? row.key.slice(4) : ''
+    return store.tags.find(item => item.publicId === id)?.color || ''
+  }
+  return ''
+}
+function taskBarColor(task) {
+  if (groupBy.value === 'priority') return { HIGH: '#dc2626', MEDIUM: '#d97706', LOW: '#2563eb' }[task.priority] || 'var(--primary)'
+  const list = store.lists.find(item => item.publicId === task.listId)
+  if (list?.color) return list.color
+  const tag = store.tags.find(item => task.tagIds?.[0] === item.publicId)
+  if (tag?.color) return tag.color
+  return { HIGH: '#dc2626', MEDIUM: '#d97706', LOW: '#2563eb' }[task.priority] || 'var(--primary)'
+}
+function groupBars(row) {
+  const from = rangeStart.value.getTime(), span = rangeEnd.value.getTime() - from
+  const visible = row.tasks.filter(task => intersectsRange(task))
+    .map(task => ({ task, ...taskRange(task) }))
+    .sort((a, b) => a.start - b.start || a.end - b.end)
+  const laneEnds = []
+  for (const item of visible) {
+    let lane = laneEnds.findIndex(end => item.start >= end)
+    if (lane === -1) {
+      laneEnds.push(item.end)
+      lane = laneEnds.length - 1
+    } else laneEnds[lane] = item.end
+    item.lane = lane
+    const widthPct = (Math.min(rangeEnd.value.getTime(), item.end) - Math.max(from, item.start)) / span * 100
+    item.wide = widthPct >= 12 && !isMilestone(item.task)
+    item.style = { ...barStyle(item.task), top: `${5 + lane * 26}px`, backgroundColor: taskBarColor(item.task) }
+  }
+  return visible
+}
+function trackStyle(row) {
+  if (row.single) return {}
+  const lanes = groupBars(row).reduce((max, item) => Math.max(max, item.lane + 1), 1)
+  return { height: `${lanes * 26 + 12}px` }
 }
 function setDensity(value) { density.value = value }
 function toggleMenu(menu) {
@@ -164,7 +218,7 @@ function movePeriod(direction) {
   if (density.value === 'day') date.setDate(date.getDate() + direction * 14)
   else if (density.value === 'week') date.setDate(date.getDate() + direction * 84)
   else {
-    anchor.value = new Date(date.getFullYear(), date.getMonth() + direction * 12, 1)
+    anchor.value = new Date(date.getFullYear(), date.getMonth() + direction * 4, 1)
     return
   }
   anchor.value = date
@@ -221,26 +275,31 @@ onBeforeUnmount(() => {
 .timeline-period-controls label { display: flex; }
 .timeline-period .timeline-today { min-width: 48px; cursor: pointer; }
 .timeline-scroll { min-width: 0; overflow: auto; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }
-.timeline-grid { min-width: calc(var(--timeline-label-width) + var(--timeline-column-count) * var(--timeline-tick-width)); }
-.timeline-axis-row,.timeline-row { display: grid; grid-template-columns: var(--timeline-label-width) minmax(0,1fr) auto; min-height: 54px; border-bottom: 1px solid var(--border); }
+.timeline-grid { width: fit-content; min-width: 100%; }
+.timeline-axis-row,.timeline-row { display: grid; grid-template-columns: var(--timeline-label-width) auto; border-bottom: 1px solid var(--border); }
 .timeline-task-heading,.timeline-axis { position: sticky; top: 0; z-index: 3; background: var(--surface); }
-.timeline-task-heading { left: 0; z-index: 4; display: flex; align-items: center; padding: 0 12px; border-right: 1px solid var(--border); font-size: 12px; font-weight: 650; }
-.timeline-axis { grid-column: 2 / 4; display: grid; grid-template-columns: repeat(var(--timeline-column-count), minmax(var(--timeline-tick-width),1fr)); }
-.timeline-tick { position: relative; display: flex; align-items: center; padding: 0 8px; border-left: 1px solid var(--border); color: var(--muted); font-size: 11px; white-space: nowrap; }
-.timeline-tick.is-today { color: var(--primary); font-weight: 700; }
-.timeline-tick i,.timeline-today-line { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--primary); opacity: .72; }
-.timeline-group-heading { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 10px; border: 0; border-bottom: 1px solid var(--border); background: color-mix(in srgb,var(--surface) 88%,var(--primary) 12%); color: var(--text); text-align: left; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
-.timeline-group-heading svg { transition: transform .18s ease; }.timeline-group-heading svg.rotated { transform: rotate(-90deg); }.timeline-group-heading small { color: var(--muted); }
-.timeline-row { min-height: 48px; grid-template-columns: var(--timeline-label-width) minmax(0,1fr) auto; align-items: center; }
-.timeline-label { position: sticky; left: 0; z-index: 2; align-self: stretch; display: grid; align-content: center; gap: 3px; padding: 4px 10px; border-right: 1px solid var(--border); background: var(--surface); min-width: 0; }
-.timeline-label strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 550; }.timeline-label small { color: var(--muted); font-size: 10px; }
-.timeline-track { position: relative; align-self: stretch; display: block; background: repeating-linear-gradient(90deg, transparent 0 calc(var(--timeline-tick-width) - 1px), var(--border) calc(var(--timeline-tick-width) - 1px) var(--timeline-tick-width)); }
-.timeline-bar { position: absolute; top: 14px; height: 20px; min-width: 8px; border-radius: 5px; background: var(--primary); box-shadow: 0 2px 5px rgb(15 23 42 / 16%); transition: filter .15s ease, transform .15s ease; }
-.timeline-bar:hover { filter: brightness(1.08); transform: translateY(-1px); }
-.timeline-bar.milestone { top: 18px; width: 12px!important; height: 12px; border-radius: 2px; transform: rotate(45deg); }
+.timeline-task-heading { left: 0; z-index: 4; display: flex; align-items: center; padding: 0 12px; min-height: 44px; border-right: 1px solid var(--border); font-size: 13px; font-weight: 650; }
+.timeline-axis { grid-column: 2 / 3; display: grid; grid-template-columns: repeat(var(--timeline-column-count), var(--timeline-tick-width)); width: max-content; }
+.timeline-tick { position: relative; display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 4px; border-left: 1px solid var(--border); color: var(--muted); font-size: 11px; white-space: nowrap; }
+.timeline-tick.is-weekend { background: color-mix(in srgb, var(--primary) 5%, transparent); }
+.timeline-tick.is-month-start { color: var(--text); font-weight: 650; }
+.timeline-tick.is-today { color: var(--danger, #dc2626); font-weight: 700; }
+.timeline-tick i,.timeline-today-line { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--danger, #dc2626); opacity: .55; }
+.timeline-row { min-height: 44px; grid-template-columns: var(--timeline-label-width) auto; align-items: stretch; }
+.timeline-label { position: sticky; left: 0; z-index: 2; display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 10px; border-right: 1px solid var(--border); background: var(--surface); text-align: left; font: inherit; }
+.timeline-label strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 550; }
+.timeline-label small { flex: none; color: var(--muted); font-size: 10px; }
+.timeline-group-label { cursor: pointer; }
+.timeline-group-label:hover { background: color-mix(in srgb, var(--primary) 6%, var(--surface)); }
+.timeline-group-label svg { flex: none; color: var(--muted); transition: transform .18s ease; }
+.timeline-group-label svg.rotated { transform: rotate(-90deg); }
+.timeline-group-swatch { width: 8px; height: 8px; flex: none; border-radius: 2px; }
+.timeline-track { position: relative; align-self: stretch; display: block; width: calc(var(--timeline-column-count) * var(--timeline-tick-width)); background: repeating-linear-gradient(90deg, transparent 0 calc(var(--timeline-tick-width) - 1px), var(--border) calc(var(--timeline-tick-width) - 1px) var(--timeline-tick-width)); }
+.timeline-bar { position: absolute; top: 5px; height: 20px; min-width: 8px; display: flex; align-items: center; overflow: hidden; border-radius: 5px; background: var(--primary); box-shadow: 0 2px 5px rgb(15 23 42 / 16%); cursor: pointer; transition: filter .15s ease; }
+.timeline-bar:hover { filter: brightness(1.08); }
+.timeline-bar em { min-width: 0; overflow: hidden; padding: 0 6px; color: #fff; font-size: 10px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.timeline-bar.milestone { width: 12px!important; min-width: 12px; justify-content: center; }
 .timeline-bar.priority-high { background: #dc2626; }.timeline-bar.priority-medium { background: #d97706; }.timeline-bar.priority-low { background: #2563eb; }
-.timeline-row>a { align-self: center; margin: 0 10px; color: var(--primary); font-size: 11px; white-space: nowrap; }
 .timeline-empty { margin: 0; color: var(--muted); font-size: 13px; }
-.timeline-open-task { align-self: center; margin: 0 10px; border: 0; background: transparent; color: var(--primary); font-size: 11px; white-space: nowrap; cursor: pointer; }
-@media(max-width:700px) { .timeline-head.is-embedded { justify-content: flex-start; }.timeline-controls { width: 100%; }.timeline-row,.timeline-axis-row { grid-template-columns: 160px minmax(0,1fr) auto; }.timeline-grid { --timeline-label-width:160px!important; }.timeline-controls { gap: 6px; }.timeline-menu { flex: 1; }.timeline-menu-trigger { width: 100%; justify-content: space-between; }.timeline-menu-popover { right: auto; left: 0; min-width: 100%; }.timeline-period { justify-content: space-between; }.timeline-period-range { gap: 3px; }.timeline-period-range strong { max-width: 35vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.timeline-period-controls { gap: 4px; }.timeline-period select { max-width: 72px; } }
+@media(max-width:700px) { .timeline-head.is-embedded { justify-content: flex-start; }.timeline-controls { width: 100%; }.timeline-row,.timeline-axis-row { grid-template-columns: 160px auto; }.timeline-grid { --timeline-label-width:160px!important; }.timeline-controls { gap: 6px; }.timeline-menu { flex: 1; }.timeline-menu-trigger { width: 100%; justify-content: space-between; }.timeline-menu-popover { right: auto; left: 0; min-width: 100%; }.timeline-period { justify-content: space-between; }.timeline-period-range { gap: 3px; }.timeline-period-range strong { max-width: 35vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.timeline-period-controls { gap: 4px; }.timeline-period select { max-width: 72px; } }
 </style>
