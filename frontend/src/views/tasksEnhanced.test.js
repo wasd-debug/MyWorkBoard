@@ -18,6 +18,7 @@ const client = await readFile(new URL('../../packages/api-client/src/index.js', 
 const navigation = await readFile(new URL('../config/moduleNavigation.js', import.meta.url), 'utf8')
 const appView = await readFile(new URL('../App.vue', import.meta.url), 'utf8')
 const completionFilters = await readFile(new URL('./taskCompletionFilters.js', import.meta.url), 'utf8')
+const tasksStore = await readFile(new URL('../stores/tasks.js', import.meta.url), 'utf8')
 
 test('task enhanced workspace exposes all I7 and timeline routes', () => {
   for (const path of ['/tasks/board', '/tasks/quadrant', '/tasks/search', '/tasks/stats', '/tasks/filter/:publicId', '/tasks/timeline']) {
@@ -339,13 +340,62 @@ test('middle task workspace matches the note-row, date, view, display, and print
   assert.match(workspaceView, /function openTaskRow\(task, event\)[\s\S]*openDetail\(task\)[\s\S]*inlineRowTitleTaskId\.value = task\.publicId/)
   assert.match(workspaceView, /class="clone-drag-handle" :draggable="!batchMode"/)
   assert.match(workspaceView, /taskGroupDropPatch\(dragged\.value, groupBy\.value, groupKey\)/)
+  // 同组拖动排序在非手动排序下自动切换为手动并落库排序
+  assert.match(workspaceView, /if \(sort\.value !== "manual"\) sort\.value = "manual";[\s\S]{0,200}store\.sortTask\(dragged\.value, manualTaskSortIndex/)
+  // 标签全量渲染（宽档不再强制只显示 2 个），计数 chip 由行宽容器查询分档驱动
+  assert.match(workspaceView, /v-for="tagId in task\.tagIds"/)
+  assert.doesNotMatch(workspaceView, /has-overflow/)
+  assert.match(workspaceView, /clone-task-metadata \{ display: flex; align-items: center; justify-content: flex-end; gap: 7px; flex: 0 1 auto;/)
+  assert.match(workspaceView, /\/\* 行宽即中间栏可用宽度：标签分档收起的容器查询以此为准（对齐滴答按中栏收窄） \*\/\n  container: task-meta \/ inline-size;/)
+  for (const token of [':has(> .clone-task-tag-wrap:nth-child(5)) .clone-task-tag-count', 'content: "+" attr(data-h4)', 'content: "+" attr(data-h2)', 'content: "+" attr(data-h1)', 'content: attr(data-total)']) assert.ok(workspaceView.includes(token), `missing tag tier rule ${token}`)
+  // 档位隐藏/判定限定直接子元素：+N 悬浮浮层里的 chips 不参与分档
+  assert.ok(workspaceView.includes('.clone-task-tags > .clone-task-tag-wrap:nth-child(n + 3) { display: none; }'), 'tier hide must target direct children only')
+  // store hydrate 按 sortOrder 排序，保证手动排序刷新后不回退
+  assert.match(tasksStore, /this\.tasks = tasks\.map\(localTask\)\.sort\(\(a, b\) => Number\(a\.sortOrder \|\| 0\) - Number\(b\.sortOrder \|\| 0\)\)/)
   assert.match(workspaceView, /clone-task-tag-remove/)
+  // 紧凑行（看板卡片/已完成行）使用的 visibleTaskTagIds 必须有函数定义：删函数留引用会导致渲染崩溃（已完成分组白屏）
+  assert.match(workspaceView, /function visibleTaskTagIds\(task\) \{\n  return \(task\.tagIds \|\| \[\]\)\.slice\(0, 2\);\n\}/)
+  const tagHelperUses = (workspaceView.match(/visibleTaskTagIds\(task\)/g) || []).length
+  assert.ok(tagHelperUses >= 3, `visibleTaskTagIds references expected >= 3 (board/completed rows), got ${tagHelperUses}`)
   assert.match(workspaceView, /clone-checklist-progress/)
   assert.match(workspaceView, /task\.attachmentCount \|\| task\.attachments\?\.length/)
   assert.match(workspaceView, /async function saveInlineRowTitle\(task\)[\s\S]*store\.update\(task, \{ title \}\)/)
-  assert.match(workspaceView, /openRowDateEditor\(task\)[\s\S]*saveRowDate\(task\)/)
+  // 行内日期编辑复用 TaskDateTimePopover 弹层（teleport 到 body，按触发按钮定位）
+  assert.match(workspaceView, /openRowDateEditor\(task, \$event\.currentTarget\)/)
+  assert.match(workspaceView, /class="clone-row-date-panel"[\s\S]*<TaskDateTimePopover/)
+  assert.match(workspaceView, /function applyRowDatePanel\(\)[\s\S]*saveRowDate\(task, newDueAt, \{ allDay: !rowDatePanel\.time, rrule: rule, recurrenceAnchor: anchor \}\)/)
+  assert.match(workspaceView, /await syncRowReminders\(task\.publicId, newDueAt, rowDatePanel\.mode === "RANGE" \? rowDatePanel\.allDay : !rowDatePanel\.time\)/)
+  assert.match(workspaceView, /document\.addEventListener\("pointerdown", closeRowDatePanelOnOutsidePointer\)/)
+  assert.doesNotMatch(workspaceView, /clone-row-date-editor/)
   assert.match(workspaceView, /aria-label="中间栏更多选项"/)
   for (const item of ['视图选项', '显示设置', '打印', 'switchWorkspaceView', 'window\.print\(\)']) assert.match(workspaceView, new RegExp(item))
+})
+
+test('标签 +N 悬浮展开隐藏标签，行内日期弹层支持时间段与全天', () => {
+  // 列表行 +N 计数 chip 悬浮显示全部标签 chips（可跳转），并临时放开 metadata 裁剪
+  assert.match(workspaceView, /class="clone-task-tag-tooltip"><span v-for="tagId in task\.tagIds"[\s\S]*?clone-task-tag" @click\.stop/)
+  assert.match(workspaceView, /\.clone-task-tag-count:hover \.clone-task-tag-tooltip,\n\.clone-task-tag-count:focus-within/)
+  assert.match(workspaceView, /\.clone-task-metadata:has\(\.clone-task-tag-count:hover\),\n\.clone-task-metadata:has\(\.clone-task-tag-count:focus-within\) \{ overflow: visible; \}/)
+  // tooltip 不能继承计数 chip 的 font-size: 0（否则文字/芯片不可见）
+  assert.match(workspaceView, /clone-task-tag-tooltip \{ position: absolute;[^}]*font-size: 12px;/)
+  // 看板 +N 同样悬浮展开，且容器不裁剪浮层
+  assert.match(workspaceView, /clone-inline-board-tag-more" tabindex="0" :aria-label="taskTagSummary\(task\)">\+\{\{ task\.tagIds\.length - visibleTaskTagIds\(task\)\.length \}\}<span class="clone-task-tag-tooltip"/)
+  assert.match(workspaceView, /\.clone-inline-board-tag-more \{ position: relative; overflow: visible;/)
+  // 行内日期弹层：时间段模式保存 startAt/dueAt，清除同时清空 startAt
+  assert.match(workspaceView, /rowDatePanel\.mode = task\.startAt \? "RANGE" : "DATE"/)
+  assert.match(workspaceView, /await saveRowDate\(task, newDueAt, \{ startAt, allDay: rowDatePanel\.allDay, rrule: rule, recurrenceAnchor: anchor \}\)/)
+  assert.match(workspaceView, /function clearRowDateFromPanel\(\)[\s\S]*saveRowDate\(task, "", \{ startAt: "", allDay: false \}\)/)
+  // Escape 与外部 pointerdown 均可关闭
+  assert.match(workspaceView, /if \(rowDateTaskId\.value\) \{\n      if \(rowDateMenu\.value \|\| rowTimeListOpen\.value \|\| rowRepeatEditorOpen\.value\) \{/)
+  // 弹层内提醒/重复/结束重复三行 + 对应浮层，确定时一并保存
+  assert.match(workspaceView, /toggleRowDateMenu\('reminder'\)[\s\S]{0,1200}toggleRowDateMenu\('repeat'\)[\s\S]{0,1200}toggleRowDateMenu\('end'\)/)
+  assert.match(workspaceView, /rowDateMenu === 'reminder'[\s\S]{0,200}clone-quick-reminder-menu clone-quick-flyout/)
+  assert.match(workspaceView, /rowDateMenu === 'repeat'[\s\S]{0,200}clone-quick-repeat-menu clone-quick-flyout/)
+  assert.match(workspaceView, /rowDateMenu === 'end'[\s\S]{0,200}clone-quick-end-menu clone-quick-flyout/)
+  assert.match(workspaceView, /function syncQuickRepeatFromRule\(target, rule = "", anchor = "DUE_DATE"\)/)
+  assert.match(workspaceView, /syncQuickRepeatFromRule\(rowRepeat, task\.rrule \|\| "", task\.recurrenceAnchor \|\| "DUE_DATE"\)/)
+  assert.match(workspaceView, /async function syncRowReminders\(taskPublicId, dueAt, allDay\)[\s\S]*apiDeleteTaskReminder[\s\S]*apiCreateTaskReminder/)
+  assert.match(workspaceView, /function reminderPresetFromTask\(reminder, dueAt\)/)
 })
 
 test('普通清单视图的更多菜单按路由区分动作并可打开当前清单动态', async () => {
@@ -1054,7 +1104,7 @@ test('task multi-select panel matches the action sheet and exposes supported act
 test('task detail subtasks can be completed, quickly renamed, dated, and added inline', () => {
   assert.match(workspaceView, /class="clone-detail-subtask-row"[\s\S]*toggleComplete\(child\)/)
   assert.match(workspaceView, /inlineSubtaskTitleId === child\.publicId[\s\S]*saveInlineSubtaskTitle\(child\)/)
-  assert.match(workspaceView, /clone-detail-subtask-date[\s\S]*openRowDateEditor\(child\)/)
+  assert.match(workspaceView, /clone-detail-subtask-date[\s\S]*openRowDateEditor\(child, \$event\.currentTarget\)/)
   assert.match(workspaceView, /clone-detail-subtask-draft[\s\S]*@submit\.prevent="saveDetailSubtask"/)
   assert.match(workspaceView, /clone-detail-subtask-add[\s\S]*添加子任务/)
   assert.match(workspaceView, /async function saveInlineSubtaskTitle\(task\)[\s\S]*store\.update\(task, \{ title \}\)/)
@@ -1062,6 +1112,8 @@ test('task detail subtasks can be completed, quickly renamed, dated, and added i
 
 test('task row metadata shortcuts open their matching detail section or popover', () => {
   assert.match(workspaceView, /查看\$\{task\.title\}详细内容[\s\S]*openTaskIndicator\(task, 'description'\)/)
+  // 详细内容指示图标为文本形（FileText），与滴答一致
+  assert.match(workspaceView, /查看\$\{task\.title\}详细内容[\s\S]{0,220}<FileText :size="14" \/>/)
   assert.match(workspaceView, /查看\$\{task\.title\}检查项进度[\s\S]*openTaskIndicator\(task, 'checklist'\)/)
   assert.match(workspaceView, /查看\$\{task\.title\}子任务[\s\S]*openTaskIndicator\(task, 'subtasks'\)/)
   assert.match(workspaceView, /调整\$\{task\.title\}重复规则[\s\S]*openTaskIndicator\(task, 'repeat'\)/)

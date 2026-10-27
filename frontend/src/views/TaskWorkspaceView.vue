@@ -244,7 +244,7 @@
           </div>
         </div>
       </div>
-      <div v-if="moreOpen" class="clone-floating-menu clone-view-menu" role="menu" aria-label="分组与排序设置" @click.stop>
+      <div v-if="moreOpen" class="clone-floating-menu clone-view-menu" role="menu" aria-label="分组与排序设置" :style="workspaceMenuStyle" @click.stop>
         <template v-if="!workspaceMenuSection">
           <button type="button" class="clone-menu-submenu-trigger" role="menuitem" @click="workspaceMenuSection = 'group'"><Layers3 :size="18" /><span>分组</span><small>{{ groupOptionLabel }}</small><ChevronRight :size="16" /></button>
           <button type="button" class="clone-menu-submenu-trigger" role="menuitem" @click="workspaceMenuSection = 'sort'"><ListFilter :size="18" /><span>排序</span><small>{{ sortOptionLabel }}</small><ChevronRight :size="16" /></button>
@@ -259,7 +259,7 @@
           </button>
         </template>
       </div>
-      <div v-if="listOptionsOpen" class="clone-floating-menu clone-view-menu clone-list-options-menu" role="menu" aria-label="中间栏更多选项" @click.stop>
+      <div v-if="listOptionsOpen" class="clone-floating-menu clone-view-menu clone-list-options-menu" role="menu" aria-label="中间栏更多选项" :style="workspaceMenuStyle" @click.stop>
         <strong>视图选项</strong>
         <div class="clone-view-segmented" role="group" aria-label="视图">
           <button v-for="option in workspaceViews" :key="option.value" type="button" :aria-label="option.label" :title="option.label" :aria-pressed="activeWorkspaceView === option.value" @click="switchWorkspaceView(option.value)"><component :is="option.icon" :size="21" /></button>
@@ -442,6 +442,111 @@
           <footer class="clone-quick-flyout-actions"><button type="button" @click="cancelQuickTags">取消</button><button type="button" class="primary" @click="applyQuickTags">确定</button></footer>
         </div>
       </teleport>
+      <teleport to="body">
+        <div v-if="rowDateTaskId" ref="rowDatePanelRef" class="clone-row-date-panel" :style="rowDateStyle" @click.stop>
+          <TaskDateTimePopover
+            :mode="rowDatePanel.mode"
+            :month="quickCalendarMonth"
+            :calendar-days="rowDateCalendarDays"
+            :selected-key="rowDatePanel.mode === 'RANGE' ? rowDatePanel.rangeEnd : rowDatePanel.selectedDate"
+            :time="rowDatePanel.time"
+            :all-day="rowDatePanel.allDay"
+            :month-label="quickCalendarTitle"
+            :range-start="rowDatePanel.rangeStart"
+            :range-end="rowDatePanel.rangeEnd"
+            :range-start-time="rowDatePanel.rangeStartTime"
+            :range-end-time="rowDatePanel.rangeEndTime"
+            apply-label="确定"
+            @update:mode="setRowDateMode"
+            @quick-date="chooseRowDatePreset"
+            @move-month="moveQuickMonth"
+            @select-date="selectRowDate"
+            @select-time="selectRowTime"
+            @clear-time="clearRowTime"
+            @clear-date="clearRowDateFromPanel"
+            @toggle-all-day="rowDatePanel.allDay = $event"
+            @update:range-start="rowDatePanel.rangeStart = $event"
+            @update:range-end="rowDatePanel.rangeEnd = $event"
+            @update:range-start-time="rowDatePanel.rangeStartTime = $event"
+            @update:range-end-time="rowDatePanel.rangeEndTime = $event"
+            @apply="applyRowDatePanel"
+          >
+            <template #rows="{ mode: rowMode }">
+              <div v-if="!rowRepeatEditorOpen" class="clone-date-prop-rows" aria-label="任务属性">
+                <div v-if="rowMode === 'DATE'" class="clone-date-prop-row">
+                  <button type="button" class="clone-date-prop-trigger" :class="{ active: Boolean(rowDatePanel.time) }" :aria-expanded="rowTimeListOpen" @click="rowTimeListOpen = !rowTimeListOpen"><Clock3 :size="15" /><span>{{ rowDatePanel.time || '时间' }}</span><ChevronRight :size="14" :class="{ 'is-open': rowTimeListOpen }" /></button>
+                  <button v-if="rowDatePanel.time" type="button" class="clone-date-prop-clear" aria-label="清除时间" title="清除时间" @click="clearRowTime"><X :size="14" /></button>
+                </div>
+                <div v-if="rowMode === 'DATE' && rowTimeListOpen" class="clone-date-time-list" role="listbox" aria-label="选择时间">
+                  <button v-for="option in quickTimeOptions" :key="option" type="button" role="option" :aria-selected="option === rowDatePanel.time" :class="{ active: option === rowDatePanel.time }" @click="selectRowTime(option)">{{ option }}<Check v-if="option === rowDatePanel.time" :size="14" /></button>
+                </div>
+                <div class="clone-date-prop-row">
+                  <button ref="rowReminderToggleRef" type="button" class="clone-date-prop-trigger" :class="{ active: rowReminderConfig.presets.length > 0 }" :aria-expanded="rowDateMenu === 'reminder'" @click="toggleRowDateMenu('reminder')"><Bell :size="15" /><span>{{ rowReminderConfig.presets.length ? rowReminderSummary : '提醒' }}</span><ChevronRight :size="14" :class="{ 'is-open': rowDateMenu === 'reminder' }" /></button>
+                  <button v-if="rowReminderConfig.presets.length" type="button" class="clone-date-prop-clear" aria-label="清除全部提醒" title="清除全部提醒" @click="clearRowReminders"><X :size="14" /></button>
+                </div>
+                <div class="clone-date-prop-row">
+                  <button ref="rowRepeatToggleRef" type="button" class="clone-date-prop-trigger" :class="{ active: Boolean(buildQuickRepeatRule(rowRepeat)) }" :aria-expanded="rowDateMenu === 'repeat'" @click="toggleRowDateMenu('repeat')"><Repeat2 :size="15" /><span>{{ quickRepeatLabel(rowRepeat) }}</span><ChevronRight :size="14" :class="{ 'is-open': rowDateMenu === 'repeat' }" /></button>
+                </div>
+                <div v-if="rowShowEndRow" class="clone-date-prop-row">
+                  <button ref="rowEndToggleRef" type="button" class="clone-date-prop-trigger" :aria-expanded="rowDateMenu === 'end'" @click="toggleRowDateMenu('end')"><Timer :size="15" /><span>{{ rowEndLabel }}</span><ChevronRight :size="14" :class="{ 'is-open': rowDateMenu === 'end' }" /></button>
+                </div>
+              </div>
+              <section v-else class="clone-quick-repeat-panel" aria-label="自定义重复设置">
+                <header><strong>重复</strong><button type="button" aria-label="关闭重复设置" @click="rowRepeatEditorOpen = false"><X :size="14" /></button></header>
+                <div class="clone-quick-repeat-mode"><select v-model="rowRepeat.mode" aria-label="重复方式"><option value="DUE_DATE">按到期日期</option><option value="COMPLETION_DATE">按完成日期</option></select></div>
+                <div class="clone-quick-repeat-interval"><span>每</span><input v-model.number="rowRepeat.interval" type="number" min="1" max="365" aria-label="重复间隔" /><select :value="rowRepeat.frequency" @change="setRowRepeatFrequency" aria-label="重复频率"><option value="DAILY">日</option><option value="WEEKLY">周</option><option value="MONTHLY">月</option><option value="YEARLY">年</option></select></div>
+                <div v-if="rowRepeat.frequency === 'WEEKLY'" class="clone-quick-repeat-circles" aria-label="重复星期"><button v-for="day in DAY_CODES" :key="day" type="button" :aria-pressed="rowRepeat.weekdays.includes(day)" :class="{ active: rowRepeat.weekdays.includes(day) }" @click="toggleRowRepeatWeekday(day)">{{ { MO: '一', TU: '二', WE: '三', TH: '四', FR: '五', SA: '六', SU: '日' }[day] }}</button></div>
+                <div v-if="['MONTHLY', 'YEARLY'].includes(rowRepeat.frequency)" class="clone-quick-repeat-grid"><label>重复日期<select v-model="rowRepeat.monthMode"><option value="DATE">按日期</option><option value="WEEKDAY">按星期</option><option v-if="rowRepeat.frequency === 'MONTHLY'" value="WORKDAY">按工作日</option></select></label><label v-if="rowRepeat.frequency === 'YEARLY'">月份<select v-model.number="rowRepeat.month"><option v-for="month in 12" :key="month" :value="month">{{ month }} 月</option></select></label><template v-if="rowRepeat.monthMode === 'WEEKDAY'"><label>第几周<select v-model.number="rowRepeat.ordinal"><option v-for="ordinal in 5" :key="ordinal" :value="ordinal">第 {{ ordinal }} 个</option><option :value="-1">最后一个</option></select></label><label>星期<select v-model="rowRepeat.weekday"><option v-for="day in DAY_CODES" :key="day" :value="day">{{ { MO: '周一', TU: '周二', WE: '周三', TH: '四', FR: '周五', SA: '周六', SU: '周日' }[day] }}</option></select></label></template><label v-if="rowRepeat.monthMode === 'WORKDAY'">工作日<select v-model.number="rowRepeat.workdayPosition"><option :value="1">第一个工作日</option><option :value="-1">最后一个工作日</option></select></label></div>
+                <div v-if="['MONTHLY', 'YEARLY'].includes(rowRepeat.frequency) && rowRepeat.monthMode === 'DATE'" class="clone-quick-repeat-date-calendar" aria-label="选择重复日期"><span v-for="weekday in quickWeekdays" :key="`row-repeat-${weekday}`">{{ weekday }}</span><span v-for="(day, index) in rowRepeatCalendarDays.filter(value => !value)" :key="`row-repeat-day-${index}`" class="clone-quick-repeat-date-spacer"></span><button v-for="day in rowRepeatCalendarDays.filter(Boolean)" :key="`row-repeat-date-${day}`" type="button" :aria-pressed="!rowRepeat.lastDay && rowRepeat.monthDays.includes(day)" :class="{ active: !rowRepeat.lastDay && rowRepeat.monthDays.includes(day) }" @click="toggleRowRepeatMonthDay(day)">{{ day }}</button><button type="button" class="clone-quick-repeat-last-day" :aria-pressed="rowRepeat.lastDay" :class="{ active: rowRepeat.lastDay }" @click="rowRepeat.lastDay = true">最后一天</button></div>
+                <div class="clone-quick-repeat-checks"><label v-if="rowRepeat.frequency !== 'WEEKLY' && rowRepeat.monthMode !== 'WORKDAY'" class="clone-quick-repeat-check"><input v-model="rowRepeat.skipWeekends" type="checkbox" />跳过双休日</label><label class="clone-quick-repeat-check"><input v-model="rowRepeat.skipLegalHolidays" type="checkbox" />跳过法定节假日</label></div>
+                <p v-if="rowRepeatError" class="clone-error" role="alert">{{ rowRepeatError }}</p>
+                <footer><button type="button" @click="cancelRowRepeat">取消</button><button type="button" class="clone-quick-date-apply" @click="applyRowRepeat">确定</button></footer>
+              </section>
+              <teleport to="body">
+                <div v-if="rowDateMenu === 'reminder' && !rowRepeatEditorOpen" ref="rowReminderMenuRef" class="clone-quick-reminder-menu clone-quick-flyout" :style="rowReminderMenuStyle" role="listbox" aria-label="提醒设置" aria-multiselectable="true" @click.stop>
+                  <button v-for="option in rowReminderMenuOptions" :key="option.value" type="button" role="option" :aria-selected="rowReminderConfig.presets.includes(option.value)" :class="{ active: rowReminderConfig.presets.includes(option.value) }" @click="selectRowReminder(option.value)">{{ option.label }}<Check v-if="rowReminderConfig.presets.includes(option.value)" :size="14" /></button>
+                  <template v-if="!rowDatePanel.allDay && rowReminderRecentOptions.length">
+                    <span class="clone-quick-flyout-separator"></span>
+                    <span class="clone-quick-flyout-title">最近使用</span>
+                    <button v-for="option in rowReminderRecentOptions" :key="`row-recent-${option.value}`" type="button" role="option" :aria-selected="rowReminderConfig.presets.includes(option.value)" :class="{ active: rowReminderConfig.presets.includes(option.value) }" @click="selectRowReminder(option.value)">{{ option.label }}<Check v-if="rowReminderConfig.presets.includes(option.value)" :size="14" /></button>
+                  </template>
+                  <template v-if="rowReminderConfig.presets.includes('CUSTOM')">
+                    <span class="clone-quick-flyout-separator"></span>
+                    <div class="clone-quick-reminder-custom">
+                      <label><span>提前</span><input v-model.number="rowReminderConfig.amount" type="number" min="1" :max="rowDatePanel.allDay ? 365 : 10080" aria-label="自定义提醒数量" /><select v-model="rowReminderConfig.unit" aria-label="自定义提醒单位"><option v-if="!rowDatePanel.allDay" value="MINUTE">分钟</option><option v-if="!rowDatePanel.allDay" value="HOUR">小时</option><option value="DAY">天</option><option value="WEEK">周</option></select></label>
+                      <label v-if="rowDatePanel.allDay">提醒时间<select v-model="rowReminderConfig.time" aria-label="自定义提醒时间"><option v-for="option in quickTimeOptions" :key="`row-reminder-time-${option}`" :value="option">{{ option }}</option></select></label>
+                      <p class="clone-quick-reminder-preview">{{ rowReminderCustomPreview }}</p>
+                      <div class="clone-quick-flyout-actions"><button type="button" @click="cancelRowReminderCustom">取消</button><button type="button" class="primary" @click="applyRowReminderCustom">确定</button></div>
+                    </div>
+                  </template>
+                </div>
+                <div v-if="rowDateMenu === 'repeat' && !rowRepeatEditorOpen" ref="rowRepeatMenuRef" class="clone-quick-repeat-menu clone-quick-flyout" :style="rowRepeatMenuStyle" role="listbox" aria-label="重复规则" @click.stop>
+                  <template v-for="option in rowRepeatMenuOptions" :key="option.key">
+                    <span v-if="option.separator" class="clone-quick-flyout-separator"></span>
+                    <button v-else-if="option.isGroup" type="button" :aria-expanded="rowRepeatGroupOpen === option.key" @click="rowRepeatGroupOpen = rowRepeatGroupOpen === option.key ? '' : option.key">{{ option.label }}<ChevronRight :size="14" :class="{ 'is-open': rowRepeatGroupOpen === option.key }" /></button>
+                    <button v-else-if="option.child" v-show="rowRepeatGroupOpen === option.groupKey" type="button" role="option" :aria-selected="option.active" :class="{ active: option.active }" @click="onRowRepeatMenuSelect(option)">{{ option.label }}<Check v-if="option.active" :size="14" /></button>
+                    <button v-else type="button" role="option" :aria-selected="option.active" :class="{ active: option.active }" @click="onRowRepeatMenuSelect(option)">{{ option.label }}<Check v-if="option.active" :size="14" /></button>
+                  </template>
+                </div>
+                <div v-if="rowDateMenu === 'end' && !rowRepeatEditorOpen" ref="rowEndMenuRef" class="clone-quick-end-menu clone-quick-flyout" :style="rowEndMenuStyle" role="listbox" aria-label="结束重复" @click.stop>
+                  <button type="button" role="option" :aria-selected="rowRepeat.endMode === 'NEVER'" :class="{ active: rowRepeat.endMode === 'NEVER' }" @click="selectRowEndMode('NEVER')">永不结束<Check v-if="rowRepeat.endMode === 'NEVER'" :size="14" /></button>
+                  <span class="clone-quick-flyout-separator"></span>
+                  <button type="button" :aria-expanded="rowEndPanel === 'date'" @click="toggleRowEndPanel('date')">按日期结束<ChevronRight :size="14" :class="{ 'is-open': rowEndPanel === 'date' }" /></button>
+                  <div v-if="rowEndPanel === 'date'" class="clone-quick-end-calendar">
+                    <div class="clone-quick-end-cal-head"><button type="button" aria-label="上个月" @click="moveRowEndMonth(-1)"><ChevronLeft :size="15" /></button><strong>{{ rowEndCalendarTitle }}</strong><button type="button" aria-label="下个月" @click="moveRowEndMonth(1)"><ChevronRight :size="15" /></button></div>
+                    <div class="clone-quick-end-cal-grid"><span v-for="weekday in quickWeekdays" :key="`row-end-${weekday}`">{{ weekday }}</span><button v-for="day in rowEndCalendarDays" :key="day.key" type="button" :class="{ 'other-month': !day.inMonth, selected: day.selected }" @click="pickRowEndDate(day.key)">{{ day.date.getDate() }}</button></div>
+                  </div>
+                  <button type="button" :aria-expanded="rowEndPanel === 'count'" @click="toggleRowEndPanel('count')">按次数结束<ChevronRight :size="14" :class="{ 'is-open': rowEndPanel === 'count' }" /></button>
+                  <div v-if="rowEndPanel === 'count'" class="clone-quick-end-count">
+                    <label>重复<input v-model.number="rowEndCountDraft" type="number" min="1" aria-label="重复次数" />次</label>
+                    <div class="clone-quick-flyout-actions"><button type="button" @click="cancelRowEndCount">取消</button><button type="button" class="primary" @click="applyRowEndCount">确定</button></div>
+                  </div>
+                </div>
+              </teleport>
+            </template>
+          </TaskDateTimePopover>
+        </div>
+      </teleport>
       <div v-if="quickAction === 'repeat'" ref="quickPanelMenuRef" class="clone-quick-action-panel is-repeat" :style="quickPanelStyle" @click.stop>
           <section class="clone-quick-repeat-panel" aria-label="自定义重复设置">
             <header><strong>重复</strong><button type="button" aria-label="关闭重复设置" @click="quickAction = ''"><X :size="14" /></button></header>
@@ -528,10 +633,10 @@
             </div>
             <div v-if="showTags && task.tagIds?.length" class="clone-inline-board-tags" :aria-label="taskTagSummary(task)">
               <span v-for="tagId in visibleTaskTagIds(task)" :key="tagId" class="clone-inline-board-tag" :style="taskTagStyle(tagId)">#{{ tagName(tagId) }}</span>
-              <span v-if="task.tagIds.length > visibleTaskTagIds(task).length" class="clone-inline-board-tag-more">+{{ task.tagIds.length - visibleTaskTagIds(task).length }}</span>
+              <span v-if="task.tagIds.length > visibleTaskTagIds(task).length" class="clone-inline-board-tag-more" tabindex="0" :aria-label="taskTagSummary(task)">+{{ task.tagIds.length - visibleTaskTagIds(task).length }}<span class="clone-task-tag-tooltip"><span v-for="tagId in task.tagIds" :key="tagId" class="clone-task-tag-wrap" :style="taskTagStyle(tagId)"><RouterLink :to="`/tasks/tag/${tagId}`" class="clone-task-tag" @click.stop>{{ tagName(tagId) }}</RouterLink></span></span></span>
             </div>
             <div class="clone-inline-board-meta">
-              <button v-if="task.dueAt" type="button" class="clone-inline-board-date" :class="{ overdue: isTaskOverdue(task), today: isTaskDueToday(task) }" @click.stop="openRowDateEditor(task)"><CalendarClock :size="13" />{{ taskDateLabel(task) }}</button>
+              <button v-if="task.dueAt" type="button" class="clone-inline-board-date" :class="{ overdue: isTaskOverdue(task), today: isTaskDueToday(task) }" data-row-date-trigger @click.stop="openRowDateEditor(task, $event.currentTarget)"><CalendarClock :size="13" />{{ taskDateLabel(task) }}</button>
               <span v-if="task.rrule" class="clone-inline-board-indicator" :title="recurrenceLabel(task.rrule)"><Repeat2 :size="13" /></span>
               <span v-if="task.checklist?.length" class="clone-inline-board-indicator clone-inline-board-checklist" :title="`检查项 ${task.checklist.filter(item => item.completed).length}/${task.checklist.length}`"><span class="clone-inline-board-checklist-ring" :style="{ '--check-progress': `${task.checklist.filter(item => item.completed).length / task.checklist.length * 100}%` }"></span>{{ task.checklist.filter(item => item.completed).length }}/{{ task.checklist.length }}</span>
               <span v-if="task.description" class="clone-inline-board-indicator" title="有详细内容"><FileText :size="13" /></span>
@@ -626,17 +731,16 @@
                 ></button
               ><div class="clone-task-metadata">
                 <span v-if="showTags && task.tagIds?.length" class="clone-task-tags" :aria-label="taskTagSummary(task)" :title="taskTagSummary(task)">
-                  <span v-for="tagId in visibleTaskTagIds(task)" :key="tagId" class="clone-task-tag-wrap" :style="taskTagStyle(tagId)"><RouterLink :to="`/tasks/tag/${tagId}`" class="clone-task-tag" @click.stop>{{ tagName(tagId) }}</RouterLink><button type="button" class="clone-task-tag-remove" :aria-label="`移除标签${tagName(tagId)}`" @click.stop="removeTaskTag(task, tagId)"><X :size="11" /></button></span>
-                  <span class="clone-task-tag-count" :class="{ 'has-overflow': task.tagIds.length > visibleTaskTagIds(task).length }" :data-count="Math.max(0, task.tagIds.length - 1)" :data-total="task.tagIds.length" :title="taskTagSummary(task)" tabindex="0">+{{ Math.max(0, task.tagIds.length - visibleTaskTagIds(task).length) }}<span class="clone-task-tag-tooltip">{{ taskTagSummary(task) }}</span></span>
+                  <span v-for="tagId in task.tagIds" :key="tagId" class="clone-task-tag-wrap" :style="taskTagStyle(tagId)"><RouterLink :to="`/tasks/tag/${tagId}`" class="clone-task-tag" @click.stop>{{ tagName(tagId) }}</RouterLink><button type="button" class="clone-task-tag-remove" :aria-label="`移除标签${tagName(tagId)}`" @click.stop="removeTaskTag(task, tagId)"><X :size="11" /></button></span>
+                  <span class="clone-task-tag-count" :data-total="task.tagIds.length" :data-h4="Math.max(0, task.tagIds.length - 4)" :data-h2="Math.max(0, task.tagIds.length - 2)" :data-h1="Math.max(0, task.tagIds.length - 1)" :aria-label="taskTagSummary(task)" tabindex="0"><span class="clone-task-tag-tooltip"><span v-for="tagId in task.tagIds" :key="tagId" class="clone-task-tag-wrap" :style="taskTagStyle(tagId)"><RouterLink :to="`/tasks/tag/${tagId}`" class="clone-task-tag" @click.stop>{{ tagName(tagId) }}</RouterLink></span></span></span>
                 </span>
-                <button v-if="showDescription && task.description" type="button" class="clone-task-indicator clone-task-indicator-action" :title="task.description" :aria-label="`查看${task.title}详细内容`" @click.stop="openTaskIndicator(task, 'description')"><ListTodo :size="14" /></button>
+                <button v-if="showDescription && task.description" type="button" class="clone-task-indicator clone-task-indicator-action" :title="task.description" :aria-label="`查看${task.title}详细内容`" @click.stop="openTaskIndicator(task, 'description')"><FileText :size="14" /></button>
                 <button v-if="showChecklist && task.checklist?.length" type="button" class="clone-task-indicator clone-task-indicator-action" :title="`检查项 ${task.checklist.filter(item => item.completed).length}/${task.checklist.length}`" :aria-label="`查看${task.title}检查项进度`" @click.stop="openTaskIndicator(task, 'checklist')"><span class="clone-checklist-progress" :style="{ '--check-progress': `${task.checklist.filter(item => item.completed).length / task.checklist.length * 100}%` }"></span><small>{{ task.checklist.filter(item => item.completed).length }}/{{ task.checklist.length }}</small></button>
                 <button v-if="task.totalSubtasks" type="button" class="clone-task-indicator clone-task-indicator-action" :title="`子任务 ${task.completedSubtasks || 0}/${task.totalSubtasks}`" :aria-label="`查看${task.title}子任务`" @click.stop="openTaskIndicator(task, 'subtasks')"><ListTodo :size="14" /><small>{{ task.completedSubtasks || 0 }}/{{ task.totalSubtasks }}</small></button>
                 <button v-if="task.rrule" type="button" class="clone-task-indicator clone-task-indicator-action" :title="recurrenceLabel(task.rrule)" :aria-label="`调整${task.title}重复规则`" @click.stop="openTaskIndicator(task, 'repeat')"><Repeat2 :size="14" /></button>
                 <button v-if="task.focusMinutes" type="button" class="clone-task-indicator clone-task-indicator-action" :title="`累计专注 ${task.focusMinutes} 分钟`" :aria-label="`查看${task.title}专注记录`" @click.stop="openTaskIndicator(task, 'focus')"><Timer :size="14" /></button>
                 <button v-if="task.attachmentCount || task.attachments?.length" type="button" class="clone-task-indicator clone-task-indicator-action" :title="`附件 ${task.attachmentCount || task.attachments.length} 个`" :aria-label="`查看${task.title}附件`" @click.stop="openTaskIndicator(task, 'attachments')"><Paperclip :size="14" /><small>{{ task.attachmentCount || task.attachments.length }}</small></button>
-                <button v-if="task.dueAt" type="button" class="clone-task-date" :class="{ overdue: isTaskOverdue(task), today: isTaskDueToday(task) }" :title="`调整日期 ${formatDate(task.dueAt)}`" @click.stop="openRowDateEditor(task)"><CalendarClock :size="14" />{{ taskDateLabel(task) }}</button>
-                <div v-if="rowDateTaskId === task.publicId" class="clone-row-date-editor" @click.stop><input v-model="rowDateDraft" type="datetime-local" :aria-label="`调整${task.title}日期`" /><button type="button" @click="saveRowDate(task)">保存</button><button type="button" aria-label="清除日期" @click="clearRowDate(task)">清除</button></div>
+                <button v-if="task.dueAt" type="button" class="clone-task-date" :class="{ overdue: isTaskOverdue(task), today: isTaskDueToday(task) }" data-row-date-trigger :title="`调整日期 ${formatDate(task.dueAt)}`" @click.stop="openRowDateEditor(task, $event.currentTarget)"><CalendarClock :size="14" />{{ taskDateLabel(task) }}</button>
                 <button v-if="showListLink" type="button" class="clone-task-list-link" :title="listName(task.listId)" @click.stop="navigateToTaskList(task)"><span class="clone-task-list-dot" :style="{ backgroundColor: taskListColor(task) }"></span>{{ listName(task.listId) }}</button>
               </div><button
               v-if="!selectedIds.has(task.publicId)"
@@ -668,7 +772,7 @@
             <TransitionGroup name="clone-sort" tag="div" class="clone-task-rows clone-collapse-inner" :inert="Boolean(collapsed.completed)">
               <article v-for="task in completedPreviewTasks" :key="task.publicId" class="clone-task-row checked" :class="{ selected: selectedTask?.publicId === task.publicId, 'is-note': isNoteTask(task), multi: selectedIds.has(task.publicId), 'print-content': printMode === 'CONTENT' }" :data-priority="task.priority" :style="{ '--task-group-color': groupColor(task) }" @contextmenu.prevent="openContext(task, $event)">
                 <button v-if="!isNoteTask(task)" type="button" class="clone-check" :aria-label="`重新打开${task.title}`" @click="handleTaskCheckClick(task, $event)"><Check :size="14" /></button><GripVertical class="clone-drag-handle" :size="15" /><button type="button" class="clone-task-content" @click="handleTaskContentClick(task, $event)"><span class="clone-print-task-copy"><strong>{{ task.title }}</strong><small v-if="task.description" class="clone-print-description">{{ printDescription(task.description) }}</small></span></button>
-                <div class="clone-task-metadata"><span v-if="showTags && task.tagIds?.length" class="clone-task-tags" :aria-label="taskTagSummary(task)"><RouterLink v-for="tagId in visibleTaskTagIds(task)" :key="tagId" :to="`/tasks/tag/${tagId}`" class="clone-task-tag" :style="taskTagStyle(tagId)" @click.stop>{{ tagName(tagId) }}</RouterLink></span><button v-if="task.dueAt" type="button" class="clone-task-date" @click.stop="openRowDateEditor(task)"><CalendarClock :size="14" />{{ taskDateLabel(task) }}</button><button v-if="showListLink" type="button" class="clone-task-list-link" :title="listName(task.listId)" @click.stop="navigateToTaskList(task)"><span class="clone-task-list-dot" :style="{ backgroundColor: taskListColor(task) }"></span>{{ listName(task.listId) }}</button></div>
+                <div class="clone-task-metadata"><span v-if="showTags && task.tagIds?.length" class="clone-task-tags" :aria-label="taskTagSummary(task)"><RouterLink v-for="tagId in visibleTaskTagIds(task)" :key="tagId" :to="`/tasks/tag/${tagId}`" class="clone-task-tag" :style="taskTagStyle(tagId)" @click.stop>{{ tagName(tagId) }}</RouterLink></span><button v-if="task.dueAt" type="button" class="clone-task-date" data-row-date-trigger @click.stop="openRowDateEditor(task, $event.currentTarget)"><CalendarClock :size="14" />{{ taskDateLabel(task) }}</button><button v-if="showListLink" type="button" class="clone-task-list-link" :title="listName(task.listId)" @click.stop="navigateToTaskList(task)"><span class="clone-task-list-dot" :style="{ backgroundColor: taskListColor(task) }"></span>{{ listName(task.listId) }}</button></div>
               </article>
             </TransitionGroup>
             <button v-if="completedPreviewTasks.length < completedTasks.length" type="button" class="clone-completed-more" @click="showMoreCompleted">查看更多（{{ completedTasks.length - completedPreviewTasks.length }}）</button>
@@ -1064,8 +1168,7 @@
             <button type="button" class="clone-detail-subtask-check" :aria-label="`${child.status === 'COMPLETED' ? '重新打开' : '完成'}${child.title}`" @click="toggleComplete(child)"><Check v-if="child.status === 'COMPLETED'" :size="12" /></button>
             <input v-if="inlineSubtaskTitleId === child.publicId" v-model="inlineSubtaskTitleDraft" class="clone-detail-subtask-title-input" :aria-label="`编辑子任务 ${child.title}`" @keydown.enter.prevent="$event.target.blur()" @keydown.esc.prevent="cancelInlineSubtaskTitle" @blur="saveInlineSubtaskTitle(child)" />
             <button v-else type="button" class="clone-detail-subtask-title" @click="beginInlineSubtaskTitleEdit(child)">{{ child.title || '无标题' }}</button>
-            <button type="button" class="clone-detail-subtask-date" :aria-label="`调整${child.title}日期`" @click="openRowDateEditor(child)">{{ child.dueAt ? taskDateLabel(child) : '日期' }}</button>
-            <div v-if="rowDateTaskId === child.publicId" class="clone-row-date-editor clone-subtask-date-editor" @click.stop><input v-model="rowDateDraft" type="datetime-local" :aria-label="`调整${child.title}日期`" /><button type="button" @click="saveRowDate(child)">保存</button><button type="button" aria-label="清除日期" @click="clearRowDate(child)">清除</button></div>
+            <button type="button" class="clone-detail-subtask-date" data-row-date-trigger :aria-label="`调整${child.title}日期`" @click="openRowDateEditor(child, $event.currentTarget)">{{ child.dueAt ? taskDateLabel(child) : '日期' }}</button>
           </article>
           <form v-if="detailSubtaskDraftOpen" class="clone-detail-subtask-draft" aria-label="添加子任务" @submit.prevent="saveDetailSubtask">
             <span class="clone-detail-subtask-check draft-check" aria-hidden="true"></span><input ref="detailSubtaskInput" v-model="detailSubtaskDraft" aria-label="子任务名称" placeholder="输入内容或使用 / 快速插入" @keydown.esc.prevent="cancelDetailSubtask" />
@@ -1567,6 +1670,7 @@ const detailRepeatCalendarDays = computed(() => {
   return [...Array(offset).fill(null), ...Array.from({ length: new Date(year, monthIndex + 1, 0).getDate() }, (_, index) => index + 1)];
 });
 const quickCalendarTitle = computed(() => new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long" }).format(quickCalendarMonth.value));
+const rowDateCalendarDays = computed(() => quickCalendarDays.value.map((day) => ({ ...day, otherMonth: !day.inMonth, selected: day.key === rowDatePanel.selectedDate || day.key === rowDatePanel.rangeStart || day.key === rowDatePanel.rangeEnd, today: day.key === quickTodayKey, lunar: quickCalendarMeta.value.lunar.get(day.key)?.label || "" })));
 const quickReminderOptions = computed(() => getQuickReminderOptions(quickEntry.allDay));
 const quickReminderTime = computed(() => quickAddReminder.time || QUICK_ALL_DAY_REMINDER_TIME);
 const quickReminderUnitText = { MINUTE: "分钟", HOUR: "小时", DAY: "天", WEEK: "周" };
@@ -1656,6 +1760,7 @@ let detailPreviousUserSelect = "";
 const moreOpen = ref(false);
 const listOptionsOpen = ref(false);
 const workspaceMenuSection = ref("");
+const workspaceMenuStyle = ref({});
 const datePopoverOpen = ref(false);
 const repeatPopoverOpen = ref(false);
 const reminderPopoverOpen = ref(false);
@@ -1871,7 +1976,12 @@ const inlineTitleSaving = ref(false);
 const inlineRowTitleTaskId = ref("");
 const inlineRowTitleDraft = ref("");
 const rowDateTaskId = ref("");
-const rowDateDraft = ref("");
+const rowDatePanel = reactive({ mode: "DATE", selectedDate: "", time: "", allDay: false, rangeStart: "", rangeEnd: "", rangeStartTime: "09:00", rangeEndTime: "10:00" });
+const rowDateAnchor = ref(null);
+const rowDateStyle = ref({});
+const rowDatePanelRef = ref(null);
+const rowTimeListOpen = ref(false);
+let rowDateObserver = null;
 const inlineDescriptionDraft = ref("");
 const inlineDescriptionError = ref("");
 const detailRichToolbarOpen = ref(false);
@@ -2479,6 +2589,7 @@ function taskTagStyle(tagId) {
   const color = taskTag(null, tagId)?.color;
   return color ? { "--task-tag-color": color } : {};
 }
+// 紧凑场景（看板卡片/子任务行/已完成行）最多显示 2 个标签；主任务行渲染全量标签由容器查询收起
 function visibleTaskTagIds(task) {
   return (task.tagIds || []).slice(0, 2);
 }
@@ -2972,51 +3083,54 @@ async function selectTaskRepeat(value) {
   else await setTaskRepeat(value);
   repeatPopoverOpen.value = false;
 }
-function syncDetailRepeatFromRule(rule = "", anchor = "DUE_DATE") {
-  Object.assign(detailRepeat, createQuickRepeatState());
-  detailRepeatError.value = "";
+function syncQuickRepeatFromRule(target, rule = "", anchor = "DUE_DATE") {
+  Object.assign(target, createQuickRepeatState());
   const value = String(rule || "");
   const parts = Object.fromEntries(value.split(";").map(item => item.split("=")).filter(item => item.length === 2));
   if (!value) return;
-  detailRepeat.mode = anchor === "COMPLETION_DATE" ? "COMPLETION_DATE" : "DUE_DATE";
-  if (value === "FREQ=DAILY") detailRepeat.preset = "DAILY";
-  else if (value === "FREQ=WEEKLY") detailRepeat.preset = "WEEKLY";
-  else if (value === "FREQ=MONTHLY") detailRepeat.preset = "MONTHLY";
-  else if (value === "FREQ=YEARLY") detailRepeat.preset = "YEARLY";
-  else if (value === "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR") detailRepeat.preset = "WORKDAY";
-  else if (value === "FREQ=WEEKLY;BYDAY=SA,SU") detailRepeat.preset = "WEEKEND";
-  else if (parts["X-TASK-KIND"] === "LEGAL_WORKDAY") detailRepeat.preset = "LEGAL_WORKDAY";
-  else if (parts["X-TASK-KIND"] === "LEGAL_HOLIDAY") detailRepeat.preset = "LEGAL_HOLIDAY";
-  else if (parts["X-TASK-KIND"] === "LUNAR_MONTHLY") { detailRepeat.preset = "LUNAR_MONTHLY"; detailRepeat.lunarDay = Number(parts["X-LUNAR-DAY"]) || 1; }
-  else if (parts["X-TASK-KIND"] === "LUNAR_YEARLY") { detailRepeat.preset = "LUNAR_YEARLY"; detailRepeat.lunarMonth = Number(parts["X-LUNAR-MONTH"]) || 1; detailRepeat.lunarDay = Number(parts["X-LUNAR-DAY"]) || 1; }
+  target.mode = anchor === "COMPLETION_DATE" ? "COMPLETION_DATE" : "DUE_DATE";
+  if (value === "FREQ=DAILY") target.preset = "DAILY";
+  else if (value === "FREQ=WEEKLY") target.preset = "WEEKLY";
+  else if (value === "FREQ=MONTHLY") target.preset = "MONTHLY";
+  else if (value === "FREQ=YEARLY") target.preset = "YEARLY";
+  else if (value === "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR") target.preset = "WORKDAY";
+  else if (value === "FREQ=WEEKLY;BYDAY=SA,SU") target.preset = "WEEKEND";
+  else if (parts["X-TASK-KIND"] === "LEGAL_WORKDAY") target.preset = "LEGAL_WORKDAY";
+  else if (parts["X-TASK-KIND"] === "LEGAL_HOLIDAY") target.preset = "LEGAL_HOLIDAY";
+  else if (parts["X-TASK-KIND"] === "LUNAR_MONTHLY") { target.preset = "LUNAR_MONTHLY"; target.lunarDay = Number(parts["X-LUNAR-DAY"]) || 1; }
+  else if (parts["X-TASK-KIND"] === "LUNAR_YEARLY") { target.preset = "LUNAR_YEARLY"; target.lunarMonth = Number(parts["X-LUNAR-MONTH"]) || 1; target.lunarDay = Number(parts["X-LUNAR-DAY"]) || 1; }
   else {
-    detailRepeat.preset = "CUSTOM";
-    detailRepeat.frequency = parts.FREQ || "WEEKLY";
-    detailRepeat.interval = Number(parts.INTERVAL) || 1;
+    target.preset = "CUSTOM";
+    target.frequency = parts.FREQ || "WEEKLY";
+    target.interval = Number(parts.INTERVAL) || 1;
     const byDays = parts.BYDAY ? parts.BYDAY.split(",") : [];
     const ordinalDay = byDays.find(day => /^-?\d+(MO|TU|WE|TH|FR|SA|SU)$/.test(day));
-    detailRepeat.weekdays = byDays.map(day => day.replace(/^-?\d+/, "")).filter(day => DAY_CODES.includes(day));
+    target.weekdays = byDays.map(day => day.replace(/^-?\d+/, "")).filter(day => DAY_CODES.includes(day));
     if (ordinalDay) {
-      detailRepeat.monthMode = "WEEKDAY";
-      detailRepeat.ordinal = Number(ordinalDay.match(/^-?\d+/)?.[0]) || 1;
-      detailRepeat.weekday = ordinalDay.replace(/^-?\d+/, "");
+      target.monthMode = "WEEKDAY";
+      target.ordinal = Number(ordinalDay.match(/^-?\d+/)?.[0]) || 1;
+      target.weekday = ordinalDay.replace(/^-?\d+/, "");
     } else if (parts.BYSETPOS) {
-      detailRepeat.monthMode = "WORKDAY";
-      detailRepeat.workdayPosition = Number(parts.BYSETPOS) < 0 ? -1 : 1;
+      target.monthMode = "WORKDAY";
+      target.workdayPosition = Number(parts.BYSETPOS) < 0 ? -1 : 1;
     }
-    detailRepeat.month = Number(parts.BYMONTH) || 1;
-    detailRepeat.lastDay = Number(parts.BYMONTHDAY) === -1;
+    target.month = Number(parts.BYMONTH) || 1;
+    target.lastDay = Number(parts.BYMONTHDAY) === -1;
     const byMonthDays = String(parts.BYMONTHDAY || "").split(",").map(Number).filter(value => Number.isFinite(value) && value >= 1 && value <= 31);
-    detailRepeat.monthDays = byMonthDays.length ? byMonthDays : [1];
-    if (detailRepeat.frequency === "DAILY" && byDays.join(",") === "MO,TU,WE,TH,FR") detailRepeat.skipWeekends = true;
-    detailRepeat.endMode = parts.COUNT ? "COUNT" : parts.UNTIL ? "UNTIL" : "NEVER";
-    detailRepeat.count = Number(parts.COUNT) || 10;
-    detailRepeat.until = parts.UNTIL ? `${parts.UNTIL.slice(0, 4)}-${parts.UNTIL.slice(4, 6)}-${parts.UNTIL.slice(6, 8)}` : "";
-    detailRepeat.skipLegalHolidays = parts["X-SKIP-HOLIDAYS"] === "TRUE";
-    detailRepeat.skipWeekends = parts["X-SKIP-WEEKENDS"] === "TRUE";
+    target.monthDays = byMonthDays.length ? byMonthDays : [1];
+    if (target.frequency === "DAILY" && byDays.join(",") === "MO,TU,WE,TH,FR") target.skipWeekends = true;
+    target.endMode = parts.COUNT ? "COUNT" : parts.UNTIL ? "UNTIL" : "NEVER";
+    target.count = Number(parts.COUNT) || 10;
+    target.until = parts.UNTIL ? `${parts.UNTIL.slice(0, 4)}-${parts.UNTIL.slice(4, 6)}-${parts.UNTIL.slice(6, 8)}` : "";
+    target.skipLegalHolidays = parts["X-SKIP-HOLIDAYS"] === "TRUE";
+    target.skipWeekends = parts["X-SKIP-WEEKENDS"] === "TRUE";
   }
-  if (parts.COUNT) { detailRepeat.endMode = "COUNT"; detailRepeat.count = Number(parts.COUNT) || 1; }
-  if (parts.UNTIL) { detailRepeat.endMode = "UNTIL"; detailRepeat.until = `${parts.UNTIL.slice(0, 4)}-${parts.UNTIL.slice(4, 6)}-${parts.UNTIL.slice(6, 8)}`; }
+  if (parts.COUNT) { target.endMode = "COUNT"; target.count = Number(parts.COUNT) || 1; }
+  if (parts.UNTIL) { target.endMode = "UNTIL"; target.until = `${parts.UNTIL.slice(0, 4)}-${parts.UNTIL.slice(4, 6)}-${parts.UNTIL.slice(6, 8)}`; }
+}
+function syncDetailRepeatFromRule(rule = "", anchor = "DUE_DATE") {
+  syncQuickRepeatFromRule(detailRepeat, rule, anchor);
+  detailRepeatError.value = "";
 }
 function selectDetailRepeatPreset(value) {
   detailRepeat.preset = value;
@@ -3222,6 +3336,16 @@ function toggleWorkspaceMenu(menu) {
   if (wasOpen) return;
   if (menu === "group") moreOpen.value = true;
   else listOptionsOpen.value = true;
+  positionWorkspaceMenu(menu);
+}
+// 菜单锚定触发按钮（窗口右下对齐按钮、向下展开）：固定贴窗口右上会在窄窗口 + 详情面板时飘出中栏
+function positionWorkspaceMenu(menu) {
+  const trigger = document.querySelector(`[data-workspace-menu-trigger="${menu}"]`);
+  if (!trigger) return;
+  const rect = trigger.getBoundingClientRect();
+  const MENU_WIDTH = 212;
+  const left = Math.max(8, Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8));
+  workspaceMenuStyle.value = { top: `${Math.round(rect.bottom + 8)}px`, left: `${Math.round(left)}px` };
 }
 function selectWorkspaceMenuOption(value) {
   if (workspaceMenuSection.value === "group") groupBy.value = value;
@@ -3820,20 +3944,465 @@ async function saveInlineRowTitle(task) {
     store.error = error?.response?.data?.detail || error?.message || "标题保存失败";
   }
 }
-function openRowDateEditor(task) {
+function openRowDateEditor(task, anchorEl = null) {
+  if (rowDateTaskId.value === task.publicId) {
+    closeRowDateEditor();
+    return;
+  }
   rowDateTaskId.value = task.publicId;
-  rowDateDraft.value = toLocal(task.dueAt);
+  rowDateAnchor.value = anchorEl;
+  rowTimeListOpen.value = false;
+  const due = task.dueAt ? new Date(task.dueAt) : null;
+  const allDay = Boolean(task.allDay);
+  rowDatePanel.mode = task.startAt ? "RANGE" : "DATE";
+  rowDatePanel.selectedDate = due ? localDateKey(due) : "";
+  rowDatePanel.time = due && !allDay ? toLocal(task.dueAt).slice(11, 16) : "";
+  rowDatePanel.allDay = allDay || !due;
+  rowDatePanel.rangeStart = task.startAt ? localDateKey(new Date(task.startAt)) : "";
+  rowDatePanel.rangeEnd = due ? localDateKey(due) : "";
+  if (task.startAt && due) {
+    rowDatePanel.rangeStartTime = toLocal(task.startAt).slice(11, 16);
+    rowDatePanel.rangeEndTime = toLocal(task.dueAt).slice(11, 16);
+  }
+  const monthBase = due || new Date();
+  quickCalendarMonth.value = new Date(monthBase.getFullYear(), monthBase.getMonth(), 1);
+  syncQuickRepeatFromRule(rowRepeat, task.rrule || "", task.recurrenceAnchor || "DUE_DATE");
+  rowRepeatEditorOpen.value = false;
+  resetRowDateMenu();
+  void loadRowReminders(task);
+  nextTick(positionRowDatePanel);
 }
-async function saveRowDate(task, dueAt = rowDateDraft.value ? new Date(rowDateDraft.value).toISOString() : "") {
+function closeRowDateEditor() {
+  rowDateTaskId.value = "";
+  rowDateAnchor.value = null;
+  rowDateObserver?.disconnect();
+  rowDateObserver = null;
+  resetRowDateMenu();
+}
+function positionRowDatePanel() {
+  rowDateObserver?.disconnect();
+  rowDateObserver = null;
+  const panel = rowDatePanelRef.value;
+  if (!panel) return;
+  const width = 378;
+  const height = panel.offsetHeight || 560;
+  const rect = rowDateAnchor.value?.getBoundingClientRect();
+  const left = rect ? Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)) : Math.max(12, (window.innerWidth - width) / 2);
+  const below = rect ? rect.bottom + 6 : 120;
+  const top = below + height <= window.innerHeight - 12 ? below : Math.max(12, Math.min((rect?.top || below) - height - 6, window.innerHeight - height - 12));
+  rowDateStyle.value = { position: "fixed", top: `${top}px`, left: `${left}px`, width: `${width}px` };
+  rowDateObserver = new ResizeObserver(positionRowDatePanel);
+  rowDateObserver.observe(panel);
+}
+function setRowDateMode(mode) {
+  rowDatePanel.mode = mode;
+  if (mode === "RANGE") rowDatePanel.allDay = false;
+}
+function chooseRowDatePreset(preset) {
+  const now = new Date();
+  const date = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (preset === "TOMORROW") date.setDate(date.getDate() + 1);
+  if (preset === "NEXT_WEEK") {
+    const daysUntilNextMonday = ((8 - date.getDay()) % 7) || 7;
+    date.setDate(date.getDate() + daysUntilNextMonday);
+  }
+  if (preset === "NEXT_MONTH") date.setMonth(date.getMonth() + 1, 1);
+  const key = localDateKey(date);
+  quickCalendarMonth.value = new Date(date.getFullYear(), date.getMonth(), 1);
+  if (rowDatePanel.mode === "RANGE") {
+    rowDatePanel.rangeStart = key;
+    rowDatePanel.rangeEnd = "";
+  } else rowDatePanel.selectedDate = key;
+}
+function selectRowDate(key) {
+  if (rowDatePanel.mode !== "RANGE") {
+    rowDatePanel.selectedDate = key;
+    return;
+  }
+  if (!rowDatePanel.rangeStart || rowDatePanel.rangeEnd) {
+    rowDatePanel.rangeStart = key;
+    rowDatePanel.rangeEnd = "";
+    return;
+  }
+  if (key < rowDatePanel.rangeStart) {
+    rowDatePanel.rangeStart = key;
+    rowDatePanel.rangeEnd = "";
+  } else rowDatePanel.rangeEnd = key;
+}
+function selectRowTime(time) {
+  rowDatePanel.time = time;
+  rowDatePanel.allDay = false;
+  rowTimeListOpen.value = false;
+}
+function clearRowTime() {
+  rowDatePanel.time = "";
+  rowDatePanel.allDay = true;
+}
+function clearRowDateFromPanel() {
+  const task = store.tasks.find(item => item.publicId === rowDateTaskId.value);
+  closeRowDateEditor();
+  if (task) void saveRowDate(task, "", { startAt: "", allDay: false });
+}
+async function applyRowDatePanel() {
+  const task = store.tasks.find(item => item.publicId === rowDateTaskId.value);
+  if (!task) {
+    closeRowDateEditor();
+    return;
+  }
+  const rule = buildQuickRepeatRule(rowRepeat);
+  const anchor = rule ? (rowRepeat.mode === "COMPLETION_DATE" ? "COMPLETION_DATE" : "DUE_DATE") : "";
+  let newDueAt = "";
+  if (rowDatePanel.mode === "RANGE") {
+    if (!rowDatePanel.rangeStart || !rowDatePanel.rangeEnd) {
+      store.error = "请选择有效的开始和结束日期";
+      return;
+    }
+    const startAt = new Date(`${rowDatePanel.rangeStart}T${rowDatePanel.allDay ? "00:00" : (rowDatePanel.rangeStartTime || "09:00")}`).toISOString();
+    newDueAt = new Date(`${rowDatePanel.rangeEnd}T${rowDatePanel.allDay ? "00:00" : (rowDatePanel.rangeEndTime || "10:00")}`).toISOString();
+    if (newDueAt <= startAt) {
+      store.error = "请选择有效的开始和结束日期";
+      return;
+    }
+    await saveRowDate(task, newDueAt, { startAt, allDay: rowDatePanel.allDay, rrule: rule, recurrenceAnchor: anchor });
+  } else {
+    if (!rowDatePanel.selectedDate) {
+      store.error = "请选择日期";
+      return;
+    }
+    newDueAt = new Date(`${rowDatePanel.selectedDate}T${rowDatePanel.time || "00:00"}`).toISOString();
+    await saveRowDate(task, newDueAt, { allDay: !rowDatePanel.time, rrule: rule, recurrenceAnchor: anchor });
+  }
+  await syncRowReminders(task.publicId, newDueAt, rowDatePanel.mode === "RANGE" ? rowDatePanel.allDay : !rowDatePanel.time);
+  closeRowDateEditor();
+}
+async function saveRowDate(task, dueAt = "", extra = {}) {
   try {
-    await store.update(task, { dueAt, allDay: false });
+    await store.update(task, { dueAt, allDay: extra.allDay ?? false, ...extra });
     rowDateTaskId.value = "";
   } catch (error) {
     store.error = error?.response?.data?.detail || error?.message || "日期更新失败";
   }
 }
-function clearRowDate(task) {
-  void saveRowDate(task, "");
+function closeRowDatePanelOnOutsidePointer(event) {
+  if (!rowDateTaskId.value) return;
+  if (event.target.closest?.(".clone-row-date-panel, .clone-quick-flyout, [data-row-date-trigger]")) return;
+  closeRowDateEditor();
+}
+function closeRowDateMenuOnOutsidePointer(event) {
+  if (!rowDateMenu.value) return;
+  if (event.target.closest?.(".clone-quick-flyout, .clone-date-prop-trigger, .clone-date-prop-clear, .clone-date-time-list")) return;
+  resetRowDateMenu();
+}
+
+/* ---- 行内日期弹层：提醒（复用快添预设浮层与任务提醒 API） ---- */
+const rowDateMenu = ref("");
+const rowReminderToggleRef = ref(null);
+const rowReminderMenuRef = ref(null);
+const rowReminderMenuStyle = ref({});
+const rowRepeatToggleRef = ref(null);
+const rowRepeatMenuRef = ref(null);
+const rowRepeatMenuStyle = ref({});
+const rowEndToggleRef = ref(null);
+const rowEndMenuRef = ref(null);
+const rowEndMenuStyle = ref({});
+const rowRepeatGroupOpen = ref("");
+const rowEndPanel = ref("");
+const rowEndCountDraft = ref(10);
+const rowEndCalendarMonth = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+const rowRepeatEditorOpen = ref(false);
+const rowRepeatError = ref("");
+const rowRepeat = reactive(createQuickRepeatState());
+const rowReminderLoading = ref(false);
+const rowReminderDirty = ref(false);
+const rowReminderExisting = ref([]);
+const rowReminderConfig = reactive({ presets: [], amount: 1, unit: "DAY", time: "09:00" });
+let rowFlyoutObserver = null;
+function resetRowDateMenu() {
+  rowDateMenu.value = "";
+  rowTimeListOpen.value = false;
+  rowEndPanel.value = "";
+  stopRowFlyoutObserver();
+}
+function reminderPresetFromTask(reminder, dueAt) {
+  if (reminder?.kind === "ABSOLUTE" && reminder.remindAt) {
+    if (!dueAt) return "";
+    const dayStart = date => { const copy = new Date(date); copy.setHours(0, 0, 0, 0); return copy; };
+    const days = Math.round((dayStart(new Date(reminder.remindAt)) - dayStart(new Date(dueAt))) / 86400000);
+    if (days === 0) return "TODAY";
+    if (days === 1) return "1_DAY";
+    if (days === 2) return "2_DAY";
+    if (days === 3) return "3_DAY";
+    if (days === 7) return "1_WEEK";
+    return days >= 1 ? `CUSTOM:${days}:DAY` : "";
+  }
+  const offset = Number(reminder?.offsetMinutes);
+  if (!Number.isFinite(offset) || offset < 0) return "";
+  return { 0: "ON_TIME", 5: "5_MIN", 30: "30_MIN", 60: "1_HOUR", 1440: "1_DAY" }[offset] ?? `CUSTOM:${offset}:MINUTE`;
+}
+async function loadRowReminders(task) {
+  rowReminderExisting.value = [];
+  rowReminderConfig.presets = [];
+  rowReminderDirty.value = false;
+  if (!store.online || !task?.publicId) return;
+  rowReminderLoading.value = true;
+  try {
+    const reminders = await apiListTaskReminders(task.publicId);
+    rowReminderExisting.value = reminders || [];
+    rowReminderConfig.presets = (reminders || []).map(reminder => reminderPresetFromTask(reminder, task.dueAt)).filter(Boolean);
+  } catch { /* 读取失败时按无提醒展示，保存日期不受影响 */ }
+  finally { rowReminderLoading.value = false; }
+}
+async function syncRowReminders(taskPublicId, dueAt, allDay) {
+  if (!rowReminderDirty.value) return;
+  if (!store.online) { store.error = "提醒需要联网保存"; return; }
+  for (const reminder of rowReminderExisting.value) {
+    try { await apiDeleteTaskReminder(taskPublicId, reminder.publicId, reminder.revision); }
+    catch (error) { store.error = error?.response?.data?.detail || error?.message || "提醒更新失败"; return; }
+  }
+  rowReminderExisting.value = [];
+  if (rowReminderConfig.presets.length && dueAt) {
+    for (const preset of rowReminderConfig.presets) {
+      let payloads = [];
+      try {
+        payloads = quickReminderPayloads({ dueAt, allDay, config: { enabled: true, presets: [preset], amount: rowReminderConfig.amount, unit: rowReminderConfig.unit, time: rowReminderConfig.time } });
+      } catch { store.error = "部分提醒与新日期不兼容，已跳过该提醒"; continue; }
+      for (const payload of payloads) {
+        try { rowReminderExisting.value.push(await apiCreateTaskReminder(taskPublicId, payload)); }
+        catch (error) { store.error = error?.response?.data?.detail || error?.message || "提醒保存失败"; return; }
+      }
+    }
+  }
+}
+function selectRowReminder(preset) {
+  rowReminderDirty.value = true;
+  const selected = rowReminderConfig.presets.includes(preset);
+  rowReminderConfig.presets = selected
+    ? rowReminderConfig.presets.filter(value => value !== preset)
+    : [...rowReminderConfig.presets, preset];
+  if (!selected) rememberQuickReminderPreset(preset);
+  if (preset === "CUSTOM" && !selected) {
+    rowReminderConfig.amount = 1;
+    rowReminderConfig.unit = rowDatePanel.allDay ? "DAY" : "MINUTE";
+  }
+}
+function clearRowReminders() {
+  rowReminderDirty.value = true;
+  rowReminderConfig.presets = [];
+}
+function applyRowReminderCustom() {
+  rowReminderDirty.value = true;
+  const amount = Math.max(1, Math.round(Number(rowReminderConfig.amount) || 1));
+  rowReminderConfig.amount = amount;
+  const encoded = `CUSTOM:${amount}:${rowReminderConfig.unit}`;
+  rowReminderConfig.presets = rowReminderConfig.presets.map(value => value === "CUSTOM" ? encoded : value);
+  if (!rowReminderConfig.presets.includes(encoded)) rowReminderConfig.presets = [...rowReminderConfig.presets, encoded];
+  rememberQuickReminderPreset(encoded);
+}
+function cancelRowReminderCustom() {
+  rowReminderConfig.presets = rowReminderConfig.presets.filter(value => value !== "CUSTOM");
+}
+const rowReminderMenuOptions = computed(() => getQuickReminderOptions(rowDatePanel.allDay).map(option => ({ ...option, label: rowDatePanel.allDay && option.value !== "CUSTOM" ? `${option.label} (${rowReminderConfig.time})` : option.label })));
+const rowReminderSummary = computed(() => rowReminderConfig.presets.map(value => quickReminderPresetLabel(value, rowDatePanel.allDay, rowReminderConfig.time)).join("、"));
+const rowReminderValidPreset = value => {
+  if (/^CUSTOM:(\d+):(MINUTE|HOUR|DAY|WEEK)$/.test(value)) return rowDatePanel.allDay ? !value.endsWith(":MINUTE") && !value.endsWith(":HOUR") : true;
+  return rowDatePanel.allDay ? ["TODAY", "1_DAY", "2_DAY", "3_DAY", "1_WEEK"].includes(value) : ["ON_TIME", "5_MIN", "30_MIN", "1_HOUR", "1_DAY"].includes(value);
+};
+const rowReminderRecentOptions = computed(() => quickReminderRecent.value
+  .filter(value => value !== "CUSTOM" && rowReminderValidPreset(value) && !rowReminderMenuOptions.value.some(option => option.value === value))
+  .map(value => ({ value, label: quickReminderPresetLabel(value, rowDatePanel.allDay, rowReminderConfig.time) })));
+const rowReminderCustomPreview = computed(() => {
+  const key = rowDatePanel.selectedDate || rowDatePanel.rangeEnd;
+  if (!key) return "";
+  const base = rowDatePanel.allDay ? new Date(`${key}T00:00:00`) : new Date(`${key}T${rowDatePanel.time || "09:00"}`);
+  if (Number.isNaN(base.getTime())) return "";
+  const amount = Math.max(1, Number(rowReminderConfig.amount) || 1);
+  if (rowDatePanel.allDay) {
+    base.setDate(base.getDate() - amount * (rowReminderConfig.unit === "WEEK" ? 7 : 1));
+    const [hours, minutes] = String(rowReminderConfig.time).split(":").map(Number);
+    base.setHours(hours || 0, minutes || 0, 0, 0);
+  } else {
+    base.setMinutes(base.getMinutes() - amount * ({ MINUTE: 1, HOUR: 60, DAY: 1440, WEEK: 10080 }[rowReminderConfig.unit] || 1));
+  }
+  return `将于 ${new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(base)} 提醒`;
+});
+
+/* ---- 行内日期弹层：重复（复用快添重复菜单/自定义面板/结束重复） ---- */
+const rowRepeatAnchorDate = computed(() => {
+  const task = store.tasks.find(item => item.publicId === rowDateTaskId.value);
+  const key = rowDatePanel.selectedDate || rowDatePanel.rangeEnd || (task?.dueAt ? localDateKey(new Date(task.dueAt)) : "");
+  const parsed = key ? new Date(`${key}T00:00:00`) : new Date();
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+});
+const rowRepeatMenuOptions = computed(() => {
+  const preset = rowRepeat.preset;
+  const date = rowRepeatAnchorDate.value;
+  const weekdayText = QUICK_WEEKDAY_TEXT[date.getDay()];
+  const monthDay = date.getDate();
+  const month = date.getMonth() + 1;
+  return [
+    { key: "none", label: "不重复", kind: "preset", value: "", active: !preset },
+    { key: "DAILY", label: "每天", kind: "preset", value: "DAILY", active: preset === "DAILY" },
+    { key: "WEEKLY", label: `每周（${weekdayText}）`, kind: "preset", value: "WEEKLY", active: preset === "WEEKLY" },
+    { key: "MONTHLY", label: `每月（${monthDay}日）`, kind: "preset", value: "MONTHLY", active: preset === "MONTHLY" },
+    { key: "YEARLY", label: `每年（${month}月${monthDay}日）`, kind: "preset", value: "YEARLY", active: preset === "YEARLY" },
+    { key: "group-workday", label: "工作日", isGroup: true },
+    { key: "WORKDAY", label: "每周工作日（周一至五）", kind: "preset", value: "WORKDAY", active: preset === "WORKDAY", child: true, groupKey: "group-workday" },
+    { key: "LEGAL_WORKDAY", label: "法定工作日", kind: "preset", value: "LEGAL_WORKDAY", active: preset === "LEGAL_WORKDAY", child: true, groupKey: "group-workday" },
+    { key: "group-holiday", label: "节假日", isGroup: true },
+    { key: "WEEKEND", label: "每周末", kind: "preset", value: "WEEKEND", active: preset === "WEEKEND", child: true, groupKey: "group-holiday" },
+    { key: "LEGAL_HOLIDAY", label: "法定节假日", kind: "preset", value: "LEGAL_HOLIDAY", active: preset === "LEGAL_HOLIDAY", child: true, groupKey: "group-holiday" },
+    { key: "group-lunar", label: "农历重复", isGroup: true },
+    { key: "LUNAR_MONTHLY", label: `农历每月（${monthDay}日）`, kind: "preset", value: "LUNAR_MONTHLY", active: preset === "LUNAR_MONTHLY", child: true, groupKey: "group-lunar" },
+    { key: "LUNAR_YEARLY", label: `农历每年（${month}月${monthDay}日）`, kind: "preset", value: "LUNAR_YEARLY", active: preset === "LUNAR_YEARLY", child: true, groupKey: "group-lunar" },
+    { key: "separator-2", separator: true },
+    { key: "CUSTOM", label: "自定义", kind: "custom", active: preset === "CUSTOM" },
+  ];
+});
+function onRowRepeatMenuSelect(option) {
+  if (!option || option.separator || option.isGroup) return;
+  if (option.kind === "custom") {
+    resetRowDateMenu();
+    if (!["CUSTOM", "LUNAR_MONTHLY", "LUNAR_YEARLY"].includes(rowRepeat.preset)) rowRepeat.preset = "CUSTOM";
+    rowRepeatEditorOpen.value = true;
+    return;
+  }
+  const value = option.value;
+  if (!value) {
+    Object.assign(rowRepeat, createQuickRepeatState());
+  } else {
+    rowRepeat.preset = value;
+    const anchor = rowRepeatAnchorDate.value;
+    if (value === "WEEKLY") rowRepeat.weekdays = [DAY_CODES[(anchor.getDay() + 6) % 7]];
+    if (value === "MONTHLY") {
+      rowRepeat.monthMode = "DATE";
+      rowRepeat.monthDays = [anchor.getDate()];
+      rowRepeat.lastDay = false;
+    }
+    if (value === "YEARLY") {
+      rowRepeat.monthMode = "DATE";
+      rowRepeat.month = anchor.getMonth() + 1;
+      rowRepeat.monthDays = [anchor.getDate()];
+      rowRepeat.lastDay = false;
+    }
+    if (value === "LUNAR_MONTHLY") rowRepeat.lunarDay = Math.min(30, anchor.getDate());
+    if (value === "LUNAR_YEARLY") {
+      rowRepeat.lunarMonth = Math.min(12, anchor.getMonth() + 1);
+      rowRepeat.lunarDay = Math.min(30, anchor.getDate());
+    }
+  }
+  rowRepeatError.value = "";
+  resetRowDateMenu();
+}
+function applyRowRepeat() {
+  rowRepeatError.value = quickRepeatValidation(rowRepeat);
+  if (rowRepeatError.value) return;
+  rowRepeatEditorOpen.value = false;
+}
+function cancelRowRepeat() {
+  const task = store.tasks.find(item => item.publicId === rowDateTaskId.value);
+  syncQuickRepeatFromRule(rowRepeat, task?.rrule || "", task?.recurrenceAnchor || "DUE_DATE");
+  rowRepeatError.value = "";
+  rowRepeatEditorOpen.value = false;
+}
+function setRowRepeatFrequency(event) {
+  rowRepeat.frequency = event.target.value;
+  if (rowRepeat.frequency === "YEARLY" && rowRepeat.monthMode === "WORKDAY") rowRepeat.monthMode = "DATE";
+}
+function toggleRowRepeatWeekday(day) {
+  const selected = rowRepeat.weekdays.includes(day) ? rowRepeat.weekdays.filter(item => item !== day) : [...rowRepeat.weekdays, day];
+  rowRepeat.weekdays = DAY_CODES.filter(code => selected.includes(code));
+}
+function toggleRowRepeatMonthDay(day) {
+  const selected = rowRepeat.monthDays.includes(day) ? rowRepeat.monthDays.filter(value => value !== day) : [...rowRepeat.monthDays, day];
+  rowRepeat.monthDays = selected.sort((a, b) => a - b);
+  rowRepeat.lastDay = false;
+}
+const rowRepeatCalendarDays = computed(() => {
+  const date = rowRepeatAnchorDate.value;
+  const year = date.getFullYear();
+  const monthIndex = rowRepeat.frequency === "YEARLY" ? Number(rowRepeat.month || 1) - 1 : date.getMonth();
+  const first = new Date(year, monthIndex, 1);
+  const offset = (first.getDay() + 6) % 7;
+  return [...Array(offset).fill(null), ...Array.from({ length: new Date(year, monthIndex + 1, 0).getDate() }, (_, index) => index + 1)];
+});
+const rowShowEndRow = computed(() => Boolean(buildQuickRepeatRule(rowRepeat)));
+const rowEndLabel = computed(() => {
+  if (rowRepeat.endMode === "UNTIL" && rowRepeat.until) return `直到 ${rowRepeat.until}`;
+  if (rowRepeat.endMode === "COUNT") return `${Math.max(1, Number(rowRepeat.count) || 1)} 次重复`;
+  return "永不结束";
+});
+const rowEndCalendarTitle = computed(() => new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long" }).format(rowEndCalendarMonth.value));
+const rowEndCalendarDays = computed(() => calendarMonthDays(rowEndCalendarMonth.value).map(day => ({ ...day, selected: rowRepeat.endMode === "UNTIL" && rowRepeat.until === day.key })));
+function moveRowEndMonth(offset) {
+  rowEndCalendarMonth.value = new Date(rowEndCalendarMonth.value.getFullYear(), rowEndCalendarMonth.value.getMonth() + offset, 1);
+}
+function toggleRowEndPanel(panel) {
+  rowEndPanel.value = rowEndPanel.value === panel ? "" : panel;
+}
+function selectRowEndMode(mode) {
+  rowRepeat.endMode = mode;
+  resetRowDateMenu();
+}
+function applyRowEndCount() {
+  rowRepeat.endMode = "COUNT";
+  rowRepeat.count = Math.max(1, Number(rowEndCountDraft.value) || 1);
+  resetRowDateMenu();
+}
+function cancelRowEndCount() {
+  rowEndCountDraft.value = Math.max(1, Number(rowRepeat.count) || 10);
+  rowEndPanel.value = "";
+}
+function pickRowEndDate(dayKey) {
+  rowRepeat.endMode = "UNTIL";
+  rowRepeat.until = dayKey;
+  resetRowDateMenu();
+}
+function toggleRowDateMenu(menu) {
+  rowDateMenu.value = rowDateMenu.value === menu ? "" : menu;
+  if (!rowDateMenu.value) {
+    stopRowFlyoutObserver();
+    return;
+  }
+  rowTimeListOpen.value = false;
+  rowEndPanel.value = "";
+  if (menu === "repeat") rowRepeatGroupOpen.value = QUICK_REPEAT_GROUPS[rowRepeat.preset] || "";
+  if (menu === "end") {
+    const anchor = rowRepeat.until ? new Date(`${rowRepeat.until}T00:00:00`) : rowRepeatAnchorDate.value;
+    rowEndCalendarMonth.value = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+    rowEndCountDraft.value = Math.max(1, Number(rowRepeat.count) || 10);
+  }
+  nextTick(() => positionRowDateMenu(menu));
+}
+function rowFlyoutToggleFor(menu) {
+  if (menu === "reminder") return rowReminderToggleRef.value;
+  if (menu === "repeat") return rowRepeatToggleRef.value;
+  if (menu === "end") return rowEndToggleRef.value;
+  return null;
+}
+function rowFlyoutMenuFor(menu) {
+  if (menu === "reminder") return rowReminderMenuRef.value;
+  if (menu === "repeat") return rowRepeatMenuRef.value;
+  if (menu === "end") return rowEndMenuRef.value;
+  return null;
+}
+function applyRowFlyoutPosition(menu) {
+  const style = quickFlyoutStyle(rowFlyoutToggleFor(menu), rowFlyoutMenuFor(menu));
+  if (menu === "reminder") rowReminderMenuStyle.value = style;
+  else if (menu === "repeat") rowRepeatMenuStyle.value = style;
+  else if (menu === "end") rowEndMenuStyle.value = style;
+}
+function positionRowDateMenu(menu) {
+  rowFlyoutObserver?.disconnect();
+  rowFlyoutObserver = null;
+  const target = rowFlyoutMenuFor(menu);
+  if (!target) return;
+  rowFlyoutObserver = new ResizeObserver(() => applyRowFlyoutPosition(menu));
+  rowFlyoutObserver.observe(target);
+  applyRowFlyoutPosition(menu);
+}
+function stopRowFlyoutObserver() {
+  rowFlyoutObserver?.disconnect();
+  rowFlyoutObserver = null;
 }
 function switchWorkspaceView(view) {
   closeWorkspaceMenus();
@@ -5406,7 +5975,9 @@ async function dropTask(target, index = 0, groupKey = "") {
     if (patch) {
       const updated = await store.update(dragged.value, patch);
       if (sort.value === "manual") await store.sortTask(updated, manualTaskSortIndex(groupKey, updated, target, dragOverPlacement.value === "after"));
-    } else if (sort.value === "manual") {
+    } else {
+      // 同组拖动排序：非手动排序下自动切换为手动，让拖动顺序持久生效（对齐滴答）
+      if (sort.value !== "manual") sort.value = "manual";
       await store.sortTask(dragged.value, manualTaskSortIndex(groupKey, dragged.value, target, dragOverPlacement.value === "after"));
     }
   } finally {
@@ -6227,6 +6798,15 @@ function onKeydown(event) {
       closeDetailMore();
       return;
     }
+    if (rowDateTaskId.value) {
+      if (rowDateMenu.value || rowTimeListOpen.value || rowRepeatEditorOpen.value) {
+        resetRowDateMenu();
+        rowRepeatEditorOpen.value = false;
+        return;
+      }
+      closeRowDateEditor();
+      return;
+    }
     if (quickAction.value) {
       quickAction.value = "";
       return;
@@ -6303,6 +6883,8 @@ onMounted(() => {
   document.addEventListener("pointerdown", closeDetailMoreOnOutsidePointer);
   document.addEventListener("pointerdown", closeQuickAction);
   document.addEventListener("pointerdown", closeQuickDateMenuOnOutsidePointer);
+  document.addEventListener("pointerdown", closeRowDatePanelOnOutsidePointer);
+  document.addEventListener("pointerdown", closeRowDateMenuOnOutsidePointer);
   document.addEventListener("pointerdown", closeBoardQuickAddOnOutsidePointer);
   document.addEventListener("pointerdown", closeWorkspaceMenusOnOutsidePointer);
   document.addEventListener("pointerdown", closeCompletionFilterOnOutsidePointer);
@@ -6327,6 +6909,8 @@ onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", closeDetailMoreOnOutsidePointer);
   document.removeEventListener("pointerdown", closeQuickAction);
   document.removeEventListener("pointerdown", closeQuickDateMenuOnOutsidePointer);
+  document.removeEventListener("pointerdown", closeRowDatePanelOnOutsidePointer);
+  document.removeEventListener("pointerdown", closeRowDateMenuOnOutsidePointer);
   document.removeEventListener("pointerdown", closeBoardQuickAddOnOutsidePointer);
   document.removeEventListener("pointerdown", closeWorkspaceMenusOnOutsidePointer);
   document.removeEventListener("pointerdown", closeCompletionFilterOnOutsidePointer);
@@ -7291,6 +7875,8 @@ const SidebarSection = {
   align-items: center;
   gap: 9px;
   min-height: 48px;
+  /* 行宽即中间栏可用宽度：标签分档收起的容器查询以此为准（对齐滴答按中栏收窄） */
+  container: task-meta / inline-size;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
   padding: 0 10px 0 13px;
   border-left: 3px solid var(--task-group-color, transparent);
@@ -7392,18 +7978,26 @@ const SidebarSection = {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.clone-task-metadata { display: flex; align-items: center; gap: 7px; width: 52%; flex: 0 1 52%; max-width: 52%; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; container: task-meta / inline-size; }
+.clone-task-metadata { display: flex; align-items: center; justify-content: flex-end; gap: 7px; flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .clone-task-tags { position: relative; display: flex; align-items: center; gap: 5px; min-width: 0; overflow: visible; }
 .clone-task-tag-wrap { position: relative; display: inline-flex; align-items: center; flex: none; min-width: 0; }
 .clone-task-tag { display: inline-flex; align-items: center; max-width: 92px; overflow: hidden; padding: 2px 8px; border-radius: 12px; background: color-mix(in srgb, var(--task-tag-color, var(--accent)) 22%, var(--card)); color: color-mix(in srgb, var(--task-tag-color, var(--accent)) 70%, var(--ink)); text-overflow: ellipsis; }
 .clone-task-tag-remove { position: absolute; z-index: 2; top: -4px; right: -4px; display: grid; width: 14px; height: 14px; place-items: center; padding: 0; border: 1px solid var(--card); border-radius: 50%; background: var(--ink2); color: var(--card); opacity: 0; cursor: pointer; }
 .clone-task-tag-wrap:hover .clone-task-tag-remove,
 .clone-task-tag-remove:focus-visible { opacity: 1; }
-.clone-task-tag-count { position: relative; display: inline-flex; align-items: center; flex: none; padding: 2px 7px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 18%, var(--card)); color: var(--ink2); cursor: default; }
-.clone-task-tag-count:not(.has-overflow) { display: none; }
-.clone-task-tag-tooltip { position: absolute; z-index: 40; right: 0; bottom: calc(100% + 7px); display: none; width: max-content; max-width: min(260px, 70vw); white-space: normal; padding: 6px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--ink); box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+.clone-task-tag-count { position: relative; display: none; align-items: center; flex: none; padding: 2px 7px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 18%, var(--card)); color: var(--ink2); cursor: default; }
+/* 标签溢出计数 chip 由容器查询分档驱动：宽档最多 4 个标签，超出才显示 +N；数字随档位取对应 data-h* 属性 */
+/* 档位判定与隐藏只作用于标签行的直接子元素——+N 悬浮浮层里的同名 chips 不参与分档，避免被隐藏 */
+.clone-task-tags:has(> .clone-task-tag-wrap:nth-child(5)) .clone-task-tag-count { display: inline-flex; font-size: 0; }
+.clone-task-tags:has(> .clone-task-tag-wrap:nth-child(5)) .clone-task-tag-count::before { content: "+" attr(data-h4); font-size: 11px; }
+.clone-task-tag-tooltip { position: absolute; z-index: 40; right: 0; bottom: calc(100% + 7px); display: none; width: max-content; max-width: min(260px, 70vw); flex-wrap: wrap; gap: 5px; font-size: 12px; white-space: normal; padding: 6px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--ink); box-shadow: 0 4px 14px rgba(0,0,0,.18); }
 .clone-task-tag-count:hover .clone-task-tag-tooltip,
-.clone-task-tag-count:focus-visible .clone-task-tag-tooltip { display: block; }
+.clone-task-tag-count:focus-within .clone-task-tag-tooltip,
+.clone-inline-board-tag-more:hover .clone-task-tag-tooltip,
+.clone-inline-board-tag-more:focus-within .clone-task-tag-tooltip { display: flex; }
+/* metadata 默认 overflow hidden 防行溢出，悬浮 +N 时临时放开避免裁剪标签浮层 */
+.clone-task-metadata:has(.clone-task-tag-count:hover),
+.clone-task-metadata:has(.clone-task-tag-count:focus-within) { overflow: visible; }
 .clone-checklist-progress { width: 14px; height: 14px; flex: none; border-radius: 50%; background: conic-gradient(var(--accent) var(--check-progress), color-mix(in srgb, var(--line2) 60%, transparent) 0); }
 .clone-task-indicator { display: inline-flex; align-items: center; gap: 2px; flex: none; color: var(--muted); }
 .clone-task-indicator-action { min-height: 22px; padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; }
@@ -7417,10 +8011,8 @@ const SidebarSection = {
 .clone-task-row.is-note { min-height: 54px; }
 .clone-task-row.is-note .clone-task-content { min-height: 44px; }
 .clone-task-content input { min-width: 0; width: 100%; padding: 4px 6px; border: 1px solid var(--accent); border-radius: 4px; outline: 0; background: var(--card); color: var(--ink); font: inherit; }
-.clone-row-date-editor { position: absolute; z-index: 25; right: 38px; display: flex; align-items: center; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); box-shadow: 0 5px 16px rgba(20, 27, 38, .16); }
-.clone-row-date-editor input { width: 190px; min-width: 0; height: 30px; padding: 0 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); color: var(--ink); font: inherit; font-size: 11px; }
-.clone-row-date-editor button { min-height: 28px; padding: 0 7px; border: 0; border-radius: 4px; background: transparent; color: var(--ink2); font-size: 11px; cursor: pointer; }
-.clone-row-date-editor button:hover { background: var(--accent-soft); color: var(--accent); }
+.clone-row-date-panel { position: fixed; z-index: 60; }
+
 .clone-task-list-link { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 120px; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--ink2); font: inherit; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .clone-task-list-link:hover { color: var(--accent); }
 .clone-task-list-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; }
@@ -7455,7 +8047,7 @@ const SidebarSection = {
 .clone-inline-board-note-icon { flex: 0 0 auto; margin-top: 2px; color: var(--accent); }
 .clone-inline-board-tags { display: flex; flex-wrap: wrap; gap: 4px; padding-left: 25px; }
 .clone-inline-board-tag, .clone-inline-board-tag-more { display: inline-flex; max-width: 120px; align-items: center; min-height: 20px; padding: 1px 7px; overflow: hidden; border-radius: 10px; background: color-mix(in srgb, var(--task-tag-color, var(--accent)) 14%, transparent); color: color-mix(in srgb, var(--task-tag-color, var(--accent)) 74%, var(--ink)); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.clone-inline-board-tag-more { background: color-mix(in srgb, var(--muted) 13%, transparent); color: var(--muted); }
+.clone-inline-board-tag-more { position: relative; overflow: visible; background: color-mix(in srgb, var(--muted) 13%, transparent); color: var(--muted); cursor: default; }
 .clone-inline-board-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; min-width: 0; padding-left: 25px; color: var(--muted); font-size: 10px; }
 .clone-inline-board-date, .clone-inline-board-list { display: inline-flex; min-width: 0; align-items: center; gap: 3px; padding: 0; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 10px; cursor: pointer; }
 .clone-inline-board-date:hover, .clone-inline-board-list:hover { color: var(--accent); }
@@ -7619,10 +8211,7 @@ const SidebarSection = {
   background: var(--card);
   box-shadow: 0 16px 36px rgba(15, 23, 42, 0.18);
 }
-.clone-floating-menu {
-  top: 118px;
-  right: 24px;
-}
+/* 位置由 positionWorkspaceMenu 按触发按钮实测坐标注入（top/left 内联样式） */
 .clone-view-menu { width: 212px; max-height: min(74vh, 620px); overflow: visible; padding: 8px; }
 .clone-view-menu > strong { padding: 8px 9px 4px; color: var(--muted); font-size: 11px; }
 .clone-view-menu > button { min-height: 32px; }
@@ -8141,7 +8730,6 @@ const SidebarSection = {
 .clone-detail-subtask-draft input { flex: 1 1 auto; min-width: 0; height: 32px; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; }
 .clone-detail-subtask-draft > button { display: grid; width: 28px; height: 28px; flex: none; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--accent); cursor: pointer; }
 .clone-detail-subtask-draft > button:disabled { opacity: .45; cursor: default; }
-.clone-subtask-date-editor { top: 100%; right: 4px; }
 .clone-detail-properties button { display: flex; justify-content: space-between; gap: 12px; min-width: 0; padding: 9px 0; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--muted); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
 .clone-detail-property { display: flex; justify-content: space-between; gap: 12px; min-width: 0; padding: 9px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .clone-detail-properties button:hover strong { color: var(--accent); }
@@ -8614,15 +9202,22 @@ const SidebarSection = {
   .clone-task-metadata { max-width: 46%; gap: 5px; font-size: 11px; }
   .clone-task-list-link { max-width: 82px; }
 }
-@container task-meta (max-width: 350px) {
-  .clone-task-tag-wrap:nth-child(n + 2) { display: none; }
-  .clone-task-tag-count { display: inline-flex !important; font-size: 0; }
-  .clone-task-tag-count::before { content: "+" attr(data-count); font-size: 11px; }
+@container task-meta (max-width: 860px) {
+  .clone-task-tags > .clone-task-tag-wrap:nth-child(n + 3) { display: none; }
+  .clone-task-tags:has(> .clone-task-tag-wrap:nth-child(3)) .clone-task-tag-count { display: inline-flex; font-size: 0; }
+  .clone-task-tags:has(> .clone-task-tag-wrap:nth-child(3)) .clone-task-tag-count::before { content: "+" attr(data-h2); font-size: 11px; }
 }
-@container task-meta (max-width: 230px) {
-  .clone-task-tag-wrap { display: none !important; }
-  .clone-task-tag-count { display: inline-flex !important; font-size: 0; }
-  .clone-task-tag-count::before { content: attr(data-total); font-size: 11px; }
+@container task-meta (max-width: 720px) {
+  .clone-task-tags > .clone-task-tag-wrap:nth-child(n + 2) { display: none; }
+  .clone-task-tags:has(> .clone-task-tag-wrap:nth-child(2)) .clone-task-tag-count { display: inline-flex; font-size: 0; }
+  .clone-task-tags:has(> .clone-task-tag-wrap:nth-child(2)) .clone-task-tag-count::before { content: "+" attr(data-h1); font-size: 11px; }
+}
+@container task-meta (max-width: 640px) {
+  .clone-task-tags > .clone-task-tag-wrap { display: none !important; }
+  .clone-task-tags:has(> .clone-task-tag-wrap:nth-child(2)) .clone-task-tag-count { display: inline-flex; font-size: 0; }
+  .clone-task-tags:has(> .clone-task-tag-wrap:nth-child(2)) .clone-task-tag-count::before { content: attr(data-total); font-size: 11px; }
+  .clone-task-tags:not(:has(> .clone-task-tag-wrap:nth-child(2))) .clone-task-tag-count { display: inline-flex; font-size: 0; }
+  .clone-task-tags:not(:has(> .clone-task-tag-wrap:nth-child(2))) .clone-task-tag-count::before { content: attr(data-total); font-size: 11px; }
 }
 @media (max-width: 760px) {
   .clone-task-main { padding-right: 14px; padding-left: 14px; }
