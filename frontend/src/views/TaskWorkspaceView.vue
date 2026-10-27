@@ -287,6 +287,7 @@
         <button v-if="!quickAddExpanded" type="button" class="clone-quick-add-collapsed" @click="expandQuickAdd"><Plus :size="17" /><span>添加任务至“{{ title === '今天' ? '收集箱' : title }}”</span></button>
         <form v-else class="clone-quick-add-form" @submit.prevent="quickAdd">
           <div class="clone-quick-title-row">
+            <Repeat2 v-if="quickRepeatRuleActive" class="clone-quick-repeat-badge" :size="14" />
             <input
               ref="quickTitleInput"
               v-model="quickTitle"
@@ -297,12 +298,11 @@
             />
           </div>
           <div class="clone-quick-actions-row">
-            <button type="button" class="clone-quick-action clone-quick-date-action" :class="{ active: quickEntry.dateSelected && Boolean(quickEntry.dueAt) }" aria-label="快速设置日期和提醒" :aria-expanded="quickAction === 'date'" @click="toggleQuickAction('date')"><CalendarDays :size="15" /><span>{{ quickDateSummary }}</span></button>
-            <button v-if="!quickAddIsNote" type="button" class="clone-quick-action clone-quick-priority-action" :class="{ active: quickEntry.priority !== 'NONE' }" :data-priority="quickEntry.priority" aria-label="快速设置优先级" :aria-expanded="quickAction === 'priority'" @click="toggleQuickAction('priority')"><Flag :size="15" /><span>{{ priorityLabel(quickEntry.priority) }}</span></button>
-            <button v-if="!quickAddIsNote" type="button" class="clone-quick-action clone-quick-repeat-action" :class="{ active: Boolean(buildQuickRepeatRule(quickRepeat)) }" aria-label="快速设置重复" :aria-expanded="quickAction === 'repeat'" @click="toggleQuickAction('repeat')"><Repeat2 :size="15" /><span>{{ quickRepeatLabel(quickRepeat) }}</span></button>
-            <button type="button" class="clone-quick-action clone-quick-list-action" :class="{ active: quickEntry.listSelected && Boolean(quickEntry.listId) }" aria-label="快速选择清单" :aria-expanded="quickAction === 'list'" @click="toggleQuickAction('list')"><TaskOrganizationIcon v-if="quickSelectedList?.icon" :value="quickSelectedList.icon" :size="15" /><ListTodo v-else :size="15" /><i v-if="quickSelectedList?.color" class="clone-quick-list-dot" :style="{ backgroundColor: quickSelectedList.color }" aria-hidden="true"></i><span>{{ quickListSummary }}</span></button>
-            <button type="button" class="clone-quick-icon-action" aria-label="快速新增更多操作" :aria-expanded="quickAction === 'more'" @click="toggleQuickAction('more')"><Ellipsis :size="16" /></button>
-            <button type="submit" class="clone-quick-submit" :disabled="!quickTitle.trim() || quickParsing || quickSaving">{{ quickParsing ? '解析中…' : quickSaving ? '添加中…' : '添加' }}</button><kbd>N</kbd>
+            <button ref="quickDateToggleRef" type="button" class="clone-quick-action clone-quick-date-action" :class="{ active: quickEntry.dateSelected && Boolean(quickEntry.dueAt) }" aria-label="快速设置日期和提醒" :aria-expanded="quickAction === 'date'" @click="toggleQuickAction('date')"><CalendarDays :size="15" /><span>{{ quickDateSummary }}</span></button>
+            <button v-if="!quickAddIsNote" ref="quickPriorityToggleRef" type="button" class="clone-quick-action clone-quick-priority-action" :class="{ active: quickEntry.priority !== 'NONE' }" :data-priority="quickEntry.priority" aria-label="快速设置优先级" :aria-expanded="quickAction === 'priority'" @click="toggleQuickAction('priority')"><Flag :size="15" /></button>
+            <button v-if="!quickAddIsNote" ref="quickListToggleRef" type="button" class="clone-quick-action clone-quick-list-action" :class="{ active: quickEntry.listSelected && Boolean(quickEntry.listId) }" aria-label="快速选择清单" :aria-expanded="quickAction === 'list'" @click="toggleQuickAction('list')"><TaskOrganizationIcon v-if="quickSelectedList?.icon" :value="quickSelectedList.icon" :size="15" /><ListTodo v-else :size="15" /><i v-if="quickSelectedList?.color" class="clone-quick-list-dot" :style="{ backgroundColor: quickSelectedList.color }" aria-hidden="true"></i><span>{{ quickListSummary }}</span></button>
+            <button v-if="!quickAddIsNote" ref="quickMoreToggleRef" type="button" class="clone-quick-icon-action" aria-label="快速新增更多操作" :aria-expanded="quickAction === 'more' || quickAction === 'tags'" @click="toggleQuickAction('more')"><Ellipsis :size="16" /></button>
+            <button type="submit" class="clone-quick-submit" :disabled="!quickTitle.trim() || quickParsing || quickSaving">{{ quickParsing ? '解析中…' : quickSaving ? '添加中…' : '添加' }}</button>
           </div>
         </form>
         <input ref="quickAttachmentInput" class="clone-quick-file-input" type="file" multiple aria-label="选择快捷新增附件" @change="selectQuickAttachments" />
@@ -317,9 +317,8 @@
         <span v-for="item in batch.attachments" :key="item.id"><Paperclip :size="13" /><span>{{ item.name }}</span><small>{{ formatAttachmentSize(item.size) }}</small><button type="button" :disabled="quickAttachmentUploading" :aria-label="`移除待上传附件 ${item.name}`" @click="removePendingQuickAttachment(batch.id, item.id)"><X :size="13" /></button></span>
       </div>
       <p v-if="quickAttachmentMessage" class="clone-quick-attachment-state" :role="quickAttachmentError || quickAttachmentSelectionError ? 'alert' : 'status'">{{ quickAttachmentMessage }}<button v-if="pendingQuickAttachmentBatches.length && (quickAttachmentError || !store.online)" type="button" :disabled="quickAttachmentUploading" @click="retryQuickAttachments">{{ quickAttachmentUploading ? `上传中 ${quickAttachmentProgress}%` : '重试附件上传' }}</button></p>
-      <div v-if="quickAction" class="clone-quick-action-panel" :class="`is-${quickAction}`" @click.stop>
-        <template v-if="quickAction === 'more'"><strong>更多</strong><button type="button" aria-label="快速选择标签" @click="toggleQuickAction('tags')"><Tag :size="14" />标签<small v-if="quickEntry.tagIds.length">{{ quickEntry.tagIds.length }}</small></button><button type="button" v-if="!quickAddIsNote" @click="toggleQuickAction('repeat')"><Repeat2 :size="14" />重复</button><button type="button" @click="openQuickAttachmentPicker"><Paperclip :size="14" />附件</button><button type="button" @click="openTaskTemplates"><ClipboardList :size="14" />从模板添加</button><button type="button" :disabled="quickAddIsNote || !noteLists.length" :title="quickAddIsNote ? '当前已是笔记' : noteLists.length ? '' : '请先创建笔记清单'" @click="convertQuickAddToNote"><ListTodo :size="14" />转换为笔记</button><button type="button" @click="openQuickInputSettings"><SlidersHorizontal :size="14" />输入框设置</button></template>
-        <template v-else-if="quickAction === 'date'">
+      <div v-if="quickAction === 'date'" ref="quickPanelMenuRef" class="clone-quick-action-panel is-date" :style="quickPanelStyle" @click.stop>
+        <template v-if="quickAction === 'date'">
           <TaskDateTimePopover
             :mode="quickDateMode"
             :month="quickCalendarMonth"
@@ -328,7 +327,11 @@
             :time="quickEntry.allDay ? '' : quickDateTime"
             :all-day="quickEntry.allDay"
             :month-label="quickCalendarTitle"
-            apply-label="完成"
+            :range-start="quickRangeStart"
+            :range-end="quickRangeEnd"
+            :range-start-time="quickRangeStartTime"
+            :range-end-time="quickRangeEndTime"
+            apply-label="确定"
             @update:mode="setQuickDateMode"
             @quick-date="chooseQuickDatePreset"
             @move-month="moveQuickMonth"
@@ -337,49 +340,123 @@
             @clear-time="clearQuickTime"
             @clear-date="clearQuickDate"
             @toggle-all-day="setQuickAllDay"
+            @update:range-start="quickRangeStart = $event"
+            @update:range-end="quickRangeEnd = $event"
+            @update:range-start-time="quickRangeStartTime = $event"
+            @update:range-end-time="quickRangeEndTime = $event"
             @apply="applyQuickDate"
           >
-            <template #reminder>
-              <section class="clone-quick-reminder-section" aria-label="提醒设置">
-                <button type="button" class="clone-quick-reminder-toggle" :aria-pressed="quickAddReminder.enabled" @click="toggleQuickReminder"><Bell :size="15" /><span>{{ quickAddReminder.enabled ? quickReminderLabel : '添加提醒' }}</span><ChevronDown :size="14" /></button>
-                <div v-if="quickAddReminder.enabled" class="clone-quick-reminder-options" role="listbox" aria-label="提醒时间" aria-multiselectable="true">
-                  <button v-for="option in quickReminderOptions" :key="option.value" type="button" role="option" :aria-selected="quickAddReminder.presets.includes(option.value)" :class="{ active: quickAddReminder.presets.includes(option.value) }" @click="selectQuickReminder(option.value)">{{ option.label }}<Check v-if="quickAddReminder.presets.includes(option.value)" :size="14" /></button>
+            <template #rows="{ mode: rowMode }">
+              <div class="clone-date-prop-rows" aria-label="任务属性">
+                <div v-if="rowMode === 'DATE'" class="clone-date-prop-row">
+                  <button ref="quickTimeToggleRef" type="button" class="clone-date-prop-trigger" :class="{ active: Boolean(quickDateTime) }" :aria-expanded="quickDateMenu === 'time'" @click="toggleQuickDateMenu('time')"><Clock3 :size="15" /><span>{{ quickDateTime || '时间' }}</span><ChevronRight :size="14" :class="{ 'is-open': quickDateMenu === 'time' }" /></button>
+                  <button v-if="quickDateTime" type="button" class="clone-date-prop-clear" aria-label="清除时间" title="清除时间" @click="clearQuickTime"><X :size="14" /></button>
                 </div>
-                <div v-if="quickAddReminder.enabled && quickAddReminder.presets.includes('CUSTOM')" class="clone-quick-reminder-custom">
-                  <label><span>提前</span><input v-model.number="quickAddReminder.amount" type="number" min="1" :max="quickEntry.allDay ? 365 : quickAddReminder.unit === 'WEEK' ? 1 : 10080" aria-label="自定义提醒数量" /><select v-model="quickAddReminder.unit" aria-label="自定义提醒单位"><option v-if="!quickEntry.allDay" value="MINUTE">分钟</option><option v-if="!quickEntry.allDay" value="HOUR">小时</option><option value="DAY">天</option><option value="WEEK">周</option></select></label>
-                  <label v-if="quickEntry.allDay">提醒时间<input v-model="quickAddReminder.time" type="time" aria-label="自定义提醒时间" /></label>
+                <div v-if="quickDateMenu === 'time'" class="clone-date-time-list" role="listbox" aria-label="选择时间">
+                  <button v-for="option in quickTimeOptions" :key="option" type="button" role="option" :aria-selected="option === quickDateTime" :class="{ active: option === quickDateTime }" @click="selectQuickTime(option)">{{ option }}<Check v-if="option === quickDateTime" :size="14" /></button>
                 </div>
-                <label v-if="quickAddReminder.enabled" class="clone-quick-reminder-repeat"><input v-model="quickAddReminder.dailyUntilDone" type="checkbox" />持续提醒直到完成</label>
-              </section>
-            </template>
-            <template #repeat><button type="button" class="clone-date-slot-trigger" @click="quickAction = 'repeat'"><Repeat2 :size="14" /><span>{{ quickRepeatLabel(quickRepeat) || '重复' }}</span><ChevronRight :size="14" /></button></template>
-            <template #range>
-              <label>开始<input v-model="quickRangeStartTime" type="time" aria-label="时间段开始时间" /></label>
-              <label>结束<input v-model="quickRangeEndTime" type="time" aria-label="时间段结束时间" /></label>
-              <span>{{ quickRangeStart || '选择开始日期' }}<template v-if="quickRangeEnd"> 至 {{ quickRangeEnd }}</template></span>
+                <div class="clone-date-prop-row">
+                  <button ref="quickReminderToggleRef" type="button" class="clone-date-prop-trigger" :class="{ active: quickAddReminder.enabled }" :aria-expanded="quickDateMenu === 'reminder'" @click="toggleQuickDateMenu('reminder')"><Bell :size="15" /><span>{{ quickAddReminder.presets.length ? quickReminderSummary : '提醒' }}</span><ChevronRight :size="14" :class="{ 'is-open': quickDateMenu === 'reminder' }" /></button>
+                  <button v-if="quickAddReminder.presets.length" type="button" class="clone-date-prop-clear" aria-label="清除全部提醒" title="清除全部提醒" @click="clearQuickReminders"><X :size="14" /></button>
+                </div>
+                <div class="clone-date-prop-row">
+                  <button ref="quickRepeatToggleRef" type="button" class="clone-date-prop-trigger" :class="{ active: Boolean(buildQuickRepeatRule(quickRepeat)) }" :aria-expanded="quickDateMenu === 'repeat'" @click="toggleQuickDateMenu('repeat')"><Repeat2 :size="15" /><span>{{ quickRepeatLabel(quickRepeat) }}</span><ChevronRight :size="14" :class="{ 'is-open': quickDateMenu === 'repeat' }" /></button>
+                </div>
+                <div v-if="quickShowEndRow" class="clone-date-prop-row">
+                  <button ref="quickEndToggleRef" type="button" class="clone-date-prop-trigger" :aria-expanded="quickDateMenu === 'end'" @click="toggleQuickDateMenu('end')"><Timer :size="15" /><span>{{ quickEndLabel }}</span><ChevronRight :size="14" :class="{ 'is-open': quickDateMenu === 'end' }" /></button>
+                </div>
+              </div>
+              <teleport to="body">
+                <div v-if="quickDateMenu === 'reminder'" ref="quickReminderMenuRef" class="clone-quick-reminder-menu clone-quick-flyout" :style="quickReminderMenuStyle" role="listbox" aria-label="提醒设置" aria-multiselectable="true" @click.stop>
+                  <button v-for="option in quickReminderMenuOptions" :key="option.value" type="button" role="option" :aria-selected="quickAddReminder.presets.includes(option.value)" :class="{ active: quickAddReminder.presets.includes(option.value) }" @click="selectQuickReminder(option.value)">{{ option.label }}<Check v-if="quickAddReminder.presets.includes(option.value)" :size="14" /></button>
+                  <template v-if="!quickEntry.allDay && quickReminderRecentOptions.length">
+                    <span class="clone-quick-flyout-separator"></span>
+                    <span class="clone-quick-flyout-title">最近使用</span>
+                    <button v-for="option in quickReminderRecentOptions" :key="`recent-${option.value}`" type="button" role="option" :aria-selected="quickAddReminder.presets.includes(option.value)" :class="{ active: quickAddReminder.presets.includes(option.value) }" @click="selectQuickReminder(option.value)">{{ option.label }}<Check v-if="quickAddReminder.presets.includes(option.value)" :size="14" /></button>
+                  </template>
+                  <template v-if="quickAddReminder.presets.includes('CUSTOM')">
+                    <span class="clone-quick-flyout-separator"></span>
+                    <div class="clone-quick-reminder-custom">
+                      <label><span>提前</span><input v-model.number="quickAddReminder.amount" type="number" min="1" :max="quickEntry.allDay ? 365 : 10080" aria-label="自定义提醒数量" /><select v-model="quickAddReminder.unit" aria-label="自定义提醒单位"><option v-if="!quickEntry.allDay" value="MINUTE">分钟</option><option v-if="!quickEntry.allDay" value="HOUR">小时</option><option value="DAY">天</option><option value="WEEK">周</option></select></label>
+                      <label v-if="quickEntry.allDay">提醒时间<select v-model="quickAddReminder.time" aria-label="自定义提醒时间"><option v-for="option in quickTimeOptions" :key="`reminder-time-${option}`" :value="option">{{ option }}</option></select></label>
+                      <p class="clone-quick-reminder-preview">{{ quickReminderCustomPreview }}</p>
+                      <div class="clone-quick-flyout-actions"><button type="button" @click="cancelQuickReminderCustom">取消</button><button type="button" class="primary" @click="applyQuickReminderCustom">确定</button></div>
+                    </div>
+                  </template>
+                </div>
+                <div v-if="quickDateMenu === 'repeat'" ref="quickRepeatMenuRef" class="clone-quick-repeat-menu clone-quick-flyout" :style="quickRepeatMenuStyle" role="listbox" aria-label="重复规则" @click.stop>
+                  <template v-for="option in quickRepeatMenuOptions" :key="option.key">
+                    <span v-if="option.separator" class="clone-quick-flyout-separator"></span>
+                    <button v-else-if="option.isGroup" type="button" :aria-expanded="quickRepeatGroupOpen === option.key" @click="toggleQuickRepeatGroup(option.key)">{{ option.label }}<ChevronRight :size="14" :class="{ 'is-open': quickRepeatGroupOpen === option.key }" /></button>
+                    <button v-else-if="option.child" v-show="quickRepeatGroupOpen === option.groupKey" type="button" role="option" :aria-selected="option.active" :class="{ active: option.active }" @click="onQuickRepeatMenuSelect(option)">{{ option.label }}<Check v-if="option.active" :size="14" /></button>
+                    <button v-else type="button" role="option" :aria-selected="option.active" :class="{ active: option.active }" @click="onQuickRepeatMenuSelect(option)">{{ option.label }}<Check v-if="option.active" :size="14" /></button>
+                  </template>
+                </div>
+                <div v-if="quickDateMenu === 'end'" ref="quickEndMenuRef" class="clone-quick-end-menu clone-quick-flyout" :style="quickEndMenuStyle" role="listbox" aria-label="结束重复" @click.stop>
+                  <button type="button" role="option" :aria-selected="quickRepeat.endMode === 'NEVER'" :class="{ active: quickRepeat.endMode === 'NEVER' }" @click="selectQuickEndMode('NEVER')">永不结束<Check v-if="quickRepeat.endMode === 'NEVER'" :size="14" /></button>
+                  <span class="clone-quick-flyout-separator"></span>
+                  <button type="button" :aria-expanded="quickEndPanel === 'date'" @click="toggleQuickEndPanel('date')">按日期结束<ChevronRight :size="14" :class="{ 'is-open': quickEndPanel === 'date' }" /></button>
+                  <div v-if="quickEndPanel === 'date'" class="clone-quick-end-calendar">
+                    <div class="clone-quick-end-cal-head"><button type="button" aria-label="上个月" @click="moveQuickEndMonth(-1)"><ChevronLeft :size="15" /></button><strong>{{ quickEndCalendarTitle }}</strong><button type="button" aria-label="下个月" @click="moveQuickEndMonth(1)"><ChevronRight :size="15" /></button></div>
+                    <div class="clone-quick-end-cal-grid"><span v-for="weekday in quickWeekdays" :key="`end-${weekday}`">{{ weekday }}</span><button v-for="day in quickEndCalendarDays" :key="day.key" type="button" :class="{ 'other-month': !day.inMonth, selected: day.selected }" @click="pickQuickEndDate(day.key)">{{ day.date.getDate() }}</button></div>
+                  </div>
+                  <button type="button" :aria-expanded="quickEndPanel === 'count'" @click="toggleQuickEndPanel('count')">按次数结束<ChevronRight :size="14" :class="{ 'is-open': quickEndPanel === 'count' }" /></button>
+                  <div v-if="quickEndPanel === 'count'" class="clone-quick-end-count">
+                    <label>重复<input v-model.number="quickEndCountDraft" type="number" min="1" aria-label="重复次数" />次</label>
+                    <div class="clone-quick-flyout-actions"><button type="button" @click="cancelQuickEndCount">取消</button><button type="button" class="primary" @click="applyQuickEndCount">确定</button></div>
+                  </div>
+                </div>
+              </teleport>
             </template>
           </TaskDateTimePopover>
         </template>
-        <template v-else-if="quickAction === 'priority'"><strong>优先级</strong><button v-for="option in quickPriorityOptions" :key="option.value" type="button" class="clone-quick-priority-option" :data-priority="option.value" :class="{ active: quickEntry.priority === option.value }" @click="quickEntry.priority = option.value; quickEntry.prioritySelected = true; quickAction = ''"><Flag :size="17" /><span>{{ option.label }}</span><Check v-if="quickEntry.priority === option.value" :size="15" /></button></template>
-        <template v-else-if="quickAction === 'repeat'">
-          <section class="clone-quick-repeat-panel" aria-label="快速设置重复">
+      </div>
+      <teleport to="body">
+        <div v-if="quickAction === 'priority'" ref="quickPriorityMenuRef" class="clone-quick-priority-menu clone-quick-flyout" :style="quickPriorityMenuStyle" role="listbox" aria-label="优先级" @click.stop>
+          <button v-for="option in quickPriorityOptions" :key="option.value" type="button" role="option" :aria-selected="quickEntry.priority === option.value" class="clone-quick-priority-option" :data-priority="option.value" :class="{ active: quickEntry.priority === option.value }" @click="selectQuickPriority(option.value)"><Flag :size="17" /><span>{{ option.label }}</span><Check v-if="quickEntry.priority === option.value" :size="15" /></button>
+        </div>
+        <div v-else-if="quickAction === 'list'" ref="quickListMenuRef" class="clone-quick-list-menu clone-quick-flyout" :style="quickListMenuStyle" role="listbox" aria-label="选择清单" @click.stop>
+          <label class="clone-quick-list-search"><Search :size="15" /><input v-model="quickListQuery" type="search" placeholder="搜索" aria-label="搜索清单" /></label>
+          <button type="button" role="option" :aria-selected="!quickEntry.listId" :class="{ active: !quickEntry.listId }" @click="selectQuickList('')"><Inbox :size="16" /><span>{{ store.inbox?.name || '收集箱' }}</span><Check v-if="!quickEntry.listId" :size="14" /></button>
+          <template v-for="group in quickListMenuGroups" :key="group.publicId">
+            <button type="button" class="clone-quick-list-folder" :aria-expanded="quickListFolderExpanded[group.publicId]" @click="quickListFolderExpanded[group.publicId] = !quickListFolderExpanded[group.publicId]"><Folder :size="16" /><span>{{ group.name }}</span><ChevronRight :size="14" :class="{ 'is-open': quickListFolderExpanded[group.publicId] }" /></button>
+            <button v-for="list in quickListMenuListsInGroup(group.publicId)" v-show="quickListQuery.trim() || quickListFolderExpanded[group.publicId]" :key="list.publicId" type="button" role="option" :aria-selected="quickEntry.listId === list.publicId" :class="{ active: quickEntry.listId === list.publicId }" @click="selectQuickList(list.publicId)"><TaskOrganizationIcon v-if="list.icon" :value="list.icon" :size="16" /><i v-else-if="list.color" class="clone-quick-list-dot" :style="{ backgroundColor: list.color }" aria-hidden="true"></i><ListTodo v-else :size="16" /><span>{{ list.name }}</span><Check v-if="quickEntry.listId === list.publicId" :size="14" /></button>
+          </template>
+          <button v-for="list in quickListMenuUngrouped" :key="list.publicId" type="button" role="option" :aria-selected="quickEntry.listId === list.publicId" :class="{ active: quickEntry.listId === list.publicId }" @click="selectQuickList(list.publicId)"><TaskOrganizationIcon v-if="list.icon" :value="list.icon" :size="16" /><i v-else-if="list.color" class="clone-quick-list-dot" :style="{ backgroundColor: list.color }" aria-hidden="true"></i><ListTodo v-else :size="16" /><span>{{ list.name }}</span><Check v-if="quickEntry.listId === list.publicId" :size="14" /></button>
+        </div>
+        <div v-else-if="quickAction === 'more'" ref="quickMoreMenuRef" class="clone-quick-more-menu clone-quick-flyout" :style="quickMoreMenuStyle" role="menu" aria-label="更多任务属性" @click.stop>
+          <button type="button" role="menuitem" aria-label="快速选择标签" :aria-expanded="quickAction === 'tags'" @click="toggleQuickAction('tags', quickFlyoutAnchor)"><Tag :size="15" /><span>标签</span><small v-if="quickEntry.tagIds.length">{{ quickEntry.tagIds.length }}</small><ChevronRight :size="14" /></button>
+          <button type="button" role="menuitem" @click="quickFlyoutAnchor ? openBoardAttachmentPicker() : openQuickAttachmentPicker()"><Paperclip :size="15" /><span>附件</span></button>
+          <button type="button" role="menuitem" @click="openTaskTemplates"><ClipboardList :size="15" /><span>从模板添加</span></button>
+          <button v-if="!quickFlyoutAnchor" type="button" role="menuitem" :disabled="quickAddIsNote || !noteLists.length" :title="quickAddIsNote ? '当前已是笔记' : noteLists.length ? '' : '请先创建笔记清单'" @click="convertQuickAddToNote"><ListTodo :size="15" /><span>转换为笔记</span></button>
+        </div>
+        <div v-else-if="quickAction === 'tags'" ref="quickTagsMenuRef" class="clone-quick-tags-menu clone-quick-flyout" :style="quickTagsMenuStyle" aria-label="选择标签" @click.stop>
+          <div v-if="quickTagsDraft.length" class="clone-quick-tags-selected">
+            <span v-for="tag in quickTagsDraftTags" :key="tag.publicId" class="clone-quick-tag-chip">{{ tag.name }}<button type="button" :aria-label="`移除标签 ${tag.name}`" @click="toggleQuickTagsDraft(tag.publicId)"><X :size="12" /></button></span>
+          </div>
+          <label class="clone-quick-list-search"><Search :size="15" /><input v-model="quickTagsQuery" type="search" placeholder="输入标签" aria-label="搜索标签" /></label>
+          <div class="clone-quick-tags-options" role="listbox" aria-label="标签列表" aria-multiselectable="true">
+            <button v-for="tag in quickTagsMenuOptions" :key="tag.publicId" type="button" role="option" :aria-selected="quickTagsDraft.includes(tag.publicId)" :class="{ active: quickTagsDraft.includes(tag.publicId) }" @click="toggleQuickTagsDraft(tag.publicId)"><Tag :size="15" /><span>{{ tag.name }}</span><Check v-if="quickTagsDraft.includes(tag.publicId)" :size="14" /></button>
+            <p v-if="!quickTagsMenuOptions.length" class="clone-quick-list-empty">没有匹配的标签</p>
+          </div>
+          <footer class="clone-quick-flyout-actions"><button type="button" @click="cancelQuickTags">取消</button><button type="button" class="primary" @click="applyQuickTags">确定</button></footer>
+        </div>
+      </teleport>
+      <div v-if="quickAction === 'repeat'" ref="quickPanelMenuRef" class="clone-quick-action-panel is-repeat" :style="quickPanelStyle" @click.stop>
+          <section class="clone-quick-repeat-panel" aria-label="自定义重复设置">
             <header><strong>重复</strong><button type="button" aria-label="关闭重复设置" @click="quickAction = ''"><X :size="14" /></button></header>
-            <div class="clone-quick-repeat-presets"><button v-for="option in quickRepeatPresets" :key="option.value" type="button" :class="{ active: quickRepeat.preset === option.value }" @click="quickRepeat.preset = option.value; quickRepeatError = ''">{{ option.label }}</button></div>
             <template v-if="quickRepeat.preset === 'CUSTOM'">
-              <div class="clone-quick-repeat-grid"><label>重复方式<select v-model="quickRepeat.mode"><option value="DUE_DATE">到期重复</option><option value="COMPLETION_DATE">完成重复</option><option value="CUSTOM">自选重复</option></select></label><label>频率<select :value="quickRepeat.frequency" @change="setQuickRepeatFrequency"><option value="DAILY">每天</option><option value="WEEKLY">每周</option><option value="MONTHLY">每月</option><option value="YEARLY">每年</option></select></label><label>间隔<input v-model.number="quickRepeat.interval" type="number" min="1" max="365" /></label></div>
-              <div v-if="quickRepeat.frequency === 'WEEKLY'" class="clone-quick-repeat-days"><span>每周</span><label v-for="day in DAY_CODES" :key="day"><input v-model="quickRepeat.weekdays" type="checkbox" :value="day" />{{ { MO: '一', TU: '二', WE: '三', TH: '四', FR: '五', SA: '六', SU: '日' }[day] }}</label></div>
+              <div class="clone-quick-repeat-mode"><select v-model="quickRepeat.mode" aria-label="重复方式"><option value="DUE_DATE">按到期日期</option><option value="COMPLETION_DATE">按完成日期</option></select></div>
+              <div class="clone-quick-repeat-interval"><span>每</span><input v-model.number="quickRepeat.interval" type="number" min="1" max="365" aria-label="重复间隔" /><select :value="quickRepeat.frequency" @change="setQuickRepeatFrequency" aria-label="重复频率"><option value="DAILY">日</option><option value="WEEKLY">周</option><option value="MONTHLY">月</option><option value="YEARLY">年</option></select></div>
+              <div v-if="quickRepeat.frequency === 'WEEKLY'" class="clone-quick-repeat-circles" aria-label="重复星期"><button v-for="day in DAY_CODES" :key="day" type="button" :aria-pressed="quickRepeat.weekdays.includes(day)" :class="{ active: quickRepeat.weekdays.includes(day) }" @click="toggleQuickRepeatWeekday(day)">{{ { MO: '一', TU: '二', WE: '三', TH: '四', FR: '五', SA: '六', SU: '日' }[day] }}</button></div>
               <div v-if="['MONTHLY', 'YEARLY'].includes(quickRepeat.frequency)" class="clone-quick-repeat-grid"><label>重复日期<select v-model="quickRepeat.monthMode"><option value="DATE">按日期</option><option value="WEEKDAY">按星期</option><option v-if="quickRepeat.frequency === 'MONTHLY'" value="WORKDAY">按工作日</option></select></label><label v-if="quickRepeat.frequency === 'YEARLY'">月份<select v-model.number="quickRepeat.month"><option v-for="month in 12" :key="month" :value="month">{{ month }} 月</option></select></label><template v-if="quickRepeat.monthMode === 'WEEKDAY'"><label>第几周<select v-model.number="quickRepeat.ordinal"><option v-for="ordinal in 5" :key="ordinal" :value="ordinal">第 {{ ordinal }} 个</option><option :value="-1">最后一个</option></select></label><label>星期<select v-model="quickRepeat.weekday"><option v-for="day in DAY_CODES" :key="day" :value="day">{{ { MO: '周一', TU: '周二', WE: '周三', TH: '周四', FR: '周五', SA: '周六', SU: '周日' }[day] }}</option></select></label></template><label v-if="quickRepeat.monthMode === 'WORKDAY'">工作日<select v-model.number="quickRepeat.workdayPosition"><option :value="1">第一个工作日</option><option :value="-1">最后一个工作日</option></select></label></div>
-              <div v-if="['MONTHLY', 'YEARLY'].includes(quickRepeat.frequency) && quickRepeat.monthMode === 'DATE'" class="clone-quick-repeat-date-calendar" aria-label="选择重复日期"><span v-for="weekday in quickWeekdays" :key="`repeat-${weekday}`">{{ weekday }}</span><span v-for="(day, index) in quickRepeatCalendarDays.filter(value => !value)" :key="`repeat-day-${index}`" class="clone-quick-repeat-date-spacer"></span><button v-for="day in quickRepeatCalendarDays.filter(Boolean)" :key="`repeat-date-${day}`" type="button" :aria-pressed="!quickRepeat.lastDay && quickRepeat.monthDay === day" :class="{ active: !quickRepeat.lastDay && quickRepeat.monthDay === day }" @click="quickRepeat.monthDay = day; quickRepeat.lastDay = false">{{ day }}</button><button type="button" class="clone-quick-repeat-last-day" :aria-pressed="quickRepeat.lastDay" :class="{ active: quickRepeat.lastDay }" @click="quickRepeat.lastDay = true">最后一天</button></div>
+              <div v-if="['MONTHLY', 'YEARLY'].includes(quickRepeat.frequency) && quickRepeat.monthMode === 'DATE'" class="clone-quick-repeat-date-calendar" aria-label="选择重复日期"><span v-for="weekday in quickWeekdays" :key="`repeat-${weekday}`">{{ weekday }}</span><span v-for="(day, index) in quickRepeatCalendarDays.filter(value => !value)" :key="`repeat-day-${index}`" class="clone-quick-repeat-date-spacer"></span><button v-for="day in quickRepeatCalendarDays.filter(Boolean)" :key="`repeat-date-${day}`" type="button" :aria-pressed="!quickRepeat.lastDay && quickRepeat.monthDays.includes(day)" :class="{ active: !quickRepeat.lastDay && quickRepeat.monthDays.includes(day) }" @click="toggleQuickRepeatMonthDay(day)">{{ day }}</button><button type="button" class="clone-quick-repeat-last-day" :aria-pressed="quickRepeat.lastDay" :class="{ active: quickRepeat.lastDay }" @click="quickRepeat.lastDay = true">最后一天</button></div>
               <div class="clone-quick-repeat-checks"><label v-if="quickRepeat.frequency !== 'WEEKLY' && quickRepeat.monthMode !== 'WORKDAY'" class="clone-quick-repeat-check"><input v-model="quickRepeat.skipWeekends" type="checkbox" />跳过双休日</label><label class="clone-quick-repeat-check"><input v-model="quickRepeat.skipLegalHolidays" type="checkbox" />跳过法定节假日</label></div>
             </template>
             <div v-if="quickRepeat.preset === 'LUNAR_MONTHLY' || quickRepeat.preset === 'LUNAR_YEARLY'" class="clone-quick-repeat-grid"><label v-if="quickRepeat.preset === 'LUNAR_YEARLY'">农历月份<select v-model.number="quickRepeat.lunarMonth"><option v-for="month in 12" :key="month" :value="month">{{ month }} 月</option></select></label><label>农历日期<select v-model.number="quickRepeat.lunarDay"><option v-for="day in 30" :key="day" :value="day">{{ day }} 日</option></select></label></div>
-            <div v-if="quickRepeat.preset" class="clone-quick-repeat-end"><span>结束条件</span><label><input v-model="quickRepeat.endMode" type="radio" value="NEVER" />永不结束</label><label><input v-model="quickRepeat.endMode" type="radio" value="UNTIL" />按日期结束<input v-if="quickRepeat.endMode === 'UNTIL'" v-model="quickRepeat.until" type="date" /></label><label><input v-model="quickRepeat.endMode" type="radio" value="COUNT" />按次数结束<input v-if="quickRepeat.endMode === 'COUNT'" v-model.number="quickRepeat.count" type="number" min="1" /></label></div>
             <p v-if="quickRepeatError" class="clone-error" role="alert">{{ quickRepeatError }}</p>
-            <footer><button type="button" @click="resetQuickRepeat">清除</button><button type="button" class="clone-quick-date-apply" @click="applyQuickRepeat">完成</button></footer>
+            <footer><button type="button" @click="cancelQuickRepeat">取消</button><button type="button" class="clone-quick-date-apply" @click="applyQuickRepeat">确定</button></footer>
           </section>
-        </template>
-        <template v-else-if="quickAction === 'tags'"><strong>标签</strong><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="quickEntry.tagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label><button type="button" @click="quickAction = ''">完成</button></template>
-        <template v-else><label>所属清单<select v-model="quickEntry.listId" aria-label="快速新增所属清单" @change="quickEntry.listSelected = true"><option value="">{{ store.inbox?.name || '收集箱' }}</option><option v-for="list in store.lists.filter((item) => !item.archived && item.publicId !== store.inbox?.publicId)" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select></label><button type="button" @click="quickAction = ''">完成</button></template>
       </div>
       </div>
       <div v-if="displaySettingsOpen" class="clone-modal-backdrop" @click.self="displaySettingsOpen = false">
@@ -390,13 +467,6 @@
           <label><input v-model="showDescription" type="checkbox" />显示详细内容图标</label>
           <label><input v-model="showChecklist" type="checkbox" />显示检查事项进度</label>
           <footer><button class="clone-primary-button" type="button" @click="displaySettingsOpen = false">完成</button></footer>
-        </section>
-      </div>
-      <div v-if="quickInputSettingsOpen" class="clone-modal-backdrop" @click.self="quickInputSettingsOpen = false">
-        <section class="clone-display-settings clone-quick-input-settings" role="dialog" aria-modal="true" aria-label="输入框设置">
-          <header><h2>输入框设置</h2><button type="button" aria-label="关闭输入框设置" @click="quickInputSettingsOpen = false"><X :size="16" /></button></header>
-          <div class="clone-quick-input-previews"><div class="is-simple"><span>＋ 添加任务</span><CalendarDays :size="14" /><ChevronDown :size="13" /></div><div><span>准备做什么？</span><CalendarDays :size="14" /><Flag :size="14" /><Tag :size="14" /><ListTodo :size="14" /><Ellipsis :size="14" /><button type="button">添加</button></div></div>
-          <div class="clone-quick-input-modes" role="radiogroup" aria-label="输入框显示模式"><label><input v-model="quickInputMode" type="radio" value="SIMPLE" />简洁</label><label><input v-model="quickInputMode" type="radio" value="DETAILED" />详细</label></div>
         </section>
       </div>
       <Teleport to="body">
@@ -439,21 +509,16 @@
             <div class="clone-board-quick-entry" :class="{ 'has-error': boardQuickAddError }">
               <input ref="boardQuickAddInput" v-model.trim="boardQuickAddTitle" autofocus maxlength="500" placeholder="准备做什么？" aria-label="看板任务标题" />
               <div class="clone-board-quick-actions">
-                <button type="button" class="clone-board-quick-action clone-board-quick-date-action" :class="{ active: Boolean(boardQuickAddDue) }" aria-label="设置日期" title="设置日期" :aria-expanded="boardQuickAddPanel === 'date'" @click="toggleBoardQuickPanel('date')"><CalendarDays :size="18" /><span>{{ boardQuickDateSummary }}</span></button>
-                <button type="button" class="clone-board-quick-action clone-board-quick-priority-action" :class="{ active: boardQuickAddPriority !== 'NONE' }" :data-priority="boardQuickAddPriority" aria-label="设置优先级" title="设置优先级" :aria-expanded="boardQuickAddPanel === 'priority'" @click="toggleBoardQuickPanel('priority')"><Flag :size="18" /><span>{{ priorityLabel(boardQuickAddPriority) }}</span></button>
-                <button type="button" class="clone-board-quick-action clone-board-quick-list-action" :class="{ active: Boolean(boardQuickAddListId) }" aria-label="选择清单" title="选择清单" :aria-expanded="boardQuickAddPanel === 'list'" @click="toggleBoardQuickPanel('list')"><TaskOrganizationIcon v-if="boardQuickSelectedList?.icon" :value="boardQuickSelectedList.icon" :size="18" /><ListTodo v-else :size="18" /><i v-if="boardQuickSelectedList?.color" class="clone-quick-list-dot" :style="{ backgroundColor: boardQuickSelectedList.color }" aria-hidden="true"></i><span>{{ boardQuickListSummary }}</span></button>
-                <button type="button" aria-label="更多任务属性" title="更多任务属性" :aria-expanded="boardQuickAddPanel === 'more'" @click="toggleBoardQuickPanel('more')"><Ellipsis :size="18" /></button>
+                <button type="button" class="clone-board-quick-action clone-board-quick-date-action" :class="{ active: quickEntry.dateSelected && Boolean(quickEntry.dueAt) }" aria-label="设置日期" title="设置日期" :aria-expanded="quickAction === 'date'" @click="toggleQuickAction('date', $event.currentTarget)"><CalendarDays :size="16" /></button>
+                <button type="button" class="clone-board-quick-action clone-board-quick-priority-action" :class="{ active: quickEntry.priority !== 'NONE' }" :data-priority="quickEntry.priority" aria-label="设置优先级" title="设置优先级" :aria-expanded="quickAction === 'priority'" @click="toggleQuickAction('priority', $event.currentTarget)"><Flag :size="16" /></button>
+                <button type="button" class="clone-board-quick-action clone-board-quick-list-action" :class="{ active: quickEntry.listSelected && Boolean(quickEntry.listId) }" aria-label="选择清单" title="选择清单" :aria-expanded="quickAction === 'list'" @click="toggleQuickAction('list', $event.currentTarget)"><TaskOrganizationIcon v-if="quickSelectedList?.icon" :value="quickSelectedList.icon" :size="16" /><ListTodo v-else :size="16" /></button>
+                <button type="button" class="clone-board-quick-icon-action" aria-label="更多任务属性" title="更多任务属性" :aria-expanded="quickAction === 'more' || quickAction === 'tags'" @click="toggleQuickAction('more', $event.currentTarget)"><Ellipsis :size="16" /></button>
                 <button type="submit" class="clone-board-quick-submit" aria-label="添加任务" title="添加任务" :disabled="!boardQuickAddTitle || boardQuickAddSaving"><ArrowRight :size="18" /></button>
               </div>
-              <div v-if="boardQuickAddPanel === 'date'" class="clone-board-quick-popover"><label>日期<input v-model="boardQuickAddDue" type="datetime-local" aria-label="看板任务日期" /></label><label class="clone-board-quick-all-day"><input v-model="boardQuickAddAllDay" type="checkbox" />全天</label><button type="button" @click="boardQuickAddDue = ''; boardQuickAddAllDay = false">清除日期</button></div>
-              <div v-else-if="boardQuickAddPanel === 'priority'" class="clone-board-quick-popover"><strong>优先级</strong><button v-for="option in quickPriorityOptions" :key="option.value" type="button" class="clone-board-quick-priority-option" :data-priority="option.value" :class="{ active: boardQuickAddPriority === option.value }" @click="boardQuickAddPriority = option.value; boardQuickAddPanel = ''"><Flag :size="15" /><span>{{ option.label }}</span><Check v-if="boardQuickAddPriority === option.value" :size="14" /></button></div>
-              <div v-else-if="boardQuickAddPanel === 'tags'" class="clone-board-quick-popover clone-board-quick-tags"><strong>标签</strong><label v-for="tag in store.tags" :key="tag.publicId"><input v-model="boardQuickAddTagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label><button type="button" @click="boardQuickAddPanel = ''">完成</button></div>
-              <div v-else-if="boardQuickAddPanel === 'list'" class="clone-board-quick-popover"><label>所属清单<select v-model="boardQuickAddListId" aria-label="看板任务所属清单"><option v-for="list in boardQuickAddLists" :key="list.publicId" :value="list.publicId">{{ list.label }}</option></select></label><button type="button" @click="boardQuickAddPanel = ''">完成</button></div>
-              <div v-else-if="boardQuickAddPanel === 'more'" class="clone-board-quick-popover clone-board-quick-more"><button type="button" @click="boardQuickAddPanel = 'tags'"><Tag :size="14" />标签<small v-if="boardQuickAddTagIds.length">{{ boardQuickAddTagIds.length }}</small></button><button type="button" @click="openBoardAttachmentPicker"><Paperclip :size="14" />附件</button><label>描述<textarea v-model="boardQuickAddDescription" rows="2" aria-label="看板任务描述" /></label><label>重复<select v-model="boardQuickAddRrule" aria-label="看板任务重复"><option value="">不重复</option><option value="FREQ=DAILY">每天</option><option value="FREQ=WEEKLY">每周</option><option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">每个工作日</option><option value="FREQ=MONTHLY">每月</option><option value="FREQ=YEARLY">每年</option></select></label></div>
+              <input ref="boardQuickAttachmentInput" class="clone-quick-file-input" type="file" multiple aria-label="选择看板新增附件" @change="selectBoardQuickAttachments" />
+              <div v-if="boardQuickAddAttachments.length" class="clone-board-quick-attachments" aria-label="已选择看板附件"><span v-for="item in boardQuickAddAttachments" :key="item.id"><Paperclip :size="12" /><span>{{ item.name }}</span><button type="button" :aria-label="`移除附件 ${item.name}`" @click="boardQuickAddAttachments = boardQuickAddAttachments.filter(value => value.id !== item.id)"><X :size="12" /></button></span></div>
+              <p v-if="boardQuickAddError" class="clone-board-quick-error" role="alert">{{ boardQuickAddError }}</p>
             </div>
-            <input ref="boardQuickAttachmentInput" class="clone-quick-file-input" type="file" multiple aria-label="选择看板新增附件" @change="selectBoardQuickAttachments" />
-            <div v-if="boardQuickAddAttachments.length" class="clone-board-quick-attachments" aria-label="已选择看板附件"><span v-for="item in boardQuickAddAttachments" :key="item.id"><Paperclip :size="12" /><span>{{ item.name }}</span><button type="button" :aria-label="`移除附件 ${item.name}`" @click="boardQuickAddAttachments = boardQuickAddAttachments.filter(value => value.id !== item.id)"><X :size="12" /></button></span></div>
-            <p v-if="boardQuickAddError" class="clone-board-quick-error" role="alert">{{ boardQuickAddError }}</p>
           </form>
           <article v-for="task in group.tasks" :key="task.publicId" class="clone-inline-board-card" :class="{ selected: selectedTask?.publicId === task.publicId, checked: task.status === 'COMPLETED', 'is-note': isNoteTask(task) }" :data-priority="task.priority" tabindex="0" @click="openTaskRow(task, $event)" @keydown.enter.prevent="openTaskRow(task, $event)">
             <div class="clone-inline-board-card-title">
@@ -720,10 +785,10 @@
             <div class="clone-repeat-popover-header"><strong>重复</strong><button type="button" class="clone-popover-close" aria-label="关闭重复设置" @click="repeatPopoverOpen = false"><X :size="15" /></button></div>
             <div class="clone-quick-repeat-presets clone-detail-repeat-presets"><button v-for="option in quickRepeatPresets" :key="option.value" type="button" :class="{ active: detailRepeat.preset === option.value }" @click="selectDetailRepeatPreset(option.value)">{{ option.label }}</button></div>
             <template v-if="detailRepeat.preset === 'CUSTOM'">
-              <div class="clone-quick-repeat-grid"><label>重复方式<select v-model="detailRepeat.mode"><option value="DUE_DATE">到期重复</option><option value="COMPLETION_DATE">完成重复</option><option value="CUSTOM">自选重复</option></select></label><label>频率<select v-model="detailRepeat.frequency" @change="setDetailRepeatFrequency"><option value="DAILY">每天</option><option value="WEEKLY">每周</option><option value="MONTHLY">每月</option><option value="YEARLY">每年</option></select></label><label>间隔<input v-model.number="detailRepeat.interval" type="number" min="1" max="365" /></label></div>
+              <div class="clone-quick-repeat-grid"><label>重复方式<select v-model="detailRepeat.mode"><option value="DUE_DATE">到期重复</option><option value="COMPLETION_DATE">完成重复</option></select></label><label>频率<select v-model="detailRepeat.frequency" @change="setDetailRepeatFrequency"><option value="DAILY">每天</option><option value="WEEKLY">每周</option><option value="MONTHLY">每月</option><option value="YEARLY">每年</option></select></label><label>间隔<input v-model.number="detailRepeat.interval" type="number" min="1" max="365" /></label></div>
               <div v-if="detailRepeat.frequency === 'WEEKLY'" class="clone-quick-repeat-days"><span>每周</span><label v-for="day in DAY_CODES" :key="`detail-repeat-${day}`"><input v-model="detailRepeat.weekdays" type="checkbox" :value="day" />{{ { MO: '一', TU: '二', WE: '三', TH: '四', FR: '五', SA: '六', SU: '日' }[day] }}</label></div>
               <div v-if="['MONTHLY', 'YEARLY'].includes(detailRepeat.frequency)" class="clone-quick-repeat-grid"><label>重复日期<select v-model="detailRepeat.monthMode"><option value="DATE">按日期</option><option value="WEEKDAY">按星期</option><option v-if="detailRepeat.frequency === 'MONTHLY'" value="WORKDAY">按工作日</option></select></label><label v-if="detailRepeat.frequency === 'YEARLY'">月份<select v-model.number="detailRepeat.month"><option v-for="month in 12" :key="month" :value="month">{{ month }} 月</option></select></label><template v-if="detailRepeat.monthMode === 'WEEKDAY'"><label>第几周<select v-model.number="detailRepeat.ordinal"><option v-for="ordinal in 5" :key="ordinal" :value="ordinal">第 {{ ordinal }} 个</option><option :value="-1">最后一个</option></select></label><label>星期<select v-model="detailRepeat.weekday"><option v-for="day in DAY_CODES" :key="day" :value="day">{{ { MO: '周一', TU: '周二', WE: '周三', TH: '周四', FR: '周五', SA: '周六', SU: '周日' }[day] }}</option></select></label></template><label v-if="detailRepeat.monthMode === 'WORKDAY'">工作日<select v-model.number="detailRepeat.workdayPosition"><option :value="1">第一个工作日</option><option :value="-1">最后一个工作日</option></select></label></div>
-              <div v-if="['MONTHLY', 'YEARLY'].includes(detailRepeat.frequency) && detailRepeat.monthMode === 'DATE'" class="clone-quick-repeat-date-calendar" aria-label="选择重复日期"><span v-for="weekday in quickWeekdays" :key="`detail-repeat-weekday-${weekday}`">{{ weekday }}</span><span v-for="(day, index) in detailRepeatCalendarDays.filter(value => !value)" :key="`detail-repeat-empty-${index}`" class="clone-quick-repeat-date-spacer"></span><button v-for="day in detailRepeatCalendarDays.filter(Boolean)" :key="`detail-repeat-day-${day}`" type="button" :aria-pressed="!detailRepeat.lastDay && detailRepeat.monthDay === day" :class="{ active: !detailRepeat.lastDay && detailRepeat.monthDay === day }" @click="detailRepeat.monthDay = day; detailRepeat.lastDay = false">{{ day }}</button><button type="button" class="clone-quick-repeat-last-day" :aria-pressed="detailRepeat.lastDay" :class="{ active: detailRepeat.lastDay }" @click="detailRepeat.lastDay = true">最后一天</button></div>
+              <div v-if="['MONTHLY', 'YEARLY'].includes(detailRepeat.frequency) && detailRepeat.monthMode === 'DATE'" class="clone-quick-repeat-date-calendar" aria-label="选择重复日期"><span v-for="weekday in quickWeekdays" :key="`detail-repeat-weekday-${weekday}`">{{ weekday }}</span><span v-for="(day, index) in detailRepeatCalendarDays.filter(value => !value)" :key="`detail-repeat-empty-${index}`" class="clone-quick-repeat-date-spacer"></span><button v-for="day in detailRepeatCalendarDays.filter(Boolean)" :key="`detail-repeat-day-${day}`" type="button" :aria-pressed="!detailRepeat.lastDay && detailRepeat.monthDays.includes(day)" :class="{ active: !detailRepeat.lastDay && detailRepeat.monthDays.includes(day) }" @click="toggleDetailRepeatMonthDay(day)">{{ day }}</button><button type="button" class="clone-quick-repeat-last-day" :aria-pressed="detailRepeat.lastDay" :class="{ active: detailRepeat.lastDay }" @click="detailRepeat.lastDay = true">最后一天</button></div>
               <div v-if="detailRepeat.frequency === 'DAILY'" class="clone-repeat-special-grid"><label><input v-model="detailRepeat.skipWeekends" type="checkbox" />跳过双休日</label><label><input v-model="detailRepeat.skipLegalHolidays" type="checkbox" />跳过法定节假日</label></div>
               <div v-else-if="detailRepeat.frequency === 'WEEKLY' || (['MONTHLY', 'YEARLY'].includes(detailRepeat.frequency) && detailRepeat.monthMode === 'WEEKDAY')" class="clone-repeat-special-grid"><label><input v-model="detailRepeat.skipLegalHolidays" type="checkbox" />跳过法定节假日</label></div>
             </template>
@@ -1269,6 +1334,7 @@ import {
   CircleDot,
   CircleMinus,
   CircleX,
+  Clock3,
   CalendarDays,
   Columns3,
   ArrowDownUp,
@@ -1336,8 +1402,8 @@ import { advancedFilterConditionsFromRules, advancedFilterConditionsValid, build
 import { buildTaskSidebarCounts } from "./taskSidebarCounts.js";
 import { filterCompletionTasks, normalizeCompletionListSelection, toggleCompletionListSelection } from "./taskCompletionFilters.js";
 import { mergeSidebarPreferenceChanges } from "./taskSidebarPreferences.js";
-import { calendarMonthDays, localDateKey, nextWholeHour, quickReminderOptions as getQuickReminderOptions, quickReminderPayloads } from "./taskQuickAddDate.js";
-import { buildQuickRepeatRule, createQuickRepeatState, DAY_CODES, quickRepeatLabel, quickRepeatPresets, quickRepeatValidation } from "./taskQuickAddRepeat.js";
+import { calendarMonthDays, localDateKey, nextWholeHour, quickReminderOptions as getQuickReminderOptions, quickReminderPayloads, quickReminderPresetLabel, QUICK_ALL_DAY_REMINDER_TIME } from "./taskQuickAddDate.js";
+import { buildQuickRepeatRule, createQuickRepeatState, DAY_CODES, parseLunarLabel, quickRepeatLabel, quickRepeatMatchesDate, quickRepeatPresets, quickRepeatValidation } from "./taskQuickAddRepeat.js";
 import { formatAttachmentSize, uploadQuickAttachments, validateQuickAttachmentFiles } from "./taskQuickAddAttachments.js";
 import { quickAddTokenAtCaret, replaceQuickAddToken } from "./taskQuickAddSuggestions.js";
 import { useTasksStore } from "../stores/tasks.js";
@@ -1416,20 +1482,26 @@ const boardQuickAddOpen = ref(false);
 const boardQuickAddInput = ref(null);
 const boardQuickAddGroup = ref(null);
 const boardQuickAddTitle = ref("");
-const boardQuickAddListId = ref("");
-const boardQuickAddDue = ref("");
-const boardQuickAddAllDay = ref(false);
-const boardQuickAddPriority = ref("NONE");
-const boardQuickAddTagIds = ref([]);
 const boardQuickAttachmentInput = ref(null);
 const boardQuickAddAttachments = ref([]);
-const boardQuickAddDescription = ref("");
-const boardQuickAddRrule = ref("");
-const boardQuickAddPanel = ref("");
 const boardQuickAddError = ref("");
 const boardQuickAddSaving = ref(false);
-const quickInputSettingsOpen = ref(false);
 const quickInputMode = ref("DETAILED");
+const quickPriorityToggleRef = ref(null);
+const quickPriorityMenuRef = ref(null);
+const quickPriorityMenuStyle = ref({});
+const quickListToggleRef = ref(null);
+const quickListMenuRef = ref(null);
+const quickListMenuStyle = ref({});
+const quickMoreToggleRef = ref(null);
+const quickMoreMenuRef = ref(null);
+const quickMoreMenuStyle = ref({});
+const quickTagsMenuRef = ref(null);
+const quickTagsMenuStyle = ref({});
+const quickListQuery = ref("");
+const quickListFolderExpanded = reactive({});
+const quickTagsQuery = ref("");
+const quickTagsDraft = ref([]);
 const displaySettingsOpen = ref(false);
 const showTags = ref(true);
 const showListLink = ref(true);
@@ -1450,7 +1522,33 @@ const quickDateTime = ref("");
 const quickAddReminder = reactive({ enabled: false, presets: [], amount: 1, unit: "DAY", time: "09:00", dailyUntilDone: false });
 const quickWeekdays = ["一", "二", "三", "四", "五", "六", "日"];
 const quickCalendarDays = computed(() => calendarMonthDays(quickCalendarMonth.value));
-const quickDateTimeCalendarDays = computed(() => quickCalendarDays.value.map((day) => ({ ...day, otherMonth: !day.inMonth, selected: isQuickDateSelected(day.key), today: day.key === localDateKey(new Date()) })));
+const quickCalendarMeta = ref({ holidays: {}, lunar: new Map() });
+const quickCalendarMetaRequest = ref(0);
+async function loadQuickCalendarMeta() {
+  const request = ++quickCalendarMetaRequest.value;
+  const days = calendarMonthDays(quickCalendarMonth.value);
+  const from = localDateKey(days[0].date);
+  const lastDay = days[days.length - 1].date;
+  const to = localDateKey(new Date(lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate() + 1));
+  try {
+    const result = await apiGetTaskCalendar({ from, to, layers: "holiday", lunar: 1 });
+    if (request !== quickCalendarMetaRequest.value) return;
+    quickCalendarMeta.value = {
+      holidays: Object.fromEntries((result?.holidays || []).map(item => [item.date, { off: Boolean(item.off), name: item.name }])),
+      lunar: new Map((result?.lunar || []).map(item => {
+        const parsed = parseLunarLabel(item.lunarDate);
+        return parsed ? [item.date, { ...parsed, label: item.festival || item.solarTerm || lunarDayLabel(item.lunarDate) || "" }] : null;
+      }).filter(Boolean)),
+    };
+  } catch {
+    /* 月历元数据获取失败时保持现有数据，仅缺少节假日/农历高亮 */
+  }
+}
+watch(quickCalendarMonth, () => { void loadQuickCalendarMeta(); });
+const quickRepeatRuleActive = computed(() => buildQuickRepeatRule(quickRepeat));
+const quickRepeatMatchContext = computed(() => ({ holidays: quickCalendarMeta.value.holidays, lunar: quickCalendarMeta.value.lunar, anchor: quickRepeatAnchorDate.value }));
+const quickTodayKey = localDateKey(new Date());
+const quickDateTimeCalendarDays = computed(() => quickCalendarDays.value.map((day) => ({ ...day, otherMonth: !day.inMonth, selected: isQuickDateSelected(day.key), today: day.key === quickTodayKey, lunar: quickCalendarMeta.value.lunar.get(day.key)?.label || "", repeat: Boolean(quickRepeatRuleActive.value) && day.key >= quickTodayKey && quickRepeatMatchesDate(quickRepeat, day.date, quickRepeatMatchContext.value) })));
 const quickRepeatCalendarDays = computed(() => {
   const dueDate = quickEntry.dueAt ? new Date(quickEntry.dueAt) : new Date();
   const year = dueDate.getFullYear();
@@ -1470,8 +1568,39 @@ const detailRepeatCalendarDays = computed(() => {
 });
 const quickCalendarTitle = computed(() => new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long" }).format(quickCalendarMonth.value));
 const quickReminderOptions = computed(() => getQuickReminderOptions(quickEntry.allDay));
-const quickReminderLabel = computed(() => quickAddReminder.presets.map(value => quickReminderOptions.value.find(option => option.value === value)?.label || "自定义").join("、") || "提醒");
-const quickReminderOptionsForDraft = computed(() => (quickDraftReminder.value?.presets || []).map(value => getQuickReminderOptions(quickDraftAllDay.value).find(option => option.value === value)?.label || "自定义"));
+const quickReminderTime = computed(() => quickAddReminder.time || QUICK_ALL_DAY_REMINDER_TIME);
+const quickReminderUnitText = { MINUTE: "分钟", HOUR: "小时", DAY: "天", WEEK: "周" };
+const quickReminderSummary = computed(() => quickAddReminder.presets.map(value => value === "CUSTOM" ? `自定义 ${Math.max(1, Number(quickAddReminder.amount) || 1)} ${quickReminderUnitText[quickAddReminder.unit] || ""}` : quickReminderPresetLabel(value, quickEntry.allDay, quickReminderTime.value)).join("、"));
+const quickReminderMenuOptions = computed(() => quickReminderOptions.value.map(option => ({ ...option, label: quickEntry.allDay && option.value !== "CUSTOM" ? `${option.label} (${quickReminderTime.value})` : option.label })));
+const QUICK_ALL_DAY_REMINDER_VALID = ["TODAY", "1_DAY", "2_DAY", "3_DAY", "1_WEEK"];
+const quickReminderRecentOptions = computed(() => {
+  const valid = value => {
+    if (/^CUSTOM:(\d+):(MINUTE|HOUR|DAY|WEEK)$/.test(value)) return quickEntry.allDay ? !value.endsWith(":MINUTE") && !value.endsWith(":HOUR") : true;
+    return quickEntry.allDay ? QUICK_ALL_DAY_REMINDER_VALID.includes(value) : ["ON_TIME", "5_MIN", "30_MIN", "1_HOUR", "1_DAY"].includes(value);
+  };
+  return quickReminderRecent.value
+    .filter(value => value !== "CUSTOM" && valid(value) && !quickReminderOptions.value.some(option => option.value === value))
+    .map(value => ({ value, label: quickReminderPresetLabel(value, quickEntry.allDay, quickReminderTime.value) }));
+});
+const quickReminderCustomPreview = computed(() => {
+  const key = quickSelectedDate.value || (quickEntry.dueAt ? localDateKey(new Date(quickEntry.dueAt)) : localDateKey(new Date()));
+  if (!key) return "";
+  const base = quickEntry.allDay
+    ? new Date(`${key}T00:00:00`)
+    : new Date(`${key}T${quickDateTime.value || "09:00"}`);
+  if (Number.isNaN(base.getTime())) return "";
+  const amount = Math.max(1, Number(quickAddReminder.amount) || 1);
+  if (quickEntry.allDay) {
+    base.setDate(base.getDate() - amount * (quickAddReminder.unit === "WEEK" ? 7 : 1));
+    const [hours, minutes] = String(quickReminderTime.value).split(":").map(Number);
+    base.setHours(hours || 0, minutes || 0, 0, 0);
+  } else {
+    const offset = amount * ({ MINUTE: 1, HOUR: 60, DAY: 1440, WEEK: 10080 }[quickAddReminder.unit] || 1);
+    base.setMinutes(base.getMinutes() - offset);
+  }
+  return `将于 ${new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(base)} 提醒`;
+});
+const quickReminderOptionsForDraft = computed(() => (quickDraftReminder.value?.presets || []).map(value => quickReminderPresetLabel(value, quickDraftAllDay.value, quickDraftReminder.value?.time || QUICK_ALL_DAY_REMINDER_TIME)));
 const quickDateContext = computed(() => {
   if (route.name === "tasks-today") return calendarDate.value || new Date();
   if (route.name === "tasks-tomorrow") return addDays(new Date(), 1);
@@ -1479,14 +1608,31 @@ const quickDateContext = computed(() => {
 });
 const quickSelectedList = computed(() => store.lists.find(item => item.publicId === quickEntry.listId) || null);
 const quickListSummary = computed(() => quickSelectedList.value ? (quickSelectedList.value.systemKey === "INBOX" ? "收集箱" : quickSelectedList.value.name) : "清单");
-const boardQuickSelectedList = computed(() => store.lists.find(item => item.publicId === boardQuickAddListId.value) || null);
-const boardQuickListSummary = computed(() => boardQuickSelectedList.value ? (boardQuickSelectedList.value.systemKey === "INBOX" ? "收集箱" : boardQuickSelectedList.value.name) : "清单");
+const quickListMenuGroups = computed(() => {
+  const query = quickListQuery.value.trim().toLowerCase();
+  return sortedListGroups.value.filter(group => {
+    const children = store.lists.filter(list => list.groupId === group.publicId && !list.archived);
+    return children.length > 0 && (!query || group.name.toLowerCase().includes(query) || children.some(list => list.name.toLowerCase().includes(query)));
+  });
+});
+function quickListMenuListsInGroup(groupId) {
+  const query = quickListQuery.value.trim().toLowerCase();
+  return store.lists.filter(list => list.groupId === groupId && !list.archived && list.publicId !== store.inbox?.publicId && (!query || list.name.toLowerCase().includes(query)));
+}
+const quickListMenuUngrouped = computed(() => {
+  const query = quickListQuery.value.trim().toLowerCase();
+  return store.lists.filter(list => !list.archived && !list.groupId && list.publicId !== store.inbox?.publicId && (!query || list.name.toLowerCase().includes(query)));
+});
+const quickTagsDraftTags = computed(() => quickTagsDraft.value.map(id => store.tags.find(tag => tag.publicId === id)).filter(Boolean));
+const quickTagsMenuOptions = computed(() => {
+  const query = quickTagsQuery.value.trim().toLowerCase();
+  return store.tags.filter(tag => !query || tag.name.toLowerCase().includes(query));
+});
 const quickDateSummary = computed(() => {
   if (quickEntry.dueAt) return quickEntry.startAt ? `${quickDateLabel(quickEntry.startAt, false)} - ${quickDateLabel(quickEntry.dueAt, quickEntry.allDay)}` : quickDateLabel(quickEntry.dueAt, quickEntry.allDay);
   if (quickDateContext.value) return quickDateLabel(quickDateContext.value, true);
   return quickEntry.dateSelected ? "日期" : quickAddSettings.value.defaultDueDate === "TODAY" ? "今天" : "日期";
 });
-const boardQuickDateSummary = computed(() => boardQuickAddDue.value ? quickDateLabel(boardQuickAddDue.value, boardQuickAddAllDay.value) : "日期");
 const checklistDragIndex = ref(null);
 const checklistDropTarget = ref(null);
 const sidebarHidden = ref(false);
@@ -1822,23 +1968,6 @@ const quickSuggestionOptions = computed(() => {
   if (current.kind === "priority") return priorityOptions.map(item => ({ id: item.value, label: item.label, value: item.value })).filter(matches);
   if (current.kind === "tag") return store.tags.map(item => ({ id: item.publicId, label: item.name, value: item.publicId, icon: item.icon })).filter(matches);
   return store.lists.filter(item => !item.archived).map(item => ({ id: item.publicId, label: item.name, value: item.publicId, icon: item.icon, meta: item.objectType === "NOTE" ? "笔记" : "清单" })).filter(matches);
-});
-const boardQuickAddLists = computed(() => {
-  const seen = new Set();
-  const available = store.lists.filter((list) => {
-    if (!list.publicId || seen.has(list.publicId) || list.archived || list.objectType === "NOTE") return false;
-    seen.add(list.publicId);
-    return true;
-  });
-  const names = new Map();
-  for (const list of available) {
-    const label = list.systemKey === "INBOX" ? "收集箱" : list.name;
-    names.set(label, (names.get(label) || 0) + 1);
-  }
-  return available.map((list) => {
-    const label = list.systemKey === "INBOX" ? "收集箱" : list.name;
-    return { ...list, label: names.get(label) > 1 && list.systemKey !== "INBOX" ? `${label}（清单）` : label };
-  });
 });
 const groupOptions = [
   { value: "list", label: "清单" },
@@ -2456,8 +2585,7 @@ function quickDefaultListId() {
 function quickDefaultTaskFields(dateOverride = null) {
   const contextDate = dateOverride || quickDateContext.value || (quickAddSettings.value.defaultDueDate === "TODAY" ? new Date() : null);
   if (!contextDate) return { dueAt: "", allDay: false };
-  const time = configuredQuickTime();
-  return { dueAt: `${localDateKey(contextDate)}T${time || "00:00"}`, allDay: !time };
+  return { dueAt: `${localDateKey(contextDate)}T00:00`, allDay: true };
 }
 
 function applyQuickAddDefaults() {
@@ -2474,38 +2602,40 @@ function applyQuickAddDefaults() {
     tagIds: [],
   });
   quickSelectedDate.value = defaults.dueAt ? defaults.dueAt.slice(0, 10) : "";
-  quickDateTime.value = defaults.allDay ? "" : configuredQuickTime();
+  quickDateTime.value = "";
 }
 
 function openBoardQuickAdd(group) {
+  quickAddExpanded.value = false;
+  quickAction.value = "";
+  quickFlyoutAnchor.value = null;
   boardQuickAddGroup.value = group;
   boardQuickAddTitle.value = "";
-  const defaults = quickDefaultTaskFields();
-  boardQuickAddListId.value = quickDefaultListId();
-  boardQuickAddDue.value = defaults.dueAt;
-  boardQuickAddAllDay.value = defaults.allDay;
-  boardQuickAddPriority.value = "NONE";
-  boardQuickAddTagIds.value = [];
-  boardQuickAddAttachments.value = [];
-  boardQuickAddDescription.value = "";
-  boardQuickAddRrule.value = "";
-  boardQuickAddPanel.value = "";
-  boardQuickAddError.value = "";
+  applyQuickAddDefaults();
+  Object.assign(quickAddReminder, { enabled: false, presets: [], amount: 1, unit: "DAY", time: "09:00", dailyUntilDone: false });
+  Object.assign(quickRepeat, createQuickRepeatState());
+  quickRepeatError.value = "";
+  quickRangeStart.value = "";
+  quickRangeEnd.value = "";
   if (groupBy.value === "list" && String(group.key).startsWith("list:")) {
     const listId = String(group.key).slice("list:".length);
-    boardQuickAddListId.value = listId === "no-list" ? store.inbox?.publicId || "" : listId;
+    quickEntry.listId = listId === "no-list" ? store.inbox?.publicId || "" : listId;
+    quickEntry.listSelected = true;
   } else if (groupBy.value === "priority") {
-    boardQuickAddPriority.value = String(group.key).slice("priority:".length) || "NONE";
+    quickEntry.priority = String(group.key).slice("priority:".length) || "NONE";
+    quickEntry.prioritySelected = true;
   } else if (groupBy.value === "tag") {
     const tagId = String(group.key).slice("tag:".length);
-    if (tagId && tagId !== "no-tag") boardQuickAddTagIds.value = [tagId];
+    if (tagId && tagId !== "no-tag") quickEntry.tagIds = [tagId];
   } else if (groupBy.value === "time") {
     const dayOffset = { overdue: -1, today: 0, later: 1 }[group.key];
     if (dayOffset !== undefined) {
       const groupDate = addDays(new Date(), dayOffset);
       const groupDefaults = quickDefaultTaskFields(groupDate);
-      boardQuickAddDue.value = groupDefaults.dueAt;
-      boardQuickAddAllDay.value = groupDefaults.allDay;
+      quickEntry.dueAt = groupDefaults.dueAt;
+      quickEntry.allDay = groupDefaults.allDay;
+      quickEntry.dateSelected = Boolean(groupDefaults.dueAt);
+      quickSelectedDate.value = groupDefaults.dueAt ? groupDefaults.dueAt.slice(0, 10) : "";
     }
   }
   boardQuickAddOpen.value = true;
@@ -2515,15 +2645,12 @@ function openBoardQuickAdd(group) {
   });
 }
 
-function toggleBoardQuickPanel(panel) {
-  boardQuickAddPanel.value = boardQuickAddPanel.value === panel ? "" : panel;
-}
-
 function closeBoardQuickAdd() {
   boardQuickAddOpen.value = false;
-  boardQuickAddPanel.value = "";
   boardQuickAddError.value = "";
   boardQuickAddAttachments.value = [];
+  quickFlyoutAnchor.value = null;
+  cancelQuickDraft();
 }
 
 function openBoardAttachmentPicker() {
@@ -2538,7 +2665,7 @@ function selectBoardQuickAttachments(event) {
 }
 
 function closeBoardQuickAddOnOutsidePointer(event) {
-  if (boardQuickAddOpen.value && !event.target.closest?.(".clone-board-quick-inline, .clone-inline-board-column-head")) closeBoardQuickAdd();
+  if (boardQuickAddOpen.value && !event.target.closest?.(".clone-board-quick-inline, .clone-inline-board-column-head, .clone-quick-action-panel, .clone-quick-flyout")) closeBoardQuickAdd();
 }
 
 async function saveBoardQuickAdd() {
@@ -2547,20 +2674,24 @@ async function saveBoardQuickAdd() {
   boardQuickAddSaving.value = true;
   boardQuickAddError.value = "";
   try {
+    const dueAt = quickEntry.dueAt ? new Date(quickEntry.dueAt).toISOString() : "";
+    const reminderConfig = { ...quickAddReminder, presets: [...quickAddReminder.presets] };
+    const reminderPayloads = quickReminderPayloads({ dueAt, allDay: quickEntry.allDay, config: reminderConfig });
+    if (quickAddReminder.enabled && !dueAt) throw new Error("提醒需要先设置任务日期");
     const saved = await store.create({
       title: titleText,
-      description: boardQuickAddDescription.value.trim(),
-      listId: boardQuickAddListId.value || store.inbox?.publicId || "",
-      priority: boardQuickAddPriority.value,
-      dueAt: boardQuickAddDue.value ? new Date(boardQuickAddDue.value).toISOString() : "",
-      allDay: boardQuickAddAllDay.value,
-      tagIds: [...boardQuickAddTagIds.value],
-      rrule: boardQuickAddRrule.value,
+      listId: quickEntry.listId || store.inbox?.publicId || "",
+      priority: quickEntry.prioritySelected ? quickEntry.priority : "NONE",
+      dueAt,
+      allDay: quickEntry.allDay,
+      tagIds: [...quickEntry.tagIds],
+      rrule: buildQuickRepeatRule(quickRepeat) || "",
     });
     if (saved?.publicId && boardQuickAddAttachments.value.length) {
       const result = await uploadQuickAttachments(saved.publicId, boardQuickAddAttachments.value, apiUploadTaskAttachment);
       if (result.error) message.warning("任务已添加，但部分附件上传失败");
     }
+    for (const reminderPayload of reminderPayloads) await apiCreateTaskReminder(saved.publicId, reminderPayload);
     closeBoardQuickAdd();
     message.success("任务已添加");
   } catch (error) {
@@ -2875,7 +3006,8 @@ function syncDetailRepeatFromRule(rule = "", anchor = "DUE_DATE") {
     }
     detailRepeat.month = Number(parts.BYMONTH) || 1;
     detailRepeat.lastDay = Number(parts.BYMONTHDAY) === -1;
-    detailRepeat.monthDay = Number(parts.BYMONTHDAY) || 1;
+    const byMonthDays = String(parts.BYMONTHDAY || "").split(",").map(Number).filter(value => Number.isFinite(value) && value >= 1 && value <= 31);
+    detailRepeat.monthDays = byMonthDays.length ? byMonthDays : [1];
     if (detailRepeat.frequency === "DAILY" && byDays.join(",") === "MO,TU,WE,TH,FR") detailRepeat.skipWeekends = true;
     detailRepeat.endMode = parts.COUNT ? "COUNT" : parts.UNTIL ? "UNTIL" : "NEVER";
     detailRepeat.count = Number(parts.COUNT) || 10;
@@ -4047,27 +4179,117 @@ function toLocal(value) {
   const date = new Date(value);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
-function toggleQuickAction(action) {
+function toggleQuickAction(action, anchorEl = null) {
+  quickFlyoutAnchor.value = anchorEl;
   const nextAction = quickAction.value === action ? "" : action;
   quickAction.value = nextAction;
-  if (nextAction !== "date") return;
-  const selected = quickEntry.dueAt ? new Date(quickEntry.dueAt) : new Date();
-  quickSelectedDate.value = quickEntry.dueAt ? localDateKey(selected)
-    : quickEntry.dateSelected ? "" : quickDateContext.value ? localDateKey(quickDateContext.value) : quickAddSettings.value.defaultDueDate === "TODAY" ? localDateKey(selected) : "";
-  quickCalendarMonth.value = new Date(selected.getFullYear(), selected.getMonth(), 1);
-  quickDateTime.value = quickEntry.dueAt && !quickEntry.allDay ? toLocal(quickEntry.dueAt).slice(11, 16) : configuredQuickTime();
-  quickRangeStart.value = quickEntry.startAt ? localDateKey(new Date(quickEntry.startAt)) : "";
-  quickRangeEnd.value = quickEntry.startAt && quickEntry.dueAt ? localDateKey(new Date(quickEntry.dueAt)) : "";
-  if (quickEntry.startAt) {
-    quickDateMode.value = "RANGE";
-    quickRangeStartTime.value = toLocal(quickEntry.startAt).slice(11, 16);
-    quickRangeEndTime.value = toLocal(quickEntry.dueAt).slice(11, 16);
+  if (nextAction !== "date" && nextAction !== "repeat") {
+    stopQuickPanelObserver();
+    return;
   }
+  if (nextAction === "date") {
+    const selected = quickEntry.dueAt ? new Date(quickEntry.dueAt) : new Date();
+    quickSelectedDate.value = quickEntry.dueAt ? localDateKey(selected)
+      : quickEntry.dateSelected ? "" : quickDateContext.value ? localDateKey(quickDateContext.value) : quickAddSettings.value.defaultDueDate === "TODAY" ? localDateKey(selected) : "";
+    quickCalendarMonth.value = new Date(selected.getFullYear(), selected.getMonth(), 1);
+    quickDateTime.value = quickEntry.dueAt && !quickEntry.allDay ? toLocal(quickEntry.dueAt).slice(11, 16) : "";
+    quickRangeStart.value = quickEntry.startAt ? localDateKey(new Date(quickEntry.startAt)) : "";
+    quickRangeEnd.value = quickEntry.startAt && quickEntry.dueAt ? localDateKey(new Date(quickEntry.dueAt)) : "";
+    if (quickEntry.startAt) {
+      quickDateMode.value = "RANGE";
+      quickRangeStartTime.value = toLocal(quickEntry.startAt).slice(11, 16);
+      quickRangeEndTime.value = toLocal(quickEntry.dueAt).slice(11, 16);
+    }
+  }
+  nextTick(positionQuickPanel);
 }
 
 function openQuickAttachmentPicker() {
   quickAction.value = "";
   quickAttachmentInput.value?.click();
+}
+
+function selectQuickPriority(value) {
+  quickEntry.priority = value;
+  quickEntry.prioritySelected = true;
+  quickAction.value = "";
+}
+function selectQuickList(publicId) {
+  quickEntry.listId = publicId;
+  quickEntry.listSelected = true;
+  quickListQuery.value = "";
+  quickAction.value = "";
+}
+function toggleQuickTagsDraft(publicId) {
+  const list = quickTagsDraft.value;
+  const index = list.indexOf(publicId);
+  if (index >= 0) list.splice(index, 1);
+  else list.push(publicId);
+}
+function cancelQuickTags() {
+  quickTagsDraft.value = [];
+  quickTagsQuery.value = "";
+  quickAction.value = "";
+}
+function applyQuickTags() {
+  quickEntry.tagIds = [...quickTagsDraft.value];
+  quickTagsDraft.value = [];
+  quickTagsQuery.value = "";
+  quickAction.value = "";
+}
+let quickBarObserver = null;
+const quickFlyoutAnchor = ref(null);
+const quickDateToggleRef = ref(null);
+const quickPanelMenuRef = ref(null);
+const quickPanelStyle = ref({});
+let quickPanelObserver = null;
+function quickFlyoutToggleFallback(name) {
+  if (name === "priority") return quickPriorityToggleRef.value;
+  if (name === "list") return quickListToggleRef.value;
+  if (name === "more" || name === "tags") return quickMoreToggleRef.value;
+  return null;
+}
+function positionQuickPanel() {
+  quickPanelObserver?.disconnect();
+  quickPanelObserver = null;
+  const menu = quickPanelMenuRef.value;
+  if (!menu) return;
+  const toggle = quickFlyoutAnchor.value || quickDateToggleRef.value;
+  quickPanelStyle.value = quickFlyoutStyle(toggle, menu, 378);
+  quickPanelObserver = new ResizeObserver(() => {
+    quickPanelStyle.value = quickFlyoutStyle(quickFlyoutAnchor.value || quickDateToggleRef.value, quickPanelMenuRef.value, 378);
+  });
+  quickPanelObserver.observe(menu);
+}
+function stopQuickPanelObserver() {
+  quickPanelObserver?.disconnect();
+  quickPanelObserver = null;
+}
+function quickBarMenuRefs(name) {
+  const toggle = quickFlyoutAnchor.value || quickFlyoutToggleFallback(name);
+  if (name === "priority") return { toggle, menu: quickPriorityMenuRef.value, style: quickPriorityMenuStyle };
+  if (name === "list") return { toggle, menu: quickListMenuRef.value, style: quickListMenuStyle };
+  if (name === "more") return { toggle, menu: quickMoreMenuRef.value, style: quickMoreMenuStyle };
+  if (name === "tags") return { toggle, menu: quickTagsMenuRef.value, style: quickTagsMenuStyle };
+  return null;
+}
+function applyQuickBarPosition(name) {
+  const target = quickBarMenuRefs(name);
+  if (!target) return;
+  target.style.value = quickFlyoutStyle(target.toggle, target.menu, name === "list" ? 264 : name === "tags" ? 300 : 224);
+}
+function positionQuickBarFlyout(name) {
+  quickBarObserver?.disconnect();
+  quickBarObserver = null;
+  const menu = quickBarMenuRefs(name)?.menu;
+  if (!menu) return;
+  quickBarObserver = new ResizeObserver(() => applyQuickBarPosition(name));
+  quickBarObserver.observe(menu);
+  applyQuickBarPosition(name);
+}
+function stopQuickBarObserver() {
+  quickBarObserver?.disconnect();
+  quickBarObserver = null;
 }
 
 function updateQuickSuggestion(event) {
@@ -4104,10 +4326,6 @@ function selectQuickSuggestion(option) {
   quickSuggestion.value = null;
   nextTick(() => quickTitleInput.value?.focus());
 }
-function openQuickInputSettings() {
-  quickAction.value = "";
-  quickInputSettingsOpen.value = true;
-}
 function convertQuickAddToNote() {
   const noteList = noteLists.value[0];
   if (!noteList) return message.warning("请先创建笔记清单，再转换为笔记");
@@ -4130,10 +4348,15 @@ function applyQuickTaskTemplate(template) {
     description: template.description || "",
     checklist: template.checklist.map((title, sortOrder) => ({ title, completed: false, sortOrder })),
   };
-  quickTitle.value = template.templateName || template.title;
+  const titleText = template.templateName || template.title;
+  if (quickFlyoutAnchor.value) {
+    boardQuickAddTitle.value = titleText;
+  } else {
+    quickTitle.value = titleText;
+    quickAddExpanded.value = true;
+    nextTick(() => quickTitleInput.value?.focus());
+  }
   taskTemplatesOpen.value = false;
-  quickAddExpanded.value = true;
-  nextTick(() => quickTitleInput.value?.focus());
 }
 
 function selectQuickAttachments(event) {
@@ -4241,9 +4464,9 @@ function setQuickAllDay(allDay) {
   if (allDay) {
     quickAddReminder.unit = "DAY";
   }
-  if (quickAddReminder.enabled && quickAddReminder.presets.length) {
-    const hasCustom = quickAddReminder.presets.includes("CUSTOM");
-    quickAddReminder.presets = [allDay ? "TODAY" : "30_MIN", ...(hasCustom ? ["CUSTOM"] : [])];
+  if (quickAddReminder.presets.length) {
+    const portableCustoms = quickAddReminder.presets.filter(value => /^CUSTOM:\d+:(DAY|WEEK)$/.test(value));
+    quickAddReminder.presets = [allDay ? "TODAY" : "30_MIN", ...portableCustoms];
   }
 }
 
@@ -4256,6 +4479,8 @@ function selectQuickTime(time) {
   quickEntry.allDay = false;
   quickDateTime.value = time;
   applyQuickDateTime();
+  quickDateMenu.value = "";
+  stopQuickFlyoutObserver();
 }
 
 function clearQuickTime() {
@@ -4270,7 +4495,7 @@ function clearQuickTime() {
 
 function applyQuickDateTime() {
   const key = quickSelectedDate.value || (quickEntry.dueAt ? localDateKey(new Date(quickEntry.dueAt)) : localDateKey(new Date()));
-  const time = quickEntry.allDay ? "00:00" : quickDateTime.value || configuredQuickTime();
+  const time = quickEntry.allDay ? "00:00" : quickDateTime.value;
   if (!time) quickEntry.allDay = true;
   quickEntry.dueAt = `${key}T${time || "00:00"}`;
   quickEntry.dateSelected = true;
@@ -4282,15 +4507,15 @@ function defaultQuickTime() {
 
 function applyQuickDate() {
   if (quickDateMode.value === "RANGE") {
-    const rangeStart = `${quickRangeStart.value}T${quickRangeStartTime.value || "09:00"}`;
-    const rangeEnd = `${quickRangeEnd.value}T${quickRangeEndTime.value || "10:00"}`;
+    const rangeStart = `${quickRangeStart.value}T${quickEntry.allDay ? "00:00" : (quickRangeStartTime.value || "09:00")}`;
+    const rangeEnd = `${quickRangeEnd.value}T${quickEntry.allDay ? "00:00" : (quickRangeEndTime.value || "10:00")}`;
     if (!quickRangeStart.value || !quickRangeEnd.value || rangeEnd <= rangeStart) {
       quickParseError.value = "请选择有效的开始和结束日期";
       return;
     }
     quickEntry.startAt = rangeStart;
     quickEntry.dueAt = rangeEnd;
-    quickEntry.allDay = false;
+    if (!quickEntry.allDay) quickEntry.allDay = false;
   } else {
     if (!quickSelectedDate.value && !quickEntry.dueAt) {
       quickParseError.value = "请选择日期";
@@ -4315,10 +4540,15 @@ function setQuickRepeatFrequency(event) {
   if (quickRepeat.frequency === "YEARLY" && quickRepeat.monthMode === "WORKDAY") quickRepeat.monthMode = "DATE";
 }
 
-function resetQuickRepeat() {
-  Object.assign(quickRepeat, createQuickRepeatState());
+function cancelQuickRepeat() {
+  if (quickRepeatSnapshot.value) Object.assign(quickRepeat, quickRepeatSnapshot.value);
   quickRepeatError.value = "";
   quickAction.value = "";
+}
+
+function toggleQuickRepeatWeekday(day) {
+  const selected = quickRepeat.weekdays.includes(day) ? quickRepeat.weekdays.filter(item => item !== day) : [...quickRepeat.weekdays, day];
+  quickRepeat.weekdays = DAY_CODES.filter(code => selected.includes(code));
 }
 
 function clearQuickDate() {
@@ -4330,18 +4560,249 @@ function clearQuickDate() {
   quickAction.value = "";
 }
 
-function toggleQuickReminder() {
-  quickAddReminder.enabled = !quickAddReminder.enabled;
-  if (quickAddReminder.enabled && !quickAddReminder.presets.length) {
-    const minutes = quickAddSettings.value.defaultReminderMinutes;
-    const timedPreset = ({ 0: "ON_TIME", 5: "5_MIN", 30: "30_MIN", 60: "1_HOUR", 1440: "1_DAY" })[minutes];
-    const dayPreset = ({ 0: "TODAY", 1440: "1_DAY", 2880: "2_DAY", 4320: "3_DAY", 10080: "1_WEEK" })[minutes];
-    quickAddReminder.presets = [quickEntry.allDay ? dayPreset || "TODAY" : timedPreset || (minutes == null ? "30_MIN" : "CUSTOM")];
-    if (!quickEntry.allDay && !timedPreset && minutes != null) {
-      quickAddReminder.amount = Math.max(1, minutes);
-      quickAddReminder.unit = "MINUTE";
+const QUICK_WEEKDAY_TEXT = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+const QUICK_REPEAT_GROUPS = { WORKDAY: "group-workday", LEGAL_WORKDAY: "group-workday", WEEKEND: "group-holiday", LEGAL_HOLIDAY: "group-holiday", LUNAR_MONTHLY: "group-lunar", LUNAR_YEARLY: "group-lunar" };
+const QUICK_REMINDER_RECENT_KEY = "salary-sync.quickReminderRecent";
+const quickDateMenu = ref("");
+const quickTimeToggleRef = ref(null);
+const quickReminderToggleRef = ref(null);
+const quickReminderMenuRef = ref(null);
+const quickReminderMenuStyle = ref({});
+const quickRepeatToggleRef = ref(null);
+const quickRepeatMenuRef = ref(null);
+const quickRepeatMenuStyle = ref({});
+const quickEndToggleRef = ref(null);
+const quickEndMenuRef = ref(null);
+const quickEndMenuStyle = ref({});
+const quickRepeatGroupOpen = ref("");
+const quickRepeatSnapshot = ref(null);
+const quickEndPanel = ref("");
+const quickEndCountDraft = ref(10);
+const quickEndCalendarMonth = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+const quickReminderRecent = ref((() => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(QUICK_REMINDER_RECENT_KEY) || "[]");
+    return Array.isArray(raw) ? raw.filter(value => typeof value === "string") : [];
+  } catch {
+    return [];
+  }
+})());
+function rememberQuickReminderPreset(preset) {
+  if (!preset || preset === "CUSTOM") return;
+  quickReminderRecent.value = [preset, ...quickReminderRecent.value.filter(value => value !== preset)].slice(0, 5);
+  try { localStorage.setItem(QUICK_REMINDER_RECENT_KEY, JSON.stringify(quickReminderRecent.value)); } catch { /* 忽略存储失败 */ }
+}
+const quickShowEndRow = computed(() => Boolean(buildQuickRepeatRule(quickRepeat)));
+const quickEndLabel = computed(() => {
+  if (quickRepeat.endMode === "UNTIL" && quickRepeat.until) return `直到 ${quickRepeat.until}`;
+  if (quickRepeat.endMode === "COUNT") return `${Math.max(1, Number(quickRepeat.count) || 1)} 次重复`;
+  return "永不结束";
+});
+const quickEndCalendarTitle = computed(() => new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long" }).format(quickEndCalendarMonth.value));
+const quickEndCalendarDays = computed(() => calendarMonthDays(quickEndCalendarMonth.value).map(day => ({ ...day, selected: quickRepeat.endMode === "UNTIL" && quickRepeat.until === day.key })));
+const quickTimeOptions = computed(() => Array.from({ length: 48 }, (_, index) => `${String(Math.floor(index / 2)).padStart(2, "0")}:${index % 2 ? "30" : "00"}`));
+function quickFlyoutStyle(toggle, menu, minWidth = 224) {
+  if (!toggle || !menu) return {};
+  const rect = toggle.getBoundingClientRect();
+  const menuHeight = Math.min(menu.scrollHeight || 240, 320);
+  const popover = toggle.closest(".task-date-time-popover");
+  const popRect = popover?.getBoundingClientRect();
+  const menuWidth = Math.max(rect.width, minWidth);
+  const spaceRight = popRect ? window.innerWidth - popRect.right - 12 : 0;
+  if (popRect && spaceRight >= menuWidth + 8) {
+    const top = Math.max(12, Math.min(rect.top - 6, window.innerHeight - menuHeight - 12));
+    return { position: "fixed", top: `${top}px`, left: `${popRect.right + 8}px`, width: `${menuWidth}px` };
+  }
+  const spaceBelow = window.innerHeight - rect.bottom - 12;
+  const top = spaceBelow >= menuHeight ? rect.bottom + 4 : Math.max(12, rect.top - Math.min(menuHeight, spaceBelow) - 4);
+  return { position: "fixed", top: `${Math.max(12, Math.min(top, window.innerHeight - menuHeight - 12))}px`, left: `${rect.left}px`, width: `${menuWidth}px` };
+}
+let quickFlyoutObserver = null;
+function quickFlyoutToggleFor(menu) {
+  if (quickFlyoutAnchor.value) return quickFlyoutAnchor.value;
+  if (menu === "reminder") return quickReminderToggleRef.value;
+  if (menu === "repeat") return quickRepeatToggleRef.value;
+  if (menu === "end") return quickEndToggleRef.value;
+  return null;
+}
+function quickFlyoutMenuFor(menu) {
+  if (menu === "reminder") return quickReminderMenuRef.value;
+  if (menu === "repeat") return quickRepeatMenuRef.value;
+  if (menu === "end") return quickEndMenuRef.value;
+  return null;
+}
+function applyQuickFlyoutPosition(menu) {
+  const style = quickFlyoutStyle(quickFlyoutToggleFor(menu), quickFlyoutMenuFor(menu));
+  if (menu === "reminder") quickReminderMenuStyle.value = style;
+  else if (menu === "repeat") quickRepeatMenuStyle.value = style;
+  else if (menu === "end") quickEndMenuStyle.value = style;
+}
+function positionQuickDateMenu(menu) {
+  quickFlyoutObserver?.disconnect();
+  quickFlyoutObserver = null;
+  const target = quickFlyoutMenuFor(menu);
+  if (!target) return;
+  quickFlyoutObserver = new ResizeObserver(() => applyQuickFlyoutPosition(menu));
+  quickFlyoutObserver.observe(target);
+  applyQuickFlyoutPosition(menu);
+}
+function stopQuickFlyoutObserver() {
+  quickFlyoutObserver?.disconnect();
+  quickFlyoutObserver = null;
+}
+function toggleQuickDateMenu(menu) {
+  quickDateMenu.value = quickDateMenu.value === menu ? "" : menu;
+  if (!quickDateMenu.value) {
+    stopQuickFlyoutObserver();
+    return;
+  }
+  quickEndPanel.value = "";
+  if (menu === "reminder" && !quickAddReminder.presets.length) applyQuickReminderDefaults();
+  if (menu === "repeat") quickRepeatGroupOpen.value = QUICK_REPEAT_GROUPS[quickRepeat.preset] || "";
+  if (menu === "end") {
+    const anchor = quickRepeat.until ? new Date(`${quickRepeat.until}T00:00:00`) : quickRepeatAnchorDate.value;
+    quickEndCalendarMonth.value = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+    quickEndCountDraft.value = Math.max(1, Number(quickRepeat.count) || 10);
+  }
+  nextTick(() => positionQuickDateMenu(menu));
+}
+watch(quickAction, (value) => {
+  quickDateMenu.value = "";
+  quickEndPanel.value = "";
+  stopQuickFlyoutObserver();
+  if (["priority", "list", "more", "tags"].includes(value)) {
+    if (value === "tags") quickTagsDraft.value = [...quickEntry.tagIds];
+    nextTick(() => positionQuickBarFlyout(value));
+  } else {
+    stopQuickBarObserver();
+  }
+  if (!["date", "repeat"].includes(value)) stopQuickPanelObserver();
+  if (value === "repeat") {
+    quickRepeatSnapshot.value = JSON.parse(JSON.stringify(quickRepeat));
+    if (!["CUSTOM", "LUNAR_MONTHLY", "LUNAR_YEARLY"].includes(quickRepeat.preset)) quickRepeat.preset = "CUSTOM";
+  }
+});
+function toggleQuickRepeatGroup(key) {
+  quickRepeatGroupOpen.value = quickRepeatGroupOpen.value === key ? "" : key;
+}
+const quickRepeatAnchorDate = computed(() => {
+  const key = quickSelectedDate.value || (quickEntry.dueAt ? localDateKey(new Date(quickEntry.dueAt)) : "");
+  const parsed = key ? new Date(`${key}T00:00:00`) : new Date();
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+});
+const quickRepeatMenuOptions = computed(() => {
+  const preset = quickRepeat.preset;
+  const date = quickRepeatAnchorDate.value;
+  const weekdayText = QUICK_WEEKDAY_TEXT[date.getDay()];
+  const monthDay = date.getDate();
+  const month = date.getMonth() + 1;
+  return [
+    { key: "none", label: "不重复", kind: "preset", value: "", active: !preset },
+    { key: "DAILY", label: "每天", kind: "preset", value: "DAILY", active: preset === "DAILY" },
+    { key: "WEEKLY", label: `每周（${weekdayText}）`, kind: "preset", value: "WEEKLY", active: preset === "WEEKLY" },
+    { key: "MONTHLY", label: `每月（${monthDay}日）`, kind: "preset", value: "MONTHLY", active: preset === "MONTHLY" },
+    { key: "YEARLY", label: `每年（${month}月${monthDay}日）`, kind: "preset", value: "YEARLY", active: preset === "YEARLY" },
+    { key: "group-workday", label: "工作日", isGroup: true },
+    { key: "WORKDAY", label: "每周工作日（周一至五）", kind: "preset", value: "WORKDAY", active: preset === "WORKDAY", child: true, groupKey: "group-workday" },
+    { key: "LEGAL_WORKDAY", label: "法定工作日", kind: "preset", value: "LEGAL_WORKDAY", active: preset === "LEGAL_WORKDAY", child: true, groupKey: "group-workday" },
+    { key: "group-holiday", label: "节假日", isGroup: true },
+    { key: "WEEKEND", label: "每周末", kind: "preset", value: "WEEKEND", active: preset === "WEEKEND", child: true, groupKey: "group-holiday" },
+    { key: "LEGAL_HOLIDAY", label: "法定节假日", kind: "preset", value: "LEGAL_HOLIDAY", active: preset === "LEGAL_HOLIDAY", child: true, groupKey: "group-holiday" },
+    { key: "group-lunar", label: "农历重复", isGroup: true },
+    { key: "LUNAR_MONTHLY", label: `农历每月（${monthDay}日）`, kind: "preset", value: "LUNAR_MONTHLY", active: preset === "LUNAR_MONTHLY", child: true, groupKey: "group-lunar" },
+    { key: "LUNAR_YEARLY", label: `农历每年（${month}月${monthDay}日）`, kind: "preset", value: "LUNAR_YEARLY", active: preset === "LUNAR_YEARLY", child: true, groupKey: "group-lunar" },
+    { key: "separator-2", separator: true },
+    { key: "CUSTOM", label: "自定义", kind: "custom", active: preset === "CUSTOM" },
+  ];
+});
+function onQuickRepeatMenuSelect(option) {
+  if (!option || option.separator || option.isGroup) return;
+  if (option.kind === "custom") {
+    quickDateMenu.value = "";
+    if (!["CUSTOM", "LUNAR_MONTHLY", "LUNAR_YEARLY"].includes(quickRepeat.preset)) quickRepeat.preset = "CUSTOM";
+    quickAction.value = "repeat";
+    nextTick(positionQuickPanel);
+    return;
+  }
+  const value = option.value;
+  if (!value) {
+    Object.assign(quickRepeat, createQuickRepeatState());
+  } else {
+    quickRepeat.preset = value;
+    const anchor = quickRepeatAnchorDate.value;
+    if (value === "WEEKLY") quickRepeat.weekdays = [DAY_CODES[(anchor.getDay() + 6) % 7]];
+    if (value === "MONTHLY") {
+      quickRepeat.monthMode = "DATE";
+      quickRepeat.monthDays = [anchor.getDate()];
+      quickRepeat.lastDay = false;
+    }
+    if (value === "YEARLY") {
+      quickRepeat.monthMode = "DATE";
+      quickRepeat.month = anchor.getMonth() + 1;
+      quickRepeat.monthDays = [anchor.getDate()];
+      quickRepeat.lastDay = false;
+    }
+    if (value === "LUNAR_MONTHLY") quickRepeat.lunarDay = Math.min(30, anchor.getDate());
+    if (value === "LUNAR_YEARLY") {
+      quickRepeat.lunarMonth = Math.min(12, anchor.getMonth() + 1);
+      quickRepeat.lunarDay = Math.min(30, anchor.getDate());
     }
   }
+  quickRepeatError.value = "";
+  quickDateMenu.value = "";
+}
+function toggleQuickRepeatMonthDay(day) {
+  const selected = quickRepeat.monthDays.includes(day) ? quickRepeat.monthDays.filter(value => value !== day) : [...quickRepeat.monthDays, day];
+  quickRepeat.monthDays = selected.sort((a, b) => a - b);
+  quickRepeat.lastDay = false;
+}
+function toggleDetailRepeatMonthDay(day) {
+  const selected = detailRepeat.monthDays.includes(day) ? detailRepeat.monthDays.filter(value => value !== day) : [...detailRepeat.monthDays, day];
+  detailRepeat.monthDays = selected.sort((a, b) => a - b);
+  detailRepeat.lastDay = false;
+}
+function selectQuickEndMode(mode) {
+  quickRepeat.endMode = mode;
+  if (mode === "NEVER") quickRepeat.until = "";
+  quickEndPanel.value = "";
+  quickDateMenu.value = "";
+}
+function toggleQuickEndPanel(panel) {
+  quickEndPanel.value = quickEndPanel.value === panel ? "" : panel;
+}
+function moveQuickEndMonth(offset) {
+  quickEndCalendarMonth.value = new Date(quickEndCalendarMonth.value.getFullYear(), quickEndCalendarMonth.value.getMonth() + offset, 1);
+}
+function pickQuickEndDate(key) {
+  quickRepeat.endMode = "UNTIL";
+  quickRepeat.until = key;
+  quickEndPanel.value = "";
+  quickDateMenu.value = "";
+}
+function applyQuickEndCount() {
+  const count = Number(quickEndCountDraft.value);
+  if (!Number.isInteger(count) || count < 1) return;
+  quickRepeat.endMode = "COUNT";
+  quickRepeat.count = count;
+  quickEndPanel.value = "";
+  quickDateMenu.value = "";
+}
+function cancelQuickEndCount() {
+  quickEndCountDraft.value = Math.max(1, Number(quickRepeat.count) || 10);
+  quickEndPanel.value = "";
+}
+
+function applyQuickReminderDefaults() {
+  const minutes = quickAddSettings.value.defaultReminderMinutes;
+  const timedPreset = ({ 0: "ON_TIME", 5: "5_MIN", 30: "30_MIN", 60: "1_HOUR", 1440: "1_DAY" })[minutes];
+  const dayPreset = ({ 0: "TODAY", 1440: "1_DAY", 2880: "2_DAY", 4320: "3_DAY", 10080: "1_WEEK" })[minutes];
+  quickAddReminder.enabled = true;
+  quickAddReminder.presets = [quickEntry.allDay ? dayPreset || "TODAY" : timedPreset || "30_MIN"];
+  if (!quickEntry.allDay && !timedPreset && minutes != null) {
+    quickAddReminder.amount = Math.max(1, minutes);
+    quickAddReminder.unit = "MINUTE";
+  }
+  rememberQuickReminderPreset(quickAddReminder.presets[0]);
 }
 
 function selectQuickReminder(preset) {
@@ -4349,11 +4810,32 @@ function selectQuickReminder(preset) {
   quickAddReminder.presets = selected
     ? quickAddReminder.presets.filter(value => value !== preset)
     : [...quickAddReminder.presets, preset];
-  if (!quickAddReminder.presets.length) quickAddReminder.enabled = false;
-  if (preset === "CUSTOM") {
+  quickAddReminder.enabled = quickAddReminder.presets.length > 0;
+  if (!selected) rememberQuickReminderPreset(preset);
+  if (preset === "CUSTOM" && !selected) {
     quickAddReminder.amount = 1;
     quickAddReminder.unit = quickEntry.allDay ? "DAY" : "MINUTE";
   }
+}
+
+function applyQuickReminderCustom() {
+  const amount = Math.max(1, Math.round(Number(quickAddReminder.amount) || 1));
+  quickAddReminder.amount = amount;
+  const encoded = `CUSTOM:${amount}:${quickAddReminder.unit}`;
+  quickAddReminder.presets = quickAddReminder.presets.map(value => value === "CUSTOM" ? encoded : value);
+  if (!quickAddReminder.presets.includes(encoded)) quickAddReminder.presets = [...quickAddReminder.presets, encoded];
+  quickAddReminder.enabled = true;
+  rememberQuickReminderPreset(encoded);
+}
+
+function cancelQuickReminderCustom() {
+  quickAddReminder.presets = quickAddReminder.presets.filter(value => value !== "CUSTOM");
+  quickAddReminder.enabled = quickAddReminder.presets.length > 0;
+}
+
+function clearQuickReminders() {
+  quickAddReminder.enabled = false;
+  quickAddReminder.presets = [];
 }
 async function quickAdd() {
   const text = quickTitle.value.trim();
@@ -5765,7 +6247,13 @@ function onKeydown(event) {
   }
 }
 function closeQuickAction(event) {
-  if (quickAction.value && !event.target.closest?.(".clone-quick-add, .clone-quick-action-panel")) quickAction.value = "";
+  if (quickAction.value && !event.target.closest?.(".clone-quick-add, .clone-quick-action-panel, .clone-quick-flyout")) quickAction.value = "";
+}
+function closeQuickDateMenuOnOutsidePointer(event) {
+  if (!quickDateMenu.value) return;
+  if (event.target.closest?.(".clone-quick-flyout, .clone-date-prop-trigger, .clone-date-prop-clear, .clone-date-time-list")) return;
+  quickDateMenu.value = "";
+  stopQuickFlyoutObserver();
 }
 watch(
   () => route.fullPath,
@@ -5814,6 +6302,7 @@ onMounted(() => {
   document.addEventListener("pointerdown", closeContext);
   document.addEventListener("pointerdown", closeDetailMoreOnOutsidePointer);
   document.addEventListener("pointerdown", closeQuickAction);
+  document.addEventListener("pointerdown", closeQuickDateMenuOnOutsidePointer);
   document.addEventListener("pointerdown", closeBoardQuickAddOnOutsidePointer);
   document.addEventListener("pointerdown", closeWorkspaceMenusOnOutsidePointer);
   document.addEventListener("pointerdown", closeCompletionFilterOnOutsidePointer);
@@ -5831,9 +6320,13 @@ watch(() => store.online, online => {
 onBeforeUnmount(() => {
   stopDetailResize();
   stopSidebarResize();
+  stopQuickFlyoutObserver();
+  stopQuickBarObserver();
+  stopQuickPanelObserver();
   document.removeEventListener("pointerdown", closeContext);
   document.removeEventListener("pointerdown", closeDetailMoreOnOutsidePointer);
   document.removeEventListener("pointerdown", closeQuickAction);
+  document.removeEventListener("pointerdown", closeQuickDateMenuOnOutsidePointer);
   document.removeEventListener("pointerdown", closeBoardQuickAddOnOutsidePointer);
   document.removeEventListener("pointerdown", closeWorkspaceMenusOnOutsidePointer);
   document.removeEventListener("pointerdown", closeCompletionFilterOnOutsidePointer);
@@ -6412,7 +6905,7 @@ const SidebarSection = {
   gap: 10px;
   width: 100%;
   margin: 16px 0 12px;
-  padding: 0 14px;
+  padding: 8px 14px;
   min-height: 46px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -6427,8 +6920,7 @@ const SidebarSection = {
 .clone-quick-add-collapsed:hover { color: var(--ink2); background: color-mix(in srgb, var(--ink) 3%, transparent); }
 .clone-quick-add-collapsed svg { flex: none; }
 .clone-quick-add.is-simple form .clone-quick-action:not([aria-label="快速设置日期和提醒"]),
-.clone-quick-add.is-simple form .clone-quick-icon-action,
-.clone-quick-add.is-simple form kbd { display: none; }
+.clone-quick-add.is-simple form .clone-quick-icon-action { display: none; }
 .clone-quick-add.is-simple form .clone-quick-action[aria-label="快速设置日期和提醒"] span { display: none; }
 .clone-quick-suggestions { position: absolute; z-index: 90; top: calc(100% + 5px); left: 28px; display: grid; gap: 2px; width: min(300px, calc(100vw - 64px)); max-height: min(320px, 48vh); overflow: auto; padding: 5px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); box-shadow: 0 8px 24px rgba(20, 27, 38, .18); }
 .clone-quick-suggestions button { display: flex; align-items: center; gap: 9px; min-width: 0; min-height: 36px; padding: 0 9px; border: 0; border-radius: 5px; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
@@ -6440,18 +6932,11 @@ const SidebarSection = {
 .clone-modal-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(0, 0, 0, .42); }
 .clone-display-settings { display: grid; gap: 14px; width: min(430px, 100%); padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); box-shadow: 0 16px 48px rgba(0, 0, 0, .22); }
 .clone-display-settings > header { display: flex; align-items: center; justify-content: space-between; }
-.clone-quick-input-settings { width: min(860px, 100%); }
 .clone-display-settings h2 { margin: 0; font-size: 16px; }
 .clone-display-settings > header button { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-display-settings > label { display: flex; align-items: center; gap: 9px; min-height: 26px; color: var(--ink2); font-size: 13px; }
 .clone-display-settings input { accent-color: var(--accent); }
 .clone-display-settings > footer { display: flex; justify-content: flex-end; margin-top: 4px; }
-.clone-quick-input-previews { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.clone-quick-input-previews > div { display: flex; align-items: center; gap: 7px; min-width: 0; min-height: 52px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: color-mix(in srgb, var(--ink) 3%, var(--card)); color: var(--muted); font-size: 11px; }
-.clone-quick-input-previews > div > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.clone-quick-input-previews > div > button { padding: 4px 7px; border: 0; border-radius: 4px; background: var(--accent); color: white; font: inherit; }
-.clone-quick-input-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.clone-quick-input-modes label { display: flex; align-items: center; gap: 8px; justify-content: center; min-height: 38px; color: var(--ink2); }
 .clone-task-template-dialog { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 18px; width: min(860px, 100%); max-height: min(570px, calc(100dvh - 40px)); padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); box-shadow: 0 18px 55px rgba(0, 0, 0, .28); }
 .clone-task-template-dialog > header { display: flex; align-items: center; gap: 16px; }
 .clone-task-template-dialog > header h2 { flex: 1; margin: 0; font-size: 16px; }
@@ -6481,10 +6966,6 @@ const SidebarSection = {
   .clone-quick-input-previews { grid-template-columns: minmax(0, 1fr); }
 }
 :global(body:has(.clone-task-template-backdrop) .floating-agent) { visibility: hidden; pointer-events: none; }
-.clone-quick-add:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent), 0 2px 6px rgba(20, 27, 38, 0.05);
-}
 .clone-quick-add form {
   display: grid;
   align-items: stretch;
@@ -6501,6 +6982,7 @@ const SidebarSection = {
   color: var(--ink);
   font: inherit;
 }
+.clone-quick-add input:focus-visible { outline: none; box-shadow: none; }
 .clone-quick-add form button {
   border: 0;
   border-radius: 6px;
@@ -6512,17 +6994,9 @@ const SidebarSection = {
 .clone-quick-add form button:disabled {
   opacity: 0.45;
 }
-.clone-quick-add kbd {
-  padding: 2px 6px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  color: var(--muted);
-  font-size: 11px;
-}
 .clone-quick-add form button.clone-quick-action,
 .clone-quick-add form button.clone-quick-icon-action { display: inline-flex; }
-.clone-quick-add form button.clone-quick-submit,
-.clone-quick-add form kbd { display: inline-flex; }
+.clone-quick-add form button.clone-quick-submit { display: inline-flex; align-items: center; justify-content: center; }
 .clone-quick-add-form { min-width: 0; }
 .clone-quick-title-row { display: flex; min-width: 0; align-items: center; min-height: 28px; }
 .clone-quick-actions-row { display: flex; min-width: 0; align-items: center; gap: 4px; }
@@ -6547,7 +7021,6 @@ const SidebarSection = {
 .clone-quick-add form .clone-quick-icon-action { position: relative; width: 30px; padding: 0; }
 .clone-quick-add form .clone-quick-icon-action span { position: absolute; top: -2px; right: -1px; min-width: 13px; height: 13px; padding: 0 3px; border-radius: 8px; background: var(--accent); color: var(--accent-contrast, #fff); font-size: 9px; line-height: 13px; }
 .clone-quick-add form .clone-quick-submit { min-height: 30px; padding: 0 10px; font-size: 12px; white-space: nowrap; }
-.clone-quick-add form kbd { display: inline-flex; }
 .clone-quick-add form .clone-quick-action.active,
 .clone-quick-add form .clone-quick-icon-action.active { color: var(--accent); }
 .clone-quick-add form .clone-quick-priority-action[data-priority="HIGH"] { color: var(--down); }
@@ -6555,8 +7028,6 @@ const SidebarSection = {
 .clone-quick-add form .clone-quick-priority-action[data-priority="LOW"] { color: #4f82dd; }
 .clone-quick-add form .clone-quick-priority-action[data-priority="NONE"] { color: var(--muted); }
 .clone-quick-list-dot { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: var(--line2); }
-.clone-quick-action-panel.is-more > button { display: inline-flex; align-items: center; gap: 7px; }
-.clone-quick-action-panel.is-more > button small { margin-left: auto; color: var(--muted); font-size: 10px; }
 .clone-quick-action-panel { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; width: fit-content; max-width: 100%; margin: -8px 0 12px 24px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); box-shadow: 0 5px 18px rgba(20, 27, 38, .12); }
 .clone-quick-action-panel strong { width: 100%; color: var(--muted); font-size: 11px; font-weight: 600; }
 .clone-quick-action-panel label { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
@@ -6577,11 +7048,9 @@ const SidebarSection = {
 .clone-board-quick-priority-option[data-priority="LOW"] > svg:first-child { color: #4f82dd; }
 .clone-quick-priority-option[data-priority="NONE"] > svg:first-child,
 .clone-board-quick-priority-option[data-priority="NONE"] > svg:first-child { color: var(--muted); }
-.clone-quick-action-panel.is-priority { display: grid; min-width: 184px; gap: 2px; }
-.clone-quick-action-panel.is-priority > strong { margin: 0 4px 3px; }
 .clone-quick-action-panel label:has(input[type="checkbox"]) { padding: 3px 5px; border-radius: 4px; color: var(--ink); }
 .clone-quick-action-panel.is-date,
-.clone-quick-action-panel.is-repeat { position: absolute; z-index: 260; top: calc(100% + 8px); left: 0; margin: 0; box-sizing: border-box; }
+.clone-quick-action-panel.is-repeat { position: fixed; z-index: 320; top: 0; left: 0; margin: 0; box-sizing: border-box; }
 .clone-quick-action-panel.is-date { display: block; width: min(378px, calc(100vw - 36px)); max-height: min(690px, calc(100dvh - 120px)); overflow: visible; padding: 0; border: 0; background: transparent; box-shadow: none; }
 .clone-quick-action-panel.is-date > .task-date-time-popover { width: 100%; }
 .clone-quick-action-panel.is-repeat { display: block; width: min(410px, calc(100vw - 36px)); max-width: calc(100vw - 36px); max-height: min(690px, calc(100dvh - 120px)); overflow: auto; }
@@ -6607,6 +7076,15 @@ const SidebarSection = {
 .clone-quick-action-panel .clone-quick-range-fields input[type="time"] { width: 105px; }
 .clone-quick-range-fields > span { flex-basis: 100%; color: var(--muted); font-size: 11px; }
 .clone-quick-reminder-section { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
+.clone-quick-repeat-section { position: relative; display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
+.clone-quick-action-panel .clone-quick-repeat-toggle { display: flex; width: 100%; align-items: center; gap: 8px; padding-inline: 2px; text-align: left; }
+.clone-quick-action-panel .clone-quick-repeat-toggle span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clone-quick-action-panel .clone-quick-repeat-toggle svg:last-child { margin-left: auto; }
+.clone-quick-action-panel .clone-quick-repeat-toggle.active { color: var(--accent); }
+.clone-quick-repeat-menu { z-index: 320; display: grid; gap: 1px; max-height: 240px; overflow: auto; padding: 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); box-shadow: 0 10px 24px rgb(15 23 42 / 16%); overscroll-behavior: contain; }
+.clone-quick-repeat-menu > button { display: flex; min-height: 30px; align-items: center; justify-content: space-between; gap: 8px; padding: 0 8px; text-align: left; }
+.clone-quick-repeat-menu > button.active { color: var(--accent); }
+.clone-quick-repeat-menu-separator { height: 1px; margin: 4px 0; background: var(--line); }
 .clone-quick-action-panel .clone-quick-reminder-toggle { display: flex; width: 100%; align-items: center; justify-content: flex-start; gap: 8px; padding-inline: 2px; text-align: left; }
 .clone-quick-action-panel .clone-quick-reminder-toggle svg:last-child { margin-left: auto; }
 .clone-quick-action-panel .clone-quick-reminder-toggle[aria-pressed="true"] { color: var(--accent); }
@@ -6618,9 +7096,82 @@ const SidebarSection = {
 .clone-quick-action-panel .clone-quick-reminder-custom input { width: 72px; }
 .clone-quick-action-panel .clone-quick-reminder-custom select { min-width: 88px; }
 .clone-quick-action-panel .clone-quick-reminder-repeat { display: flex; justify-content: flex-start; color: var(--ink2); }
+.clone-date-prop-rows { display: grid; gap: 2px; padding-top: 8px; border-top: 1px solid var(--line); }
+.clone-date-prop-row { display: flex; align-items: center; gap: 6px; }
+.clone-date-prop-trigger { display: inline-flex; flex: 1; min-width: 0; min-height: 32px; align-items: center; gap: 8px; padding: 4px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ink2); font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
+.clone-date-prop-trigger span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clone-date-prop-trigger:hover { background: var(--accent-soft); color: var(--accent); }
+.clone-date-prop-trigger.active { color: var(--accent); }
+.clone-date-prop-trigger svg.is-open { transform: rotate(90deg); transition: transform .15s; }
+.clone-date-prop-clear { display: grid; width: 26px; min-height: 26px; flex: none; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-date-prop-clear:hover { background: var(--accent-soft); color: var(--accent); }
+.clone-date-time-list { display: grid; max-height: 216px; gap: 1px; overflow: auto; overscroll-behavior: contain; }
+.clone-date-time-list button { display: flex; min-height: 30px; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px; border: 0; border-radius: 5px; background: transparent; color: var(--ink2); font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
+.clone-date-time-list button:hover { background: var(--accent-soft); }
+.clone-date-time-list button.active { color: var(--accent); }
+.clone-quick-repeat-badge { flex: 0 0 auto; color: var(--accent); }
+.clone-quick-priority-menu { gap: 2px; }
+.clone-quick-list-menu { gap: 1px; }
+.clone-quick-list-search { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; padding: 5px 8px; border-bottom: 1px solid var(--line); color: var(--muted); }
+.clone-quick-list-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; outline: none; }
+.clone-quick-list-menu > button span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clone-quick-list-folder { color: var(--ink); font-weight: 500; }
+.clone-quick-list-empty { margin: 4px 8px; color: var(--muted); font-size: 12px; }
+.clone-quick-tags-menu { gap: 6px; }
+.clone-quick-tags-selected { display: flex; flex-wrap: wrap; gap: 6px; }
+.clone-quick-tag-chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 4px 2px 8px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 12px; }
+.clone-quick-tag-chip button { display: grid; place-items: center; width: 16px; height: 16px; border: 0; border-radius: 3px; background: transparent; color: inherit; cursor: pointer; }
+.clone-quick-tags-options { display: grid; align-content: start; gap: 1px; max-height: 240px; overflow: auto; }
+.clone-quick-tags-options > button { display: flex; min-height: 30px; align-items: center; gap: 8px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ink2); font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
+.clone-quick-tags-options > button:hover { background: var(--accent-soft); }
+.clone-quick-tags-options > button.active { color: var(--accent); }
+.clone-quick-tags-options > button span { flex: 1; }
+.clone-quick-more-menu { gap: 2px; }
+.clone-quick-more-menu > button { justify-content: flex-start; }
+.clone-quick-more-menu > button span { flex: 1; }
+.clone-quick-more-menu > button small { color: var(--muted); font-size: 10px; }
+.clone-quick-more-menu > button > svg:last-child { margin-left: auto; }
+.clone-quick-tags-menu { max-height: 400px; }
+.clone-quick-tags-options { max-height: 220px; }
+.clone-quick-flyout { z-index: 320; display: grid; align-content: start; gap: 1px; max-height: 320px; overflow: auto; padding: 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); box-shadow: 0 10px 24px rgb(15 23 42 / 16%); overscroll-behavior: contain; }
+.clone-quick-flyout > button { display: flex; min-height: 30px; align-items: center; justify-content: space-between; gap: 8px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ink2); font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
+.clone-quick-flyout > button:hover { background: var(--accent-soft); }
+.clone-quick-flyout > button.active { color: var(--accent); }
+.clone-quick-flyout > button svg.is-open { transform: rotate(90deg); transition: transform .15s; }
+.clone-quick-flyout-separator { height: 1px; margin: 4px 0; background: var(--line); }
+.clone-quick-flyout-title { padding: 2px 8px; color: var(--muted); font-size: 11px; }
+.clone-quick-flyout-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.clone-quick-flyout-actions button { min-height: 26px; padding: 3px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.clone-quick-flyout-actions button.primary { background: var(--accent); color: var(--accent-contrast, #fff); }
+.clone-quick-flyout .clone-quick-reminder-custom { display: grid; gap: 7px; padding: 7px; border-radius: 5px; background: var(--paper); }
+.clone-quick-flyout .clone-quick-reminder-custom label { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--ink2); font-size: 12px; }
+.clone-quick-flyout .clone-quick-reminder-custom input { width: 72px; }
+.clone-quick-flyout .clone-quick-reminder-custom select { min-width: 88px; }
+.clone-quick-reminder-preview { margin: 0; color: var(--muted); font-size: 11px; }
+.clone-quick-end-calendar { display: grid; gap: 4px; padding: 6px 4px; border-radius: 5px; background: var(--paper); }
+.clone-quick-end-cal-head { display: flex; align-items: center; justify-content: space-between; }
+.clone-quick-end-cal-head strong { font-size: 12px; }
+.clone-quick-end-cal-head button { display: grid; width: 24px; min-height: 24px; place-items: center; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-quick-end-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.clone-quick-end-cal-grid > span { display: grid; min-height: 20px; place-items: center; color: var(--muted); font-size: 10px; }
+.clone-quick-end-cal-grid > button { display: grid; min-height: 24px; border: 0; border-radius: 50%; background: transparent; color: var(--ink2); font-size: 11px; cursor: pointer; }
+.clone-quick-end-cal-grid > button:hover { background: var(--accent-soft); }
+.clone-quick-end-cal-grid > button.other-month { color: var(--muted); opacity: .48; }
+.clone-quick-end-cal-grid > button.selected { background: var(--accent); color: var(--accent-contrast, #fff); }
+.clone-quick-end-count { display: grid; gap: 7px; padding: 6px 4px; border-radius: 5px; background: var(--paper); }
+.clone-quick-end-count label { display: flex; align-items: center; gap: 8px; color: var(--ink2); font-size: 12px; }
+.clone-quick-end-count input { width: 64px; }
 .clone-quick-repeat-panel { display: grid; gap: 10px; width: 100%; min-width: 0; box-sizing: border-box; }
 .clone-quick-repeat-panel > header { display: flex; align-items: center; justify-content: space-between; }
 .clone-quick-repeat-panel > header button { width: 26px; min-height: 26px; padding: 0; }
+.clone-quick-repeat-mode > select { width: 100%; }
+.clone-quick-repeat-interval { display: flex; align-items: center; gap: 8px; color: var(--ink2); font-size: 12px; }
+.clone-quick-repeat-interval input { width: 64px; }
+.clone-quick-repeat-interval select { flex: 1; min-width: 0; }
+.clone-quick-repeat-circles { display: flex; justify-content: space-between; gap: 4px; }
+.clone-quick-repeat-circles button { display: grid; width: 30px; aspect-ratio: 1; min-height: 0; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--ink2); font-size: 12px; cursor: pointer; }
+.clone-quick-repeat-circles button:hover { background: var(--accent-soft); color: var(--accent); }
+.clone-quick-repeat-circles button.active { background: var(--accent); color: var(--accent-contrast, #fff); }
 .clone-quick-repeat-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
 .clone-quick-repeat-presets button { border: 1px solid var(--line); }
 .clone-quick-repeat-date-calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; text-align: center; }
@@ -6873,8 +7424,9 @@ const SidebarSection = {
 .clone-task-list-link { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 120px; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--ink2); font: inherit; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .clone-task-list-link:hover { color: var(--accent); }
 .clone-task-list-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; }
-.clone-inline-board { display: grid; grid-auto-columns: minmax(252px, 1fr); grid-auto-flow: column; align-items: start; gap: 18px; min-width: 0; height: 100%; overflow-x: auto; overflow-y: hidden; padding: 16px 18px 28px; background: color-mix(in srgb, var(--paper) 78%, var(--card)); }
-.clone-inline-board-column { display: grid; align-content: start; gap: 10px; min-width: 252px; max-height: 100%; overflow: auto; padding: 0 2px 12px; scrollbar-width: thin; }
+.clone-task-main:has(.clone-inline-board) { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 16px; }
+.clone-inline-board { display: grid; grid-auto-columns: 280px; grid-auto-flow: column; grid-template-rows: minmax(0, 1fr); gap: 18px; min-width: 0; flex: 1 1 auto; min-height: 0; overflow-x: auto; overflow-y: hidden; padding: 8px 18px 12px; background: color-mix(in srgb, var(--paper) 78%, var(--card)); }
+.clone-inline-board-column { display: grid; align-content: start; gap: 10px; min-width: 0; height: 100%; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 0 2px 12px; scrollbar-width: thin; overscroll-behavior: contain; }
 .clone-inline-board-column-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; min-height: 38px; padding: 0 4px; background: color-mix(in srgb, var(--paper) 78%, var(--card)); }
 .clone-inline-board-column-head > div { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
 .clone-inline-board-column-head strong { overflow: hidden; color: var(--ink2); font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
@@ -6882,7 +7434,8 @@ const SidebarSection = {
 .clone-inline-board-column-head button { display: grid; flex: 0 0 28px; width: 28px; height: 28px; place-items: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-inline-board-column-head button:hover { background: color-mix(in srgb, var(--accent) 11%, transparent); color: var(--accent); }
 .clone-board-quick-inline { position: relative; z-index: 4; margin: -2px 0 2px; }
-.clone-board-quick-inline .clone-board-quick-entry { min-height: 0; padding: 10px 11px; border-width: 1px; border-radius: 8px; box-shadow: 0 4px 14px rgb(15 23 42 / 10%); }
+.clone-board-quick-inline .clone-board-quick-entry { min-height: 0; padding: 10px 11px; border: 1px solid var(--line); border-radius: 8px; box-shadow: none; }
+.clone-board-quick-entry > input:focus-visible { outline: none; box-shadow: none; }
 .clone-board-quick-inline .clone-board-quick-entry > input { min-height: 30px; font-size: 14px; }
 .clone-board-quick-inline .clone-board-quick-actions { gap: 3px; }
 .clone-board-quick-inline .clone-board-quick-actions > button { width: auto; height: 28px; min-width: 28px; flex-basis: auto; padding: 0 6px; }
@@ -7923,7 +8476,6 @@ const SidebarSection = {
   .clone-quick-add form input { flex-basis: 100%; height: 27px; }
   .clone-quick-add form .clone-quick-action { min-height: 28px; padding: 0 3px; }
   .clone-quick-add form .clone-quick-list-action { max-width: 78px; overflow: hidden; }
-  .clone-quick-add form kbd { display: none; }
   .clone-quick-action-panel { margin-left: 0; }
   .clone-quick-draft-fields { grid-template-columns: 1fr; }
   .clone-task-shell {
