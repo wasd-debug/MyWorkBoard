@@ -1132,7 +1132,8 @@ html:not(.dark) .app-shell { background: var(--paper); }
 .ledger-reports > *,
 .ledger-management > *,
 .app-main .page-content > section > * {
-  animation: module-card-in .42s ease both;
+  /* backwards 而非 both：forwards 会残留 transform，使后代 position:fixed 浮层错误地以本元素为包含块 */
+  animation: module-card-in .42s ease backwards;
 }
 .ledger-page > *:nth-child(2),
 .ledger-reports > *:nth-child(2),
