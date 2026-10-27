@@ -67,7 +67,7 @@ test('task timeline and keyboard shortcuts complete the third residual batch', a
   assert.match(timeline, /时间线 \/ 甘特/)
   assert.match(timeline, /timeline-bar/)
   assert.match(timeline, /props\.tasks \|\| store\.tasks/)
-  assert.match(timeline, /emit\('select-task', task\)/)
+  assert.match(timeline, /emit\('select-task', row\.task\)/)
   assert.match(timeline, /class="timeline-head" :class="\{ 'is-embedded': embedded \}"/)
   assert.match(timeline, /aria-label="时间线分组"/)
   assert.match(timeline, /groupOptions = \[\{ value: 'list', label: '清单' \}, \{ value: 'tag', label: '标签' \}, \{ value: 'priority', label: '优先级' \}, \{ value: 'none', label: '无' \}\]/)
@@ -81,7 +81,7 @@ test('task timeline and keyboard shortcuts complete the third residual batch', a
   assert.match(timeline, /Date\.now\(\) - from/)
   assert.match(timeline, /document\.addEventListener\('pointerdown', closeMenus\)/)
   assert.match(timeline, /year: 'numeric', month: 'numeric', day: 'numeric'/)
-  assert.match(timeline, /new Date\(date\.getFullYear\(\), date\.getMonth\(\) \+ direction \* 12, 1\)/)
+  assert.match(timeline, /new Date\(date\.getFullYear\(\), date\.getMonth\(\) \+ direction \* 4, 1\)/)
   assert.match(app, /event\.key\.toLowerCase\(\) === 'k'/)
   assert.match(app, /event\.key\.toLowerCase\(\) === 'z'/)
   assert.match(app, /event\.key\.toLowerCase\(\) === 'n'/)
@@ -154,13 +154,11 @@ test('workspace board columns open inline quick-add with group defaults and pers
   assert.match(workspaceView, /closeBoardQuickAddOnOutsidePointer/)
   assert.match(workspaceView, /placeholder="准备做什么？" aria-label="看板任务标题"/)
   assert.match(workspaceView, /aria-label="设置日期"[\s\S]*aria-label="设置优先级"[\s\S]*aria-label="选择清单"/)
-  assert.match(workspaceView, /clone-board-quick-more[\s\S]*标签[\s\S]*附件/)
+  assert.match(workspaceView, /clone-quick-more-menu[\s\S]*标签[\s\S]*附件/)
   assert.match(workspaceView, /function openBoardQuickAdd\(group\)[\s\S]*groupBy\.value === "list"[\s\S]*groupBy\.value === "priority"[\s\S]*groupBy\.value === "tag"[\s\S]*groupBy\.value === "time"/)
   assert.match(workspaceView, /includeEmptyLists: route\.name === "tasks-all"/)
-  assert.match(workspaceView, /const boardQuickAddLists = computed\(\(\) => \{[\s\S]*seen\.has\(list\.publicId\)[\s\S]*list\.objectType === "NOTE"/)
-  assert.match(workspaceView, /names\.get\(label\) > 1 && list\.systemKey !== "INBOX" \? `\$\{label\}（清单）`/)
-  assert.match(workspaceView, /v-for="list in boardQuickAddLists"/)
-  assert.match(workspaceView, /async function saveBoardQuickAdd\(\)[\s\S]*await store\.create\(\{[\s\S]*description: boardQuickAddDescription\.value\.trim\(\)[\s\S]*priority: boardQuickAddPriority\.value[\s\S]*tagIds: \[\.\.\.boardQuickAddTagIds\.value\][\s\S]*rrule: boardQuickAddRrule\.value/)
+  assert.match(workspaceView, /async function saveBoardQuickAdd\(\)[\s\S]*await store\.create\(\{[\s\S]*priority: quickEntry\.prioritySelected \? quickEntry\.priority : "NONE"[\s\S]*tagIds: \[\.\.\.quickEntry\.tagIds\][\s\S]*rrule: buildQuickRepeatRule\(quickRepeat\) \|\| ""/)
+  assert.match(workspaceView, /for \(const reminderPayload of reminderPayloads\) await apiCreateTaskReminder\(saved\.publicId, reminderPayload\)/)
   assert.match(workspaceView, /@keydown\.esc\.stop\.prevent="closeBoardQuickAdd"/)
 })
 
@@ -407,11 +405,12 @@ test('quick add offers marker-driven candidates and distinguishes note destinati
   assert.match(workspaceView, /quickInputMode === 'SIMPLE'/)
   assert.match(workspaceView, /quickAddIsNote = computed/)
   assert.match(workspaceView, /v-if="!quickAddIsNote"[^>]*aria-label="快速设置优先级"/)
-  assert.match(workspaceView, /v-if="!quickAddIsNote"[^>]*aria-label="快速设置重复"/)
+  assert.match(workspaceView, /clone-quick-repeat-badge/)
+  assert.doesNotMatch(workspaceView, /aria-label="快速设置重复"/)
 })
 
 test('quick add more menu supports native attachments, draft templates, note mode, and responsive input settings', () => {
-  assert.match(workspaceView, /@click="openQuickAttachmentPicker"/)
+  assert.match(workspaceView, /@click="quickFlyoutAnchor \? openBoardAttachmentPicker\(\) : openQuickAttachmentPicker\(\)"/)
   assert.match(workspaceView, /type="file" multiple aria-label="选择快捷新增附件"/)
   assert.match(workspaceView, /taskTemplatesOpen = ref\(false\)/)
   assert.match(workspaceView, /clone-task-template-dialog[\s\S]*任务模板/)
@@ -423,9 +422,10 @@ test('quick add more menu supports native attachments, draft templates, note mod
   assert.match(workspaceView, /clone-task-template-dialog \{ width: 100%; height: min\(78dvh, 620px\)/)
   assert.match(workspaceView, /:global\(body:has\(\.clone-task-template-backdrop\) \.floating-agent\) \{ visibility: hidden/)
   assert.match(workspaceView, /clone-task-template-grid \{ grid-template-columns: minmax\(0, 1fr\)/)
-  assert.match(workspaceView, /clone-quick-input-settings \{ width: min\(860px, 100%\)/)
-  assert.match(workspaceView, /clone-quick-input-previews \{ grid-template-columns: minmax\(0, 1fr\)/)
-  assert.match(workspaceView, /value="SIMPLE" \/>简洁[\s\S]*value="DETAILED" \/>详细/)
+  assert.match(workspaceView, /clone-quick-more-menu/)
+  assert.doesNotMatch(workspaceView, /输入框设置/)
+  assert.match(workspaceView, /aria-label="快速选择标签" :aria-expanded="quickAction === 'tags'" @click="toggleQuickAction\('tags', quickFlyoutAnchor\)"/)
+  assert.match(workspaceView, /function applyQuickTags/)
 })
 
 test('task detail exposes contract-backed Markdown comments and attachments', () => {
@@ -466,28 +466,37 @@ test('task detail header exposes status, content conversion, and checklist progr
 
 test('quick add exposes two-row date, priority, list controls and keeps tags in more actions', () => {
   for (const token of [
-    '快速设置日期', '快速设置优先级', '快速选择清单', 'clone-quick-title-row', 'clone-quick-actions-row', 'clone-quick-action-panel.is-more', '快速选择标签',
+    '快速设置日期', '快速设置优先级', '快速选择清单', 'clone-quick-title-row', 'clone-quick-actions-row', 'clone-quick-more-menu', '快速选择标签',
     'quickAction', 'quickEntry.dateSelected ? quickEntry.dueAt',
     'quickEntry.prioritySelected ? quickEntry.priority',
     'quickEntry.listSelected ? quickEntry.listId',
     '...quickEntry.tagIds', 'function chooseQuickDatePreset(preset)', 'function closeQuickAction(event)',
     'quickCalendarDays', '选择日期',
-    'quickReminderOptions', '持续提醒直到完成', 'quickReminderPayloads', 'aria-multiselectable="true"', 'for (const reminderPayload of reminderPayloads) await apiCreateTaskReminder(saved.publicId, reminderPayload)',
-    'clone-quick-action-panel',
+    'quickReminderOptions', 'quickReminderSummary', 'quickReminderRecent', 'quickReminderPayloads', 'aria-multiselectable="true"', 'for (const reminderPayload of reminderPayloads) await apiCreateTaskReminder(saved.publicId, reminderPayload)',
+    'clone-quick-action-panel', 'clone-date-prop-rows', 'clone-quick-flyout',
   ]) assert.ok(workspaceView.includes(token), `missing quick-add behavior ${token}`)
   for (const token of ['role="tablist" aria-label="日期类型"', '选择日期']) assert.ok(taskDateTimePopover.includes(token), `missing date popover behavior ${token}`)
-  assert.match(workspaceView, /<template #range>[\s\S]*时间段开始时间/)
+  for (const token of ['时间段', 'task-range-switch', 'task-range-picker', 'readonly']) assert.ok(taskDateTimePopover.includes(token), `missing date popover range behavior ${token}`)
+  assert.doesNotMatch(taskDateTimePopover, /task-range-timezone/, 'timezone row should be removed')
   assert.match(workspaceView, /function cancelQuickDraft()[\s\S]*Object\.assign\(quickEntry, \{ dueAt: "", startAt: "", allDay: false, dateSelected: false/)
   assert.match(workspaceView, /if \(quickAction\.value\) \{[\s\S]*quickAction\.value = "";[\s\S]*return;/)
 })
 
 test('quick add date controls use one floating popover with ordered date fields', () => {
-  assert.match(workspaceView, /<TaskDateTimePopover[\s\S]*<template #reminder>[\s\S]*<template #repeat>/)
-  assert.match(workspaceView, /\.clone-quick-action-panel\.is-date,\s+\.clone-quick-action-panel\.is-repeat \{ position: absolute;/)
+  assert.match(workspaceView, /<TaskDateTimePopover[\s\S]*:range-start="quickRangeStart"[\s\S]*@update:range-end="quickRangeEnd = \$event"[\s\S]*<template #rows="\{ mode: rowMode \}">/)
+  assert.match(workspaceView, /\.clone-quick-action-panel\.is-date,\s+\.clone-quick-action-panel\.is-repeat \{ position: fixed;/)
   assert.match(workspaceView, /\.clone-quick-action-panel\.is-date > \.task-date-time-popover \{ width: 100%; \}/)
   assert.doesNotMatch(workspaceView, /<div class="clone-quick-date-panel">/)
-  assert.match(taskDateTimePopover, /task-date-time-time-row[\s\S]*slot name="reminder"[\s\S]*slot name="repeat"[\s\S]*task-date-time-footer/)
+  assert.match(taskDateTimePopover, /task-date-time-calendar[\s\S]*slot v-if="mode === 'DATE' \|\| mode === 'RANGE'" name="rows" :mode="mode"[\s\S]*task-date-time-footer/)
+  assert.match(taskDateTimePopover, /task-range-row[\s\S]*task-range-allday[\s\S]*task-range-picker/)
   assert.match(taskDateTimePopover, /max-height: min\(690px, calc\(100dvh - 24px\)\)/)
+  // 弹层日历带农历小字；入场动画禁用 forwards，避免残留 transform 劫持 fixed 浮层的包含块
+  assert.match(taskDateTimePopover, /<small v-if="day\.lunar">\{\{ day\.lunar \}\}<\/small>/)
+  assert.match(themeStyles, /\.app-main \.page-content > section > \* \{[\s\S]*animation: module-card-in \.42s ease backwards;/)
+  assert.ok(workspaceView.includes('const quickEndLabel'), 'missing end-repeat label')
+  assert.ok(workspaceView.includes('function pickQuickEndDate'), 'missing end-repeat date picker')
+  assert.ok(workspaceView.includes('function applyQuickReminderCustom'), 'missing custom reminder apply')
+  assert.ok(workspaceView.includes('quickRepeatGroupOpen'), 'missing repeat group submenu')
 })
 
 test('quick-add priority menus render color-coded flags for every priority', () => {
@@ -495,7 +504,7 @@ test('quick-add priority menus render color-coded flags for every priority', () 
     assert.ok(workspaceView.includes(`data-priority="${priority}"`), `missing ${priority} priority option`)
   }
   assert.match(workspaceView, /clone-quick-priority-option[^>]*data-priority="option\.value"[\s\S]*<Flag[\s\S]*<Check v-if="quickEntry\.priority === option\.value"/)
-  assert.match(workspaceView, /clone-board-quick-priority-option[^>]*data-priority="option\.value"[\s\S]*<Flag[\s\S]*<Check v-if="boardQuickAddPriority === option\.value"/)
+  assert.match(workspaceView, /clone-board-quick-priority-action[^>]*data-priority="quickEntry\.priority"/)
   assert.match(workspaceView, /const quickPriorityOptions = \["HIGH", "MEDIUM", "LOW", "NONE"\]/)
   assert.match(workspaceView, /clone-quick-priority-option\[data-priority="HIGH"\] > svg:first-child,[\s\S]*color: var\(--down\)/)
   assert.match(workspaceView, /clone-quick-priority-option\[data-priority="MEDIUM"\] > svg:first-child,[\s\S]*color: var\(--warn\)/)
