@@ -957,3 +957,94 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 未虚构缺失的数据契约：当前 FocusStart API 仅支持番茄倒计时，未实现官网所述正计时/预计时长模式；模板数据保存在账号作用域的浏览器 localStorage，非服务端模板。操作这些条目时 UI 会如实受现有能力限制。BrowserAct 已验证菜单外点击可关闭。没有新增 API 或数据库变更。
 
 详情逐项浏览器记录、未执行的写操作与测试结果见《前端手工检查清单》P2-FE91。
+
+### P2-FE104 快速添加日期弹层对齐滴答三行交互（2026-10-27）
+
+按滴答清单逆向规格重构快速添加日期弹层的「时间/提醒/重复」交互。`TaskDateTimePopover` 剥离底部属性行，改由 `#rows` 插槽在父组件统一渲染：时间、提醒、重复与「结束重复」四行均为图标+文字+右侧箭头的整行触发器，已设置值高亮，展开时箭头旋转；时间行保留已设时间清除 X 与时区行，时间列表为 48 个半小时单列，选中后自动收起。
+
+提醒改为 teleport 浮层多选面板：全天任务显示当天/提前 1-3 天/提前 1 周（均标注提醒时刻 09:00），有时刻显示准时/提前 5/30 分钟/1 小时/1 天，默认选中项跟随系统设置的 `defaultReminderMinutes`；「最近使用」区按当前时间模式过滤并持久化在 localStorage；自定义支持按天/周（全天）或分钟/小时/天/周（有时刻）+ 正整数 + 具体时刻预览，确定后编码为 `CUSTOM:<数量>:<单位>` 写入多选集合，提醒行显示中文摘要与清除 X。重复子菜单二级展开：工作日（每周工作日/法定工作日）、节假日（每周末/法定节假日）、农历重复（农历每月/农历每年）；选中重复规则且未指定结束时自动出现「结束重复」行，提供永不结束/按日期结束（内嵌小日历）/按次数结束（次数输入）。
+
+自定义重复面板移除「自选」重复方式（后端 RRULE 无 RDATE 契约，按自选日期未实现），月「按日期」改为日格多选（`monthDays` 数组 → `BYMONTHDAY` 多值），结束条件从面板移除、统一由「结束重复」行承担；详情栏重复面板同步移除「自选重复」并适配多选日格与 RRULE 回填。全天/有时刻切换时仅保留可迁移的天/周自定义提醒。无 API、数据库或后端改动。
+
+自动门禁：全量 `npm test` 206/206（更新两条旧结构断言）、`npm run typecheck`、`npm run build`、`git diff --check` 通过。浏览器实测（14174 页面）：三行结构、时区行、时间选择与清除、全天/有时刻两套提醒菜单与摘要、自定义提醒预览（将于 10月25日 09:00 提醒）、重复分组二级展开、结束重复行与按日期结束标签均已验证，截图存于临时目录。
+
+#### P2-FE104 补充（2026-10-27 用户反馈两轮）
+
+- 移除日期弹层内的时间行下方时区行（「上海, GMT+8」）及其样式与 `quickTimezoneLabel` 计算属性。
+- 设置重复后日历按规则渲染：新增 `quickRepeatMatchesDate(state, date, context)`（taskQuickAddRepeat.js），按预设/自定义规则逐日匹配，弹层日历在命中的日期下方渲染小圆点（选中日除外）。匹配上下文包含节假日（调休班/休）与农历标签，来自 `apiGetTaskCalendar({layers:"holiday", lunar:1})` 按弹层当前显示的 42 天范围懒加载（`quickCalendarMeta`，随 `quickCalendarMonth` 变化重新拉取）。法定工作日/法定节假日按节假日数据区分调休：数据日 `off` 为准，无数据日按周末判断；农历重复通过解析后端中文农历标签（`parseLunarLabel`，如「九月初九」→ 9 月初 9）匹配；带间隔的自定义规则以所选日期为锚点计算第 N 周期。
+- 新增 5 组单元测试覆盖农历解析、预设匹配（含调休）、自定义周/月/间隔/工作日与农历匹配；全量 210/210、typecheck、build、git diff --check 通过。浏览器实测：时区行消失；「每天」全月带点；「每月（27日）」仅 27 日带点（截图 tmp/qa-repeat-daily-calendar.png、tmp/qa-repeat-monthly-calendar.png）。
+
+#### P2-FE104 反馈轮 2（2026-10-27）
+
+- 修复图标消失：`TaskDateTimePopover` 重构时丢失 lucide 图标导入（Sun/Sunrise/CalendarPlus/Moon/ChevronLeft/ChevronRight/Circle 被当作未知标签渲染为空），补回 import 后快捷日期四图标与月头翻页按钮（上月/今天/下月）恢复。
+- 重复圆点只从当天起渲染：`quickDateTimeCalendarDays` 增加 `day.key >= quickTodayKey` 条件，历史日期不再带点。
+- 核实重复任务存储模型（前端无改动，仅确认）：创建重复任务时**只插入 1 条** task 记录（rrule + series_id + series_sequence=1 + planned_due_at），并在 task_recurrence_instance 表登记 series 的计划到期映射；后续每一期在**当期任务完成/放弃时懒生成**（generateNextInstance 复制标题/清单/标签/提醒生成新的一条独立 task，source='RECURRENCE'，sequence+1），另有定时扫描兜底补期。即「一期一条记录、逐期生成」，不是创建时预生成 N 条。
+
+### P2-FE105 快捷添加栏对齐滴答：优先级/清单/更多浮层（2026-10-27）
+
+按滴答截图与描述重构快捷添加栏交互，全部子菜单改为 teleport 浮层，不再内联展开挤占下方任务列表：
+
+- **优先级**：旗子按钮改为纯图标（按优先级着色），点击弹出 teleport 浮层，高/中/低/无四档彩色旗+选中勾选，选择后关闭。
+- **重复入口移除**：快捷栏不再有独立重复按钮（重复经日期弹层的「重复」行设置）；设置了重复规则时标题行左侧显示 Repeat2 徽标指示重复任务。
+- **清单选择**：点击弹出搜索+树形浮层——收集箱+文件夹（仅展开不可选）+子清单与未分组清单；支持按名称过滤（搜索时自动展开命中文件夹）；选中后 chip 回显清单图标+名字；收集箱为默认项。
+- **更多菜单**：改为 teleport 浮层，内容为 标签（二级浮层）/附件/从模板添加/转换为笔记，移除「重复」与「输入框设置」入口及输入框设置弹窗。标签浮层含已选 chips（可删）+搜索+多选打勾列表+取消/确定（快照草稿，确定写回 `quickEntry.tagIds`）。附件沿用隐藏 file input 调系统文件选择器；从模板添加沿用居中任务模板弹窗。
+- 修复：`quickFlyoutStyle` 回退分支宽度改用 `menuWidth`（含 minWidth 参数，列表 264 / 标签 300 / 其余 224）；bar 浮层与日期弹层浮层共用 ResizeObserver 跟随重定位机制（新增 quickBarObserver 系列）。
+- 自动门禁：全量 210/210（更新 4 条旧结构断言：重复按钮移除+徽标断言、输入框设置移除断言、is-more→clone-quick-more-menu、优先级选项属性顺序）、typecheck、build、git diff --check 通过。浏览器实测：优先级浮层、清单树浮层与回显、更多菜单对齐、标签 chips 多选、模板弹窗、重复徽标均已验证（截图 tmp/qa2-*.png）。
+
+#### P2-FE105 反馈轮（2026-10-27 快添栏视觉微调）
+
+- 移除 `.clone-quick-add:focus-within` 的边框变色与外圈阴影（聚焦前后外观一致，贴合系统风格）。
+- 「添加」提交按钮补充 `align-items/justify-content: center`，两字在按钮内水平垂直居中（实测 44×30 flex center）。
+- 移除提交按钮旁的 `<kbd>N</kbd>` 快捷键提示及其全部死样式（kbd 相关规则清理）。门禁 210/210、typecheck、build、diff-check 通过（截图 tmp/qa3-bar-zoom.png）。
+- 追加反馈（2026-10-27）：快添栏 `.clone-quick-add` 增加上下 padding 8px（原 `0 14px` 导致「添加」按钮贴底边框）；快添输入框增加 `:focus-visible { outline:none; box-shadow:none }` 覆盖全局 theme.css 的聚焦光圈（用户所见「加粗边框」实为全局 4px 光圈）。实测聚焦后 inputShadow=none、按钮距底 9px；门禁 210/210、typecheck、build、diff-check 通过（截图 tmp/qa4-bar.png）。
+
+### P2-FE106 看板视图布局对齐滴答（2026-10-27）
+
+- 列固定宽度：`.clone-inline-board` 由 `grid-auto-columns: minmax(252px, 1fr)`（按分组数量动态伸缩）改为固定 `280px`，列不再随分组数量变宽变窄。
+- 滚动模型：`.clone-task-main:has(.clone-inline-board)` 改为 flex column + `overflow: hidden`（页面无竖向滚动），看板 `grid-template-rows: minmax(0, 1fr)` 占满剩余高度并只横向滚动（分组多时横向翻页），每列 `height: 100%` + `overflow-y: auto; overscroll-behavior: contain`（列内竖向滚动，表头 sticky 保留）。
+- 列头「+」快捷添加表单（输入框 + 日期/优先级/清单/更多 + 提交箭头）此前已存在，本轮验证与滴答参考一致，未改动。
+- 自动门禁：210/210、typecheck、build、git diff --check 通过。浏览器实测（/tasks/all?workspaceView=KANBAN）：3 列均 280px、mainScrollable=false、bodyScrollY=false、无日期列内部竖向滚动生效（截图 tmp/qa5-kanban-all.png、tmp/qa5-kanban-quickadd.png）。
+
+### P2-FE107 看板快捷添加对齐中间栏交互（2026-10-27）
+
+按反馈重构看板分组「+」快捷添加表单，与中间栏完全同构：
+
+- **按钮图标化**：日期/优先级/清单/更多四按钮只显示图标（去掉文字），选中点亮（accent），优先级选中后旗子按档位着色（高红/中黄/低蓝）；提交箭头保留。
+- **输入框去加粗**：看板快捷添加卡片由 2px accent 边框改为 1px var(--line) 细边框，去阴影；输入框 focus-visible 光圈抑制。
+- **状态统一**：看板快捷添加不再持有独立 boardQuickAdd* 日期/优先级/清单/标签/重复状态，直接复用中间栏 quickEntry / quickAddReminder / quickRepeat（openBoardQuickAdd 按分组语义初始化共享状态，closeBoardQuickAdd 经 cancelQuickDraft 复位，避免串扰；打开时收起中间栏输入条）。
+- **浮层同款**：中间栏「日期/重复」面板由内联 absolute 改为 fixed 浮层（teleport 语义等价，保留 .clone-quick-action-panel class 以复用外点关闭白名单），经 quickFlyoutAnchor 锚点机制定位——锚点为触发按钮（中间栏按钮或看板列内按钮），优先级/清单/更多/标签浮层同样支持锚点覆盖；看板上下文更多菜单隐藏「转换为笔记」，附件走看板文件选择器，从模板添加填入看板标题。保存 payload 扩展：提醒（quickReminderPayloads → apiCreateTaskReminder）与 RRULE（buildQuickRepeatRule）；新增 quickFlyoutAnchor/quickDateToggleRef/quickPanelMenuRef/positionQuickPanel（ResizeObserver 跟随）。
+- 自动门禁：210/210（更新 4 条旧结构断言）、typecheck、build、git diff --check 通过。浏览器实测：看板图标按钮、1px 边框、日期面板（日历+时间/提醒/重复行）锚定列按钮、优先级旗子着色（rgb(180,35,24)）、清单树浮层（32 项）、更多菜单三项、端到端保存（任务落位分组列且 HIGH 着色）、中间栏回归定位（left 与按钮对齐、top 在按钮下方）均验证（截图 tmp/qa6-*.png）。
+
+### P2-FE108 时间线视图对齐滴答行模型（2026-10-27）
+
+重构 `TasksTimelineView` 网格为「每分组一行、行内多色条」的滴答形态：
+
+- **行模型**：分组（清单/标签/优先级）时每分组一行——左侧 sticky 标签格（折叠箭头 + 分组色块 + 名称 + 数量），行内渲染该分组全部任务的色条；同组任务按时间重叠时自动分行（lane 算法），行高随层数增长。「无」分组退化为每任务一行（保留标题与日期区间、按优先级着色的旧行为）。
+- **色条着色**：按清单颜色（无颜色回退标签颜色/优先级色）；宽度足够（≥12%）时在色条内显示任务标题；单点任务渲染为窄药丸（原旋转菱形移除）。
+- **列头**：sticky 左格显示起始月（如「十月」）；日/月密度逐日成列（月密度 120 天 × 18px 窄列，月首加粗），周末列浅色底纹，今天列红色加粗 + 全高红色竖线；周密度保持周列。
+- **控件**：分组弹层（清单/标签/优先级/无）、排序（默认/按时间）、「今天」定位滚动、日/周/月密度下拉——功能项此前已齐备，本轮主要是形态对齐；月密度时间跨度改为 4 个月（movePeriod 同步 ±4 月）。
+- 自动门禁：210/210（更新 2 条时间线断言：select-task 参数、movePeriod 月步长）、typecheck、build、git diff --check 通过。浏览器实测：周/月密度、分组弹层切换、优先级分组、今天定位、色条着色与药丸样式（截图 tmp/qa7-*.png）。
+
+#### P2-FE108 补充（2026-10-27 反馈轮：列对齐与全天任务）
+
+- **列对齐修复**：表头轴与行内网格线此前宽度模型不一致（表头 `minmax(tick,1fr)` 弹性拉伸 vs 行内固定宽 repeating-gradient），容器较宽时错位。改为全固定宽度——轴与行均为 `repeat(count, tickWidth)`，轨道显式 `width: calc(count * tickWidth)`，行/轴网格模板去掉第三列；`.timeline-grid` 用 `width: fit-content; min-width: 100%`。实测表头刻度与行内网格线左缘偏差 0px。
+- **全天任务占满整天**：`taskRange` 对 `allDay` 任务按「当天 00:00 → 次日 00:00」计算跨度（此前按里程碑药丸处理）；`isMilestone` 排除 allDay。实测全天任务色条宽度正好一列（54px）。
+- 门禁 210/210、typecheck、build、diff-check 通过（截图 tmp/qa8-day-aligned.png）。
+
+### P2-FE109 日期弹层「时间段」tab 对齐滴答（2026-10-27）
+
+`TaskDateTimePopover` 内置 RANGE 模式，中间栏日期弹层切「时间段」tab 后与滴答一致：
+
+- **字段**：开始/结束两行（`type=date` + `type=time` 输入）、全天开关（`role=switch` 圆角滑块，开启后隐藏时间输入）、时区行（`Intl.DateTimeFormat` 计算「上海， GMT+8」+ 下拉箭头，仅 RANGE 模式渲染）。
+- **农历月历**：点击开始/结束日期输入弹出内嵌月历卡片（`task-range-picker`），复用 DATE 模式月历头部（上月/今天/下月）；`pickerDays` 派生 selected/in-range 高亮，选完起点自动切终点选择、选完终点自动收起。日历格新增农历小字（`day.lunar`，节日/节气/农历日）。
+- **保存链路**：`applyQuickDate` RANGE 分支——allDay 时 startAt/dueAt 取 `T00:00`（start 当日 00:00、end 次日归一为 end 当日 00:00 保持区间语义），不再强制清除 allDay；提醒/重复行经 rows 插槽与 DATE 模式共用（RANGE 下隐藏时间行）。
+- **连带修复 1（fixed 浮层包含块劫持）**：`theme.css` 的 `.app-main .page-content > section > *` 入场动画 `module-card-in` 用 `both` 填充，forwards 残留 `transform: translateY(0)` 使 `.clone-task-main` 成为后代 `position: fixed` 浮层的包含块，浮层整体偏移 ~298px。改为 `backwards`（to 态与常态一致，无视觉差异）。
+- **连带修复 2（农历「廿/卅」解析）**：`parseLunarLabel` 此前不识别「廿X」（后端如「八月廿一」返回 null 导致农历重复匹配与弹层农历缺失）；补充 `廿X→20+n`、`卅X→30+n` 分支。
+- **连带修复 3（请求范围差一天）**：`loadQuickCalendarMeta` 的 `to` 改为网格末日 +1（后端 to 排他），消除 42 格网格最后一格缺农历。
+- 门禁 210/210（新增断言：range 行结构、农历 small、theme.css backwards）、typecheck、build、diff-check 通过。浏览器实测：RANGE 字段/开关/时区、农历月历选择流程（起点→终点自动收起）、全天切换隐藏时间输入、保存后 allDay=true 且 startAt/dueAt=10-28/10-30 00:00（截图 tmp/qa9-*.png）。
+
+#### P2-FE109 反馈轮（2026-10-27：双日历与时区行）
+
+- **双日历重叠**：点击开始/结束日期输入时，Chrome 原生日期选择器与自定义农历月历同时弹出。修复：date input 加 `readonly`（原生 picker 不再触发），日期值统一经自定义月历写入（`@change` 随之移除，月历路径 `select-date` → `selectQuickCalendarDate` 不受影响）。
+- **时区行删除**：按用户要求移除 RANGE 模式的「上海， GMT+8」行（`task-range-timezone` DOM/CSS/`timezoneLabel` 常量/ChevronDown import）。
+- 门禁 210/210（断言同步：移除 task-range-timezone token、新增 readonly 与 doesNotMatch）、typecheck、build、diff-check 通过；实测点日期输入仅弹自定义月历、区间 10-28~10-30 选择后自动收起（截图 tmp/qa10-*.png）。
