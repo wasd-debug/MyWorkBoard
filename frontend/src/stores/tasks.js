@@ -196,7 +196,8 @@ export const useTasksStore = defineStore('tasks', {
       this.lists = lists.filter(item => !item.deleted).map(item => ({ ...item, publicId: item.id })).sort((a, b) => a.sortOrder - b.sortOrder)
       this.deletedLists = lists.filter(item => item.deleted).map(item => ({ ...item, publicId: item.id }))
       this.tags = tags.map(item => ({ ...item, publicId: item.id })).sort((a, b) => a.sortOrder - b.sortOrder)
-      this.tasks = tasks.map(localTask)
+      // 手动排序视图依赖基序即 sortOrder 序：hydrate 必须稳定排序，否则刷新后拖动顺序回退
+      this.tasks = tasks.map(localTask).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
       this.habits = habits.filter(item => !item.deleted).map(localTask).sort((a, b) => a.sortOrder - b.sortOrder)
       this.habitCheckins = habitCheckins.filter(item => !item.deleted).map(localTask)
       this.countdowns = countdowns.filter(item => !item.deleted).map(localTask)
