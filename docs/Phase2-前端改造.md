@@ -1083,3 +1083,12 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 - **弹层内补「提醒 / 重复 / 结束重复」行（P2-FE113 补充，用户指出弹窗与滴答形态不符）**：弹层 rows 按快添同构——提醒菜单（不提醒/准时/提前 5~60 分钟/一天/两天，含自定义相对提醒浮层）、重复菜单（每天/每周/每月/每年/工作日/周末/法定工作日/法定节假日/农历月重复/农历年重复/按自选日期，含自定义重复面板）与结束重复（永不/按次数/按日期）。选重复后行内实时出现「永不结束」行。规则解析泛化 `syncDetailRepeatFromRule(rule, anchor)` 供详情与行弹层共用；打开时从任务 `rrule`/`recurrenceAnchor` 回显、`apiListTaskReminders` 加载已有提醒。保存时 `applyRowDatePanel` 一并提交 `rrule` 与提醒 payload（相对提醒=按 dueAt 换算 remindAt）。
 - **+N 标签悬浮展开（P2-FE114）**：列表行 `.clone-task-tag-count` 与看板 `.clone-inline-board-tag-more` 的 +N chip 悬浮（hover/focus）时以彩色 chip 弹出显示被隐藏的全部标签（可点击跳转），替代原纯文本 tooltip；修复 tooltip 因继承 metadata 容器 `font-size: 0` 导致文字不可见的问题，并在悬浮时临时放开 metadata 的 `overflow: hidden` 裁剪。容器查询档位规则（隐藏第 N 个后的标签）限定为 `.clone-task-tags` 的直接子元素选择器，避免波及悬浮层内部 chips（`!important` 全隐藏档曾导致悬浮层空白）。
 - 门禁 211/211（新增：弹层复用、reminders 加载、rrule 保存、回显断言、直接子元素档位规则等）、typecheck、build、diff-check 通过。用户数据实测：+N 悬浮展开 4 个彩色标签（宽度/颜色正常，未被裁剪）；日期弹层三处入口形态与滴答一致（日期/时间段 tab、快捷项、时间列表）；设「明天 09:00 + 提前 5 分钟 + 每天」保存后行内出现重复图标，落库 `rrule=FREQ=DAILY`、`task_reminder` 生成 `RELATIVE/offset 5/08:55/IN_APP`，重开弹层回显「09:00 / 提前 5 分钟 / 每天 / 永不结束」；时间段 10-28~10-29 应用后行内显示区间。截图 tmp/qa17-*.png。
+
+### P2-FE115 标签悬浮浮层超出可视范围修复（2026-10-27，用户实测反馈）
+
+用户窄窗口实测：+N 悬浮浮层在视口顶部被裁掉，且 `.clone-task-tags` 容器上的原生 `title` 提示不受控弹出（超出视口右缘）；行尾标签悬浮时的 ❌ 移除按钮被 metadata `overflow: hidden` 裁剪。
+
+- **浮层改 JS 定位**：+N 悬浮层由纯 CSS `absolute`（`right:0; bottom:calc(100%+7px)`，顶部/左侧贴边即被裁）改为 teleport 到 body 的 fixed 浮层——按触发元素实测坐标锚定（右缘对齐、间距 7px），上方空间不足自动翻到下方，水平/垂直均钳制在视口内 8px 边距；window scroll/resize（capture）跟随重定位，Escape 关闭，悬浮层与触发器间 120ms 延迟桥接鼠标移动（`showTagFlyout/hideTagFlyoutSoon/cancelTagFlyoutHide/positionTagFlyout`），定位前 `visibility:hidden` 防闪现。
+- **原生 title 移除**：删除 `.clone-task-tags` 的 `:title`（与自定义浮层重复且无法控制位置），aria-label 保留。
+- **❌ 移除按钮裁剪修复**：metadata 在悬浮行内标签（`.clone-task-tag-wrap:hover`）或移除按钮聚焦时放开 `overflow`。
+- 门禁 211/211（断言重写：两处触发事件绑定、teleport 浮层、钳制定位、滚动跟随、title 移除、metadata 放开）、typecheck、build、diff-check 通过。实测（760×420 窄视口）：列表 +N 悬浮 4 chips 完整在视口内；看板 +N 同样正常（锚定 +2 上方右对齐）；行内标签悬浮 ❌ 按钮可见；Escape 关闭生效。截图 tmp/qa18-*.png。
