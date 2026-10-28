@@ -5,7 +5,12 @@
       <span v-for="label in WEEKDAY_LABELS" :key="label">{{ label }}</span>
     </div>
     <div class="cal-month-body" :style="{ gridTemplateRows: `repeat(${weeks.length}, minmax(0, 1fr))` }">
-      <div v-for="(week, index) in weeks" :key="`week-${index}`" class="cal-week">
+      <div
+        v-for="(week, index) in weeks"
+        :key="`week-${index}`"
+        class="cal-week"
+        :style="{ '--lane-height': `${weekViews[index].laneHeight}px` }"
+      >
         <div class="cal-week-gutter" :aria-label="`第 ${weekNumber(week[0])} 周`">{{ weekNumber(week[0]) }}<small>周</small></div>
         <div
           v-for="day in week"
@@ -17,7 +22,7 @@
             selected: dayKey(day) === selectedKey,
             weekend: [0, 6].includes(day.getDay())
           }"
-          @click="$emit('select-day', day)"
+          @click="$emit('select-day', day, $event)"
         >
           <header class="cal-day-head">
             <span class="cal-day-num">{{ day.getDate() }}</span>
@@ -26,11 +31,11 @@
           </header>
           <div class="cal-day-events">
             <button
-              v-for="event in visibleEvents(day)"
+              v-for="event in visibleEvents(index, day)"
               :key="event.id"
               type="button"
               class="cal-event"
-              :class="[`kind-${event.kind}`, { 'is-done': event.done, 'is-muted': event.kind === 'task' && event.task?.status === 'ABANDONED' }]"
+              :class="[`kind-${event.kind}`, { 'is-done': event.done }]"
               :style="tintStyle(event.color, event.kind === 'holiday' ? 18 : 15)"
               :title="eventTitle(event)"
               @click.stop="$emit('open-event', event, $event)"
@@ -43,17 +48,39 @@
               <span v-else-if="event.kind === 'holiday'" class="cal-ev-icon" :style="{ color: event.color }">
                 <CalendarOff v-if="event.off" :size="10" /><CalendarClock v-else :size="10" />
               </span>
+              <span v-else-if="event.kind === 'worktime'" class="cal-ev-icon" :style="{ color: event.color }"><Briefcase :size="10" /></span>
+              <span v-else-if="event.kind === 'ledger'" class="cal-ev-icon" :style="{ color: event.color }"><Coins :size="10" /></span>
               <span class="cal-ev-title">{{ event.title }}</span>
               <span v-if="event.startLabel" class="cal-ev-time">{{ event.startLabel }}</span>
               <span v-else-if="event.openChecklist" class="cal-ev-extra">+{{ event.openChecklist }}</span>
             </button>
             <button
-              v-if="hiddenCount(day)"
+              v-if="hiddenCount(index, day)"
               type="button"
               class="cal-event-more"
-              @click.stop="$emit('select-day', day)"
-            >+{{ hiddenCount(day) }}</button>
+              @click.stop="$emit('select-day', day, $event)"
+            >+{{ hiddenCount(index, day) }}</button>
           </div>
+        </div>
+        <div class="cal-lanes" :style="{ gridTemplateRows: `repeat(${Math.max(weekViews[index].lanes.length, 1)}, 18px)` }">
+          <button
+            v-for="segment in weekViews[index].segments"
+            :key="`lane-${segment.id}-${index}`"
+            type="button"
+            class="cal-lane"
+            :class="[`kind-${segment.event.kind}`, { 'is-done': segment.event.done, 'continues-before': segment.continuesBefore, 'continues-after': segment.continuesAfter }]"
+            :style="{
+              gridRow: weekViews[index].laneIndex[segment.id] + 1,
+              gridColumn: `${segment.startCol + 1} / ${segment.endCol + 2}`,
+              ...tintStyle(segment.event.color, segment.event.kind === 'holiday' ? 18 : 15)
+            }"
+            :title="`${segment.event.title}${segment.continuesBefore ? '（前面还有）' : ''}${segment.continuesAfter ? '（后面还有）' : ''}`"
+            @click.stop="$emit('open-event', segment.event, $event)"
+          >
+            <span class="cal-ev-dot" :class="{ 'is-done': segment.event.done }" :style="{ borderColor: segment.event.color }"></span>
+            <span class="cal-ev-title">{{ segment.event.title }}</span>
+            <span v-if="segment.event.openChecklist" class="cal-ev-extra">+{{ segment.event.openChecklist }}</span>
+          </button>
         </div>
       </div>
     </div>
@@ -62,14 +89,15 @@
 
 <script setup>
 import { computed } from 'vue'
-import { CalendarClock, CalendarOff, Circle, CircleCheck, Hourglass } from 'lucide-vue-next'
+import { Briefcase, CalendarClock, CalendarOff, Circle, CircleCheck, Coins, Hourglass } from 'lucide-vue-next'
 import { WEEKDAY_LABELS, isoWeekNumber, toDateKey } from './calendarRange.js'
 import { tintStyle } from './calendarColors.js'
+import { packWeekLanes, visibleRowCount } from './calendarLanes.js'
 
 const props = defineProps({
   weeks: { type: Array, required: true },
   byDay: { type: Map, default: () => new Map() },
-  rowLimit: { type: Number, default: 4 },
+  cellHeight: { type: Number, default: 120 },
   todayKey: { type: String, default: '' },
   selectedKey: { type: String, default: '' },
   monthIndex: { type: Number, required: true },
@@ -80,7 +108,19 @@ const props = defineProps({
 
 defineEmits(['select-day', 'open-event'])
 
-const limit = computed(() => Math.max(2, Number(props.rowLimit) || 4))
+const weekViews = computed(() => props.weeks.map(week => {
+  const packed = packWeekLanes(week, props.byDay)
+  const laneIndex = {}
+  packed.lanes.forEach((lane, index) => lane.forEach(item => { laneIndex[item.id] = index }))
+  return {
+    lanes: packed.lanes,
+    segments: packed.segments,
+    laneIds: packed.laneIds,
+    laneHeight: packed.laneHeight,
+    laneIndex,
+    limit: visibleRowCount(props.cellHeight, packed.lanes.length)
+  }
+}))
 
 function dayKey(day) {
   return toDateKey(day)
@@ -90,23 +130,22 @@ function weekNumber(day) {
   return isoWeekNumber(day)
 }
 
-function bucket(day) {
-  return props.byDay.get(dayKey(day)) || { allDay: [], timed: [] }
+function eventsOf(day, index) {
+  const bucket = props.byDay.get(dayKey(day)) || { allDay: [], timed: [] }
+  const laneIds = weekViews.value[index]?.laneIds || new Set()
+  return [...bucket.allDay.filter(item => !laneIds.has(item.id)), ...bucket.timed]
 }
 
-function eventsOf(day) {
-  const items = bucket(day)
-  return [...items.allDay, ...items.timed]
+function visibleEvents(index, day) {
+  const items = eventsOf(day, index)
+  const limit = weekViews.value[index]?.limit ?? 4
+  return items.length > limit ? items.slice(0, limit - 1) : items
 }
 
-function visibleEvents(day) {
-  const items = eventsOf(day)
-  return items.length > limit.value ? items.slice(0, limit.value - 1) : items
-}
-
-function hiddenCount(day) {
-  const total = eventsOf(day).length
-  return total > limit.value ? total - (limit.value - 1) : 0
+function hiddenCount(index, day) {
+  const total = eventsOf(day, index).length
+  const limit = weekViews.value[index]?.limit ?? 4
+  return total > limit ? total - (limit - 1) : 0
 }
 
 function subLabel(day) {
@@ -150,6 +189,7 @@ function eventTitle(event) {
   min-height: 0;
 }
 .cal-week {
+  position: relative;
   display: grid;
   grid-template-columns: 36px repeat(7, minmax(0, 1fr));
   min-height: 0;
@@ -181,10 +221,10 @@ function eventTitle(event) {
   min-height: 0;
   padding: 4px 4px 3px;
   border-right: 1px solid var(--line);
-  cursor: default;
+  cursor: pointer;
   overflow: hidden;
 }
-.cal-day:last-child {
+.cal-day:last-of-type {
   border-right: 0;
 }
 .cal-day:hover {
@@ -203,7 +243,7 @@ function eventTitle(event) {
   flex: 0 0 auto;
   align-items: center;
   gap: 4px;
-  min-height: 17px;
+  height: 19px;
   padding: 0 1px 2px;
   overflow: hidden;
 }
@@ -242,7 +282,48 @@ function eventTitle(event) {
   flex-direction: column;
   gap: 2px;
   min-height: 0;
+  padding-top: var(--lane-height, 0px);
   overflow: hidden;
+}
+.cal-lanes {
+  position: absolute;
+  z-index: 1;
+  top: 21px;
+  right: 0;
+  left: 36px;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px 0;
+  pointer-events: none;
+}
+.cal-lane {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 18px;
+  margin: 0 4px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--ink);
+  font-size: 10.5px;
+  line-height: 1;
+  pointer-events: auto;
+  text-align: left;
+}
+.cal-lane:hover {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 14%, transparent);
+}
+.cal-lane.continues-before {
+  margin-left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.cal-lane.continues-after {
+  margin-right: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
 }
 .cal-event {
   display: flex;
@@ -271,7 +352,6 @@ function eventTitle(event) {
   border-radius: 50%;
 }
 .cal-ev-dot.is-done {
-  border-color: currentColor;
   background: currentColor;
   box-shadow: inset 0 0 0 1.5px var(--card);
 }
@@ -290,7 +370,8 @@ function eventTitle(event) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.cal-event.is-done .cal-ev-title {
+.cal-event.is-done .cal-ev-title,
+.cal-lane.is-done .cal-ev-title {
   color: var(--muted);
   text-decoration: line-through;
 }
@@ -307,9 +388,7 @@ function eventTitle(event) {
   font-size: 9px;
   opacity: .8;
 }
-.cal-event.kind-holiday .cal-ev-title {
-  font-weight: 600;
-}
+.cal-event.kind-holiday .cal-ev-title,
 .cal-event.kind-countdown .cal-ev-title {
   font-weight: 600;
 }

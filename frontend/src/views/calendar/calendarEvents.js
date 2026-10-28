@@ -1,7 +1,7 @@
 import { addDays, fromDateKey, startOfDay, toDateKey } from './calendarRange.js'
 import { mergedColorSettings, resolveCountdownColor, resolveHabitColor, resolveTaskColor } from './calendarColors.js'
 
-export const EVENT_KINDS = { TASK: 'task', HABIT: 'habit', COUNTDOWN: 'countdown', FOCUS: 'focus', HOLIDAY: 'holiday' }
+export const EVENT_KINDS = { TASK: 'task', HABIT: 'habit', COUNTDOWN: 'countdown', FOCUS: 'focus', HOLIDAY: 'holiday', WORKTIME: 'worktime', LEDGER: 'ledger' }
 
 const PRIORITY_ORDER = { HIGH: 0, MEDIUM: 1, LOW: 2, NONE: 3 }
 const DEFAULT_TIMED_MINUTES = 30
@@ -55,8 +55,19 @@ function isRecurring(task) {
   return Boolean(task?.rrule || task?.seriesId)
 }
 
+
+function minutesFromClock(value) {
+  const [hour, minute] = String(value || '').split(':').map(Number)
+  if (!Number.isFinite(hour)) return 0
+  return hour * 60 + (Number.isFinite(minute) ? minute : 0)
+}
+
+function formatMoney(value) {
+  return String(Math.round(Number(value) * 100) / 100)
+}
+
 function sortAllDay(items) {
-  const kindOrder = { holiday: 0, task: 1, habit: 2, countdown: 3 }
+  const kindOrder = { holiday: 0, task: 1, ledger: 2, habit: 3, countdown: 4 }
   return items.sort((left, right) => {
     const byKind = (kindOrder[left.kind] ?? 9) - (kindOrder[right.kind] ?? 9)
     if (byKind) return byKind
@@ -70,6 +81,7 @@ function sortAllDay(items) {
 export function buildCalendarEvents(options = {}) {
   const {
     days = [], tasks = [], habits = [], habitCheckins = [], countdowns = [], focusSessions = [], holidays = [],
+    worktime = [], ledger = [],
     lists = [], tags = [], colorSettings = {}, taskFilter = null,
     includeHolidays = true, includeHabits = true, includeCountdowns = true, includeFocus = true
   } = options
@@ -121,6 +133,42 @@ export function buildCalendarEvents(options = {}) {
         endLabel: `${String(segmentEnd.getHours()).padStart(2, '0')}:${String(segmentEnd.getMinutes()).padStart(2, '0')}`,
         continuesBefore: key !== startKey, continuesAfter: key !== endKey,
         spanStart: key === startKey, spanEnd: key === endKey
+      })
+    }
+  }
+
+  if (worktime.length) {
+    for (const entry of worktime) {
+      const key = String(entry?.date || '').slice(0, 10)
+      if (!inRange(key) || !entry.start) continue
+      const startMinutes = minutesFromClock(entry.start)
+      const endMinutes = entry.end ? minutesFromClock(entry.end) : startMinutes
+      const overtime = Number(entry.overtimeMinutes) || 0
+      byDay.get(key).timed.push({
+        id: `worktime:${key}`, kind: EVENT_KINDS.WORKTIME,
+        title: overtime > 0 ? `工时 · 加班 ${Math.round(overtime / 6) / 10}h` : '工时',
+        color: '#7c6cf0', done: true, worktime: entry, startKey: key, endKey: key, allDay: false, recurring: false,
+        startMinutes, endMinutes: Math.max(endMinutes, startMinutes + 15),
+        startLabel: entry.start, endLabel: entry.end || '',
+        spanStart: true, spanEnd: true, continuesBefore: false, continuesAfter: false
+      })
+    }
+  }
+
+  if (ledger.length) {
+    for (const entry of ledger) {
+      const key = String(entry?.date || '').slice(0, 10)
+      if (!inRange(key)) continue
+      const income = Number(entry.income) || 0
+      const expense = Number(entry.expense) || 0
+      if (!income && !expense) continue
+      const parts = []
+      if (income) parts.push(`收 ¥${formatMoney(income)}`)
+      if (expense) parts.push(`支 ¥${formatMoney(expense)}`)
+      byDay.get(key).allDay.push({
+        id: `ledger:${key}`, kind: EVENT_KINDS.LEDGER, title: parts.join(' / '),
+        color: '#5aa9a3', done: false, ledger: entry, startKey: key, endKey: key,
+        allDay: true, spanStart: true, spanEnd: true, recurring: false
       })
     }
   }

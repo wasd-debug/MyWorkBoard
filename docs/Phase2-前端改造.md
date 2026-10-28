@@ -1268,3 +1268,15 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 - 偏好：`calendar_view_v1:<accountScope>` 持久化视图、两个跨度、颜色设置与范围选择，按账号隔离。
 - 已知边界：`/calendar` 原有的工时、流水叠加层与「订阅日历（外部 ICS 导入）」不再进入新界面（聚合接口本批只取节假日与农历），分别列入 B11 与待补后端契约；「安排任务」第三栏（B10）尚无入口。
 - 门禁：266/266 Node 测试、typecheck、api:check、build 通过；浏览器验收见 `docs/evidence/calendar-month-desktop-20261028.png` 等 8 张截图。
+
+### P2-CAL2 跨天泳道、日期浮层与系统日历叠加（2026-10-28）
+
+本批同时收口两个范围决策：任务日历不再显示工时与流水，改由系统级日历 `/calendar` 承担；订阅日历（外部 ICS 导入）需求取消，不再排期。
+
+- 泳道层：新增 `frontend/src/views/calendar/calendarLanes.js`（按周把跨天全天事件压成连续横条、重叠事件贪心分配泳道、跨周裁切、按泳道占位重算单元格可容纳条数），配 6 条单测。
+- 月/多周渲染：`CalendarMonthView.vue` 增加绝对定位的泳道层（与 7 列对齐、跨列 `grid-column`、延续端去圆角），单元格事件列表剔除已上泳道的条数；单元格高度改由 `cellHeight` 传入，`+N` 阈值随泳道数量与格高动态计算。
+- 日期浮层：点击任意日期格在指针附近弹出当日事件列表（标题带星期与农历/节日副标题），列表项可点进对象详情，底部「添加任务」直接以该日期打开快速添加。
+- 翻页手势：月与多周视图支持左右指针滑动翻页（横向位移 ≥64px 且明显大于纵向才触发），滑动后 260ms 内抑制紧随的点击，避免误开日期浮层；多周视图挂 `scroll-snap-type: y` 与行吸附。
+- 系统日历叠加：`/calendar` 请求 `layers=worktime,ledger,holiday`，经由 `calendarEvents.js` 新增的 `worktime`（按 `date/start/end/overtimeMinutes` 生成时间块，标题含加班时长）与 `ledger`（按日收支生成全天条目，金额去尾零）两个来源渲染；`/tasks/calendar` 仍只取 `holiday` + 农历，不出现工时与流水。
+- 交互接线：工时块点击进 `/punch?date=`，流水条目进 `/ledger/transactions?from&to`；节假日行保持不可点。
+- 门禁：275/275 Node 测试、typecheck、build 通过；浏览器实测泳道连续、单元格不再重复多日任务、浮层与滑动翻页、系统日历工时块均符合预期，控制台无错误。

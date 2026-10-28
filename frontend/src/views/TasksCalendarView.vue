@@ -90,12 +90,19 @@
       <p v-if="error" class="cal-error">{{ error }}</p>
       <div v-if="loading" class="cal-loading" role="status" aria-label="正在加载日历数据"></div>
 
-      <div ref="bodyEl" class="cal-body">
+      <div
+        ref="bodyEl"
+        class="cal-body"
+        :class="{ 'is-snap': view === 'multiWeek' }"
+        @pointerdown="onSwipeStart"
+        @pointerup="onSwipeEnd"
+        @pointercancel="resetSwipe"
+      >
         <CalendarMonthView
           v-if="view === 'month' || view === 'multiWeek'"
           :weeks="range.weeks"
           :by-day="calendarData.byDay"
-          :row-limit="rowLimit"
+          :cell-height="cellHeight"
           :today-key="todayKey"
           :selected-key="selectedKey"
           :month-index="view === 'month' ? anchor.getMonth() : -1"
@@ -155,6 +162,36 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <div v-if="dayPopover.open" class="cal-day-popover" :style="dayPopoverStyle" role="dialog" :aria-label="dayPopoverTitle" @click.stop>
+      <header>
+        <div>
+          <b>{{ dayPopoverTitle }}</b>
+          <small v-if="dayPopoverSub">{{ dayPopoverSub }}</small>
+        </div>
+        <button type="button" aria-label="关闭当日列表" @click="closeDayPopover"><X :size="14" /></button>
+      </header>
+      <div class="cal-popover-list">
+        <button
+          v-for="event in dayPopoverEvents"
+          :key="`popover-${event.id}`"
+          type="button"
+          class="cal-row"
+          :class="{ 'is-done': event.done, 'is-static': event.kind === 'holiday' }"
+          :style="tintStyle(event.color, 14)"
+          @click="openEvent(event)"
+        >
+          <span class="cal-row-dot" :style="{ borderColor: event.color }" :class="{ 'is-done': event.done }"></span>
+          <span class="cal-row-title">{{ event.title }}</span>
+          <span v-if="event.startLabel" class="cal-row-time">{{ event.startLabel }}</span>
+          <span v-else-if="event.openChecklist" class="cal-row-extra">+{{ event.openChecklist }}</span>
+        </button>
+        <p v-if="!dayPopoverEvents.length" class="cal-popover-empty">当天没有安排</p>
+      </div>
+      <footer>
+        <button type="button" class="cal-popover-add" @click="addFromPopover"><Plus :size="14" />添加任务</button>
+      </footer>
     </div>
 
     <div v-if="quickAdd.open" class="cal-quick" role="dialog" aria-label="新增任务" @click.stop>
@@ -238,6 +275,7 @@ const tasksStore = useTasksStore()
 const appStore = useAppStore()
 
 const isTaskRoute = computed(() => route.path.startsWith('/tasks'))
+const CAL_ROW_MIN_HEIGHT = 96
 const today = ref(startOfDay(new Date()))
 const todayKey = computed(() => toDateKey(today.value))
 const anchor = ref(startOfDay(new Date()))
@@ -251,12 +289,16 @@ const holidayMap = ref({})
 const lunarLabels = ref({})
 const focusSessions = ref([])
 const filterTaskIds = ref(new Set())
+const worktimeDays = ref([])
+const ledgerDays = ref([])
+const aggregateMode = computed(() => route.path === '/calendar')
 const loading = ref(false)
 const error = ref('')
 const viewMenu = ref(false)
 const moreOpen = ref(false)
 const settings = reactive({ open: false })
 const quickAdd = reactive({ open: false, title: '', priority: 'NONE', listId: '', saving: false, date: startOfDay(new Date()) })
+const dayPopover = reactive({ open: false, date: startOfDay(new Date()), x: 0, y: 0 })
 const quickInputEl = ref(null)
 const shellEl = ref(null)
 const bodyEl = ref(null)
@@ -264,7 +306,7 @@ const widthBucket = value => (value < 768 ? 'phone' : value < 1180 ? 'tablet' : 
 let currentBucket = typeof window !== 'undefined' ? widthBucket(window.innerWidth) : 'wide'
 const narrow = ref(currentBucket !== 'wide')
 const collapsedManual = ref(null)
-const rowLimit = ref(4)
+const cellHeight = ref(120)
 const collapsed = computed(() => collapsedManual.value ?? narrow.value)
 
 const calendarLists = computed(() => tasksStore.lists.filter(item => !item.archived))
@@ -293,6 +335,8 @@ const calendarData = computed(() => buildCalendarEvents({
   countdowns: tasksStore.countdowns,
   focusSessions: focusSessions.value,
   holidays: Object.values(holidayMap.value),
+  worktime: aggregateMode.value ? worktimeDays.value : [],
+  ledger: aggregateMode.value ? ledgerDays.value : [],
   lists: tasksStore.lists,
   tags: tasksStore.tags,
   colorSettings,
@@ -309,6 +353,11 @@ const quickAddDateLabel = computed(() => {
   const same = toDateKey(day) === todayKey.value
   return `${day.getMonth() + 1}月${day.getDate()}日，${same ? '今天' : formatWeekday(day)}`
 })
+
+const dayPopoverTitle = computed(() => `${dayPopover.date.getMonth() + 1}月${dayPopover.date.getDate()}日 ${formatWeekday(dayPopover.date)}`)
+const dayPopoverSub = computed(() => subLabel(dayPopover.date))
+const dayPopoverEvents = computed(() => dayEvents(dayPopover.date))
+const dayPopoverStyle = computed(() => ({ left: `${dayPopover.x}px`, top: `${dayPopover.y}px` }))
 
 function dayEvents(day) {
   const bucket = calendarData.value.byDay.get(toDateKey(day))
@@ -372,13 +421,16 @@ async function loadRange() {
   const from = toDateKey(range.value.start)
   const to = toDateKey(range.value.end)
   try {
+    const layers = aggregateMode.value ? 'worktime,ledger,holiday' : 'holiday'
     const [calendar, sessions] = await Promise.all([
-      apiGetTaskCalendar({ from, to, layers: 'holiday', lunar: 1 }),
+      apiGetTaskCalendar({ from, to, layers, lunar: 1 }),
       apiListFocusSessions({ from, to }).catch(() => [])
     ])
     holidayMap.value = Object.fromEntries((calendar?.holidays || []).map(item => [item.date, item]))
     lunarLabels.value = Object.fromEntries((calendar?.lunar || []).map(item => [item.date, item.festival || item.solarTerm || item.lunarDate]))
     focusSessions.value = sessions || []
+    worktimeDays.value = calendar?.worktime || []
+    ledgerDays.value = calendar?.ledger || []
   } catch (cause) {
     error.value = cause?.response?.data?.detail || cause?.message || '日历数据加载失败'
   } finally {
@@ -409,8 +461,8 @@ function measure() {
   if (!body) return
   if (view.value === 'month' || view.value === 'multiWeek') {
     const rows = range.value.weeks.length || 5
-    const cell = (body.clientHeight - 28) / rows
-    rowLimit.value = Math.max(2, Math.floor((cell - 26) / 20))
+    const available = (body.clientHeight - 28) / rows
+    cellHeight.value = Math.max(CAL_ROW_MIN_HEIGHT, Math.round(available))
   }
 }
 
@@ -421,6 +473,7 @@ function toggleSidebar() {
 function closeMenus() {
   viewMenu.value = false
   moreOpen.value = false
+  dayPopover.open = false
 }
 
 function toggleViewMenu() {
@@ -460,8 +513,57 @@ function jumpToDate(date) {
   selectedDay.value = startOfDay(date)
 }
 
-function selectDay(day) {
-  selectedDay.value = startOfDay(day)
+function selectDay(day, event) {
+  event?.stopPropagation?.()
+  if (swipe.suppressClick) {
+    swipe.suppressClick = false
+    return
+  }
+  const target = startOfDay(day)
+  selectedDay.value = target
+  const width = 272
+  const height = 320
+  const pointerX = Number.isFinite(event?.clientX) ? event.clientX : window.innerWidth / 2
+  const pointerY = Number.isFinite(event?.clientY) ? event.clientY : 140
+  const x = Math.min(Math.max(12, pointerX + 8), Math.max(12, window.innerWidth - width - 12))
+  const y = Math.min(Math.max(56, pointerY - 10), Math.max(56, window.innerHeight - height - 12))
+  Object.assign(dayPopover, { open: true, date: target, x, y })
+}
+
+function closeDayPopover() {
+  dayPopover.open = false
+}
+
+function addFromPopover() {
+  const target = dayPopover.date
+  dayPopover.open = false
+  void openQuickAdd(target)
+}
+
+// 月/多周视图左右滑动翻页：横向位移超过阈值且明显大于纵向才触发，避免与纵向滚动/点击冲突
+const swipe = { startX: 0, startY: 0, active: false, suppressClick: false }
+
+function onSwipeStart(event) {
+  if (event.pointerType === 'mouse' && event.button !== 0) return
+  if (view.value !== 'month' && view.value !== 'multiWeek') return
+  swipe.startX = event.clientX
+  swipe.startY = event.clientY
+  swipe.active = true
+}
+
+function resetSwipe() {
+  swipe.active = false
+}
+
+function onSwipeEnd(event) {
+  if (!swipe.active) return
+  swipe.active = false
+  const dx = event.clientX - swipe.startX
+  const dy = event.clientY - swipe.startY
+  if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.6) return
+  swipe.suppressClick = true
+  window.setTimeout(() => { swipe.suppressClick = false }, 260)
+  navigate(dx < 0 ? 'next' : 'prev')
 }
 
 function openDayFromYear(day) {
@@ -481,13 +583,18 @@ function openEvent(event) {
     void router.push('/tasks/countdowns')
   } else if (event.kind === 'focus') {
     void router.push('/tasks/focus')
+  } else if (event.kind === 'worktime') {
+    void router.push({ path: '/punch', query: { date: event.startKey } })
+  } else if (event.kind === 'ledger') {
+    void router.push({ path: '/ledger/transactions', query: { from: event.startKey, to: event.startKey } })
   }
 }
 
-async function openQuickAdd() {
+async function openQuickAdd(day) {
   viewMenu.value = false
   moreOpen.value = false
-  quickAdd.date = startOfDay(selectedDay.value || anchor.value)
+  dayPopover.open = false
+  quickAdd.date = startOfDay(day || selectedDay.value || anchor.value)
   quickAdd.title = ''
   quickAdd.priority = 'NONE'
   quickAdd.listId = tasksStore.inbox?.publicId || calendarLists.value[0]?.publicId || ''
@@ -543,6 +650,7 @@ let observer
 function onKeydown(event) {
   if (event.key !== 'Escape') return
   if (quickAdd.open) closeQuickAdd()
+  else if (dayPopover.open) closeDayPopover()
   else if (settings.open) settings.open = false
   else closeMenus()
 }
@@ -1185,6 +1293,204 @@ onBeforeUnmount(() => {
   opacity: 0;
   cursor: pointer;
 }
+.cal-day-popover {
+  position: fixed;
+  z-index: 55;
+  display: flex;
+  width: 272px;
+  max-height: min(340px, calc(100vh - 80px));
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, .2);
+}
+.cal-day-popover > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.cal-day-popover > header b {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+.cal-day-popover > header small {
+  display: block;
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.cal-day-popover > header button {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+.cal-day-popover > header button:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+.cal-popover-list {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 0;
+  padding: 8px;
+  overflow-y: auto;
+}
+.cal-popover-empty {
+  margin: 6px 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.cal-day-popover > footer {
+  padding: 8px;
+  border-top: 1px solid var(--line);
+}
+.cal-popover-add {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  border: 1px dashed var(--line2);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink2);
+  font-size: 12px;
+}
+.cal-popover-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.cal-body.is-snap {
+  scroll-snap-type: y proximity;
+}
+.cal-body.is-snap :deep(.cal-week) {
+  scroll-snap-align: start;
+}
+.cal-body.is-snap :deep(.cal-week) {
+  min-height: 96px;
+}
+@media (max-width: 1023px) {
+  .cal-day-popover {
+    right: 10px !important;
+    left: 10px !important;
+    width: auto;
+  }
+}
+
+.cal-day-popover {
+  position: fixed;
+  z-index: 55;
+  display: flex;
+  width: 272px;
+  max-height: min(340px, calc(100vh - 80px));
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, .2);
+}
+.cal-day-popover > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.cal-day-popover > header b {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+.cal-day-popover > header small {
+  display: block;
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.cal-day-popover > header button {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+.cal-day-popover > header button:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+.cal-popover-list {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 0;
+  padding: 8px;
+  overflow-y: auto;
+}
+.cal-popover-empty {
+  margin: 6px 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.cal-day-popover > footer {
+  padding: 8px;
+  border-top: 1px solid var(--line);
+}
+.cal-popover-add {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  border: 1px dashed var(--line2);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink2);
+  font-size: 12px;
+}
+.cal-popover-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.cal-body.is-snap {
+  scroll-snap-type: y proximity;
+}
+.cal-body.is-snap :deep(.cal-week) {
+  scroll-snap-align: start;
+}
+.cal-body.is-snap :deep(.cal-week) {
+  min-height: 96px;
+}
+@media (max-width: 1023px) {
+  .cal-day-popover {
+    right: 10px !important;
+    left: 10px !important;
+    width: auto;
+  }
+}
+
 @media (max-width: 1023px) {
   .cal-shell,
   .cal-shell.is-task-route {

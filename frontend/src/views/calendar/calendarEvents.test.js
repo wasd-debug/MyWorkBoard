@@ -183,3 +183,32 @@ test('节假日排在最前并按休班着色', () => {
   assert.equal(list[0].kind, 'holiday')
   assert.equal(list[0].color, '#8b92a3')
 })
+
+test('工时条目生成带时间的块并标注加班', () => {
+  const result = buildCalendarEvents({
+    days: days.slice(0, 1), lists, tags,
+    worktime: [{ date: '2026-10-19', start: '08:30', end: '18:00', overtimeMinutes: 30 }]
+  })
+  const [event] = dayEvents(result, '2026-10-19').timed
+  assert.equal(event.kind, 'worktime')
+  assert.equal(event.startMinutes, 8 * 60 + 30)
+  assert.equal(event.endMinutes, 18 * 60)
+  assert.match(event.title, /加班 0\.5h/)
+})
+
+test('流水只在该日有收支时生成全天条目', () => {
+  const result = buildCalendarEvents({
+    days: days.slice(0, 1), lists, tags,
+    ledger: [{ date: '2026-10-19', income: 100, expense: 23.5 }, { date: '2026-10-19', income: 0, expense: 0 }]
+  })
+  const list = dayEvents(result, '2026-10-19').allDay
+  assert.equal(list.length, 1)
+  assert.equal(list[0].kind, 'ledger')
+  assert.equal(list[0].title, '收 ¥100 / 支 ¥23.5')
+})
+
+test('任务日历不传工时与流水时不产生对应条目', () => {
+  const result = buildCalendarEvents({ days: days.slice(0, 1), lists, tags, tasks: [] })
+  assert.equal(dayEvents(result, '2026-10-19').allDay.length, 0)
+  assert.equal(dayEvents(result, '2026-10-19').timed.length, 0)
+})
