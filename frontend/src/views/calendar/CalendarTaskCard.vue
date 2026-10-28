@@ -119,7 +119,7 @@
           <template #rows="{ mode }">
             <div class="ctc-date-rows">
               <div class="ctc-date-row-line">
-                <Clock :size="14" /><span>{{ mode === 'RANGE' ? '时间段' : '时间' }}</span>
+                <Clock :size="14" /><span>时间</span>
                 <input v-if="mode === 'RANGE'" v-model="startTime" type="time" aria-label="开始时间" />
                 <input v-model="dueTime" type="time" aria-label="时间" />
               </div>
@@ -127,6 +127,65 @@
                 <span>全天</span>
                 <button type="button" role="switch" :aria-checked="allDayModel" :class="{ on: allDayModel }" @click="allDayModel = !allDayModel"><i></i></button>
               </label>
+
+              <div class="ctc-date-row-line is-row">
+                <Bell :size="14" /><span>提醒</span>
+                <button type="button" class="ctc-date-rowvalue" :class="{ on: reminderOn }" :aria-expanded="reminderOpen" @click.stop="toggleReminder">
+                  {{ reminderOn ? '已开启' : '未设置' }}
+                  <ChevronDown :size="13" :class="{ rotated: reminderOpen }" />
+                </button>
+              </div>
+              <div v-if="reminderOpen" class="ctc-date-sub" @click.stop>
+                <p v-if="reminderLoading" class="ctc-date-hint">正在读取提醒…</p>
+                <template v-else>
+                  <label class="ctc-date-check"><input v-model="reminderForm.enabled" type="checkbox" />启用站内提醒</label>
+                  <template v-if="reminderForm.enabled">
+                    <label class="ctc-date-field">方式
+                      <select v-model="reminderForm.kind">
+                        <option value="RELATIVE">相对截止时间</option>
+                        <option value="ABSOLUTE">指定时间</option>
+                      </select>
+                    </label>
+                    <label v-if="reminderForm.kind === 'RELATIVE'" class="ctc-date-field">提前
+                      <select v-model.number="reminderForm.offsetMinutes">
+                        <option :value="0">准时</option>
+                        <option :value="5">5 分钟</option>
+                        <option :value="15">15 分钟</option>
+                        <option :value="30">30 分钟</option>
+                        <option :value="60">1 小时</option>
+                        <option :value="1440">1 天</option>
+                      </select>
+                    </label>
+                    <label v-else class="ctc-date-field">提醒时间<input v-model="reminderForm.remindLocal" type="datetime-local" /></label>
+                    <label class="ctc-date-check"><input v-model="reminderForm.dailyUntilDone" type="checkbox" />未完成时每日提醒</label>
+                  </template>
+                  <p v-if="reminderError" class="ctc-date-error">{{ reminderError }}</p>
+                  <div class="ctc-date-actions">
+                    <button v-if="reminder" type="button" class="is-ghost" @click="disableReminder">关闭提醒</button>
+                    <button type="button" class="is-primary" :disabled="reminderSaving" @click="saveReminder">{{ reminderSaving ? '保存中…' : '保存提醒' }}</button>
+                  </div>
+                </template>
+              </div>
+
+              <div class="ctc-date-row-line is-row">
+                <Repeat2 :size="14" /><span>重复</span>
+                <button type="button" class="ctc-date-rowvalue" :class="{ on: Boolean(task.rrule) }" :aria-expanded="repeatOpen" @click.stop="repeatOpen = !repeatOpen">
+                  {{ recurrenceLabel }}
+                  <ChevronDown :size="13" :class="{ rotated: repeatOpen }" />
+                </button>
+              </div>
+              <div v-if="repeatOpen" class="ctc-date-sub" @click.stop>
+                <div class="ctc-date-presets">
+                  <button
+                    v-for="option in repeatPresets"
+                    :key="option.value"
+                    type="button"
+                    :class="{ on: (task.rrule || '') === option.value }"
+                    @click="applyRepeat(option.value)"
+                  >{{ option.label }}</button>
+                </div>
+                <p class="ctc-date-hint">更细的重复规则（按周几、按农历、结束条件）请在任务页设置。</p>
+              </div>
             </div>
           </template>
         </TaskDateTimePopover>
@@ -136,9 +195,12 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
-import { CalendarClock, Check, Clock, ExternalLink, Flag, FolderClosed, Plus, Repeat2, Timer, Trash2, X } from 'lucide-vue-next'
+import { computed, reactive, ref, watch } from 'vue'
+import { Bell, CalendarClock, Check, ChevronDown, Clock, ExternalLink, Flag, FolderClosed, Plus, Repeat2, Timer, Trash2, X } from 'lucide-vue-next'
 import TaskDateTimePopover from '../../components/tasks/TaskDateTimePopover.vue'
+import {
+  apiCreateTaskReminder, apiDeleteTaskReminder, apiListTaskReminders, apiUpdateTaskReminder
+} from '../../../packages/api-client/src/index.js'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -165,6 +227,13 @@ const dateMonth = ref(new Date())
 const listMenu = ref(false)
 const tagMenu = ref(false)
 const allDayModel = ref(Boolean(props.task.allDay))
+const repeatOpen = ref(false)
+const reminderOpen = ref(false)
+const reminderLoading = ref(false)
+const reminderSaving = ref(false)
+const reminderError = ref('')
+const reminder = ref(null)
+const reminderForm = reactive({ enabled: false, kind: 'RELATIVE', offsetMinutes: 30, remindLocal: '', dailyUntilDone: false })
 const startTime = ref(toLocalTime(props.task.startAt))
 const dueTime = ref(toLocalTime(props.task.dueAt))
 const startKeyModel = ref(toKey(props.task.startAt))
@@ -176,6 +245,11 @@ watch(() => props.task.publicId, () => {
   dateOpen.value = false
   listMenu.value = false
   tagMenu.value = false
+  repeatOpen.value = false
+  reminderOpen.value = false
+  reminder.value = null
+  reminderError.value = ''
+  Object.assign(reminderForm, { enabled: false, kind: 'RELATIVE', offsetMinutes: 30, remindLocal: '', dailyUntilDone: false })
   allDayModel.value = Boolean(props.task.allDay)
   startTime.value = toLocalTime(props.task.startAt)
   dueTime.value = toLocalTime(props.task.dueAt)
@@ -190,6 +264,22 @@ watch(() => props.task.title, value => {
 const isDone = computed(() => props.task.status === 'COMPLETED')
 const priorityKey = computed(() => String(props.task.priority || 'NONE').toLowerCase())
 const priorityLabel = computed(() => PRIORITY_LABEL[props.task.priority || 'NONE'] || '无')
+
+const REPEAT_PRESETS = [
+  { value: '', label: '不重复' },
+  { value: 'FREQ=DAILY', label: '每天' },
+  { value: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', label: '每个工作日' },
+  { value: 'FREQ=WEEKLY', label: '每周' },
+  { value: 'FREQ=MONTHLY', label: '每月' },
+  { value: 'FREQ=YEARLY', label: '每年' }
+]
+const repeatPresets = REPEAT_PRESETS
+const recurrenceLabel = computed(() => {
+  const value = props.task.rrule || ''
+  if (!value) return '不重复'
+  return REPEAT_PRESETS.find(option => option.value === value)?.label || '自定义'
+})
+const reminderOn = computed(() => Boolean(reminder.value) || reminderForm.enabled)
 const checklist = computed(() => (props.task.checklist || []).filter(item => item && item.title))
 const taskTags = computed(() => {
   const ids = props.task.tagIds || []
@@ -283,6 +373,93 @@ function shiftMonth(month, delta) {
 function closeMenus() {
   listMenu.value = false
   tagMenu.value = false
+  repeatOpen.value = false
+}
+
+function applyRepeat(value) {
+  repeatOpen.value = false
+  const next = value === 'CUSTOM' ? 'CUSTOM' : value
+  if (next === 'CUSTOM') {
+    emit('open-detail')
+    return
+  }
+  if ((props.task.rrule || '') === next) return
+  emit('update', { rrule: next })
+}
+
+async function toggleReminder() {
+  const next = !reminderOpen.value
+  reminderOpen.value = next
+  repeatOpen.value = false
+  if (!next) return
+  reminderError.value = ''
+  if (reminder.value || reminderForm.enabled) return
+  reminderLoading.value = true
+  try {
+    const list = await apiListTaskReminders(props.task.publicId)
+    const found = list?.[0] || null
+    reminder.value = found
+    if (found) {
+      Object.assign(reminderForm, {
+        enabled: true,
+        kind: found.kind || 'RELATIVE',
+        offsetMinutes: found.offsetMinutes ?? 30,
+        remindLocal: found.remindAt ? toLocalValue(found.remindAt) : '',
+        dailyUntilDone: Boolean(found.dailyUntilDone)
+      })
+    }
+  } catch (cause) {
+    reminderError.value = cause?.response?.data?.detail || cause?.message || '提醒读取失败'
+  } finally {
+    reminderLoading.value = false
+  }
+}
+
+async function saveReminder() {
+  if (reminderSaving.value) return
+  reminderError.value = ''
+  if (reminderForm.enabled && reminderForm.kind === 'RELATIVE' && !props.task.dueAt) {
+    reminderError.value = '相对提醒需要先给任务设置截止时间'
+    return
+  }
+  if (reminderForm.enabled && reminderForm.kind === 'ABSOLUTE' && !reminderForm.remindLocal) {
+    reminderError.value = '请选择提醒时间'
+    return
+  }
+  reminderSaving.value = true
+  try {
+    if (!reminderForm.enabled) {
+      if (reminder.value) await apiDeleteTaskReminder(props.task.publicId, reminder.value.publicId, reminder.value.revision)
+      reminder.value = null
+    } else {
+      const payload = {
+        kind: reminderForm.kind,
+        offsetMinutes: reminderForm.kind === 'RELATIVE' ? Number(reminderForm.offsetMinutes) : null,
+        remindAt: reminderForm.kind === 'ABSOLUTE' ? new Date(reminderForm.remindLocal).toISOString() : null,
+        channel: 'IN_APP',
+        dailyUntilDone: reminderForm.dailyUntilDone
+      }
+      reminder.value = reminder.value
+        ? await apiUpdateTaskReminder(props.task.publicId, reminder.value.publicId, payload, reminder.value.revision)
+        : await apiCreateTaskReminder(props.task.publicId, payload)
+    }
+    reminderOpen.value = false
+  } catch (cause) {
+    reminderError.value = cause?.response?.data?.detail || cause?.message || '提醒保存失败'
+  } finally {
+    reminderSaving.value = false
+  }
+}
+
+async function disableReminder() {
+  reminderForm.enabled = false
+  await saveReminder()
+}
+
+function toLocalValue(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
 function commitTitle() {
@@ -813,5 +990,128 @@ function applyDate() {
 }
 .ctc-date-switch button.on i {
   transform: translateX(17px);
+}
+.ctc-date-row-line.is-row {
+  border-top: 1px solid var(--line);
+}
+.ctc-date-rowvalue {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ctc-date-rowvalue:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+.ctc-date-rowvalue.on {
+  color: var(--accent);
+}
+.ctc-date-rowvalue svg.rotated {
+  transform: rotate(180deg);
+}
+.ctc-date-sub {
+  display: grid;
+  gap: 7px;
+  padding: 4px 2px 8px 22px;
+}
+.ctc-date-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink2);
+  font-size: 12px;
+}
+.ctc-date-field select,
+.ctc-date-field input {
+  min-width: 0;
+  flex: 1;
+  min-height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
+.ctc-date-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink2);
+  font-size: 12px;
+}
+.ctc-date-check input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+.ctc-date-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.ctc-date-presets button {
+  min-height: 28px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink2);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.ctc-date-presets button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.ctc-date-presets button.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+.ctc-date-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.ctc-date-error {
+  margin: 0;
+  color: var(--down, #e34d59);
+  font-size: 11.5px;
+}
+.ctc-date-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.ctc-date-actions button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ctc-date-actions button.is-primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+}
+.ctc-date-actions button.is-ghost:hover {
+  border-color: var(--down, #e34d59);
+  color: var(--down, #e34d59);
 }
 </style>

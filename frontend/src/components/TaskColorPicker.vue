@@ -19,11 +19,27 @@
             <DialogOverlay class="task-color-overlay" />
             <DialogContent ref="palettePanel" class="task-color-palette is-detached" aria-label="更多颜色" @pointerdown.stop @click.stop>
             <header class="task-color-overlay-heading"><DialogTitle as="strong">选择颜色</DialogTitle><button type="button" aria-label="关闭颜色选择" @click="closePopovers"><X :size="18" /></button></header>
-            <div class="task-color-family-list-scroll">
-              <section v-for="family in taskColorFamilies" :key="family.name" class="task-color-family">
-                <strong>{{ family.name }}色系</strong>
-                <div>
-                  <button v-for="shade in family.shades" :key="shade" type="button" :aria-label="shade" :aria-pressed="modelValue.toLowerCase() === shade.toLowerCase()" @click="selectColor(shade)"><span :style="{ backgroundColor: shade }"><Check v-if="modelValue.toLowerCase() === shade.toLowerCase()" :size="12" /></span></button>
+            <div class="task-color-group-list">
+              <section v-for="group in colorGroups" :key="group.key" class="task-color-group">
+                <strong>{{ group.label }}</strong>
+                <div class="task-color-group-swatches">
+                  <button
+                    v-for="(color, index) in group.colors"
+                    :key="`${group.key}-${index}`"
+                    type="button"
+                    :aria-label="color || '默认颜色'"
+                    :aria-pressed="normalizedValue === color.toLowerCase()"
+                    :title="color || '默认颜色'"
+                    @click="selectColor(color)"
+                  >
+                    <span
+                      :class="{ 'is-default': !color, 'is-selected': normalizedValue === color.toLowerCase() }"
+                      :style="color ? { backgroundColor: color } : undefined"
+                    >
+                      <X v-if="!color" :size="12" />
+                      <Check v-else-if="normalizedValue === color.toLowerCase()" :size="12" />
+                    </span>
+                  </button>
                 </div>
               </section>
             </div>
@@ -70,6 +86,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Check, ChevronDown, Plus, X } from "lucide-vue-next";
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
 import { commonTaskColors, isHexColor, taskColorFamilies } from "../views/taskColors.js";
+import { COLOR_GROUPS } from "../views/calendar/calendarColors.js";
 
 const props = defineProps({ modelValue: { type: String, default: "" }, inline: { type: Boolean, default: false } });
 const emit = defineEmits(["update:modelValue"]);
@@ -96,6 +113,9 @@ const customHex = ref("#000000");
 const customRgb = ref([0, 0, 0]);
 const selectedLabel = computed(() => commonTaskColors.find(color => color.value.toLowerCase() === props.modelValue.toLowerCase())?.name || props.modelValue || "默认");
 const swatchStyle = computed(() => props.modelValue ? { backgroundColor: props.modelValue } : {});
+// 色板与日历保持同一套分组（推荐 / 马卡龙 / 莫兰迪 / 洛可可 / 经典 / 孟菲斯）
+const colorGroups = COLOR_GROUPS;
+const normalizedValue = computed(() => String(props.modelValue || "").toLowerCase());
 
 watch(() => props.modelValue, value => { if (isHexColor(value)) customColor.value = value; });
 
@@ -157,6 +177,15 @@ function confirmCustom() { if (isHexColor(customHex.value)) selectColor(customHe
 .task-color-overlay-heading button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--ink2); cursor: pointer; }
 .task-color-overlay-heading button:hover { background: var(--paper); color: var(--ink); }
 .task-color-family-list-scroll { display: grid; flex: 1 1 auto; align-content: start; gap: 12px; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+.task-color-group-list { display: grid; flex: 1 1 auto; align-content: start; gap: 14px; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+.task-color-group { display: grid; gap: 8px; }
+.task-color-group strong { color: var(--ink2); font-size: 12px; font-weight: 600; }
+.task-color-group-swatches { display: flex; align-items: center; gap: 9px; flex-wrap: nowrap; }
+.task-color-group-swatches button { display: grid; flex: none; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; }
+.task-color-group-swatches button:hover { background: var(--paper); }
+.task-color-group-swatches button span { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: #fff; }
+.task-color-group-swatches button span.is-default { border: 1.5px dashed color-mix(in srgb, var(--ink) 34%, transparent); color: var(--muted); }
+.task-color-group-swatches button span.is-selected { outline: 2px solid var(--accent); outline-offset: 2px; }
 .task-color-family { display: grid; gap: 5px; }
 .task-color-family strong, .task-color-custom-section strong { font-size: 11px; font-weight: 600; }
 .task-color-family > div { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; }

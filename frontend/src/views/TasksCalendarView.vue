@@ -126,7 +126,7 @@
         <CalendarYearView
           v-else-if="view === 'year'"
           :months="yearMonths(anchor)"
-          :by-day="calendarData.byDay"
+          :completed-counts="completedCounts"
           :today-key="todayKey"
           :selected-key="selectedKey"
           @select-day="selectDay"
@@ -345,6 +345,8 @@ const scope = ref({ mode: 'all', listIds: [], tagIds: [], filterId: '' })
 const filters = ref([])
 const holidayMap = ref({})
 const lunarLabels = ref({})
+// 每次加载自增，用于丢弃过期响应（连点日期/快速翻月时的竞态）
+let loadEpoch = 0
 const focusSessions = ref([])
 const filterTaskIds = ref(new Set())
 const worktimeDays = ref([])
@@ -446,6 +448,19 @@ const cardCountdown = computed(() => {
   const event = eventCard.event
   if (!event || event.kind !== 'countdown') return null
   return tasksStore.countdowns.find(item => item.publicId === event.countdown?.publicId) || null
+})
+
+// 年视图热力图：按「当天完成的任务数」着色，直接用本地任务表算，不受日历请求范围限制
+const completedCounts = computed(() => {
+  const map = new Map()
+  for (const task of tasksStore.tasks) {
+    if (!task || task.deleted || task.status !== 'COMPLETED' || !task.completedAt) continue
+    const date = new Date(task.completedAt)
+    if (Number.isNaN(date.getTime())) continue
+    const key = toDateKey(date)
+    map.set(key, (map.get(key) || 0) + 1)
+  }
+  return map
 })
 
 const cardEvent = computed(() => {
@@ -687,12 +702,23 @@ async function loadRange() {
     const layers = aggregateMode.value
       ? ['worktime', 'ledger', 'holiday'].filter(key => calendarLayers[key] !== false).join(',') || 'holiday'
       : 'holiday'
+    const epoch = ++loadEpoch
     const [calendar, sessions] = await Promise.all([
       apiGetTaskCalendar({ from, to, layers, lunar: 1 }),
       apiListFocusSessions({ from, to }).catch(() => [])
     ])
-    holidayMap.value = Object.fromEntries((calendar?.holidays || []).map(item => [item.date, item]))
-    lunarLabels.value = Object.fromEntries((calendar?.lunar || []).map(item => [item.date, formatLunarLabel(item)]))
+    // 连点日期/翻月会并发触发多次加载，旧请求晚回来时不能覆盖新范围的数据，
+    // 否则会出现「迷你月历换月了但农历还在上一批范围里」——整月农历看起来全没了
+    if (epoch !== loadEpoch) return
+    // 农历与节假日按日期累加而不是整体替换：侧栏始终展示整月，任何一批数据都不应抹掉已取到的日期
+    holidayMap.value = {
+      ...holidayMap.value,
+      ...Object.fromEntries((calendar?.holidays || []).map(item => [item.date, item]))
+    }
+    lunarLabels.value = {
+      ...lunarLabels.value,
+      ...Object.fromEntries((calendar?.lunar || []).map(item => [item.date, formatLunarLabel(item)]))
+    }
     focusSessions.value = sessions || []
     worktimeDays.value = calendar?.worktime || []
     ledgerDays.value = calendar?.ledger || []
