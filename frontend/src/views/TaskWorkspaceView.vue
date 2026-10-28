@@ -1227,17 +1227,39 @@
         </div>
         <section v-if="selectedTask" class="clone-detail-subtasks" aria-label="子任务">
           <header><strong>子任务</strong><span>{{ detailSubtasks.length }}</span><button type="button" aria-label="添加子任务" title="添加子任务" @click="createSubtask(selectedTask)"><Plus :size="15" /></button></header>
-          <article v-for="child in detailSubtasks" :key="child.publicId" class="clone-detail-subtask-row" :class="{ completed: child.status === 'COMPLETED' }">
-            <button type="button" class="clone-detail-subtask-check" :aria-label="`${child.status === 'COMPLETED' ? '重新打开' : '完成'}${child.title}`" @click="toggleComplete(child)"><Check v-if="child.status === 'COMPLETED'" :size="12" /></button>
+          <article
+            v-for="(child, childIndex) in detailSubtasks"
+            :key="child.publicId"
+            class="clone-detail-subtask-row"
+            :class="{ completed: child.status === 'COMPLETED', 'drop-target': detailSubtaskDropTarget === childIndex }"
+            draggable="true"
+            @dragstart="startDetailSubtaskDrag(childIndex, $event)"
+            @dragover.prevent="detailSubtaskDropTarget = childIndex"
+            @drop.prevent="dropDetailSubtask(childIndex)"
+            @dragend="detailSubtaskDragIndex = null; detailSubtaskDropTarget = null"
+            @contextmenu.prevent="openContext(child, $event)"
+          >
+            <span class="clone-detail-subtask-grip" aria-hidden="true"><GripVertical :size="14" /></span>
+            <button type="button" class="clone-detail-subtask-check" :aria-label="`${child.status === 'COMPLETED' ? '重新打开' : '完成'}${child.title}`" @click.stop="toggleComplete(child)"><Check v-if="child.status === 'COMPLETED'" :size="12" /></button>
             <input v-if="inlineSubtaskTitleId === child.publicId" v-model="inlineSubtaskTitleDraft" class="clone-detail-subtask-title-input" :aria-label="`编辑子任务 ${child.title}`" @keydown.enter.prevent="$event.target.blur()" @keydown.esc.prevent="cancelInlineSubtaskTitle" @blur="saveInlineSubtaskTitle(child)" />
-            <button v-else type="button" class="clone-detail-subtask-title" @click="beginInlineSubtaskTitleEdit(child)">{{ child.title || '无标题' }}</button>
-            <button type="button" class="clone-detail-subtask-date" data-row-date-trigger :aria-label="`调整${child.title}日期`" @click="openRowDateEditor(child, $event.currentTarget)">{{ child.dueAt ? taskDateLabel(child) : '日期' }}</button>
+            <button v-else type="button" class="clone-detail-subtask-title" :aria-label="`打开子任务${child.title}`" @click.stop="openDetail(child)" @dblclick.stop.prevent="beginInlineSubtaskTitleEdit(child)">{{ child.title || '无标题' }}</button>
+            <span v-if="child.priority && child.priority !== 'NONE'" class="clone-detail-subtask-priority" :data-priority="child.priority" :title="`优先级${priorityLabel(child.priority)}`"><Flag :size="12" /></span>
+            <button type="button" class="clone-detail-subtask-date" data-row-date-trigger :aria-label="`调整${child.title}日期`" @click.stop="openRowDateEditor(child, $event.currentTarget)">{{ child.dueAt ? taskDateLabel(child) : '日期' }}</button>
           </article>
           <form v-if="detailSubtaskDraftOpen" class="clone-detail-subtask-draft" aria-label="添加子任务" @submit.prevent="saveDetailSubtask">
             <span class="clone-detail-subtask-check draft-check" aria-hidden="true"></span><input ref="detailSubtaskInput" v-model="detailSubtaskDraft" aria-label="子任务名称" placeholder="输入内容或使用 / 快速插入" @keydown.esc.prevent="cancelDetailSubtask" />
             <button type="submit" :disabled="!detailSubtaskDraft.trim() || detailSubtaskSaving" aria-label="保存子任务"><Check :size="15" /></button>
           </form>
           <button v-else type="button" class="clone-detail-subtask-add" @click="createSubtask(selectedTask)"><Plus :size="16" />添加子任务</button>
+        </section>
+        <section v-if="activities.length" class="clone-detail-activity-inline" aria-label="任务动态">
+          <header><strong>任务动态</strong><span>{{ activities.length }}</span><button type="button" @click="showDetailActivity">查看全部</button></header>
+          <ol>
+            <li v-for="item in activities.slice(0, 5)" :key="item.publicId">
+              <span class="clone-detail-activity-dot" aria-hidden="true"></span>
+              <div><p>{{ item.summary }}</p><time>{{ formatListActivityTime(item.createdAt) }}</time></div>
+            </li>
+          </ol>
         </section>
         <section v-if="detailFieldsOpen" class="clone-detail-secondary" aria-label="更多任务字段">
           <section class="clone-detail-properties" aria-label="任务属性编辑">
@@ -1328,16 +1350,25 @@
             <button role="menuitem" type="button" @click="associateTaskParent"><ListTree :size="17" />关联主任务</button>
             <button role="menuitem" type="button" @click="pinDetailTask"><Pin :size="17" />置顶</button>
             <button role="menuitem" type="button" @click="abandonDetailTask"><CircleX :size="17" />放弃</button>
+            <button role="menuitem" type="button" :aria-expanded="detailMoreSection === 'move'" @click="detailMoreSection = detailMoreSection === 'move' ? '' : 'move'"><FolderInput :size="17" />移动到<ChevronRight :size="15" /></button>
+            <div v-if="detailMoreSection === 'move'" class="clone-detail-more-submenu" role="group" aria-label="移动到清单">
+              <button v-for="list in activeLists" :key="list.publicId" type="button" :disabled="list.publicId === selectedTask.listId" @click="moveDetailTaskFromMenu(list)">{{ list.name }}</button>
+            </div>
             <button role="menuitem" type="button" :aria-expanded="detailMoreSection === 'tags'" @click="detailMoreSection = detailMoreSection === 'tags' ? '' : 'tags'"><Tag :size="17" />标签<ChevronRight :size="15" /></button>
             <div v-if="detailMoreSection === 'tags'" class="clone-detail-more-submenu" role="group" aria-label="任务标签">
               <label v-for="tag in sortedTags" :key="tag.publicId"><input type="checkbox" :checked="selectedTask.tagIds?.includes(tag.publicId)" @change="toggleDetailTaskTag(tag)" />#{{ tag.name }}</label>
               <span v-if="!sortedTags.length">暂无标签</span>
             </div>
             <button role="menuitem" type="button" @click="chooseDetailAttachment"><Paperclip :size="17" />上传附件</button>
-            <button role="menuitem" type="button" @click="startDetailFocus"><CircleDot :size="17" />开始专注<ChevronRight :size="15" /></button>
+            <button role="menuitem" type="button" :aria-expanded="detailMoreSection === 'focus'" @click="detailMoreSection = detailMoreSection === 'focus' ? '' : 'focus'"><CircleDot :size="17" />开始专注<ChevronRight :size="15" /></button>
+            <div v-if="detailMoreSection === 'focus'" class="clone-detail-more-submenu" role="group" aria-label="专注方式">
+              <button type="button" @click="startDetailFocus('POMODORO')">开始番茄专注</button>
+              <button type="button" @click="startEstimatedFocus">预计番茄时长…</button>
+              <button type="button" disabled title="正计时需要后端支持无上限专注，暂未开放">开始正计时</button>
+            </div>
             <div class="clone-detail-more-separator" aria-hidden="true"></div>
             <button role="menuitem" type="button" @click="showDetailActivity"><SlidersHorizontal :size="17" />任务动态</button>
-            <button role="menuitem" type="button" @click="saveSelectedTaskAsTemplate"><FileText :size="17" />保存为模板</button>
+            <button role="menuitem" type="button" @click="openTaskTemplateDialog"><FileText :size="17" />保存为模板</button>
             <button role="menuitem" type="button" @click="duplicateDetailTask"><CopyPlus :size="17" />创建副本</button>
             <button role="menuitem" type="button" @click="copyDetailTaskLink"><Link :size="17" />复制链接</button>
             <button role="menuitem" type="button" :aria-expanded="detailMoreSection === 'note'" @click="detailMoreSection = detailMoreSection === 'note' ? '' : 'note'"><StickyNote :size="17" />转换为笔记<ChevronRight :size="15" /></button>
@@ -1345,11 +1376,7 @@
               <button v-for="list in noteLists" :key="list.publicId" type="button" @click="convertDetailTaskToNote(list)">{{ list.name }}</button>
               <span v-if="!noteLists.length">请先创建笔记清单</span>
             </div>
-            <button role="menuitem" type="button" :aria-expanded="detailMoreSection === 'export'" @click="detailMoreSection = detailMoreSection === 'export' ? '' : 'export'"><Download :size="17" />导出<ChevronRight :size="15" /></button>
-            <div v-if="detailMoreSection === 'export'" class="clone-detail-more-submenu" role="group" aria-label="选择导出格式">
-              <button type="button" @click="exportDetailTask('markdown')">Markdown (.md)</button>
-              <button type="button" @click="exportDetailTask('text')">纯文本 (.txt)</button>
-            </div>
+            <button role="menuitem" type="button" @click="openExportDialog"><Download :size="17" />导出<ChevronRight :size="15" /></button>
             <button role="menuitem" type="button" @click="printDetailTask"><Printer :size="17" />打印</button>
             <button role="menuitem" type="button" @click="openDetailTaskNote"><StickyNote :size="17" />打开便签</button>
             <button role="menuitem" type="button" class="danger" @click="deleteDetailTask"><Trash2 :size="17" />删除</button>
@@ -1374,7 +1401,7 @@
       <div v-if="contextSubmenu === 'list'" class="clone-context-submenu"><button v-for="list in activeLists" :key="list.publicId" type="button" :disabled="list.publicId === context.task?.listId" @click="moveContextTask(list)">{{ list.name }}</button></div>
       <button type="button" @click="contextSubmenu = contextSubmenu === 'tags' ? '' : 'tags'"><Tag :size="14" />设置标签<ChevronDown :size="13" /></button>
       <div v-if="contextSubmenu === 'tags'" class="clone-context-submenu"><label v-for="tag in sortedTags" :key="tag.publicId"><input type="checkbox" :checked="context.task?.tagIds?.includes(tag.publicId)" @change="toggleContextTag(tag)" />#{{ tag.name }}</label><span v-if="!sortedTags.length">暂无标签</span></div>
-      <button type="button" @click="createSubtask(context.task); closeContext()"><Plus :size="14" />添加子任务</button>
+      <button type="button" @click="createSubtask(context.task, { openDetail: true }); closeContext()"><Plus :size="14" />添加子任务</button>
       <button type="button" @click="startContextFocus"><Timer :size="14" />开始专注</button>
       <button type="button" @click="copyContextTaskLink"><Copy :size="14" />复制任务链接</button>
       <button v-if="selectedTask?.publicId === context.task?.publicId" type="button" @click="detailSecondaryOpen = !detailSecondaryOpen; closeContext()"><Layers3 :size="14" />{{ detailSecondaryOpen ? '隐藏附加信息' : '显示附件、动态与属性' }}</button>
@@ -1452,6 +1479,32 @@
       <div class="clone-icon-picker"><input v-model.trim="organizationIconSearch" aria-label="搜索图标" placeholder="搜索中文名称或图标名" /><div class="clone-icon-categories" role="tablist" aria-label="图标分类"><button v-for="category in organizationIconCategories" :key="category.value" type="button" role="tab" :aria-selected="organizationIconCategory === category.value" @click="organizationIconCategory = category.value">{{ category.label }}</button></div><div class="clone-icon-grid" role="listbox" aria-label="可选图标"><button v-for="icon in filteredOrganizationIcons" :key="icon.value" type="button" role="option" :aria-selected="currentOrganizationIcon === icon.value" :aria-label="icon.label" :title="`${icon.label} · ${icon.value}`" @click="selectOrganizationIcon(icon.value)"><component :is="icon.component" v-if="icon.component" :size="19" :stroke-width="2" aria-hidden="true" /><span v-else>{{ icon.value }}</span></button><p v-if="!filteredOrganizationIcons.length" class="clone-icon-empty">没有匹配的图标</p></div><small class="clone-icon-count">{{ filteredOrganizationIcons.length }} 个可选图标</small></div>
     </Dialog>
     <Dialog v-model:open="trashClearOpen" title="清空垃圾桶"><div class="clone-confirmation"><p>将永久删除垃圾桶中的 {{ trashedTaskCount }} 项任务，且无法恢复。</p><footer><button type="button" :disabled="trashClearBusy" @click="trashClearOpen = false">取消</button><button type="button" class="clone-danger-button" :disabled="trashClearBusy || !trashedTaskCount" @click="clearTrashPermanently">{{ trashClearBusy ? '清除中…' : '永久清除' }}</button></footer></div></Dialog>
+    <Dialog v-model:open="exportDialogOpen" title="导出" content-class="clone-export-dialog">
+      <div class="clone-export-body">
+        <div class="clone-export-tabs" role="tablist" aria-label="导出格式"><button type="button" role="tab" :aria-selected="exportFormat === 'markdown'" :class="{ active: exportFormat === 'markdown' }" @click="exportFormat = 'markdown'">Markdown</button><button type="button" role="tab" :aria-selected="exportFormat === 'text'" :class="{ active: exportFormat === 'text' }" @click="exportFormat = 'text'">纯文本</button></div>
+        <pre class="clone-export-preview" aria-label="导出内容预览">{{ exportContent }}</pre>
+        <footer><button type="button" @click="exportDialogOpen = false">取消</button><button type="button" @click="copyExportContent"><Copy :size="14" />复制</button><button type="button" class="clone-primary-button" @click="downloadExportContent"><Download :size="14" />下载</button></footer>
+      </div>
+    </Dialog>
+    <Dialog v-model:open="taskTemplateDialogOpen" title="保存为模板">
+      <form class="clone-template-form" @submit.prevent="saveTaskTemplateFromDialog">
+        <p class="clone-muted">模板仅保存此任务的内容和标签。</p>
+        <input v-model.trim="taskTemplateName" aria-label="模板名称" placeholder="模板名称" maxlength="120" />
+        <footer><button type="button" @click="taskTemplateDialogOpen = false">取消</button><button type="submit" class="clone-primary-button" :disabled="!taskTemplateName">保存</button></footer>
+      </form>
+    </Dialog>
+    <Dialog v-model:open="focusEstimateOpen" title="预计番茄时长">
+      <form class="clone-template-form" @submit.prevent="confirmEstimatedFocus">
+        <label class="clone-focus-estimate-field">时长（分钟）<input v-model.number="focusEstimateMinutes" type="number" min="1" max="180" aria-label="预计番茄时长（分钟）" /></label>
+        <footer><button type="button" @click="focusEstimateOpen = false">取消</button><button type="submit" class="clone-primary-button">开始专注</button></footer>
+      </form>
+    </Dialog>
+    <Dialog v-model:open="focusEstimateOpen" title="预计番茄时长">
+      <form class="clone-template-form" @submit.prevent="confirmEstimatedFocus">
+        <label class="clone-focus-estimate-field">时长（分钟）<input v-model.number="focusEstimateMinutes" type="number" min="1" max="180" aria-label="预计番茄时长（分钟）" /></label>
+        <footer><button type="button" @click="focusEstimateOpen = false">取消</button><button type="submit" class="clone-primary-button">开始专注</button></footer>
+      </form>
+    </Dialog>
     <Dialog v-model:open="deleteTaskConfirmOpen" :title="deleteTaskTargets.length > 1 ? `删除 ${deleteTaskTargets.length} 项任务` : '删除任务'" content-class="clone-delete-task-dialog">
       <div class="clone-confirmation">
         <p v-if="deleteTaskTargets.length === 1">确定删除任务“{{ deleteTaskTargets[0].title }}”吗？</p>
@@ -1497,6 +1550,7 @@ import {
   Bell,
   Check,
   CheckCircle2,
+  FolderInput,
   Heading1,
   Heading2,
   Heading3,
@@ -3705,15 +3759,96 @@ function chooseDetailAttachment() {
   closeDetailMore();
   detailAttachmentInput.value?.click();
 }
-async function startDetailFocus() {
+async function startDetailFocus(mode = "POMODORO", plannedMinutes = 0) {
   const task = selectedTask.value;
   closeDetailMore();
   if (!task) return;
   try {
-    await focusStore.start({ taskId: task.publicId });
+    const payload = { taskId: task.publicId };
+    if (plannedMinutes > 0) payload.plannedMinutes = plannedMinutes;
+    await focusStore.start(payload);
     await router.push("/tasks/focus");
   } catch (error) {
     message.error(error?.response?.data?.detail || error?.message || "无法开始专注");
+  }
+}
+// 预计番茄时长：输入 1-180 分钟后开始番茄专注
+const focusEstimateOpen = ref(false);
+const focusEstimateMinutes = ref(25);
+function startEstimatedFocus() {
+  closeDetailMore();
+  focusEstimateMinutes.value = Number(focusStore.settings?.focusMinutes) || 25;
+  focusEstimateOpen.value = true;
+}
+async function confirmEstimatedFocus() {
+  const minutes = Math.min(180, Math.max(1, Number(focusEstimateMinutes.value) || 25));
+  focusEstimateOpen.value = false;
+  await startDetailFocus("POMODORO", minutes);
+}
+async function moveDetailTaskFromMenu(list) {
+  await moveDetailTaskToList(list);
+  closeDetailMore();
+}
+// 导出弹窗：Markdown / 纯文本预览 + 复制 + 下载
+const exportDialogOpen = ref(false);
+const exportFormat = ref("markdown");
+const exportContent = computed(() => {
+  const task = selectedTask.value;
+  if (!task) return "";
+  const checklist = (task.checklist || []).map(item => `${item.completed ? "[x]" : "[ ]"} ${item.title}`).join("\n");
+  if (exportFormat.value === "text") {
+    return [task.title, task.description || "", checklist].filter(Boolean).join("\n\n");
+  }
+  const markdownChecklist = (task.checklist || []).map(item => `- [${item.completed ? "x" : " "}] ${item.title}`).join("\n");
+  return `# ${task.title}\n\n${task.description || ""}${markdownChecklist ? `\n\n${markdownChecklist}` : ""}\n`;
+});
+function openExportDialog() {
+  closeDetailMore();
+  exportDialogOpen.value = true;
+}
+async function copyExportContent() {
+  try {
+    await navigator.clipboard.writeText(exportContent.value);
+    message.success("已复制导出内容");
+  } catch {
+    message.error("复制失败，请手动选择内容复制");
+  }
+}
+function downloadExportContent() {
+  const task = selectedTask.value;
+  if (!task) return;
+  const extension = exportFormat.value === "text" ? "txt" : "md";
+  const mimeType = exportFormat.value === "text" ? "text/plain;charset=utf-8" : "text/markdown;charset=utf-8";
+  const url = URL.createObjectURL(new Blob([exportContent.value], { type: mimeType }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${String(task.title || "task").replace(/[\\/:*?"<>|]/g, "-")}.${extension}`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+// 保存为模板：应用内弹窗输入名称
+const taskTemplateDialogOpen = ref(false);
+const taskTemplateName = ref("");
+function openTaskTemplateDialog() {
+  const task = selectedTask.value;
+  closeDetailMore();
+  if (!task) return;
+  taskTemplateName.value = task.title || "模板";
+  taskTemplateDialogOpen.value = true;
+}
+function saveTaskTemplateFromDialog() {
+  const task = selectedTask.value;
+  const name = taskTemplateName.value.trim();
+  if (!task || !name) return;
+  const template = { id: crypto.randomUUID(), title: task.title, templateName: name, description: task.description || "", checklist: (task.checklist || []).map(item => item.title) };
+  try {
+    const templates = [...savedTaskTemplates.value, template];
+    localStorage.setItem(taskTemplateStorageKey(), JSON.stringify(templates));
+    savedTaskTemplates.value = templates;
+    taskTemplateDialogOpen.value = false;
+    message.success("已保存为模板");
+  } catch {
+    message.error("模板保存失败");
   }
 }
 async function showDetailActivity() {
@@ -3731,28 +3866,6 @@ function loadSavedTaskTemplates() {
     savedTaskTemplates.value = Array.isArray(templates) ? templates : [];
   } catch {
     savedTaskTemplates.value = [];
-  }
-}
-function saveSelectedTaskAsTemplate() {
-  const task = selectedTask.value;
-  closeDetailMore();
-  if (!task) return;
-  const name = window.prompt("模板名称", task.title);
-  if (!name?.trim()) return;
-  const template = {
-    id: crypto.randomUUID(),
-    title: task.title,
-    templateName: name.trim(),
-    description: task.description || "",
-    checklist: (task.checklist || []).map(item => item.title),
-  };
-  try {
-    const templates = [...savedTaskTemplates.value, template];
-    localStorage.setItem(taskTemplateStorageKey(), JSON.stringify(templates));
-    savedTaskTemplates.value = templates;
-    message.success("模板已保存到当前账号的本地浏览器");
-  } catch {
-    message.error("模板保存失败，请检查本地存储空间");
   }
 }
 async function duplicateDetailTask() {
@@ -4975,13 +5088,41 @@ function openCreate(parentId = "") {
   priorityPopoverOpen.value = false;
   reminderPopoverOpen.value = false;
 }
-function createSubtask(task) {
+// 子任务：拖动排序 / 右键菜单 / 点击进入子任务详情
+const detailSubtaskDragIndex = ref(null);
+const detailSubtaskDropTarget = ref(null);
+const detailSubtaskOpenAfterCreate = ref(false);
+function startDetailSubtaskDrag(index, event) {
+  detailSubtaskDragIndex.value = index;
+  event.dataTransfer?.setData("text/plain", String(index));
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+}
+async function dropDetailSubtask(target) {
+  const from = detailSubtaskDragIndex.value;
+  detailSubtaskDragIndex.value = null;
+  detailSubtaskDropTarget.value = null;
+  if (from === null || from === target) return;
+  const children = [...detailSubtasks.value];
+  if (!children[from]) return;
+  const [moved] = children.splice(from, 1);
+  children.splice(target, 0, moved);
+  try {
+    // 子任务是独立任务：按新顺序写回各自的 sortOrder（仅对变化的写库）
+    for (let index = 0; index < children.length; index += 1) {
+      if (Number(children[index].sortOrder || 0) !== index) await store.update(children[index], { sortOrder: index });
+    }
+  } catch (error) {
+    store.error = error?.response?.data?.detail || error?.message || "子任务排序失败";
+  }
+}
+function createSubtask(task, options = {}) {
   if (!task) return;
   if (selectedTask.value?.publicId !== task.publicId) openDetail(task);
   detailMoreOpen.value = false;
   detailMoreSection.value = "";
   detailSubtaskDraft.value = "";
   detailSubtaskDraftOpen.value = true;
+  detailSubtaskOpenAfterCreate.value = Boolean(options.openDetail);
   void nextTick(() => detailSubtaskInput.value?.focus());
 }
 function toggleDetailFields() {
@@ -5008,10 +5149,16 @@ async function saveDetailSubtask() {
   if (!parent || !title || detailSubtaskSaving.value) return;
   detailSubtaskSaving.value = true;
   try {
-    await store.create({ title, listId: parent.listId || store.inbox?.publicId || "", parentId: parent.publicId });
+    const created = await store.create({ title, listId: parent.listId || store.inbox?.publicId || "", parentId: parent.publicId });
     detailSubtaskDraftOpen.value = false;
     detailSubtaskDraft.value = "";
     message.success("子任务已添加");
+    // 从中间栏右键「添加子任务」进入时，创建后直接打开该子任务的详情
+    if (detailSubtaskOpenAfterCreate.value && created?.publicId) {
+      detailSubtaskOpenAfterCreate.value = false;
+      const fresh = store.tasks.find(item => item.publicId === created.publicId) || created;
+      openDetail(fresh);
+    }
   } catch (error) { store.error = error?.response?.data?.detail || error?.message || "子任务添加失败"; }
   finally { detailSubtaskSaving.value = false; }
 }
@@ -9053,7 +9200,56 @@ const SidebarSection = {
 .clone-detail-subtasks > header span { color: var(--muted); font-variant-numeric: tabular-nums; }
 .clone-detail-subtasks > header > button { display: grid; width: 26px; height: 26px; place-items: center; margin-left: auto; border: 0; border-radius: 50%; background: transparent; color: var(--accent); cursor: pointer; }
 .clone-detail-subtasks > header > button:hover { background: var(--accent-soft); }
-.clone-detail-subtask-row { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 38px; padding: 0 7px; border-bottom: 1px solid var(--line); color: var(--ink2); }
+.clone-detail-activity-inline { margin-top: 3px; padding-top: 9px; border-top: 1px solid var(--line); }
+.clone-detail-activity-inline > header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.clone-detail-activity-inline > header strong { color: var(--ink); font-size: 13px; font-weight: 600; }
+.clone-detail-activity-inline > header span { color: var(--muted); font-size: 11px; }
+.clone-detail-activity-inline > header button { margin-left: auto; padding: 0; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 11px; cursor: pointer; }
+.clone-detail-activity-inline ol { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.clone-detail-activity-inline li { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 8px; align-items: start; }
+.clone-detail-activity-dot { width: 6px; height: 6px; margin-top: 6px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 62%, transparent); }
+.clone-detail-activity-inline li p { margin: 0; color: var(--ink2); font-size: 12px; line-height: 1.5; }
+.clone-detail-activity-inline li time { color: var(--muted); font-size: 11px; }
+.clone-export-body { display: grid; gap: 10px; min-width: min(560px, 80vw); }
+.clone-export-tabs { display: inline-flex; justify-self: center; padding: 3px; border-radius: 8px; background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.clone-export-tabs button { min-height: 28px; padding: 0 18px; border: 0; border-radius: 6px; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
+.clone-export-tabs button.active { background: var(--card); color: var(--ink); box-shadow: 0 1px 4px rgb(15 23 42 / 14%); }
+.clone-export-preview { max-height: 46vh; margin: 0; overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); color: var(--ink2); font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+.clone-export-body footer { display: flex; justify-content: flex-end; gap: 8px; }
+.clone-template-form { display: grid; gap: 10px; }
+.clone-template-form input { min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); font: inherit; }
+.clone-template-form footer { display: flex; justify-content: flex-end; gap: 8px; }
+.clone-focus-estimate-field { display: grid; gap: 6px; color: var(--ink2); font-size: 12px; }
+.clone-focus-estimate-field input { min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); font: inherit; }
+.clone-detail-activity-inline { margin-top: 3px; padding-top: 9px; border-top: 1px solid var(--line); }
+.clone-detail-activity-inline > header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.clone-detail-activity-inline > header strong { color: var(--ink); font-size: 13px; font-weight: 600; }
+.clone-detail-activity-inline > header span { color: var(--muted); font-size: 11px; }
+.clone-detail-activity-inline > header button { margin-left: auto; padding: 0; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 11px; cursor: pointer; }
+.clone-detail-activity-inline ol { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.clone-detail-activity-inline li { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 8px; align-items: start; }
+.clone-detail-activity-dot { width: 6px; height: 6px; margin-top: 6px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 62%, transparent); }
+.clone-detail-activity-inline li p { margin: 0; color: var(--ink2); font-size: 12px; line-height: 1.5; }
+.clone-detail-activity-inline li time { color: var(--muted); font-size: 11px; }
+.clone-export-body { display: grid; gap: 10px; min-width: min(560px, 80vw); }
+.clone-export-tabs { display: inline-flex; justify-self: center; padding: 3px; border-radius: 8px; background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.clone-export-tabs button { min-height: 28px; padding: 0 18px; border: 0; border-radius: 6px; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
+.clone-export-tabs button.active { background: var(--card); color: var(--ink); box-shadow: 0 1px 4px rgb(15 23 42 / 14%); }
+.clone-export-preview { max-height: 46vh; margin: 0; overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); color: var(--ink2); font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+.clone-export-body footer { display: flex; justify-content: flex-end; gap: 8px; }
+.clone-template-form { display: grid; gap: 10px; }
+.clone-template-form input { min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); font: inherit; }
+.clone-template-form footer { display: flex; justify-content: flex-end; gap: 8px; }
+.clone-focus-estimate-field { display: grid; gap: 6px; color: var(--ink2); font-size: 12px; }
+.clone-focus-estimate-field input { min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); font: inherit; }
+.clone-detail-subtask-row { position: relative; display: grid; grid-template-columns: 14px 18px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-width: 0; min-height: 38px; padding: 0 7px; border-bottom: 1px solid var(--line); color: var(--ink2); }
+.clone-detail-subtask-row.drop-target { box-shadow: inset 0 2px 0 var(--accent); }
+.clone-detail-subtask-grip { display: grid; place-items: center; color: var(--muted); opacity: 0; cursor: grab; }
+.clone-detail-subtask-row:hover .clone-detail-subtask-grip { opacity: .5; }
+.clone-detail-subtask-priority { display: inline-flex; color: var(--muted); }
+.clone-detail-subtask-priority[data-priority="HIGH"] { color: var(--down); }
+.clone-detail-subtask-priority[data-priority="MEDIUM"] { color: #e8a33d; }
+.clone-detail-subtask-priority[data-priority="LOW"] { color: var(--accent); }
 .clone-detail-subtask-check { display: grid; width: 17px; height: 17px; flex: 0 0 17px; place-items: center; padding: 0; border: 1.5px solid var(--line2); border-radius: 5px; background: transparent; color: var(--accent); cursor: pointer; }
 .clone-detail-subtask-row.completed .clone-detail-subtask-check { border-color: var(--accent); background: var(--accent); color: white; }
 .clone-detail-subtask-title { min-width: 0; flex: 1 1 auto; overflow: hidden; padding: 5px 0; border: 0; background: transparent; color: inherit; font: inherit; font-size: 13px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: text; }

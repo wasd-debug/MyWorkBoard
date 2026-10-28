@@ -237,8 +237,8 @@ test('task detail collaboration and slash insertion stay in the replacement work
   assert.match(workspaceView, /const detailParentCandidates = computed\([\s\S]*blocked\.has\(item\.publicId\)/)
   assert.match(workspaceView, /async function uploadAttachment\(event\)[\s\S]*\(editing\.value \|\| selectedTask\.value\)/)
   assert.match(workspaceView, /async function uploadAttachmentFile\(file\)[\s\S]*apiUploadTaskAttachment\(task\.publicId/)
-  assert.match(workspaceView, /exportDetailTask\('markdown'\)/)
-  assert.match(workspaceView, /exportDetailTask\('text'\)/)
+  assert.match(workspaceView, /function openExportDialog\(\)/)
+  assert.match(workspaceView, /exportFormat = 'text'/)
   assert.match(workspaceView, /function openDetailTaskNote\(\)[\s\S]*window\.open\([\s\S]*popup\.document\.body\.replaceChildren\(main\)/)
   const editor = await readFile(new URL('../components/tasks/TaskRichTextEditor.vue', import.meta.url), 'utf8')
   for (const token of ['slashCommands', 'task-slash-menu', 'chooseSlash', 'Escape', '标题', '检查项']) assert.match(editor, new RegExp(token))
@@ -1220,4 +1220,30 @@ test('任务详情栏第一批改造：检查项、描述插入菜单、标签�
   assert.match(workspaceView, /async function moveDetailTaskToList\(list\)[\s\S]*store\.update\(task, \{ listId: list\.publicId \}\)/)
   // 复制链接打开页面时首屏即展开任务详情
   assert.match(workspaceView, /watch\(\n  \(\) => \[route\.query\.task, store\.tasks\.length\],[\s\S]{0,400}\{ immediate: true \}/)
+})
+
+test('任务详情栏第二批：子任务交互、更多菜单细化、导出与模板弹窗（P2-FE124）', async () => {
+  // 子任务：拖动排序 / 右键菜单 / 点击进入子任务详情
+  assert.match(workspaceView, /class="clone-detail-subtask-row"[\s\S]{0,520}draggable="true"[\s\S]{0,520}@drop\.prevent="dropDetailSubtask\(childIndex\)"/)
+  assert.match(workspaceView, /@contextmenu\.prevent="openContext\(child, \$event\)"/)
+  assert.match(workspaceView, /class="clone-detail-subtask-title"[\s\S]{0,200}@click\.stop="openDetail\(child\)"[\s\S]{0,200}@dblclick\.stop\.prevent="beginInlineSubtaskTitleEdit\(child\)"/)
+  assert.match(workspaceView, /async function dropDetailSubtask\(target\)[\s\S]*store\.update\(children\[index\], \{ sortOrder: index \}\)/)
+  // 中间栏右键加子任务 -> 创建后直接打开子任务详情；详情栏内加子任务停留当前页
+  assert.match(workspaceView, /createSubtask\(context\.task, \{ openDetail: true \}\)/)
+  assert.match(workspaceView, /if \(detailSubtaskOpenAfterCreate\.value && created\?\.publicId\)[\s\S]{0,200}openDetail\(fresh\)/)
+  // 更多菜单：移动到、开始专注三项
+  assert.match(workspaceView, /detailMoreSection === 'move'[\s\S]{0,400}moveDetailTaskFromMenu\(list\)/)
+  assert.match(workspaceView, /开始番茄专注[\s\S]{0,200}预计番茄时长…[\s\S]{0,200}开始正计时/)
+  assert.match(workspaceView, /async function confirmEstimatedFocus\(\)[\s\S]*startDetailFocus\("POMODORO", minutes\)/)
+  // 任务动态常驻下部
+  assert.match(workspaceView, /class="clone-detail-activity-inline"[\s\S]{0,320}activities\.slice\(0, 5\)/)
+  // 导出弹窗：Markdown / 纯文本预览 + 复制 + 下载
+  assert.match(workspaceView, /<Dialog v-model:open="exportDialogOpen" title="导出"/)
+  assert.match(workspaceView, /clone-export-tabs[\s\S]{0,400}exportFormat = 'markdown'[\s\S]{0,200}exportFormat = 'text'/)
+  assert.match(workspaceView, /async function copyExportContent\(\)[\s\S]*navigator\.clipboard\.writeText\(exportContent\.value\)/)
+  assert.match(workspaceView, /function downloadExportContent\(\)[\s\S]*new Blob\(\[exportContent\.value\]/)
+  // 保存为模板改为应用内弹窗
+  assert.match(workspaceView, /<Dialog v-model:open="taskTemplateDialogOpen" title="保存为模板"/)
+  assert.match(workspaceView, /function saveTaskTemplateFromDialog\(\)[\s\S]*localStorage\.setItem\(taskTemplateStorageKey\(\)/)
+  assert.doesNotMatch(workspaceView, /window\.prompt\("模板名称"/)
 })
