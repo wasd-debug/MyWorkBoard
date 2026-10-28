@@ -1149,3 +1149,32 @@ test('摘要页筛选对齐滴答交互：范围显示、自定义从/到、多�
   assert.match(taskRichTextEditor, /key: 'heading'[\s\S]*key: 'bold'[\s\S]*key: 'check'[\s\S]*key: 'list'[\s\S]*key: 'ordered'[\s\S]*key: 'italic'[\s\S]*key: 'underline'[\s\S]*key: 'strike'[\s\S]*key: 'divider'[\s\S]*key: 'time'[\s\S]*key: 'link'[\s\S]*key: 'code'[\s\S]*key: 'quote'/)
   assert.match(taskRichTextEditor, /task-rich-color/)
 })
+
+test('摘要页布局：整块编辑器 + 顶部图标（分组/显示内容）+ 底部复制与保存（P2-FE119）', async () => {
+  const summaryView = await readFile(new URL('./TaskSummaryWorkspace.vue', import.meta.url), 'utf8')
+  // 顶部标题右侧两个图标菜单：分组方式、显示内容
+  assert.match(summaryView, /aria-label="分组方式" title="分组方式"><ListFilter/)
+  assert.match(summaryView, /aria-label="显示内容" title="显示内容"><FileText/)
+  assert.match(summaryView, /data-pop="fields"[\s\S]*draftFields\.includes\(field\.key\)[\s\S]*applyFieldsDraft/)
+  // 清单/标签不再有「各个清单」「各标签」选项（勾选列表仍保留）
+  assert.doesNotMatch(summaryView, /label: '各个清单'/)
+  assert.doesNotMatch(summaryView, /label: '各标签'/)
+  assert.match(summaryView, /draftListIds\.includes\(list\.publicId\)/)
+  assert.match(summaryView, /draftTagIds\.includes\(tag\.publicId\)/)
+  // 报告自动写入整块编辑器（Markdown 实时渲染），不再是独立报告区 + 补充内容区
+  assert.match(summaryView, /watch\(autoMarkdown, value => \{ draft\.value = value \}, \{ immediate: true \}\)/)
+  assert.match(summaryView, /<TaskRichTextEditor v-model="draft" label="摘要报告"/)
+  assert.doesNotMatch(summaryView, /summary-notes/)
+  assert.doesNotMatch(summaryView, /class="summary-report"/)
+  assert.match(summaryView, /return `# \$\{rangeLabel\}\\n\\n\$\{buildSummaryMarkdown/)
+  // 底部：复制 Markdown / 保存为 PDF、图片、笔记清单
+  assert.match(summaryView, /class="summary-copy" @click="copyMarkdown">复制/)
+  assert.match(summaryView, /async function copyMarkdown\(\)[\s\S]*navigator\.clipboard\.writeText\(draft\.value\)/)
+  assert.match(summaryView, /保存为<ChevronDown/)
+  assert.match(summaryView, /@click="saveAsPdf">保存为 PDF/)
+  assert.match(summaryView, /@click="saveAsImage">保存为图片/)
+  assert.match(summaryView, /async function saveAsImage\(\)[\s\S]*import\('html2canvas'\)/)
+  assert.match(summaryView, /@click="saveToNote\(list\)">保存到笔记清单/)
+  assert.match(summaryView, /async function saveToNote\(list\)[\s\S]*store\.create\(\{ title: reportTitle\(\), listId: list\.publicId, description \}\)/)
+  assert.match(summaryView, /objectType === 'NOTE'/)
+})
