@@ -36,6 +36,7 @@
     <div class="summary-report-area">
       <div class="summary-report-title"><h2>{{ reportTitle }}</h2><span>{{ summaryRangeLabel(dateRange) }}</span></div>
       <div class="summary-report markdown-body" aria-live="polite" v-html="renderedReport"></div>
+      <p v-if="renderError" class="summary-render-error" role="alert">报告渲染失败：{{ renderError }}，请缩小时间范围后重试。</p>
       <section class="summary-notes" aria-label="摘要补充内容">
         <h2>补充内容</h2>
         <TaskRichTextEditor v-model="notes" label="摘要补充内容" placeholder="添加摘要说明，支持 Markdown 与 / 快捷菜单" />
@@ -108,16 +109,9 @@ const dateLabel = computed(() => {
 const statusLabel = computed(() => statusOptions.find(option => option.value === status.value)?.label || '所有状态')
 const listSummary = computed(() => listMode.value === 'SELECTED' ? `清单 ${listIds.value.length || '选择'}` : listModes.find(option => option.value === listMode.value)?.label)
 const tagSummary = computed(() => tagMode.value === 'SELECTED' ? `标签 ${tagIds.value.length || '选择'}` : tagModes.find(option => option.value === tagMode.value)?.label)
+// 原始条目只做轻量拼接：派生字段（清单名/标签名/主任务名）放到筛选之后再算，
+// 否则要为全部 8700+ 任务创建浅拷贝与标签数组（首屏堆内存可达 300MB，低配机器易崩）
 const rawItems = computed(() => {
-  const lists = new Map(store.lists.map(list => [list.publicId, list]))
-  const tags = new Map(store.tags.map(tag => [tag.publicId, tag]))
-  const tasks = store.tasks.filter(item => !item.deleted).map(item => ({
-    ...item,
-    kind: 'task',
-    listName: lists.get(item.listId)?.name || '',
-    tagNames: (item.tagIds || []).map(id => tags.get(id)?.name).filter(Boolean),
-    parentTitle: store.tasks.find(parent => parent.publicId === item.parentId)?.title || '',
-  }))
   const habits = new Map(store.habits.map(habit => [habit.publicId, habit]))
   const checkins = store.habitCheckins.filter(item => !item.deleted).map(item => ({
     ...item,
@@ -129,12 +123,15 @@ const rawItems = computed(() => {
     focusMinutes: 0,
     description: '',
     tagIds: [],
-    tagNames: [],
+    listId: '',
     listName: '打卡',
     completedAt: ['DONE', 'COMPLETED'].includes(item.status) ? item.date : null,
   }))
-  return [...tasks, ...checkins]
+  return [...store.tasks.filter(item => !item.deleted), ...checkins]
 })
+const listNameMap = computed(() => new Map(store.lists.map(list => [list.publicId, list.name])))
+const tagNameMap = computed(() => new Map(store.tags.map(tag => [tag.publicId, tag.name])))
+const parentTitleMap = computed(() => new Map(store.tasks.map(task => [task.publicId, task.title])))
 const filteredItems = computed(() => datePreset.value === 'CUSTOM' && (!customRange.from || !customRange.to)
   ? []
   : filterSummaryItems(rawItems.value, {
@@ -146,18 +143,36 @@ const filteredItems = computed(() => datePreset.value === 'CUSTOM' && (!customRa
   status: status.value,
   priorities: priorities.value,
 }))
+// 仅对筛选结果补派生字段（清单名/标签名/主任务名），数量为匹配项而非全量
+const displayItems = computed(() => filteredItems.value.map(item => item.kind === 'checkin' ? item : ({
+  ...item,
+  kind: 'task',
+  listName: listNameMap.value.get(item.listId) || '',
+  tagNames: (item.tagIds || []).map(id => tagNameMap.value.get(id)).filter(Boolean),
+  parentTitle: item.parentId ? (parentTitleMap.value.get(item.parentId) || '') : '',
+})))
 const groupNames = computed(() => Object.fromEntries([
   ...store.lists.map(list => [list.publicId, list.name]),
   ...store.tags.map(tag => [tag.publicId, `#${tag.name}`]),
 ]))
-const groups = computed(() => groupSummaryItems(filteredItems.value, groupBy.value, groupNames.value))
+const groups = computed(() => groupSummaryItems(displayItems.value, groupBy.value, groupNames.value))
 const reportMarkdown = computed(() => buildSummaryMarkdown(groups.value, fields.value, { status: { OPEN: '未完成', COMPLETED: '已完成', DONE: '已完成', ABANDONED: '已放弃' } }))
-const renderedReport = computed(() => DOMPurify.sanitize(marked.parse(reportMarkdown.value, { async: false }), { ALLOWED_URI_REGEXP: /^(?:https?:|mailto:)/i }))
+const renderError = ref('')
+const renderedReport = computed(() => {
+  try {
+    renderError.value = ''
+    return DOMPurify.sanitize(marked.parse(reportMarkdown.value, { async: false }), { ALLOWED_URI_REGEXP: /^(?:https?:|mailto:)/i })
+  } catch (error) {
+    renderError.value = error?.message || '报告渲染失败'
+    return ''
+  }
+})
 const reportTitle = computed(() => datePreset.value === 'CUSTOM'
   ? `任务摘要 · ${customRange.from || '开始日期'} 至 ${customRange.to || '结束日期'}`
   : `任务摘要 · ${summaryRangeLabel(dateRange.value)}`)
-watch(notesKey, key => { notes.value = localStorage.getItem(key) || '' }, { immediate: true })
-watch(notes, value => localStorage.setItem(notesKey.value, value))
+watch(notesKey, key => { try { notes.value = localStorage.getItem(key) || '' } catch { notes.value = '' } }, { immediate: true })
+// localStorage 写入可能因配额耗尽抛异常（大段粘贴），必须吞掉：watch 里抛错会中断渲染
+watch(notes, value => { try { localStorage.setItem(notesKey.value, value) } catch { /* 配额不足时仅放弃本地草稿持久化 */ } })
 function chooseListMode(value) { listMode.value = value; if (value !== 'SELECTED') listIds.value = [] }
 function chooseDatePreset(value, event) {
   if (value === 'CUSTOM') {
@@ -252,5 +267,6 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', closePopovers)
 .summary-range-apply:hover,.summary-range-cancel:hover{filter:brightness(1.05)}
 .summary-report-area{min-height:0;flex:1;overflow:auto;padding:21px 30px 34px}.summary-report-title{display:flex;align-items:baseline;gap:10px;border-bottom:1px solid var(--line)}.summary-report-title h2{margin:0 0 12px;font-size:17px;font-weight:600}.summary-report{max-width:1160px;padding:11px 0 22px;color:var(--ink2);font-size:13px;line-height:1.65}.summary-report :deep(h2){margin:17px 0 8px;color:var(--ink);font-size:14px;font-weight:600}.summary-report :deep(table){width:100%;border-collapse:collapse;font-size:12px}.summary-report :deep(th),.summary-report :deep(td){padding:7px 9px;border:1px solid var(--line);text-align:left;vertical-align:top}.summary-report :deep(th){background:var(--paper);color:var(--ink)}.summary-report :deep(td){overflow-wrap:anywhere}
 .summary-notes{max-width:1160px;margin-top:7px}.summary-notes h2{margin:0 0 9px;font-size:14px;font-weight:600}.summary-notes :deep(.task-rich-input){min-height:180px}.summary-notes :deep(.task-rich-hint){display:none}
+.summary-render-error{margin:8px 0 0;padding:8px 11px;border:1px solid color-mix(in srgb, var(--down) 45%, var(--line));border-radius:5px;background:color-mix(in srgb, var(--down) 8%, transparent);color:var(--down);font-size:12px}
 @media(max-width:760px){.summary-head{padding:17px 15px 12px}.summary-filters{gap:6px}.summary-filter,.summary-popover>summary{min-height:32px;padding:0 7px}.summary-filter select{max-width:120px}.summary-range{width:100%;justify-content:space-between}.summary-range input{width:min(42vw,140px)}.summary-report-area{padding:16px 15px 28px}.summary-report{overflow-x:auto}.summary-report :deep(table){min-width:680px}}
 </style>

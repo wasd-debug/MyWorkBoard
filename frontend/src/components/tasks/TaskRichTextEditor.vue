@@ -80,7 +80,12 @@ const props = defineProps({ modelValue: { type: String, default: '' }, label: { 
 const rendered = computed(() => renderMarkdown(props.modelValue))
 
 function renderMarkdown(value) {
-  return DOMPurify.sanitize(marked.parse(value || '', { async: false }), { ALLOWED_URI_REGEXP: /^(?:https?:|mailto:)/i })
+  try {
+    return DOMPurify.sanitize(marked.parse(value || '', { async: false }), { ALLOWED_URI_REGEXP: /^(?:https?:|mailto:)/i })
+  } catch {
+    // 极端内容（超长/异常 Markdown）渲染失败时降级为转义纯文本，避免抛错带崩整页
+    return `<p>${String(value || '').replace(/[&<>]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[char])).slice(0, 20000)}</p>`
+  }
 }
 
 function nodeMarkdown(node) {

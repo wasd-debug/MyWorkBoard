@@ -1,4 +1,6 @@
 const DAY = 24 * 60 * 60 * 1000
+// 单组报告行数上限：避免超大时间范围（数千条）生成巨型表格导致渲染卡死/内存暴涨
+export const SUMMARY_MAX_ROWS = 500
 
 export const SUMMARY_FIELDS = [
   { key: 'status', label: '状态' },
@@ -138,6 +140,13 @@ function displayDate(value) {
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN', { hour12: false })
 }
 
+const DETAIL_MAX = 200
+
+function clampCell(value, max = DETAIL_MAX) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  return text.length > max ? `${text.slice(0, max)}…` : text
+}
+
 export function buildSummaryMarkdown(groups, fields = SUMMARY_FIELDS.map(item => item.key), names = {}) {
   const selectedFields = SUMMARY_FIELDS.filter(field => fields.includes(field.key))
   if (!groups.length) return '当前筛选条件下没有匹配的记录。'
@@ -145,7 +154,9 @@ export function buildSummaryMarkdown(groups, fields = SUMMARY_FIELDS.map(item =>
     const header = `## ${group.label}（${group.items.length}）`
     if (!selectedFields.length) return `${header}\n\n共 ${group.items.length} 项。`
     const headings = selectedFields.map(field => field.label)
-    const rows = group.items.map(item => `| ${selectedFields.map(field => {
+    // 单组行数上限：超大范围（数千条）时避免生成超大表格导致页面卡死/内存暴涨
+    const items = group.items.slice(0, SUMMARY_MAX_ROWS)
+    const rows = items.map(item => `| ${selectedFields.map(field => {
       if (field.key === 'status') return escapeMarkdown(names.status?.[item.status] || item.status || '未完成')
       if (field.key === 'progress') {
         const total = Number(item.totalSubtasks || item.checklist?.length || 0)
@@ -154,14 +165,16 @@ export function buildSummaryMarkdown(groups, fields = SUMMARY_FIELDS.map(item =>
       }
       if (field.key === 'completedAt') return escapeMarkdown(displayDate(item.completedAt))
       if (field.key === 'taskTime') return escapeMarkdown(displayDate(item.dueAt || item.startAt || item.date))
-      if (field.key === 'title') return escapeMarkdown(item.title || item.name || '—')
-      if (field.key === 'parent') return escapeMarkdown(item.parentTitle || '—')
-      if (field.key === 'tags') return escapeMarkdown((item.tagNames || []).join(', ') || '—')
+      if (field.key === 'title') return escapeMarkdown(clampCell(item.title || item.name || '—', 120))
+      if (field.key === 'parent') return escapeMarkdown(clampCell(item.parentTitle || '—', 120))
+      if (field.key === 'tags') return escapeMarkdown(clampCell((item.tagNames || []).join(', ') || '—', 120))
       if (field.key === 'focus') return item.focusMinutes ? `${item.focusMinutes} 分钟` : '—'
       if (field.key === 'list') return escapeMarkdown(item.listName || '—')
-      return escapeMarkdown(item.description || '—')
+      return escapeMarkdown(clampCell(item.description || '—'))
     }).join(' | ')} |`)
-    return `${header}\n\n| ${headings.join(' | ')} |\n| ${headings.map(() => '---').join(' | ')} |\n${rows.join('\n')}`
+    const table = `${header}\n\n| ${headings.join(' | ')} |\n| ${headings.map(() => '---').join(' | ')} |\n${rows.join('\n')}`
+    const truncated = group.items.length > items.length ? `\n\n> 其余 ${group.items.length - items.length} 项未展开（单组最多显示 ${SUMMARY_MAX_ROWS} 项）` : ''
+    return `${table}${truncated}`
   }).join('\n\n')
 }
 

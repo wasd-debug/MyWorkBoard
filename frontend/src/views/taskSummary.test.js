@@ -48,3 +48,17 @@ test('summary groups and renders only the selected report fields', () => {
   assert.match(markdown, /A \| 25 分钟/)
   assert.doesNotMatch(markdown, /完成时间/)
 })
+
+test('summary report caps rows per group and clamps long detail cells', async () => {
+  const { SUMMARY_MAX_ROWS } = await import('./taskSummary.js')
+  const items = Array.from({ length: SUMMARY_MAX_ROWS + 60 }, (_, i) => ({ title: 'T' + i, status: 'OPEN', description: 'x'.repeat(5000) + '\n第二行' }))
+  const groups = groupSummaryItems(items, 'status')
+  const markdown = buildSummaryMarkdown(groups, ['title', 'details'])
+  const rows = markdown.split('\n').filter(line => line.startsWith('| T'))
+  assert.equal(rows.length, SUMMARY_MAX_ROWS)
+  assert.match(markdown, new RegExp(`其余 60 项未展开（单组最多显示 ${SUMMARY_MAX_ROWS} 项）`))
+  // 详细内容单格截断到 200 字符且去掉换行，避免超大单元格拖垮渲染
+  const cell = rows[0].split('|')[3].trim()
+  assert.ok(cell.length <= 202, 'detail cell should be clamped, got ' + cell.length)
+  assert.doesNotMatch(cell, /第二行/)
+})
