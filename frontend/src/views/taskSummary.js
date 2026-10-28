@@ -167,6 +167,6 @@ export function buildSummaryMarkdown(groups, fields = SUMMARY_FIELDS.map(item =>
 
 export function summaryRangeLabel(range, locale = 'zh-CN') {
   if (!range) return '全部时间'
-  const formatter = new Intl.DateTimeFormat(locale, { month: 'numeric', day: 'numeric' })
+  const formatter = new Intl.DateTimeFormat(locale, { month: 'long', day: 'numeric' })
   return `${formatter.format(range.from)} - ${formatter.format(new Date(range.to.getTime() - DAY))}`
 }

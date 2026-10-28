@@ -1125,3 +1125,27 @@ test('task row metadata shortcuts open their matching detail section or popover'
   assert.match(workspaceView, /async function openTaskIndicator\(task, kind\)[\s\S]*toggleRepeatPopover\(\)[\s\S]*aria-label="专注记录"[\s\S]*scrollIntoView/)
   assert.match(workspaceView, /v-if="!selectedIds\.has\(task\.publicId\)"[\s\S]*class="clone-row-more"/)
 })
+
+test('摘要页筛选对齐滴答交互：范围显示、自定义从/到、多选确定取消', async () => {
+  const summaryView = await readFile(new URL('./TaskSummaryWorkspace.vue', import.meta.url), 'utf8')
+  // 时间按钮显示日期范围（本周 (10月12日 - 10月18日) 形态）
+  assert.match(summaryView, /dateLabel = computed\(\(\) => \{[\s\S]*summaryRangeLabel\(dateRange\.value\)/)
+  assert.match(summaryView, /\$\{dateOptions\.find\(option => option\.value === datePreset\.value\)\?\.label \|\| '本周'\} \(\$\{summaryRangeLabel/)
+  // 自定义：从/到 + 确定/取消，确定前不改 datePreset，取消回退
+  assert.match(summaryView, /<span>从<\/span><input v-model="customDraft\.from"[\s\S]*<span>到<\/span><input v-model="customDraft\.to"/)
+  assert.match(summaryView, /function applyCustomRange\(\)[\s\S]*datePreset\.value = 'CUSTOM'/)
+  assert.match(summaryView, /function cancelCustomRange\(\)[\s\S]*datePreset\.value = presetBeforeCustom/)
+  // 清单/标签/优先级多选面板：草稿 + 确定/取消
+  assert.match(summaryView, /data-pop="list" @toggle="onPopoverToggle"[\s\S]*draftListIds/)
+  assert.match(summaryView, /data-pop="tag" @toggle="onPopoverToggle"[\s\S]*draftTagIds/)
+  assert.match(summaryView, /data-pop="priority" @toggle="onPopoverToggle"[\s\S]*draftPriorities/)
+  assert.match(summaryView, /function onPopoverToggle\(event\)[\s\S]*if \(kind === 'list'\) draftListIds\.value = \[\.\.\.listIds\.value\]/)
+  assert.match(summaryView, /function applyListDraft\(\)[\s\S]*listIds\.value = draftListIds\.value/)
+  assert.match(summaryView, /function applyTagDraft\(\)[\s\S]*tagIds\.value = draftTagIds\.value/)
+  assert.match(summaryView, /function applyPriorityDraft\(\)[\s\S]*priorities\.value = draftPriorities\.value/)
+  assert.match(summaryView, /class="summary-menu-actions"><button type="button" class="summary-apply" @click="applyListDraft">确定<\/button><button type="button" class="summary-dismiss" @click="dismissPopover">取消/)
+  // 报告与编辑器：字段与工具栏齐备
+  assert.match(summaryView, /SUMMARY_FIELDS[\s\S]*SUMMARY_GROUPS/)
+  assert.match(taskRichTextEditor, /key: 'heading'[\s\S]*key: 'bold'[\s\S]*key: 'check'[\s\S]*key: 'list'[\s\S]*key: 'ordered'[\s\S]*key: 'italic'[\s\S]*key: 'underline'[\s\S]*key: 'strike'[\s\S]*key: 'divider'[\s\S]*key: 'time'[\s\S]*key: 'link'[\s\S]*key: 'code'[\s\S]*key: 'quote'/)
+  assert.match(taskRichTextEditor, /task-rich-color/)
+})
