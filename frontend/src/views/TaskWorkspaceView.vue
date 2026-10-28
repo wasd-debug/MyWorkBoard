@@ -2387,7 +2387,20 @@ async function clearTrashPermanently() {
   trashClearBusy.value = true;
   try {
     const items = [...store.tasks.filter(task => task.deleted)];
-    for (const item of items) await store.purge(item);
+    const failures = [];
+    // 逐条请求但只在最后一次刷新：原先每条 purge 都会全量 hydrate（8700+ 任务），清空几百条会长时间卡住
+    for (const item of items) {
+      try {
+        await store.purge(item, { deferHydrate: true });
+      } catch (error) {
+        failures.push({ title: item.title, detail: error?.response?.data?.detail || error?.message || "清除失败" });
+      }
+    }
+    await store.hydrate();
+    if (failures.length) {
+      store.error = `已清除 ${items.length - failures.length} 项，${failures.length} 项未能清除：${failures[0].detail}`;
+      return;
+    }
     trashClearOpen.value = false;
   } catch (error) {
     store.error = error?.response?.data?.detail || error?.message || "清空垃圾桶失败";

@@ -630,7 +630,11 @@ test('trash workspace header exposes only permanent clear and confirms before pu
   assert.match(header, /v-else class="clone-header-actions"/)
   const clearDialog = workspaceView.match(/<Dialog v-model:open="trashClearOpen"[\s\S]*?<\/Dialog>/)?.[0] || ''
   assert.match(clearDialog, /永久删除垃圾桶中的 \{\{ trashedTaskCount \}\} 项任务/)
-  assert.match(workspaceView, /async function clearTrashPermanently\(\)[\s\S]*for \(const item of items\) await store\.purge\(item\)/)
+  // 批量清空：逐条 purge 时延迟 hydrate（否则每条都全量拉取 8700+ 任务），单条失败不中断，结束后统一刷新
+  assert.match(workspaceView, /async function clearTrashPermanently\(\)[\s\S]*for \(const item of items\) \{\n      try \{\n        await store\.purge\(item, \{ deferHydrate: true \}\)/)
+  assert.match(workspaceView, /failures\.push\(\{ title: item\.title/)
+  assert.match(workspaceView, /await store\.hydrate\(\);\n    if \(failures\.length\)/)
+  assert.match(tasksStore, /async purge\(item, options = \{\}\)[\s\S]*error\?\.response\?\.status !== 404[\s\S]*if \(!options\.deferHydrate\) await this\.hydrate\(\)/)
   assert.match(workspaceView, /route\.name === "tasks-trash"\s*\? "垃圾桶"/)
   assert.match(workspaceView, /v-if="!isTrashRoute && !isCompletionRoute" class="clone-quick-add"/)
   // 已完成/已放弃头部只保留打印按钮（对齐滴答），且不显示快速添加

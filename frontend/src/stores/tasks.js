@@ -508,14 +508,20 @@ export const useTasksStore = defineStore('tasks', {
       this.scheduleSync()
       return this.tasks.find(value => value.publicId === current.publicId) || current
     },
-    async purge(item) {
+    async purge(item, options = {}) {
       if (!this.online) throw new Error('永久清除需要联网执行')
       const epoch = sessionEpoch
       const scoped = engine
-      await apiPurgeTask(item.publicId)
+      try {
+        await apiPurgeTask(item.publicId)
+      } catch (error) {
+        // 404 说明后端已不存在（例如上一轮清空已删掉），按清除成功继续，避免中断整批清空
+        if (error?.response?.status !== 404) throw error
+      }
       if (epoch !== sessionEpoch || scoped !== engine) return
       await scoped.removeStore('tasks', `${SCOPE}:${item.publicId}`)
-      await this.hydrate()
+      // 批量清空时由调用方在所有条目录完后再统一 hydrate，避免 N 条清空触发 N 次全量拉取
+      if (!options.deferHydrate) await this.hydrate()
     },
     async createList(payload) {
       const groupId = payload.groupId || ''
