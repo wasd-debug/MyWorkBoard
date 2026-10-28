@@ -32,7 +32,7 @@
           <span class="cal-title"><CalendarDays :size="15" aria-hidden="true" />{{ range.title }}</span>
         </div>
         <div class="cal-head-right">
-          <button type="button" class="cal-icon-btn" aria-label="新增任务" title="新增任务" @click.stop="openQuickAdd"><Plus :size="17" /></button>
+          <button type="button" class="cal-icon-btn" aria-label="新增任务" title="新增任务" @click.stop="openQuickAdd()"><Plus :size="17" /></button>
           <div class="cal-menu-wrap">
             <button type="button" class="cal-text-btn" :aria-expanded="viewMenu" @click.stop="toggleViewMenu">
               {{ viewLabelText }}<ChevronDown :size="13" aria-hidden="true" />
@@ -134,6 +134,26 @@
             </div>
           </section>
         </div>
+
+        <CalendarTimeGrid
+          v-else-if="isTimeGridView"
+          :days="range.days"
+          :by-day="calendarData.byDay"
+          :today-key="todayKey"
+          :lunar="lunarLabels"
+          :holidays="holidayMap"
+          :hidden-top="timePrefs.hiddenTop"
+          :hidden-bottom="timePrefs.hiddenBottom"
+          :all-day-height="timePrefs.allDayHeight"
+          :all-day-collapsed="timePrefs.allDayCollapsed"
+          @open-event="openEvent"
+          @select-day="selectDay"
+          @create-at="createAt"
+          @update:hidden-top="updateTimePrefs({ hiddenTop: $event })"
+          @update:hidden-bottom="updateTimePrefs({ hiddenBottom: $event })"
+          @update:all-day-height="updateTimePrefs({ allDayHeight: $event })"
+          @update:all-day-collapsed="updateTimePrefs({ allDayCollapsed: $event })"
+        />
 
         <div v-else class="cal-stack" :class="{ 'is-agenda': view === 'agenda' }">
           <div v-for="day in stackDays" :key="toDateKey(day)" class="cal-stack-day">
@@ -257,6 +277,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Flag, FolderClosed, MoreHorizontal, PanelLeft, Plus, Printer, Settings2, X } from 'lucide-vue-next'
 import CalendarSidebar from './calendar/CalendarSidebar.vue'
 import CalendarMonthView from './calendar/CalendarMonthView.vue'
+import CalendarTimeGrid from './calendar/CalendarTimeGrid.vue'
 import TaskOrganizationIcon from '../components/tasks/TaskOrganizationIcon.vue'
 import { message } from '../services/message.js'
 import { useAppStore } from '../stores/app.js'
@@ -267,6 +288,7 @@ import {
   addMonths, clampSpan, formatWeekday, resolveRange, shiftAnchor, startOfDay, toDateKey, viewLabel as spanViewLabel, yearMonths
 } from './calendar/calendarRange.js'
 import { buildCalendarEvents } from './calendar/calendarEvents.js'
+import { minutesToLabel, snapMinutes } from './calendar/calendarTimeGrid.js'
 import { TASK_COLOR_MODES, mergedColorSettings, tintStyle } from './calendar/calendarColors.js'
 
 const route = useRoute()
@@ -292,12 +314,13 @@ const filterTaskIds = ref(new Set())
 const worktimeDays = ref([])
 const ledgerDays = ref([])
 const aggregateMode = computed(() => route.path === '/calendar')
+const isTimeGridView = computed(() => ['day', 'week', 'multiDay'].includes(view.value))
 const loading = ref(false)
 const error = ref('')
 const viewMenu = ref(false)
 const moreOpen = ref(false)
 const settings = reactive({ open: false })
-const quickAdd = reactive({ open: false, title: '', priority: 'NONE', listId: '', saving: false, date: startOfDay(new Date()) })
+const quickAdd = reactive({ open: false, title: '', priority: 'NONE', listId: '', saving: false, date: startOfDay(new Date()), startMinutes: null })
 const dayPopover = reactive({ open: false, date: startOfDay(new Date()), x: 0, y: 0 })
 const quickInputEl = ref(null)
 const shellEl = ref(null)
@@ -307,6 +330,7 @@ let currentBucket = typeof window !== 'undefined' ? widthBucket(window.innerWidt
 const narrow = ref(currentBucket !== 'wide')
 const collapsedManual = ref(null)
 const cellHeight = ref(120)
+const timePrefs = reactive({ hiddenTop: 420, hiddenBottom: 1380, allDayHeight: 84, allDayCollapsed: false })
 const collapsed = computed(() => collapsedManual.value ?? narrow.value)
 
 const calendarLists = computed(() => tasksStore.lists.filter(item => !item.archived))
@@ -351,7 +375,9 @@ const stackDays = computed(() => {
 const quickAddDateLabel = computed(() => {
   const day = quickAdd.date
   const same = toDateKey(day) === todayKey.value
-  return `${day.getMonth() + 1}月${day.getDate()}日，${same ? '今天' : formatWeekday(day)}`
+  const base = `${day.getMonth() + 1}月${day.getDate()}日，${same ? '今天' : formatWeekday(day)}`
+  if (quickAdd.startMinutes == null) return base
+  return `${base}, ${minutesToLabel(snapMinutes(quickAdd.startMinutes, 15))}`
 })
 
 const dayPopoverTitle = computed(() => `${dayPopover.date.getMonth() + 1}月${dayPopover.date.getDate()}日 ${formatWeekday(dayPopover.date)}`)
@@ -378,7 +404,8 @@ const preferenceKey = computed(() => `calendar_view_v1:${appStore.authUser?.id |
 function savePreferences() {
   try {
     localStorage.setItem(preferenceKey.value, JSON.stringify({
-      view: view.value, spans: { ...spans }, colorSettings: { ...colorSettings }, scope: scope.value
+      view: view.value, spans: { ...spans }, colorSettings: { ...colorSettings }, scope: scope.value,
+      timePrefs: { ...timePrefs }
     }))
   } catch { /* 忽略存储配额错误 */ }
 }
@@ -392,6 +419,14 @@ function readPreferences() {
       spans.multiWeek = clampSpan('multiWeek', stored.spans.multiWeek)
     }
     Object.assign(colorSettings, mergedColorSettings(stored.colorSettings))
+    if (stored.timePrefs) {
+      Object.assign(timePrefs, {
+        hiddenTop: Number(stored.timePrefs.hiddenTop) || timePrefs.hiddenTop,
+        hiddenBottom: Number(stored.timePrefs.hiddenBottom) || timePrefs.hiddenBottom,
+        allDayHeight: Number.isFinite(stored.timePrefs.allDayHeight) ? stored.timePrefs.allDayHeight : timePrefs.allDayHeight,
+        allDayCollapsed: Boolean(stored.timePrefs.allDayCollapsed)
+      })
+    }
     if (stored.scope && ['all', 'custom', 'filter'].includes(stored.scope.mode)) {
       scope.value = { mode: stored.scope.mode, listIds: stored.scope.listIds || [], tagIds: stored.scope.tagIds || [], filterId: stored.scope.filterId || '' }
     }
@@ -534,6 +569,15 @@ function closeDayPopover() {
   dayPopover.open = false
 }
 
+function updateTimePrefs(patch) {
+  Object.assign(timePrefs, patch)
+  savePreferences()
+}
+
+function createAt(day, minutes) {
+  void openQuickAdd(day, minutes)
+}
+
 function addFromPopover() {
   const target = dayPopover.date
   dayPopover.open = false
@@ -590,11 +634,12 @@ function openEvent(event) {
   }
 }
 
-async function openQuickAdd(day) {
+async function openQuickAdd(day, startMinutes = null) {
   viewMenu.value = false
   moreOpen.value = false
   dayPopover.open = false
   quickAdd.date = startOfDay(day || selectedDay.value || anchor.value)
+  quickAdd.startMinutes = Number.isFinite(startMinutes) ? startMinutes : null
   quickAdd.title = ''
   quickAdd.priority = 'NONE'
   quickAdd.listId = tasksStore.inbox?.publicId || calendarLists.value[0]?.publicId || ''
@@ -613,10 +658,12 @@ async function saveQuickAdd() {
   quickAdd.saving = true
   try {
     const day = startOfDay(quickAdd.date)
-    const instant = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, 0, 0).toISOString()
+    const timed = quickAdd.startMinutes != null
+    const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), timed ? Math.floor(quickAdd.startMinutes / 60) : 0, timed ? quickAdd.startMinutes % 60 : 0, 0)
+    const end = timed ? new Date(start.getTime() + 30 * 60000) : start
     await tasksStore.create({
-      title, allDay: true, startAt: instant, dueAt: instant, priority: quickAdd.priority,
-      listId: quickAdd.listId || tasksStore.inbox?.publicId || ''
+      title, allDay: !timed, startAt: start.toISOString(), dueAt: end.toISOString(),
+      priority: quickAdd.priority, listId: quickAdd.listId || tasksStore.inbox?.publicId || ''
     })
     quickAdd.open = false
     message.success('任务已创建')
