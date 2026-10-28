@@ -1092,3 +1092,10 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 - **原生 title 移除**：删除 `.clone-task-tags` 的 `:title`（与自定义浮层重复且无法控制位置），aria-label 保留。
 - **❌ 移除按钮裁剪修复**：metadata 在悬浮行内标签（`.clone-task-tag-wrap:hover`）或移除按钮聚焦时放开 `overflow`。
 - 门禁 211/211（断言重写：两处触发事件绑定、teleport 浮层、钳制定位、滚动跟随、title 移除、metadata 放开）、typecheck、build、diff-check 通过。实测（760×420 窄视口）：列表 +N 悬浮 4 chips 完整在视口内；看板 +N 同样正常（锚定 +2 上方右对齐）；行内标签悬浮 ❌ 按钮可见；Escape 关闭生效。截图 tmp/qa18-*.png。
+
+### P2-FE116 收集箱增加「清单动态」入口（2026-10-28）
+
+清单动态右侧时间线面板此前已实现（P2-FE113 前的批次），但菜单入口仅对普通清单显示（`isOrdinaryTaskListView`），收集箱缺失。本次：
+
+- **入口放开到收集箱**：中间栏更多选项菜单的「清单动态」按钮显示条件改为 `isOrdinaryTaskListView || route.name === 'tasks-inbox'`；`openListActivity` 早已支持收集箱路由（取 `store.inbox.publicId`），无需改动数据层。添加分组/共享仍仅普通清单可见（收集箱不支持）。
+- 门禁 211/211（断言更新：入口按钮 v-if 条件）、typecheck、build、diff-check 通过。实测：收集箱菜单出现「清单动态」，点击后右侧显示「收集箱动态」时间线（按日期分组、事件图标、操作者+动作+任务名链接、48h 内相对时间/更早具体时间、「加载更多」分页）。截图 tmp/qa19-inbox-*.png。
