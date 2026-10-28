@@ -368,7 +368,7 @@ test('middle task workspace matches the note-row, date, view, display, and print
   assert.match(workspaceView, /document\.addEventListener\("pointerdown", closeRowDatePanelOnOutsidePointer\)/)
   assert.doesNotMatch(workspaceView, /clone-row-date-editor/)
   assert.match(workspaceView, /aria-label="中间栏更多选项"/)
-  for (const item of ['视图选项', '显示设置', '打印', 'switchWorkspaceView', 'window\.print\(\)']) assert.match(workspaceView, new RegExp(item))
+  for (const item of ['<strong>视图</strong>', '显示设置', '打印', 'switchWorkspaceView', 'window\.print\(\)']) assert.match(workspaceView, new RegExp(item))
 })
 
 test('标签 +N 悬浮展开隐藏标签，行内日期弹层支持时间段与全天', () => {
@@ -632,7 +632,11 @@ test('trash workspace header exposes only permanent clear and confirms before pu
   assert.match(clearDialog, /永久删除垃圾桶中的 \{\{ trashedTaskCount \}\} 项任务/)
   assert.match(workspaceView, /async function clearTrashPermanently\(\)[\s\S]*for \(const item of items\) await store\.purge\(item\)/)
   assert.match(workspaceView, /route\.name === "tasks-trash"\s*\? "垃圾桶"/)
-  assert.match(workspaceView, /v-if="!isTrashRoute" class="clone-quick-add"/)
+  assert.match(workspaceView, /v-if="!isTrashRoute && !isCompletionRoute" class="clone-quick-add"/)
+  // 已完成/已放弃头部只保留打印按钮（对齐滴答），且不显示快速添加
+  assert.match(workspaceView, /v-else-if="isCompletionRoute" class="clone-header-actions clone-completion-header-actions">[\s\S]*?打印\$\{isAbandonedRoute \? '已放弃' : '已完成'\}任务[\s\S]*?printTaskList\('CONTENT'\)/)
+  assert.match(workspaceView, /route\.name === "tasks-completed"\n          \? "已完成"/)
+  assert.match(workspaceView, /const showChecklistMenuItem = computed\(\(\) => route\.name === "tasks-filter"\)/)
   assert.match(workspaceView, /isTrashRoute \? "垃圾桶是空的"/)
 })
 

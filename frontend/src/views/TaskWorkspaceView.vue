@@ -173,6 +173,9 @@
         <div v-if="isTrashRoute" class="clone-header-actions clone-trash-header-actions">
           <button type="button" class="clone-icon-button" aria-label="清空垃圾桶" :title="store.online ? '清空垃圾桶' : '联网后才能清空垃圾桶'" :disabled="!trashedTaskCount || !store.online || trashClearBusy" @click="trashClearOpen = true"><BrushCleaning :size="19" /></button>
         </div>
+        <div v-else-if="isCompletionRoute" class="clone-header-actions clone-completion-header-actions">
+          <button type="button" class="clone-icon-button" :aria-label="`打印${isAbandonedRoute ? '已放弃' : '已完成'}任务`" title="打印" @click="printTaskList('CONTENT')"><Printer :size="19" /></button>
+        </div>
         <div v-else class="clone-header-actions">
           <button
             type="button"
@@ -260,7 +263,7 @@
         </template>
       </div>
       <div v-if="listOptionsOpen" class="clone-floating-menu clone-view-menu clone-list-options-menu" role="menu" aria-label="中间栏更多选项" :style="workspaceMenuStyle" @click.stop>
-        <strong>视图选项</strong>
+        <strong>视图</strong>
         <div class="clone-view-segmented" role="group" aria-label="视图">
           <button v-for="option in workspaceViews" :key="option.value" type="button" :aria-label="option.label" :title="option.label" :aria-pressed="activeWorkspaceView === option.value" @click="switchWorkspaceView(option.value)"><component :is="option.icon" :size="21" /></button>
         </div>
@@ -283,7 +286,7 @@
         </div>
       </div>
       <div class="clone-quick-add-anchor">
-      <div v-if="!isTrashRoute" class="clone-quick-add" :class="{ 'is-simple': quickInputMode === 'SIMPLE', 'is-collapsed': !quickAddExpanded }">
+      <div v-if="!isTrashRoute && !isCompletionRoute" class="clone-quick-add" :class="{ 'is-simple': quickInputMode === 'SIMPLE', 'is-collapsed': !quickAddExpanded }">
         <button v-if="!quickAddExpanded" type="button" class="clone-quick-add-collapsed" @click="expandQuickAdd"><Plus :size="17" /><span>添加任务至“{{ title === '今天' ? '收集箱' : title }}”</span></button>
         <form v-else class="clone-quick-add-form" @submit.prevent="quickAdd">
           <div class="clone-quick-title-row">
@@ -2357,6 +2360,8 @@ const title = computed(() =>
         ? "最近 7 天"
         : route.name === "tasks-abandoned"
           ? "已放弃"
+        : route.name === "tasks-completed"
+          ? "已完成"
         : route.name === "tasks-inbox"
           ? "收集箱"
           : route.name === "tasks-list"
@@ -2394,8 +2399,7 @@ const currentTaskList = computed(() => route.name === "tasks-list"
   ? store.lists.find(item => item.publicId === route.params.publicId) || null
   : null);
 const isOrdinaryTaskListView = computed(() => Boolean(currentTaskList.value && currentTaskList.value.objectType !== "NOTE"));
-const showChecklistMenuItem = computed(() => route.name === "tasks-filter"
-  || !["tasks-group", "tasks-list", "tasks-tag"].includes(route.name));
+const showChecklistMenuItem = computed(() => route.name === "tasks-filter");
 const calendarDate = computed(() => {
   const match = String(route.query.date || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return null;
@@ -7502,6 +7506,7 @@ const SidebarSection = {
 .clone-completion-custom-range input { min-width: 0; height: 32px; padding: 0 7px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--ink); font: inherit; font-size: 12px; }
 .clone-completion-list-menu { width: 280px; padding: 8px; }
 .clone-trash-header-actions { justify-content: flex-end; }
+.clone-completion-header-actions { justify-content: flex-end; }
 .clone-completion-list-menu > .clone-completion-list-option:first-child { margin: -8px -8px 4px; padding: 0 16px; border-bottom: 1px solid var(--line); border-radius: 0; color: var(--accent); }
 .clone-completion-list-option { display: flex; align-items: center; gap: 9px; min-height: 35px; padding: 0 8px; border-radius: 5px; color: var(--ink2); font-size: 13px; cursor: pointer; }
 .clone-completion-list-option:hover { background: var(--accent-soft); }
