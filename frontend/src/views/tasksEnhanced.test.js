@@ -402,7 +402,7 @@ test('标签 +N 悬浮展开隐藏标签，行内日期弹层支持时间段与�
 
 test('普通清单视图的更多菜单按路由区分动作并可打开当前清单动态', async () => {
   const service = await readFile(new URL('../../../backend/modules/task/src/main/java/com/salarytracker/task/TaskService.java', import.meta.url), 'utf8')
-  assert.match(workspaceView, /v-if="isOrdinaryTaskListView"[\s\S]*添加分组[\s\S]*共享[\s\S]*清单动态/)
+  assert.match(workspaceView, /v-if="isOrdinaryTaskListView"[\s\S]*添加分组[\s\S]*共享<\/button>\n        <\/template>\n        <button v-if="isOrdinaryTaskListView \|\| route\.name === 'tasks-inbox'"[\s\S]*清单动态/)
   assert.match(workspaceView, /const currentTaskList = computed\(\(\) => route\.name === "tasks-list"/)
   assert.match(workspaceView, /function openListActivity\(\)[\s\S]*route\.name === "tasks-inbox" \? store\.inbox : currentTaskList\.value/)
   assert.match(workspaceView, /function addGroupForCurrentList\(\)[\s\S]*openOrganizationDialog\("group", null, \{ groupListIds: \[list\.publicId\] \}\)/)

@@ -272,8 +272,8 @@
         <template v-if="isOrdinaryTaskListView">
           <button type="button" @click="addGroupForCurrentList"><Plus :size="14" />添加分组</button>
           <button type="button" @click="shareCurrentList"><Copy :size="14" />共享</button>
-          <button type="button" @click="openListActivity"><History :size="14" />清单动态</button>
         </template>
+        <button v-if="isOrdinaryTaskListView || route.name === 'tasks-inbox'" type="button" @click="openListActivity"><History :size="14" />清单动态</button>
         <div class="clone-print-submenu" @pointerenter="printOptionsOpen = true" @pointerleave="printOptionsOpen = false">
           <button type="button" class="clone-print-submenu-trigger" :aria-expanded="printOptionsOpen" @click="printOptionsOpen = true"><Printer :size="14" /><span>打印</span><ChevronRight :size="14" /></button>
           <div v-if="printOptionsOpen" class="clone-print-submenu-options" role="menu" aria-label="打印选项" @pointerdown.stop @click.stop>
