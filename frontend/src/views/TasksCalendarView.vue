@@ -114,27 +114,15 @@
           @select-range="createSpan"
         />
 
-        <div v-else-if="view === 'year'" class="cal-year">
-          <section v-for="month in yearMonths(anchor)" :key="month.month" class="cal-year-month" :aria-label="month.label">
-            <h3>{{ month.label }}</h3>
-            <div class="cal-year-dow">
-              <span v-for="label in WEEKDAY_LABELS" :key="label">{{ label }}</span>
-            </div>
-            <div class="cal-year-grid">
-              <button
-                v-for="day in month.weeks.flat()"
-                :key="toDateKey(day)"
-                type="button"
-                class="cal-year-day"
-                :class="{ muted: day.getMonth() !== month.month - 1, today: toDateKey(day) === todayKey, 'has-event': hasEvents(day) }"
-                :title="subLabel(day)"
-                @click.stop="openDayFromYear(day)"
-              >
-                <span>{{ day.getDate() }}</span><i v-if="hasEvents(day)"></i>
-              </button>
-            </div>
-          </section>
-        </div>
+        <CalendarYearView
+          v-else-if="view === 'year'"
+          :months="yearMonths(anchor)"
+          :by-day="calendarData.byDay"
+          :today-key="todayKey"
+          :selected-key="selectedKey"
+          @select-day="selectDay"
+          @open-month="openMonthFromYear"
+        />
 
         <CalendarTimeGrid
           v-else-if="isTimeGridView"
@@ -160,32 +148,15 @@
           @update:all-day-collapsed="updateTimePrefs({ allDayCollapsed: $event })"
         />
 
-        <div v-else class="cal-stack" :class="{ 'is-agenda': view === 'agenda' }">
-          <div v-for="day in stackDays" :key="toDateKey(day)" class="cal-stack-day">
-            <header class="cal-stack-head">
-              <b>{{ day.getDate() }}</b>
-              <span class="cal-stack-weekday">{{ formatWeekday(day) }}</span>
-              <small v-if="subLabel(day)">{{ subLabel(day) }}</small>
-            </header>
-            <div class="cal-stack-body">
-              <p v-if="!dayEvents(day).length" class="cal-stack-empty">无安排</p>
-              <button
-                v-for="event in dayEvents(day)"
-                :key="event.id"
-                type="button"
-                class="cal-row"
-                :class="{ 'is-done': event.done, 'is-static': event.kind === 'holiday' }"
-                :style="tintStyle(event.color, 14)"
-                @click.stop="openEvent(event)"
-              >
-                <span class="cal-row-dot" :style="{ borderColor: event.color }" :class="{ 'is-done': event.done }"></span>
-                <span class="cal-row-title">{{ event.title }}</span>
-                <span v-if="event.startLabel" class="cal-row-time">{{ event.startLabel }}<template v-if="event.endLabel"> – {{ event.endLabel }}</template></span>
-                <span v-else-if="event.openChecklist" class="cal-row-extra">+{{ event.openChecklist }}</span>
-              </button>
-            </div>
-          </div>
-        </div>
+        <CalendarAgendaView
+          v-else
+          :days="range.days"
+          :by-day="calendarData.byDay"
+          :today-key="todayKey"
+          :lunar="lunarLabels"
+          :holidays="holidayMap"
+          @open-event="openEvent"
+        />
       </div>
     </div>
 
@@ -236,6 +207,7 @@
         <p v-if="!dayPopoverEvents.length" class="cal-popover-empty">当天没有安排</p>
       </div>
       <footer>
+        <button type="button" class="cal-popover-day" @click="openDayView">打开日视图</button>
         <button type="button" class="cal-popover-add" @click="addFromPopover"><Plus :size="14" />添加任务</button>
       </footer>
     </div>
@@ -305,6 +277,8 @@ import CalendarSidebar from './calendar/CalendarSidebar.vue'
 import CalendarMonthView from './calendar/CalendarMonthView.vue'
 import CalendarTimeGrid from './calendar/CalendarTimeGrid.vue'
 import CalendarEventCard from './calendar/CalendarEventCard.vue'
+import CalendarYearView from './calendar/CalendarYearView.vue'
+import CalendarAgendaView from './calendar/CalendarAgendaView.vue'
 import TaskOrganizationIcon from '../components/tasks/TaskOrganizationIcon.vue'
 import { message } from '../services/message.js'
 import { useAppStore } from '../stores/app.js'
@@ -398,11 +372,6 @@ const calendarData = computed(() => buildCalendarEvents({
   colorSettings,
   taskFilter: scopeFilter.value
 }))
-
-const stackDays = computed(() => {
-  if (view.value !== 'agenda') return range.value.days
-  return range.value.days.filter(day => dayEvents(day).length)
-})
 
 const quickAddDateLabel = computed(() => {
   const day = quickAdd.date
@@ -800,9 +769,17 @@ function onSwipeEnd(event) {
   navigate(dx < 0 ? 'next' : 'prev')
 }
 
-function openDayFromYear(day) {
-  anchor.value = startOfDay(day)
-  selectedDay.value = startOfDay(day)
+function openMonthFromYear(month) {
+  anchor.value = new Date(anchor.value.getFullYear(), month - 1, 1)
+  view.value = 'month'
+  savePreferences()
+}
+
+function openDayView() {
+  const target = dayPopover.date
+  closeDayPopover()
+  anchor.value = startOfDay(target)
+  selectedDay.value = startOfDay(target)
   view.value = 'day'
   savePreferences()
 }
@@ -1620,12 +1597,29 @@ onBeforeUnmount(() => {
   font-size: 11.5px;
 }
 .cal-day-popover > footer {
+  display: flex;
+  gap: 6px;
   padding: 8px;
   border-top: 1px solid var(--line);
 }
+.cal-popover-day {
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink2);
+  font-size: 12px;
+}
+.cal-popover-day:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .cal-popover-add {
   display: inline-flex;
-  width: 100%;
+  flex: 1 1 auto;
+  width: auto;
   align-items: center;
   justify-content: center;
   gap: 6px;
@@ -1719,12 +1713,29 @@ onBeforeUnmount(() => {
   font-size: 11.5px;
 }
 .cal-day-popover > footer {
+  display: flex;
+  gap: 6px;
   padding: 8px;
   border-top: 1px solid var(--line);
 }
+.cal-popover-day {
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink2);
+  font-size: 12px;
+}
+.cal-popover-day:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .cal-popover-add {
   display: inline-flex;
-  width: 100%;
+  flex: 1 1 auto;
+  width: auto;
   align-items: center;
   justify-content: center;
   gap: 6px;

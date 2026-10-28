@@ -1331,3 +1331,11 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 - 卡片数据取实时 store（`cardTask` / `cardHabit` / `cardCountdown`），事件对象只作定位与配色，避免操作后卡片显示旧状态；`cardEvent` 会把 done 状态按最新 checkin / 任务状态重算。
 - 日历里原来的「点任务跳详情」改为「点任务开卡片」，跳转收进卡片的「详情」按钮；工时与流水仍直接跳打卡页 / 流水页。
 - 门禁：300/300 Node 测试、typecheck、build 通过；浏览器实测任务卡片改优先级、标记完成、习惯打卡与撤销、倒数日卡片均生效且无控制台错误。证据 `calendar-task-card-desktop-20261028.png`、`calendar-habit-card-desktop-20261028.png`。
+
+### P2-CAL6 周视图、年视图与日程视图（2026-10-28）
+
+- 周视图（`CalendarTimeGrid`）：时间轴沟槽新增竖排周序号；多列视图设 88px 列宽下限并把横向滚动收在 `.cal-time` 内部，窄屏不产生页面级横向溢出；全天区高度改为按内容自适应（`min(设定高度, 泳道 + 条目数 × 21 + 10)`），条目少时不再留大片空白。
+- 年视图（新增 `CalendarYearView.vue`）：12 个月 × ISO 周序号列；有事件的日期高亮 + 圆点、今天实心圆、选中描边；点击日期打开当日浮层，浮层底部新增「打开日视图」；点击月份标题切入该月。原先点日期直接跳日视图的行为改为可选跳转。
+- 日程视图（新增 `CalendarAgendaView.vue`）：按天分组，日期头 `position: sticky` 吸顶并在当天日程滑过后随分组离开；进入视图与点「今天」都会把今天滚到顶部；空日期不渲染；行内显示时间、色点、标题与未完成检查项数，点击打开事件卡片。
+- 主视图收敛：`TasksCalendarView` 删除内联的年视图与堆叠视图模板，改为挂载两个新组件，`/calendar` 与 `/tasks/calendar` 共用。
+- 门禁：300/300 Node 测试、typecheck、build 通过；浏览器实测周序号显示、年视图 12 月与 63 个周行、点日期出浮层并可跳日视图、日程首屏定位到今天（`data-date=2026-10-28`）、滚动后日期头吸在容器顶部，控制台无错误。证据 `calendar-week-timeline`、`calendar-year`、`calendar-year-day-popover`、`calendar-agenda`、`calendar-agenda-sticky` 五张。

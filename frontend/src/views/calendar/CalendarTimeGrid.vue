@@ -1,7 +1,9 @@
 <template>
   <div class="cal-time" :class="{ 'is-multi': days.length > 1 }">
-    <div class="cal-time-head" :style="gridStyle">
-      <div class="cal-time-gutter"></div>
+    <div class="cal-time-head" :style="{ ...gridStyle, minWidth: `${minWidth}px` }">
+      <div class="cal-time-gutter">
+        <span v-if="days.length > 1" class="cal-time-week">{{ weekLabel }}</span>
+      </div>
       <div
         v-for="day in days"
         :key="`dow-${toDateKey(day)}`"
@@ -15,7 +17,7 @@
       </div>
     </div>
 
-    <div class="cal-allday" :class="{ 'is-collapsed': allDayCollapsed }" :style="{ height: `${allDayCollapsed ? 26 : allDayHeight}px` }">
+    <div class="cal-allday" :class="{ 'is-collapsed': allDayCollapsed }" :style="{ height: `${allDayCollapsed ? 26 : bandHeight}px` }">
       <button type="button" class="cal-allday-toggle" :aria-expanded="!allDayCollapsed" @click="$emit('update:allDayCollapsed', !allDayCollapsed)">
         <span>全天</span>
         <ChevronDown v-if="allDayCollapsed" :size="13" /><ChevronUp v-else :size="13" />
@@ -77,7 +79,7 @@
         <i class="cal-hidden-handle" aria-hidden="true"><GripHorizontal :size="11" /></i>
       </div>
 
-      <div class="cal-grid" :style="{ ...gridStyle, height: `${gridHeight}px` }">
+      <div class="cal-grid" :style="{ ...gridStyle, height: `${gridHeight}px`, minWidth: `${minWidth}px` }">
         <div class="cal-hours" :style="{ width: `${GUTTER}px` }">
           <span v-for="mark in marks" :key="mark.minutes" class="cal-hour-label" :style="{ top: `${((mark.minutes - viewWindow.start) / 60) * hourHeight}px` }">{{ mark.label }}</span>
         </div>
@@ -134,7 +136,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ChevronDown, ChevronUp, GripHorizontal, Timer } from 'lucide-vue-next'
-import { formatWeekday, toDateKey } from './calendarRange.js'
+import { formatWeekday, isoWeekNumber, toDateKey } from './calendarRange.js'
 import { packWeekLanes } from './calendarLanes.js'
 import { tintStyle } from './calendarColors.js'
 import {
@@ -171,6 +173,16 @@ let suppressBlockClick = false
 
 const gridStyle = computed(() => ({ gridTemplateColumns: `${GUTTER}px repeat(${props.days.length}, minmax(0, 1fr))` }))
 const colsStyle = computed(() => ({ gridTemplateColumns: `repeat(${props.days.length}, minmax(0, 1fr))` }))
+// 列宽下限：多列视图在窄屏保持可读，横向滚动留在日历内部
+const COLUMN_MIN_WIDTH = 88
+const minWidth = computed(() => GUTTER + props.days.length * COLUMN_MIN_WIDTH)
+const weekLabel = computed(() => (props.days.length ? `${isoWeekNumber(props.days[0])}周` : ''))
+// 全天区按内容自适应：条目少时不占满用户设定的高度，超出时以设定值为上限
+const bandHeight = computed(() => {
+  const maxItems = Math.max(0, ...props.days.map(day => allDayOf(day).length))
+  const needed = laneHeight.value + maxItems * 21 + 10
+  return Math.min(props.allDayHeight, Math.max(26, needed))
+})
 const viewWindow = computed(() => visibleWindow(props.hiddenTop, props.hiddenBottom))
 const gridHeight = computed(() => ((viewWindow.value.minutes / 60) * props.hourHeight))
 const marks = computed(() => hourMarks(viewWindow.value))
@@ -402,6 +414,8 @@ onBeforeUnmount(() => { window.clearInterval(ticker) })
   height: 100%;
   min-height: 0;
   flex-direction: column;
+  overflow-x: auto;
+  overflow-y: hidden;
   background: var(--card);
 }
 .cal-time-head {
@@ -411,6 +425,28 @@ onBeforeUnmount(() => { window.clearInterval(ticker) })
   color: var(--muted);
   font-size: 10.5px;
   text-align: center;
+}
+.cal-time-gutter {
+  display: grid;
+  place-items: center;
+  border-right: 1px solid var(--line);
+}
+.cal-time-week {
+  color: var(--muted);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  writing-mode: vertical-rl;
+}
+.cal-time-gutter {
+  display: grid;
+  place-items: center;
+  border-right: 1px solid var(--line);
+}
+.cal-time-week {
+  color: var(--muted);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  writing-mode: vertical-rl;
 }
 .cal-time-dow {
   display: flex;
