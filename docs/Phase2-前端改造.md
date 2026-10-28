@@ -1132,3 +1132,9 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 - **导出**：复制 = 复制 Markdown 原文（反馈「已复制 Markdown」）；保存为 PDF = `window.print()`（打印样式隐藏筛选区/工具栏/底部按钮）；保存为图片 = html2canvas 导出 PNG（导出前放开三层容器的高度限制以截全内容、隐藏工具栏）；保存到笔记清单 = 以渲染后 HTML 写入所选笔记清单（无笔记清单时提示「暂无笔记清单」）。
 - **浮球避让**：底部按钮区右侧留 92px，避免「保存为」被右下角随身 AI 浮球遮挡（实测点击命中 `floating-agent-trigger`）。
 - 门禁 214/214（新增布局/入口/导出断言）、typecheck、build、diff-check 通过。实测：报告表格渲染、分组切换（按清单 → 收集箱（3）/考研日总结（6））、复制 639 字符、图片导出完整（6+3 行、无工具栏）、保存到笔记清单（HTML 表格落库）均正常。截图 tmp/qa22-*.png。
+
+### P2-FE120 显示内容菜单右溢与编辑器表格丢失修复（2026-10-28，用户实测反馈）
+
+- **「显示内容」弹窗超出视口右缘（根因 CSS 顺序）**：`.summary-icon-panel{left:auto;right:0}` 定义在 `.summary-menu{left:0}` **之前**，两者特异性相同，后者的 `left:0` 生效 → 菜单从图标左缘向右展开 190px+ 直接越界。改为高特异性选择器 `.summary-menu.summary-icon-panel{left:auto;right:0}` 并移到 `.summary-menu` 之后。实测 1280 宽下菜单 right=1254 ≤ 1280，完整在视口内。
+- **编辑表格前后文字导致表格消失（根因缺 TABLE 转换）**：编辑器的 `nodeMarkdown`（DOM → Markdown 回写）没有 TABLE 分支，`<table>` 落到 default 分支被拍平成逐行纯文本——用户只要在表格外输入字符，`onInput` 回写就把表格结构抹掉。新增 TABLE 分支：遍历 `tr`，`TH/TD` 文本（压缩空白、转义 `|`）生成 Markdown 表格（含分隔行），再交给 marked 实时渲染。实测在表格前后分别输入文字后：表格数量保持 2、复制出的 Markdown 仍含 `| 状态 | 进度 | 完成时间 | 任务时间 | 任务名称 |` 表格语法、前后新增文字均在。
+- 门禁 215/215（新增：图标菜单高特异性选择器、TABLE 分支断言）、typecheck、build、diff-check 通过。截图 tmp/qa23-*.png。
