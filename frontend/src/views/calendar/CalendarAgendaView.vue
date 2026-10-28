@@ -29,7 +29,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { formatWeekday, toDateKey } from './calendarRange.js'
 import { tintStyle } from './calendarColors.js'
 
@@ -41,10 +41,14 @@ const props = defineProps({
   holidays: { type: Object, default: () => ({}) }
 })
 
-defineEmits(['open-event', 'select-day'])
+const emit = defineEmits(['open-event', 'select-day', 'load-more'])
 
 const scrollEl = ref(null)
-
+let positioned = false
+let pendingPrepend = false
+let prevScrollHeight = 0
+let loadCooldown = 0
+let prependTimer
 const visibleDays = computed(() => props.days.filter(day => countOf(day) > 0))
 
 function dayKey(day) {
@@ -78,8 +82,66 @@ async function scrollToToday() {
   if (target) target.scrollIntoView({ block: 'start' })
 }
 
-onMounted(scrollToToday)
-watch(() => [props.todayKey, props.days.length], scrollToToday)
+// 真正的滚动容器是外层 .cal-body，这里向上找滚动祖先而不是监听自身
+function scroller() {
+  return scrollEl.value?.closest('.cal-body') || scrollEl.value?.parentElement || null
+}
+
+// 顶部/底部缓冲触发增量加载；向前加载时记录滚动高度，插入后补回偏移，避免视图跳动
+function onScroll() {
+  const root = scroller()
+  if (!root) return
+  const now = Date.now()
+  if (now - loadCooldown < 400) return
+  if (root.scrollTop <= 60) {
+    pendingPrepend = true
+    prevScrollHeight = root.scrollHeight
+    loadCooldown = now
+    emit('load-more', 'before')
+    window.clearTimeout(prependTimer)
+    prependTimer = window.setTimeout(() => { pendingPrepend = false }, 1500)
+    return
+  }
+  if (root.scrollHeight - root.scrollTop - root.clientHeight < 240) {
+    loadCooldown = now
+    emit('load-more', 'after')
+  }
+}
+
+watch(() => props.days.length, async () => {
+  const root = scroller()
+  if (!root) return
+  await nextTick()
+  if (pendingPrepend) {
+    root.scrollTop += root.scrollHeight - prevScrollHeight
+    pendingPrepend = false
+  }
+})
+
+watch(() => visibleDays.value.length, async length => {
+  if (!positioned && length) {
+    positioned = true
+    await scrollToToday()
+  }
+})
+
+watch(() => props.todayKey, () => {
+  positioned = false
+  scrollToToday()
+})
+
+onMounted(async () => {
+  scroller()?.addEventListener('scroll', onScroll, { passive: true })
+  await nextTick()
+  if (visibleDays.value.length) {
+    positioned = true
+    await scrollToToday()
+  }
+})
+
+onBeforeUnmount(() => {
+  scroller()?.removeEventListener('scroll', onScroll)
+})
 </script>
 
 <style scoped>

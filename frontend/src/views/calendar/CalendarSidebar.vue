@@ -115,8 +115,8 @@ const selectedKey = computed(() => (props.selected ? toDateKey(props.selected) :
 
 const cells = computed(() => monthWeeks(props.anchor).flat().map(date => {
   const key = toDateKey(date)
-  const holiday = props.holidays[key]
-  const sub = holiday?.name || props.lunar[key] || ''
+  // 迷你月历优先显示农历（初一是月份、其余是农历日），节假日信息在主日历的事件行里呈现
+  const sub = props.lunar[key] || props.holidays[key]?.name || ''
   return {
     key, date, day: date.getDate(), sub,
     inMonth: date.getMonth() === props.anchor.getMonth(),

@@ -1339,3 +1339,25 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 - 日程视图（新增 `CalendarAgendaView.vue`）：按天分组，日期头 `position: sticky` 吸顶并在当天日程滑过后随分组离开；进入视图与点「今天」都会把今天滚到顶部；空日期不渲染；行内显示时间、色点、标题与未完成检查项数，点击打开事件卡片。
 - 主视图收敛：`TasksCalendarView` 删除内联的年视图与堆叠视图模板，改为挂载两个新组件，`/calendar` 与 `/tasks/calendar` 共用。
 - 门禁：300/300 Node 测试、typecheck、build 通过；浏览器实测周序号显示、年视图 12 月与 63 个周行、点日期出浮层并可跳日视图、日程首屏定位到今天（`data-date=2026-10-28`）、滚动后日期头吸在容器顶部，控制台无错误。证据 `calendar-week-timeline`、`calendar-year`、`calendar-year-day-popover`、`calendar-agenda`、`calendar-agenda-sticky` 五张。
+
+### P2-CAL6.1 农历补齐与日程增量加载（2026-10-28）
+
+用户反馈侧栏迷你月历「农历加载不完全」且标签被截断成「九月…」。两个独立原因：
+
+- **取数范围不匹配**：农历/节假日跟着主视图范围请求（日视图只取 1 天、周视图 7 天），而迷你月历始终展示整月，于是只有最后一周有副标。现在 `loadRange` 在主范围不足 60 天时与 `monthWeeks(anchor)` 的整月范围取并集（年视图本身覆盖整月，不再叠加，避免超过接口 370 天限制）。
+- **标签过长**：后端 `lunarDate` 是「九月十六」，格子放不下。新增 `calendarLunar.js` 的 `formatLunarLabel`：节日（≤3 字）/节气优先，农历初一显示月份（「九月」），其余只显示农历日（「十六」）；超过 3 字的节日名（如「万圣节前夜」）退回农历日。迷你月历改为农历优先、节假日兜底，节假日信息仍在主日历的事件行里。
+- 日程视图增量加载：`resolveRange` 支持 `agendaBefore/agendaAfter`，`CalendarAgendaView` 在滚动到顶部/底部时 emit `load-more`，每次扩展 30 天（上限前后各 180 天）；向前加载时记录 `scrollHeight` 差值并在插入后补回 `scrollTop`，视图不跳动。**注意真正的滚动容器是 `.cal-body` 而不是组件自身**，监听要挂到向上找到的滚动祖先上。
+- 门禁：308/308 Node 测试、typecheck、build 通过；浏览器实测迷你月历 35/35 格都有副标且无截断、初一显示「九月」、日程滚到底 30→60 段、滚到顶 60→90 段且首段变为 2026-09-28、滚动位置保持。证据 `calendar-mini-lunar-desktop-20261028.png`、`calendar-agenda-extended-desktop-20261028.png`。
+
+### P2-CAL7 显示设置三页签与色板（2026-10-28）
+
+- 设置对话框抽成 `CalendarSettingsDialog.vue`：任务 / 习惯 / 倒数纪念日三页签（系统日历追加「叠加层」）。
+- 三个页签各自的显示方式与色块：任务按清单（标签/优先级模式只影响渲染）、习惯按主题/固定/习惯色、纪念日按固定/纪念日色；点色块弹出 `COLOR_GROUPS`（推荐、马卡龙、莫兰迪、洛可可、经典、孟菲斯）与自定义 HEX 输入。
+- 颜色写回：清单走 `tasksStore.updateList`，习惯走 `updateHabit`，纪念日走 `updateCountdown`，成功后提示并即时反映到日历。
+- 门禁：浏览器实测三页签切换、习惯切到「按习惯颜色」后出现习惯行、色板 6 组、选中颜色后提示「习惯颜色已更新」且偏好持久化。证据 `calendar-settings-task-tab`、`calendar-settings-habit-tab`、`calendar-color-palette`。
+
+### P2-CAL8 打印两种模式与叠加层开关（2026-10-28）
+
+- 打印拆成「缩略打印」与「打印详细」：前者通过 `body.cal-print-compact` 隐藏事件标题/时间、把色条压到 6px，只保留日期格与密度；后者维持完整信息。两种模式都在 `window.print()` 后自动清理 class。
+- 系统日历的显示设置新增「叠加层」页签：工时、流水、节假日与调休、习惯完成情况四个开关；关闭后请求的 `layers` 参数与事件数据同步收窄，重新开启即时恢复。任务日历不显示该页签。
+- 门禁：浏览器实测关闭工时后 10/20 的工时块消失、重新开启恢复；任务日历页签仍为三个；打印菜单出现两项。证据 `calendar-layers-tab`、`calendar-print-menu`。

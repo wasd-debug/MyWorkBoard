@@ -145,3 +145,12 @@ test('formatRangeText 同日与跨年', () => {
   const crossYear = resolveRange({ view: 'multiWeek', span: 2, anchor: new Date(2026, 11, 31) })
   assert.match(formatRangeText(crossYear), /2026年/)
 })
+
+test('日程视图支持向前向后扩展窗口', () => {
+  const base = resolveRange({ view: 'agenda', anchor: new Date(2026, 9, 19) })
+  assert.equal(base.days.length, 30)
+  const extended = resolveRange({ view: 'agenda', anchor: new Date(2026, 9, 19), agendaBefore: 30, agendaAfter: 30 })
+  assert.equal(extended.days.length, 90)
+  assert.equal(toDateKey(extended.days[0]), '2026-09-19')
+  assert.equal(toDateKey(extended.days.at(-1)), '2026-12-17')
+})

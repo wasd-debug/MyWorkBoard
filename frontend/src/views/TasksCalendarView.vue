@@ -81,7 +81,14 @@
             <button type="button" class="cal-icon-btn" aria-label="更多" title="更多" :aria-expanded="moreOpen" @click.stop="moreOpen = !moreOpen"><MoreHorizontal :size="17" /></button>
             <div v-if="moreOpen" class="cal-menu is-more" role="menu" @click.stop>
               <button type="button" role="menuitem" class="cal-menu-row" @click="openSettings"><Settings2 :size="15" /><span class="cal-menu-label">显示设置</span></button>
-              <button type="button" role="menuitem" class="cal-menu-row" @click="printCalendar"><Printer :size="15" /><span class="cal-menu-label">打印</span></button>
+              <div class="cal-menu-row is-print" role="menuitem" tabindex="0" @click.stop="printMenuOpen = !printMenuOpen" @keydown.enter.prevent="printMenuOpen = !printMenuOpen">
+                <Printer :size="15" /><span class="cal-menu-label">打印</span>
+                <ChevronDown :size="12" :style="{ transform: printMenuOpen ? 'rotate(180deg)' : 'none' }" />
+              </div>
+              <div v-if="printMenuOpen" class="cal-menu-sub">
+                <button type="button" class="cal-menu-row" @click="printCalendar('compact')">缩略打印</button>
+                <button type="button" class="cal-menu-row" @click="printCalendar('detail')">打印详细</button>
+              </div>
             </div>
           </div>
         </div>
@@ -156,6 +163,7 @@
           :lunar="lunarLabels"
           :holidays="holidayMap"
           @open-event="openEvent"
+          @load-more="loadAgendaMore"
         />
       </div>
     </div>
@@ -240,32 +248,21 @@
       </footer>
     </div>
 
-    <div v-if="settings.open" class="cal-dialog-mask" @click.self="settings.open = false">
-      <section class="cal-dialog" role="dialog" aria-label="显示设置">
-        <header>
-          <h2>显示设置</h2>
-          <button type="button" aria-label="关闭显示设置" @click="settings.open = false"><X :size="16" /></button>
-        </header>
-        <div class="cal-dialog-body">
-          <div class="cal-setting-row">
-            <span>显示方式</span>
-            <select v-model="colorSettings.taskColorMode" @change="savePreferences">
-              <option v-for="mode in TASK_COLOR_MODES" :key="mode.value" :value="mode.value">{{ mode.label }}</option>
-            </select>
-          </div>
-          <p class="cal-setting-hint">{{ activeColorHint }}</p>
-          <div class="cal-setting-list">
-            <div v-for="list in calendarLists" :key="list.publicId" class="cal-setting-item">
-              <span class="cal-setting-icon"><TaskOrganizationIcon :value="list.icon" :size="14" :style="{ color: list.color || 'var(--ink2)' }" /></span>
-              <span class="cal-setting-name">{{ list.name }}</span>
-              <label class="cal-color-swatch" :style="{ background: list.color || '#4d96ff' }" :title="`修改「${list.name}」颜色`">
-                <input type="color" :value="list.color || '#4d96ff'" :aria-label="`修改「${list.name}」颜色`" @change="updateListColor(list, $event.target.value)" />
-              </label>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
+    <CalendarSettingsDialog
+      :open="settings.open"
+      :lists="calendarLists"
+      :habits="tasksStore.habits"
+      :countdowns="tasksStore.countdowns"
+      :settings="colorSettings"
+      :aggregate="aggregateMode"
+      :layers="calendarLayers"
+      @close="settings.open = false"
+      @update:layers="applyLayers"
+      @update:settings="applyColorSettings"
+      @update-list-color="updateListColor"
+      @update-habit-color="updateHabitColor"
+      @update-countdown-color="updateCountdownColor"
+    />
   </section>
 </template>
 
@@ -279,7 +276,7 @@ import CalendarTimeGrid from './calendar/CalendarTimeGrid.vue'
 import CalendarEventCard from './calendar/CalendarEventCard.vue'
 import CalendarYearView from './calendar/CalendarYearView.vue'
 import CalendarAgendaView from './calendar/CalendarAgendaView.vue'
-import TaskOrganizationIcon from '../components/tasks/TaskOrganizationIcon.vue'
+import CalendarSettingsDialog from './calendar/CalendarSettingsDialog.vue'
 import { message } from '../services/message.js'
 import { useAppStore } from '../stores/app.js'
 import { useTasksStore } from '../stores/tasks.js'
@@ -287,13 +284,14 @@ import { useTaskFocusStore } from '../stores/taskFocus.js'
 import { apiGetTaskCalendar, apiListFocusSessions, apiListTaskFilterTasks, apiListTaskFilters } from '../../packages/api-client/src/index.js'
 import {
   SPAN_CONFIG, SPAN_KEYS, VIEW_KEYS, VIEW_LABELS, VIEW_SHORTCUTS, WEEKDAY_LABELS,
-  addDays, addMonths, clampSpan, formatWeekday, resolveRange, shiftAnchor, startOfDay, toDateKey, viewLabel as spanViewLabel, yearMonths
+  addDays, addMonths, clampSpan, formatWeekday, monthWeeks, resolveRange, shiftAnchor, startOfDay, toDateKey, viewLabel as spanViewLabel, yearMonths
 } from './calendar/calendarRange.js'
 import { buildCalendarEvents } from './calendar/calendarEvents.js'
+import { formatLunarLabel } from './calendar/calendarLunar.js'
 import { minutesToLabel, snapMinutes } from './calendar/calendarTimeGrid.js'
-import { fromDateKey } from './calendar/calendarRange.js'
+import { diffDays, fromDateKey } from './calendar/calendarRange.js'
 import { formatDuration, spanToInstants } from './calendar/calendarDrag.js'
-import { TASK_COLOR_MODES, mergedColorSettings, tintStyle } from './calendar/calendarColors.js'
+import { mergedColorSettings, tintStyle } from './calendar/calendarColors.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -323,6 +321,7 @@ const loading = ref(false)
 const error = ref('')
 const viewMenu = ref(false)
 const moreOpen = ref(false)
+const printMenuOpen = ref(false)
 const settings = reactive({ open: false })
 const quickAdd = reactive({ open: false, title: '', priority: 'NONE', listId: '', saving: false, date: startOfDay(new Date()), startMinutes: null, endMinutes: null, spanEnd: null })
 const dayPopover = reactive({ open: false, date: startOfDay(new Date()), x: 0, y: 0 })
@@ -337,14 +336,19 @@ const narrow = ref(currentBucket !== 'wide')
 const collapsedManual = ref(null)
 const cellHeight = ref(120)
 const timePrefs = reactive({ hiddenTop: 420, hiddenBottom: 1380, allDayHeight: 120, allDayCollapsed: false })
+const agendaExtra = reactive({ before: 0, after: 0 })
+const calendarLayers = reactive({ worktime: true, ledger: true, holiday: true, habit: true })
 const collapsed = computed(() => collapsedManual.value ?? narrow.value)
 
 const calendarLists = computed(() => tasksStore.lists.filter(item => !item.archived))
 const calendarTags = computed(() => tasksStore.tags)
-const range = computed(() => resolveRange({ view: view.value, span: spans[view.value], anchor: anchor.value }))
+const range = computed(() => resolveRange({
+  view: view.value, span: spans[view.value], anchor: anchor.value,
+  agendaBefore: view.value === 'agenda' ? agendaExtra.before : 0,
+  agendaAfter: view.value === 'agenda' ? agendaExtra.after : 0
+}))
 const viewLabelText = computed(() => spanViewLabel(view.value, spans[view.value]))
 const selectedKey = computed(() => toDateKey(selectedDay.value))
-const activeColorHint = computed(() => TASK_COLOR_MODES.find(mode => mode.value === colorSettings.taskColorMode)?.hint || '')
 
 const scopeFilter = computed(() => {
   const current = scope.value
@@ -530,7 +534,8 @@ function savePreferences() {
   try {
     localStorage.setItem(preferenceKey.value, JSON.stringify({
       view: view.value, spans: { ...spans }, colorSettings: { ...colorSettings }, scope: scope.value,
-      timePrefs: { ...timePrefs }
+      timePrefs: { ...timePrefs },
+      layers: { ...calendarLayers }
     }))
   } catch { /* 忽略存储配额错误 */ }
 }
@@ -552,6 +557,8 @@ function readPreferences() {
         allDayCollapsed: Boolean(stored.timePrefs.allDayCollapsed)
       })
     }
+    if (stored.layers) Object.assign(calendarLayers, stored.layers)
+    if (stored.layers) Object.assign(calendarLayers, stored.layers)
     if (stored.scope && ['all', 'custom', 'filter'].includes(stored.scope.mode)) {
       scope.value = { mode: stored.scope.mode, listIds: stored.scope.listIds || [], tagIds: stored.scope.tagIds || [], filterId: stored.scope.filterId || '' }
     }
@@ -575,19 +582,37 @@ async function loadFilterTasks(filterId) {
   }
 }
 
+function miniMonthRange() {
+  const weeks = monthWeeks(anchor.value)
+  const first = weeks[0][0]
+  const last = weeks[weeks.length - 1][6]
+  return { from: toDateKey(first), to: toDateKey(addDays(last, 1)) }
+}
+
 async function loadRange() {
   loading.value = true
   error.value = ''
-  const from = toDateKey(range.value.start)
-  const to = toDateKey(range.value.end)
+  const mainFrom = toDateKey(range.value.start)
+  const mainTo = toDateKey(range.value.end)
+  let from = mainFrom
+  let to = mainTo
+  // 迷你月历始终展示整月，主视图只取 1 天或 7 天时要把它的范围并进来，否则农历会缺一大半
+  const mainDays = diffDays(range.value.start, range.value.end)
+  if (mainDays < 60) {
+    const mini = miniMonthRange()
+    if (mini.from < from) from = mini.from
+    if (mini.to > to) to = mini.to
+  }
   try {
-    const layers = aggregateMode.value ? 'worktime,ledger,holiday' : 'holiday'
+    const layers = aggregateMode.value
+      ? ['worktime', 'ledger', 'holiday'].filter(key => calendarLayers[key] !== false).join(',') || 'holiday'
+      : 'holiday'
     const [calendar, sessions] = await Promise.all([
       apiGetTaskCalendar({ from, to, layers, lunar: 1 }),
       apiListFocusSessions({ from, to }).catch(() => [])
     ])
     holidayMap.value = Object.fromEntries((calendar?.holidays || []).map(item => [item.date, item]))
-    lunarLabels.value = Object.fromEntries((calendar?.lunar || []).map(item => [item.date, item.festival || item.solarTerm || item.lunarDate]))
+    lunarLabels.value = Object.fromEntries((calendar?.lunar || []).map(item => [item.date, formatLunarLabel(item)]))
     focusSessions.value = sessions || []
     worktimeDays.value = calendar?.worktime || []
     ledgerDays.value = calendar?.ledger || []
@@ -633,6 +658,8 @@ function toggleSidebar() {
 function closeMenus() {
   viewMenu.value = false
   moreOpen.value = false
+  printMenuOpen.value = false
+  printMenuOpen.value = false
   dayPopover.open = false
   closeEventCard()
 }
@@ -693,6 +720,16 @@ function selectDay(day, event) {
 
 function closeDayPopover() {
   dayPopover.open = false
+}
+
+function loadAgendaMore(direction) {
+  if (direction === 'before') {
+    if (agendaExtra.before >= 180) return
+    agendaExtra.before += 30
+  } else {
+    if (agendaExtra.after >= 180) return
+    agendaExtra.after += 30
+  }
 }
 
 function updateTimePrefs(patch) {
@@ -873,9 +910,26 @@ function openSettings() {
   settings.open = true
 }
 
-function printCalendar() {
+function printCalendar(mode = 'detail') {
   moreOpen.value = false
-  window.print()
+  document.body.classList.toggle('cal-print-compact', mode === 'compact')
+  document.body.classList.toggle('cal-print-detail', mode === 'detail')
+  window.setTimeout(() => {
+    window.print()
+    window.setTimeout(() => document.body.classList.remove('cal-print-compact', 'cal-print-detail'), 200)
+  }, 60)
+}
+
+function applyLayers(next) {
+  Object.assign(calendarLayers, next)
+  savePreferences()
+  void loadRange()
+}
+
+
+function applyColorSettings(next) {
+  Object.assign(colorSettings, next)
+  savePreferences()
 }
 
 async function updateListColor(list, color) {
@@ -884,6 +938,24 @@ async function updateListColor(list, color) {
     message.success('清单颜色已更新')
   } catch (cause) {
     message.error(cause?.response?.data?.detail || cause?.message || '清单颜色保存失败')
+  }
+}
+
+async function updateHabitColor(habit, color) {
+  try {
+    await tasksStore.updateHabit(habit, { color })
+    message.success('习惯颜色已更新')
+  } catch (cause) {
+    message.error(cause?.response?.data?.detail || cause?.message || '习惯颜色保存失败')
+  }
+}
+
+async function updateCountdownColor(item, color) {
+  try {
+    await tasksStore.updateCountdown(item, { color })
+    message.success('纪念日颜色已更新')
+  } catch (cause) {
+    message.error(cause?.response?.data?.detail || cause?.message || '纪念日颜色保存失败')
   }
 }
 
@@ -898,6 +970,12 @@ function onKeydown(event) {
 }
 
 watch([() => range.value.start.getTime(), () => range.value.end.getTime()], () => { void loadRange() })
+watch([view, () => anchor.value.getTime()], () => {
+  if (agendaExtra.before || agendaExtra.after) {
+    agendaExtra.before = 0
+    agendaExtra.after = 0
+  }
+})
 watch(preferenceKey, () => { readPreferences(); void loadRange() })
 
 async function ensureStore() {
@@ -1092,6 +1170,28 @@ onBeforeUnmount(() => {
 .cal-menu-tail {
   color: var(--muted);
   font-size: 11px;
+}
+.cal-menu-row.is-print {
+  cursor: pointer;
+}
+.cal-menu-sub {
+  padding-left: 14px;
+}
+.cal-menu-sub .cal-menu-row {
+  min-height: 30px;
+  font-size: 12.5px;
+  color: var(--ink2);
+}
+.cal-menu-row.is-print {
+  cursor: pointer;
+}
+.cal-menu-sub {
+  padding-left: 14px;
+}
+.cal-menu-sub .cal-menu-row {
+  min-height: 30px;
+  font-size: 12.5px;
+  color: var(--ink2);
 }
 .cal-menu-divider {
   height: 1px;
@@ -1418,123 +1518,6 @@ onBeforeUnmount(() => {
 .cal-quick-save:disabled {
   opacity: .5;
 }
-.cal-dialog-mask {
-  position: fixed;
-  z-index: 60;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgba(15, 23, 42, .38);
-}
-.cal-dialog {
-  width: min(520px, calc(100vw - 32px));
-  max-height: min(620px, calc(100vh - 80px));
-  overflow: auto;
-  border-radius: 12px;
-  background: var(--card);
-  box-shadow: 0 26px 60px rgba(15, 23, 42, .28);
-}
-.cal-dialog > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--line);
-}
-.cal-dialog h2 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 650;
-}
-.cal-dialog > header button {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-}
-.cal-dialog-body {
-  padding: 14px 16px 18px;
-}
-.cal-setting-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 13px;
-  font-weight: 600;
-}
-.cal-setting-row > span {
-  white-space: nowrap;
-}
-.cal-setting-row select {
-  width: auto;
-  max-width: 200px;
-  height: 30px;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 12px;
-}
-.cal-setting-hint {
-  margin: 8px 0 14px;
-  color: var(--muted);
-  font-size: 11.5px;
-  line-height: 1.5;
-}
-.cal-setting-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  border-top: 1px solid var(--line);
-  padding-top: 8px;
-}
-.cal-setting-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  font-size: 12.5px;
-}
-.cal-setting-icon {
-  display: inline-grid;
-  flex: 0 0 18px;
-  place-items: center;
-  width: 18px;
-  overflow: hidden;
-  font-size: 9px;
-  white-space: nowrap;
-}
-.cal-setting-name {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.cal-color-swatch {
-  position: relative;
-  flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  cursor: pointer;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .12);
-}
-.cal-color-swatch input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  border: 0;
-  opacity: 0;
-  cursor: pointer;
-}
 .cal-day-popover {
   position: fixed;
   z-index: 55;
@@ -1804,13 +1787,26 @@ onBeforeUnmount(() => {
   }
 }
 @media print {
+  :global(body.cal-print-compact .cal-event .cal-ev-title),
+  :global(body.cal-print-compact .cal-event .cal-ev-time),
+  :global(body.cal-print-compact .cal-event .cal-ev-extra),
+  :global(body.cal-print-compact .cal-lane .cal-ev-title),
+  :global(body.cal-print-compact .cal-lane .cal-ev-extra),
+  :global(body.cal-print-compact .cal-time .cal-block-title),
+  :global(body.cal-print-compact .cal-time .cal-block-time),
+  :global(body.cal-print-compact .cal-agenda-row .cal-agenda-title) {
+    display: none !important;
+  }
+  :global(body.cal-print-compact .cal-event),
+  :global(body.cal-print-compact .cal-lane) {
+    height: 6px !important;
+  }
   .cal-shell {
     height: auto;
   }
   .cal-head,
   .cal-sidebar,
-  .cal-quick,
-  .cal-dialog-mask {
+  .cal-quick {
     display: none !important;
   }
   .cal-body {

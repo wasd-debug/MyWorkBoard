@@ -23,5 +23,6 @@ test('span views keep their own remembered size when switching views', () => {
   const multiWeek = resolveRange({ view: 'multiWeek', span: 6, anchor: new Date(2026, 9, 19) })
   assert.equal(multiDay.days.length, 3)
   assert.equal(multiWeek.days.length, 42)
-  assert.match(view, /const range = computed\(\(\) => resolveRange\(\{ view: view\.value, span: spans\[view\.value\], anchor: anchor\.value \}\)\)/)
+  assert.match(view, /const range = computed\(\(\) => resolveRange\(\{/)
+  assert.match(view, /view: view\.value, span: spans\[view\.value\], anchor: anchor\.value,/)
 })

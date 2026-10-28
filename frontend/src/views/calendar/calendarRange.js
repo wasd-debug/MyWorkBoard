@@ -12,7 +12,7 @@ export const SPAN_CONFIG = {
 }
 export const SPAN_KEYS = ['multiDay', 'multiWeek']
 
-const AGENDA_HORIZON_DAYS = 30
+export const AGENDA_HORIZON_DAYS = 30
 
 export function pad2(value) {
   return String(value).padStart(2, '0')
@@ -106,7 +106,7 @@ export function eachDay(start, endExclusive) {
   return days
 }
 
-export function resolveRange({ view = 'month', span, anchor = new Date() } = {}) {
+export function resolveRange({ view = 'month', span, anchor = new Date(), agendaBefore = 0, agendaAfter = 0 } = {}) {
   const base = startOfDay(anchor)
   let start = base
   let end = addDays(base, 1)
@@ -128,11 +128,16 @@ export function resolveRange({ view = 'month', span, anchor = new Date() } = {})
     start = new Date(base.getFullYear(), 0, 1)
     end = new Date(base.getFullYear() + 1, 0, 1)
   } else if (view === 'agenda') {
-    start = base
-    end = addDays(base, AGENDA_HORIZON_DAYS)
+    const before = Math.max(0, Math.round(Number(agendaBefore) || 0))
+    const after = Math.max(0, Math.round(Number(agendaAfter) || 0))
+    start = addDays(base, -before)
+    end = addDays(base, AGENDA_HORIZON_DAYS + after)
   }
   const days = eachDay(start, end)
-  return { view, span: isSpanView(view) ? clampSpan(view, span) : null, start, end, days, weeks: chunkWeeks(days), title: rangeTitle(view, base) }
+  return {
+    view, span: isSpanView(view) ? clampSpan(view, span) : null, start, end, days, weeks: chunkWeeks(days),
+    title: rangeTitle(view, base), agendaBefore, agendaAfter
+  }
 }
 
 export function rangeTitle(view, anchor) {
