@@ -101,7 +101,7 @@ export function hourMarks(window, stepMinutes = 60) {
 }
 
 /** 全天区默认高度与拖拽边界（与截图中的可上提/下拉区域一致）。 */
-export const ALL_DAY_HEIGHT = { min: 32, max: 260, default: 84 }
+export const ALL_DAY_HEIGHT = { min: 32, max: 280, default: 120 }
 
 export function clampAllDayHeight(value) {
   return clamp(Number(value) || ALL_DAY_HEIGHT.default, ALL_DAY_HEIGHT.min, ALL_DAY_HEIGHT.max)

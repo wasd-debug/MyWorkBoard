@@ -330,7 +330,7 @@ let currentBucket = typeof window !== 'undefined' ? widthBucket(window.innerWidt
 const narrow = ref(currentBucket !== 'wide')
 const collapsedManual = ref(null)
 const cellHeight = ref(120)
-const timePrefs = reactive({ hiddenTop: 420, hiddenBottom: 1380, allDayHeight: 84, allDayCollapsed: false })
+const timePrefs = reactive({ hiddenTop: 420, hiddenBottom: 1380, allDayHeight: 120, allDayCollapsed: false })
 const collapsed = computed(() => collapsedManual.value ?? narrow.value)
 
 const calendarLists = computed(() => tasksStore.lists.filter(item => !item.archived))

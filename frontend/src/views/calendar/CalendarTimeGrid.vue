@@ -20,23 +20,45 @@
         <span>全天</span>
         <ChevronDown v-if="allDayCollapsed" :size="13" /><ChevronUp v-else :size="13" />
       </button>
-      <div v-show="!allDayCollapsed" class="cal-allday-cols" :style="colsStyle">
-        <div v-for="day in days" :key="`allday-${toDateKey(day)}`" class="cal-allday-col">
+      <div v-show="!allDayCollapsed" class="cal-allday-body">
+        <div class="cal-allday-cols" :style="colsStyle">
+          <div v-for="day in days" :key="`allday-${toDateKey(day)}`" class="cal-allday-col" :style="{ paddingTop: `${laneHeight}px` }">
+            <button
+              v-for="event in allDayOf(day)"
+              :key="event.id"
+              type="button"
+              class="cal-allday-item"
+              :class="[`kind-${event.kind}`, { 'is-done': event.done }]"
+              :style="tintStyle(event.color, 16)"
+              :title="event.title"
+              @click.stop="$emit('open-event', event, $event)"
+            >
+              <span class="cal-ev-dot" :class="{ 'is-done': event.done }" :style="{ borderColor: event.color }"></span>
+              <span class="cal-ev-title">{{ event.title }}</span>
+              <span v-if="event.openChecklist" class="cal-ev-extra">+{{ event.openChecklist }}</span>
+            </button>
+            <p v-if="!allDayOf(day).length && !laneRows.length" class="cal-allday-empty">—</p>
+          </div>
+        </div>
+        <div class="cal-allday-lanes" :style="{ gridTemplateRows: `repeat(${Math.max(laneRows.length, 1)}, 19px)` }">
           <button
-            v-for="event in allDayOf(day)"
-            :key="event.id"
+            v-for="segment in laneSegments"
+            :key="`lane-${segment.id}`"
             type="button"
-            class="cal-allday-item"
-            :class="[`kind-${event.kind}`, { 'is-done': event.done }]"
-            :style="tintStyle(event.color, 16)"
-            :title="event.title"
-            @click.stop="$emit('open-event', event, $event)"
+            class="cal-allday-lane"
+            :class="{ 'is-done': segment.event.done, 'continues-before': segment.continuesBefore, 'continues-after': segment.continuesAfter }"
+            :style="{
+              gridRow: laneIndex[segment.id] + 1,
+              gridColumn: `${segment.startCol + 1} / ${segment.endCol + 2}`,
+              ...tintStyle(segment.event.color, 16)
+            }"
+            :title="segment.event.title"
+            @click.stop="$emit('open-event', segment.event, $event)"
           >
-            <span class="cal-ev-dot" :class="{ 'is-done': event.done }" :style="{ borderColor: event.color }"></span>
-            <span class="cal-ev-title">{{ event.title }}</span>
-            <span v-if="event.openChecklist" class="cal-ev-extra">+{{ event.openChecklist }}</span>
+            <span class="cal-ev-dot" :class="{ 'is-done': segment.event.done }" :style="{ borderColor: segment.event.color }"></span>
+            <span class="cal-ev-title">{{ segment.event.title }}</span>
+            <span v-if="segment.continuesAfter" class="cal-ev-extra">→</span>
           </button>
-          <p v-if="!allDayOf(day).length" class="cal-allday-empty">—</p>
         </div>
       </div>
       <div v-if="!allDayCollapsed" class="cal-allday-resize" role="separator" aria-label="拖动调整全天区高度" @pointerdown="startResizeAllDay"></div>
@@ -65,7 +87,14 @@
             :key="`block-${block.event.id}`"
             type="button"
             class="cal-block"
-            :class="[`kind-${block.event.kind}`, { 'is-done': block.event.done, 'is-short': block.geometry.height < 34, 'continues-before': block.event.continuesBefore, 'continues-after': block.event.continuesAfter }]"
+            :class="[`kind-${block.event.kind}`, {
+              'is-done': block.event.done,
+              'is-short': block.geometry.height < 34,
+              'is-clipped-top': block.geometry.clippedStart,
+              'is-clipped-bottom': block.geometry.clippedEnd,
+              'continues-before': block.event.continuesBefore,
+              'continues-after': block.event.continuesAfter
+            }]"
             :style="blockStyle(block)"
             :title="blockTitle(block.event)"
             @click.stop="$emit('open-event', block.event, $event)"
@@ -92,6 +121,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ChevronDown, ChevronUp, GripHorizontal, Timer } from 'lucide-vue-next'
 import { formatWeekday, toDateKey } from './calendarRange.js'
+import { packWeekLanes } from './calendarLanes.js'
 import { tintStyle } from './calendarColors.js'
 import {
   MINUTES_PER_DAY, blockGeometry, hourMarks, layoutColumns, minutesToLabel, snapMinutes, visibleWindow
@@ -129,6 +159,15 @@ const nowVisible = computed(() => nowMinutes.value >= viewWindow.value.start && 
 const nowTop = computed(() => ((nowMinutes.value - viewWindow.value.start) / 60) * props.hourHeight)
 
 const buckets = computed(() => props.days.map(day => props.byDay.get(toDateKey(day)) || { allDay: [], timed: [] }))
+const lanePack = computed(() => packWeekLanes(props.days, props.byDay))
+const laneRows = computed(() => lanePack.value.lanes)
+const laneSegments = computed(() => lanePack.value.segments)
+const laneHeight = computed(() => lanePack.value.laneHeight)
+const laneIndex = computed(() => {
+  const map = {}
+  laneRows.value.forEach((lane, index) => lane.forEach(item => { map[item.id] = index }))
+  return map
+})
 const layouts = computed(() => buckets.value.map(bucket => layoutColumns(bucket.timed)))
 
 function weekdayLabel(day) {
@@ -142,14 +181,16 @@ function subLabel(day) {
 
 function allDayOf(day) {
   const index = props.days.findIndex(item => toDateKey(item) === toDateKey(day))
-  return index === -1 ? [] : buckets.value[index].allDay
+  if (index === -1) return []
+  const laneIds = lanePack.value.laneIds
+  return buckets.value[index].allDay.filter(item => !laneIds.has(item.id))
 }
 
 function blocksOf(day) {
   const index = props.days.findIndex(item => toDateKey(item) === toDateKey(day))
   if (index === -1) return []
   const layout = layouts.value[index]
-  return buckets.value[index].timed.map(event => {
+  return buckets.value[index].timed.filter(event => Number.isFinite(Number(event.startMinutes))).map(event => {
     const geometry = blockGeometry(event.startMinutes, event.endMinutes, viewWindow.value, props.hourHeight)
     const slot = layout.get(event.id) || { column: 0, columns: 1 }
     return { event, geometry, column: slot.column, columns: slot.columns }
@@ -307,10 +348,15 @@ onBeforeUnmount(() => { window.clearInterval(ticker) })
 .cal-allday-toggle:hover {
   color: var(--ink);
 }
-.cal-allday-cols {
-  display: grid;
+.cal-allday-body {
+  position: relative;
   flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
+}
+.cal-allday-cols {
+  display: grid;
+  height: 100%;
 }
 .cal-allday-col {
   display: flex;
@@ -319,7 +365,47 @@ onBeforeUnmount(() => { window.clearInterval(ticker) })
   gap: 2px;
   padding: 4px 4px 2px;
   border-right: 1px solid var(--line);
-  overflow-y: auto;
+  overflow: hidden;
+}
+.cal-allday-lanes {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  gap: 2px 0;
+  pointer-events: none;
+}
+.cal-allday-lane {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 19px;
+  margin: 0 4px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--ink);
+  font-size: 10.5px;
+  line-height: 1;
+  pointer-events: auto;
+  text-align: left;
+}
+.cal-allday-lane:hover {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 12%, transparent);
+}
+.cal-allday-lane.is-done .cal-ev-title {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.cal-allday-lane.continues-before {
+  margin-left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.cal-allday-lane.continues-after {
+  margin-right: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
 }
 .cal-allday-col:last-child {
   border-right: 0;
@@ -490,6 +576,22 @@ onBeforeUnmount(() => { window.clearInterval(ticker) })
 }
 .cal-block.is-done .cal-block-title {
   text-decoration: line-through;
+}
+.cal-block.is-clipped-top {
+  border-top-style: dashed;
+  border-top-color: color-mix(in srgb, var(--ink) 22%, transparent);
+}
+.cal-block.is-clipped-bottom {
+  border-bottom-style: dashed;
+  border-bottom-color: color-mix(in srgb, var(--ink) 22%, transparent);
+}
+.cal-block.is-clipped-top {
+  border-top-style: dashed;
+  border-top-color: color-mix(in srgb, var(--ink) 22%, transparent);
+}
+.cal-block.is-clipped-bottom {
+  border-bottom-style: dashed;
+  border-bottom-color: color-mix(in srgb, var(--ink) 22%, transparent);
 }
 .cal-block.continues-before {
   border-top-left-radius: 0;

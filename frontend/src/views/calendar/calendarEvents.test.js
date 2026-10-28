@@ -212,3 +212,33 @@ test('任务日历不传工时与流水时不产生对应条目', () => {
   assert.equal(dayEvents(result, '2026-10-19').allDay.length, 0)
   assert.equal(dayEvents(result, '2026-10-19').timed.length, 0)
 })
+
+test('整日对齐的多日有刻任务进入全天区而不是时间轴', () => {
+  const result = buildCalendarEvents({
+    days, lists, tags,
+    tasks: [{ publicId: 'span', title: '长期项目', allDay: false, startAt: '2026-10-19T00:00:00', dueAt: '2026-10-21T00:00:00', listId: 'list-work', status: 'OPEN' }]
+  })
+  assert.equal(dayEvents(result, '2026-10-19').allDay.length, 1)
+  assert.equal(dayEvents(result, '2026-10-20').allDay.length, 1)
+  assert.equal(dayEvents(result, '2026-10-19').timed.length, 0)
+  assert.equal(dayEvents(result, '2026-10-19').allDay[0].promoted, true)
+})
+
+test('单日 00:00–23:59 的有刻任务按全天处理', () => {
+  const result = buildCalendarEvents({
+    days, lists, tags,
+    tasks: [{ publicId: 'whole', title: '整日', allDay: false, startAt: '2026-10-19T00:00:00', dueAt: '2026-10-19T23:59:00', status: 'OPEN' }]
+  })
+  assert.equal(dayEvents(result, '2026-10-19').allDay.length, 1)
+  assert.equal(dayEvents(result, '2026-10-19').timed.length, 0)
+})
+
+test('跨夜但有实际时刻的任务仍留在时间轴并裁切', () => {
+  const result = buildCalendarEvents({
+    days, lists, tags,
+    tasks: [{ publicId: 'night', title: '加班', allDay: false, startAt: '2026-10-19T22:00:00', dueAt: '2026-10-20T02:00:00', status: 'OPEN' }]
+  })
+  assert.equal(dayEvents(result, '2026-10-19').allDay.length, 0)
+  assert.equal(dayEvents(result, '2026-10-19').timed.length, 1)
+  assert.equal(dayEvents(result, '2026-10-19').timed[0].promoted, false)
+})

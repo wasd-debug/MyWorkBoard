@@ -22,6 +22,17 @@ export function habitScheduledOn(habit, date) {
   return true
 }
 
+/** 整日对齐（00:00 起、00:00 或 23:59 止）且跨度接近整天的有刻任务，实际是跨天任务，应放进全天区。 */
+export function spansWholeDays(window) {
+  if (!window || window.allDay) return false
+  const { start, end } = window
+  if (start.getHours() !== 0 || start.getMinutes() !== 0) return false
+  const duration = end.getTime() - start.getTime()
+  if (duration >= 23 * 3600 * 1000) return true
+  const endsAtMidnight = end.getHours() === 0 && end.getMinutes() === 0
+  return endsAtMidnight && toDateKey(start) !== toDateKey(end)
+}
+
 export function taskWindow(task) {
   const startRaw = task?.startAt || task?.dueAt
   if (!startRaw) return null
@@ -109,9 +120,9 @@ export function buildCalendarEvents(options = {}) {
       id: task.publicId, kind: EVENT_KINDS.TASK, title: task.title || '(无标题)', color,
       priority: task.priority || 'NONE', listId: task.listId, tagIds: task.tagIds || [],
       done: task.status === 'COMPLETED', recurring: isRecurring(task), openChecklist, task,
-      startKey, endKey, allDay: window.allDay
+      startKey, endKey, allDay: window.allDay, promoted: spansWholeDays(window)
     }
-    if (window.allDay) {
+    if (window.allDay || spansWholeDays(window)) {
       for (const key of enumerateKeys(startKey, endKey)) {
         if (!inRange(key)) continue
         byDay.get(key).allDay.push({ ...base, spanStart: key === startKey, spanEnd: key === endKey })
