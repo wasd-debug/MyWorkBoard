@@ -122,7 +122,10 @@ public class TaskSyncService {
             TaskCommand command = new TaskCommand(payload.listId(), payload.title(), payload.description(),
                     payload.priority(), payload.startAt(), payload.dueAt(), payload.allDay(), payload.timezone(),
                     payload.durationMinutes(), payload.parentId(), payload.tagIds(), payload.checklist(), payload.rrule(),
-                    payload.recurrenceAnchor(), payload.sortOrder() == null ? null : Math.toIntExact(payload.sortOrder()));
+                    payload.recurrenceAnchor(), payload.sortOrder() == null ? null : Math.toIntExact(payload.sortOrder()),
+                    // 前端同步载荷把条目级字段放在 extra 中（与 abandonedAt 等一致）
+                    payload.extra() == null || payload.extra().get("itemKind") == null
+                            ? payload.itemKind() : String.valueOf(payload.extra().get("itemKind")));
             TaskItem saved = current == null
                     ? tasks.createForSync(command, payload.status(), opId, entityId)
                     : tasks.updateForSync(entityId, command, payload.status(), baseRevision, opId);

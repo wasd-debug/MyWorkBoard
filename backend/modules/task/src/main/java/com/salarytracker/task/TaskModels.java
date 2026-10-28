@@ -146,7 +146,8 @@ public final class TaskModels {
                            int completedSubtasks, int totalSubtasks, boolean deleted, String deletedAt,
                            String rrule, String recurrenceAnchor, String seriesId, Integer seriesSequence,
                            String plannedDueAt, int sortOrder, int focusMinutes, String createdAt, int attachmentCount,
-                           @Schema(type = "string", format = "date-time") String abandonedAt) {
+                           @Schema(type = "string", format = "date-time") String abandonedAt,
+                           String itemKind) {
         public TaskItem(String publicId, String listId, String title, String description, String status,
                         String priority, String startAt, String dueAt, boolean allDay, String timezone,
                         Integer durationMinutes, String source, String completedAt, long revision,
@@ -157,7 +158,7 @@ public final class TaskModels {
             this(publicId, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
                     durationMinutes, source, completedAt, revision, parentId, tagIds, checklist,
                     completedSubtasks, totalSubtasks, deleted, deletedAt, rrule, recurrenceAnchor, seriesId,
-                    seriesSequence, plannedDueAt, sortOrder, focusMinutes, createdAt, attachmentCount, null);
+                    seriesSequence, plannedDueAt, sortOrder, focusMinutes, createdAt, attachmentCount, null, null);
         }
 
         public TaskItem(String publicId, String listId, String title, String description, String status,
@@ -165,7 +166,7 @@ public final class TaskModels {
                         Integer durationMinutes, String source, String completedAt, long revision) {
             this(publicId, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
                     durationMinutes, source, completedAt, revision, null, List.of(), List.of(), 0, 0, false, null,
-                    null, null, null, null, null, 0, 0, null, 0);
+                    null, null, null, null, null, 0, 0, null, 0, null, null);
         }
     }
 
@@ -188,23 +189,23 @@ public final class TaskModels {
                               String startAt, String dueAt, Boolean allDay, String timezone,
                               Integer durationMinutes, String parentId, List<String> tagIds,
                               List<ChecklistCommand> checklist, String rrule, String recurrenceAnchor,
-                              Integer sortOrder) {
+                              Integer sortOrder, String itemKind) {
         public TaskCommand(String listId, String title, String description, String priority, String startAt,
                            String dueAt, Boolean allDay, String timezone, Integer durationMinutes, String parentId,
                            List<String> tagIds, List<ChecklistCommand> checklist, String rrule, String recurrenceAnchor) {
             this(listId, title, description, priority, startAt, dueAt, allDay, timezone, durationMinutes,
-                    parentId, tagIds, checklist, rrule, recurrenceAnchor, null);
+                    parentId, tagIds, checklist, rrule, recurrenceAnchor, null, null);
         }
         public TaskCommand(String listId, String title, String description, String priority, String startAt,
                            String dueAt, Boolean allDay, String timezone, Integer durationMinutes, String parentId,
                            List<String> tagIds, List<ChecklistCommand> checklist) {
             this(listId, title, description, priority, startAt, dueAt, allDay, timezone, durationMinutes,
-                    parentId, tagIds, checklist, null, null);
+                    parentId, tagIds, checklist, null, null, null, null);
         }
         public TaskCommand(String listId, String title, String description, String priority, String startAt,
                            String dueAt, Boolean allDay, String timezone, Integer durationMinutes) {
             this(listId, title, description, priority, startAt, dueAt, allDay, timezone, durationMinutes,
-                    null, null, null, null, null);
+                    null, null, null, null, null, null, null);
         }
     }
 
@@ -322,7 +323,7 @@ public final class TaskModels {
                               Integer durationMinutes, Long revision, String parentId, List<String> tagIds,
                               List<ChecklistCommand> checklist, String name, String color, String icon,
                               Long sortOrder, Boolean archived, String rrule, String recurrenceAnchor,
-                              Map<String, Object> extra) {
+                              Map<String, Object> extra, String itemKind) {
         public SyncPayload(String id, String listId, String title, String description, String status,
                            String priority, String startAt, String dueAt, Boolean allDay, String timezone,
                            Integer durationMinutes, Long revision, String parentId, List<String> tagIds,
@@ -331,13 +332,13 @@ public final class TaskModels {
             this(id, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
                     durationMinutes, revision, parentId, tagIds, checklist, name, color, icon,
                     sortOrder == null ? null : sortOrder.longValue(), archived,
-                    null, null, null);
+                    null, null, null, null);
         }
         public SyncPayload(String id, String listId, String title, String description, String status,
                            String priority, String startAt, String dueAt, Boolean allDay, String timezone,
                            Integer durationMinutes, Long revision) {
             this(id, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
-                    durationMinutes, revision, null, null, null, null, null, null, null, null, null, null, null);
+                    durationMinutes, revision, null, null, null, null, null, null, null, null, null, null, null, null);
         }
     }
 
