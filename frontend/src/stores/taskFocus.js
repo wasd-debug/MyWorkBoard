@@ -7,13 +7,22 @@ let ticker
 export const useTaskFocusStore = defineStore('task-focus', {
   state: () => ({ current: null, settings: null, stats: null, sessions: [], now: Date.now(), loading: false, error: '' }),
   getters: {
-    remainingSeconds: state => state.current ? Math.max(0, Math.ceil((new Date(state.current.plannedEndAt).getTime() - state.now) / 1000)) : 0,
-    remainingLabel() { const seconds = this.remainingSeconds; return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}` }
+    // plannedMinutes = 0 表示正计时：没有计划结束时间，只累计已用时长
+    isCountUp: state => Boolean(state.current && !Number(state.current.plannedMinutes)),
+    elapsedSeconds: state => state.current ? Math.max(0, Math.floor((state.now - new Date(state.current.startedAt).getTime()) / 1000)) : 0,
+    elapsedLabel() { const seconds = this.elapsedSeconds; return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}` },
+    remainingSeconds: state => state.current && state.current.plannedEndAt ? Math.max(0, Math.ceil((new Date(state.current.plannedEndAt).getTime() - state.now) / 1000)) : 0,
+    remainingLabel() { const seconds = this.remainingSeconds; return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}` },
+    displayLabel() { return this.isCountUp ? this.elapsedLabel : this.remainingLabel }
   },
   actions: {
     installTicker() {
       if (ticker || typeof window === 'undefined') return
-      ticker = window.setInterval(() => { this.now = Date.now(); if (this.current && this.remainingSeconds === 0) this.complete() }, 1000)
+      ticker = window.setInterval(() => {
+        this.now = Date.now()
+        // 正计时（plannedMinutes=0）不会自动完成，需用户手动结束
+        if (this.current && !this.isCountUp && this.remainingSeconds === 0) this.complete()
+      }, 1000)
     },
     reset() { this.current = null; this.settings = null; this.stats = null; this.sessions = []; this.error = '' },
     async refresh() {

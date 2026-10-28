@@ -112,15 +112,17 @@ public class TaskEfficiencyService {
                 (row, index) -> focusSession(row), userId, opKey);
         if (!replay.isEmpty()) return replay.get(0);
         if (currentFocus() != null) throw new ConflictException("已有进行中的专注", currentFocus().revision());
-        int planned = bounded(command == null ? null : command.plannedMinutes(), focusSettings().focusMinutes(), 1, 180, "专注时长");
+        // plannedMinutes = 0 表示「正计时」：不设计划结束时间，由用户手动结束
+        int planned = bounded(command == null ? null : command.plannedMinutes(), focusSettings().focusMinutes(), 0, 180, "专注时长");
         Long taskId = taskId(userId, command == null ? null : command.taskId());
         String publicId = UUID.randomUUID().toString();
         ZoneId zone = zone(userId);
         LocalDate requested = parseDate(command == null ? null : command.requestedDate(), LocalDate.now(zone));
         boolean manual = !requested.equals(LocalDate.now(zone));
         if (requested.isAfter(LocalDate.now(zone))) throw new IllegalArgumentException("不能新增未来日期的专注记录");
+        if (manual && planned <= 0) throw new IllegalArgumentException("补录专注记录需要填写时长");
         Instant started = manual ? requested.atTime(LocalTime.NOON).atZone(zone).toInstant() : dbNow();
-        Instant ended = manual ? started.plusSeconds(planned * 60L) : null;
+        Instant ended = manual && planned > 0 ? started.plusSeconds(planned * 60L) : null;
         String status = manual ? "COMPLETED" : "RUNNING";
         try {
             jdbc.update("INSERT INTO focus_session(public_id,user_id,task_id,planned_minutes,actual_minutes,started_at,ended_at,status,device_label,client_op_key) " +
@@ -146,7 +148,9 @@ public class TaskEfficiencyService {
         String status = enumValue(command == null ? null : command.status(), "COMPLETED", List.of("COMPLETED", "ABORTED"), "status");
         Instant ended = dbNow();
         int actual = Math.max(0, (int) ((ended.toEpochMilli() - Instant.parse(before.startedAt()).toEpochMilli()) / 60000));
-        if ("COMPLETED".equals(status)) actual = Math.max(1, Math.min(before.plannedMinutes(), actual));
+        if ("COMPLETED".equals(status)) {
+            actual = before.plannedMinutes() > 0 ? Math.max(1, Math.min(before.plannedMinutes(), actual)) : Math.max(1, actual);
+        }
         int changed = jdbc.update("UPDATE focus_session SET actual_minutes=?,ended_at=?,status=?,revision=revision+1 " +
                         "WHERE public_id=? AND user_id=? AND status='RUNNING' AND revision=?", actual,
                 Timestamp.from(ended), status, publicId, userId, expected);
@@ -404,7 +408,8 @@ public class TaskEfficiencyService {
         Instant started = row.getTimestamp("started_at").toInstant();
         return new FocusSession(row.getString("public_id"), row.getString("task_public_id"), row.getString("task_title"),
                 row.getInt("planned_minutes"), row.getInt("actual_minutes"), started.toString(),
-                started.plusSeconds(row.getInt("planned_minutes") * 60L).toString(), instant(row.getTimestamp("ended_at")),
+                row.getInt("planned_minutes") > 0 ? started.plusSeconds(row.getInt("planned_minutes") * 60L).toString() : null,
+                instant(row.getTimestamp("ended_at")),
                 row.getString("status"), row.getString("device_label"), row.getLong("revision"));
     }
 

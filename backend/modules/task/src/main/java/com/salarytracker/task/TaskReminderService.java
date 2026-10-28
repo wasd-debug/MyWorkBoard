@@ -124,6 +124,48 @@ public class TaskReminderService {
         stream.heartbeat();
     }
 
+    /** 检查项级提醒：扫描到点且未触发的检查项，写入站内消息并标记已触发 */
+    @Scheduled(fixedDelay = 30000, initialDelay = 12000)
+    @SchedulerLock(name = "taskChecklistReminderScan", lockAtMostFor = "PT25S", lockAtLeastFor = "PT1S")
+    public void scanChecklist() {
+        List<Long> ids = jdbc.query("SELECT c.id FROM task_checklist_item c JOIN task t ON t.id=c.task_id " +
+                        "WHERE c.remind_at IS NOT NULL AND c.fired_at IS NULL AND c.deleted=FALSE " +
+                        "AND t.deleted=FALSE AND t.status='OPEN' " +
+                        "AND c.remind_at<=CURRENT_TIMESTAMP(3)",
+                (row, number) -> row.getLong(1));
+        for (Long id : ids) fireChecklist(id);
+    }
+
+    @Transactional
+    public void fireChecklist(long checklistId) {
+        List<Object[]> rows = jdbc.query("SELECT c.id,c.user_id,c.title,t.id task_id,t.public_id task_public_id,t.title task_title " +
+                        "FROM task_checklist_item c JOIN task t ON t.id=c.task_id " +
+                        "WHERE c.id=? AND c.fired_at IS NULL AND c.deleted=FALSE AND t.deleted=FALSE",
+                (row, number) -> new Object[]{row.getLong("id"), row.getLong("user_id"), row.getString("title"),
+                        row.getLong("task_id"), row.getString("task_public_id"), row.getString("task_title")}, checklistId);
+        if (rows.isEmpty()) return;
+        Object[] ref = rows.get(0);
+        int claimed = jdbc.update("UPDATE task_checklist_item SET fired_at=CURRENT_TIMESTAMP(3),revision=revision+1 " +
+                "WHERE id=? AND fired_at IS NULL", (Long) ref[0]);
+        if (claimed == 0) return;
+        long userId = (Long) ref[1];
+        String itemTitle = (String) ref[2];
+        long taskId = (Long) ref[3];
+        String taskPublicId = (String) ref[4];
+        String taskTitle = (String) ref[5];
+        String messageId = UUID.randomUUID().toString();
+        String dedupe = "checklist-reminder:" + checklistId + ":" + System.currentTimeMillis();
+        jdbc.update("INSERT IGNORE INTO task_inbox_message(public_id,user_id,category,type,title,body,level,task_id,deep_link,dedupe_key,expires_at) " +
+                        "VALUES(?,?,'REMINDER','CHECKLIST_DUE',?,?,'INFO',?,?,?,TIMESTAMPADD(DAY,90,CURRENT_TIMESTAMP(3)))",
+                messageId, userId, taskTitle, itemTitle, taskId, "/tasks/all?task=" + taskPublicId, dedupe);
+        jdbc.update("INSERT INTO task_activity(public_id,user_id,task_id,event_type,summary) VALUES(?,?,?,?,?)",
+                UUID.randomUUID().toString(), userId, taskId, "CHECKLIST_REMINDER", "触发了检查项提醒：" + itemTitle);
+        List<TaskModels.InboxMessage> message = jdbc.query("SELECT m.public_id,m.category,m.type,m.title,m.body,m.level,t.public_id task_public_id," +
+                "m.deep_link,m.read_at,m.created_at FROM task_inbox_message m LEFT JOIN task t ON t.id=m.task_id " +
+                "WHERE m.user_id=? AND m.dedupe_key=?", (row, number) -> message(row), userId, dedupe);
+        if (!message.isEmpty()) stream.publish(userId, message.get(0));
+    }
+
     @Transactional
     public void fire(long reminderId) {
         List<FireRef> rows = jdbc.query("SELECT r.id,r.user_id,r.channel,r.remind_at,r.daily_until_done,t.id task_id," +

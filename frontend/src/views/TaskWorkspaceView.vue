@@ -1203,7 +1203,15 @@
             <input type="checkbox" :checked="item.completed" @change="toggleChecklistItem(selectedTask, item)" />
             <input v-if="detailChecklistEditingIndex === index" v-model="detailChecklistDraft" type="text" class="clone-detail-checklist-title-input" :aria-label="`编辑检查项 ${index + 1}`" @keydown.enter.prevent="saveDetailChecklistTitleAndNext(selectedTask, index)" @keydown.esc.prevent="cancelDetailChecklistEdit(item)" @blur="saveDetailChecklistTitle(selectedTask, index)" />
             <span v-else :class="{ completed: item.completed }" @click.stop.prevent="beginDetailChecklistEdit(item, index)">{{ item.title || '无标题' }}</span>
+            <button type="button" class="clone-checklist-remind" :class="{ active: item.remindAt }" :aria-label="item.remindAt ? `检查项提醒 ${formatChecklistReminder(item.remindAt)}` : '设置检查项提醒'" :title="item.remindAt ? `提醒：${formatChecklistReminder(item.remindAt)}` : '设置提醒'" @click.stop="openChecklistReminder(item, index)"><Bell :size="14" /></button>
             <button type="button" class="clone-checklist-remove" :aria-label="`删除检查项${item.title || index + 1}`" @click.stop="removeDetailChecklistItem(selectedTask, index)"><Trash2 :size="14" /></button>
+            <div v-if="checklistReminderIndex === index" class="clone-checklist-reminder-popover" @click.stop>
+              <strong>提醒</strong>
+              <div class="clone-checklist-reminder-quick"><button type="button" @click="setChecklistReminderOffset(0)">今天稍后</button><button type="button" @click="setChecklistReminderOffset(1)">明天 9:00</button></div>
+              <label>时间<input v-model="checklistReminderDraft" type="datetime-local" aria-label="检查项提醒时间" /></label>
+              <p v-if="item.remindAt" class="clone-muted">当前：{{ formatChecklistReminder(item.remindAt) }}</p>
+              <div class="clone-popover-actions"><button type="button" @click="clearChecklistReminder(item, index)">清除</button><button type="button" class="clone-popover-save" :disabled="checklistReminderSaving" @click="saveChecklistReminder(item, index)">{{ checklistReminderSaving ? '保存中…' : '确定' }}</button></div>
+            </div>
           </div>
           <form v-if="detailChecklistDraftOpen" class="clone-checklist-draft" @submit.prevent="submitDetailChecklistDraft">
             <span class="clone-checklist-grip is-placeholder" aria-hidden="true"><GripVertical :size="14" /></span>
@@ -1364,7 +1372,7 @@
             <div v-if="detailMoreSection === 'focus'" class="clone-detail-more-submenu" role="group" aria-label="专注方式">
               <button type="button" @click="startDetailFocus('POMODORO')">开始番茄专注</button>
               <button type="button" @click="startEstimatedFocus">预计番茄时长…</button>
-              <button type="button" disabled title="正计时需要后端支持无上限专注，暂未开放">开始正计时</button>
+              <button type="button" @click="startDetailFocus('COUNT_UP')">开始正计时</button>
             </div>
             <div class="clone-detail-more-separator" aria-hidden="true"></div>
             <button role="menuitem" type="button" @click="showDetailActivity"><SlidersHorizontal :size="17" />{{ isNoteSelected ? '笔记动态' : '任务动态' }}</button>
@@ -3768,7 +3776,9 @@ async function startDetailFocus(mode = "POMODORO", plannedMinutes = 0) {
   if (!task) return;
   try {
     const payload = { taskId: task.publicId };
-    if (plannedMinutes > 0) payload.plannedMinutes = plannedMinutes;
+    // 正计时：plannedMinutes=0，后端不设计划结束时间，由用户手动完成
+    if (mode === "COUNT_UP") payload.plannedMinutes = 0;
+    else if (plannedMinutes > 0) payload.plannedMinutes = plannedMinutes;
     await focusStore.start(payload);
     await router.push("/tasks/focus");
   } catch (error) {
@@ -4953,6 +4963,57 @@ async function removeDetailChecklistItem(task, index) {
   const next = task.checklist.filter((_, itemIndex) => itemIndex !== index);
   if (selectedTask.value?.publicId !== task.publicId) return;
   await applyDetailChecklist(next);
+}
+// 检查项提醒：行内闹钟按钮 → 小面板设置时间（检查项级提醒，后端定时扫描推送站内消息）
+const checklistReminderIndex = ref(-1);
+const checklistReminderDraft = ref("");
+const checklistReminderSaving = ref(false);
+function checklistReminderLocalValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = number => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+function formatChecklistReminder(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+}
+function openChecklistReminder(item, index) {
+  checklistReminderIndex.value = checklistReminderIndex.value === index ? -1 : index;
+  checklistReminderDraft.value = checklistReminderLocalValue(item.remindAt);
+}
+function setChecklistReminderOffset(days) {
+  const date = new Date();
+  if (days === 0) date.setHours(date.getHours() + 1, 0, 0, 0);
+  else { date.setDate(date.getDate() + 1); date.setHours(9, 0, 0, 0); }
+  checklistReminderDraft.value = checklistReminderLocalValue(date.toISOString());
+}
+async function updateChecklistReminder(index, isoValue) {
+  const task = selectedTask.value;
+  if (!task?.checklist) return;
+  checklistReminderSaving.value = true;
+  try {
+    const checklist = task.checklist.map((entry, entryIndex) => entryIndex === index ? { ...entry, remindAt: isoValue } : entry);
+    await applyDetailChecklist(checklist);
+    checklistReminderIndex.value = -1;
+  } finally {
+    checklistReminderSaving.value = false;
+  }
+}
+async function saveChecklistReminder(item, index) {
+  const value = checklistReminderDraft.value ? new Date(checklistReminderDraft.value) : null;
+  if (!value || Number.isNaN(value.getTime())) {
+    store.error = "请选择提醒时间";
+    return;
+  }
+  await updateChecklistReminder(index, value.toISOString());
+}
+async function clearChecklistReminder(item, index) {
+  checklistReminderDraft.value = "";
+  await updateChecklistReminder(index, null);
 }
 function startDetailChecklistDraft() {
   detailChecklistDraftOpen.value = true;
@@ -9304,7 +9365,19 @@ const SidebarSection = {
 .clone-detail-tags-row button { display: grid; width: 26px; height: 26px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-checklist-editor > header button:hover,
 .clone-detail-tags-row button:hover { background: var(--accent-soft); color: var(--accent); }
-.clone-checklist-row { display: grid; grid-template-columns: 16px 18px minmax(0, 1fr) 22px; align-items: center; gap: 8px; min-height: 34px; border-bottom: 1px solid color-mix(in srgb, var(--line) 52%, transparent); }
+.clone-checklist-row { position: relative; display: grid; grid-template-columns: 16px 18px minmax(0, 1fr) 22px 22px; align-items: center; gap: 8px; min-height: 34px; border-bottom: 1px solid color-mix(in srgb, var(--line) 52%, transparent); }
+.clone-checklist-remind { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); opacity: 0; cursor: pointer; }
+.clone-checklist-row:hover .clone-checklist-remind { opacity: .7; }
+.clone-checklist-remind.active { color: var(--accent); opacity: 1; }
+.clone-checklist-remind:hover { background: var(--accent-soft); color: var(--accent); opacity: 1; }
+.clone-checklist-reminder-popover { position: absolute; z-index: 30; top: calc(100% + 4px); right: 0; display: grid; gap: 8px; width: 230px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); box-shadow: 0 12px 30px rgb(15 23 42 / 18%); }
+.clone-checklist-reminder-popover strong { color: var(--ink); font-size: 12px; }
+.clone-checklist-reminder-quick { display: flex; gap: 6px; }
+.clone-checklist-reminder-quick button { flex: 1; min-height: 26px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--ink2); font: inherit; font-size: 11px; cursor: pointer; }
+.clone-checklist-reminder-quick button:hover { border-color: var(--accent); color: var(--accent); }
+.clone-checklist-reminder-popover label { display: grid; gap: 4px; color: var(--ink2); font-size: 11px; }
+.clone-checklist-reminder-popover input { min-height: 30px; padding: 0 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--ink); font: inherit; font-size: 12px; }
+.clone-checklist-reminder-popover .clone-muted { margin: 0; font-size: 11px; }
 .clone-checklist-grip { display: grid; place-items: center; width: 16px; height: 20px; padding: 0; border: 0; background: transparent; color: var(--muted); opacity: 0; cursor: grab; }
 .clone-checklist-row:hover .clone-checklist-grip { opacity: .55; }
 .clone-checklist-remove { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); opacity: 0; cursor: pointer; }

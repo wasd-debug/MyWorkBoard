@@ -1339,11 +1339,23 @@ public class TaskService {
                         "WHERE public_id=? AND (user_id<>? OR task_id<>?)", Long.class, itemId, userId, taskId);
                 if (foreignItem > 0) throw new IllegalArgumentException("检查项不属于当前任务");
                 int order = item.sortOrder() == null ? position++ : item.sortOrder();
-                jdbcTemplate.update("INSERT INTO task_checklist_item(public_id,user_id,task_id,title,completed,sort_order) " +
-                                "VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),completed=VALUES(completed)," +
-                                "sort_order=VALUES(sort_order),deleted=FALSE,deleted_at=NULL,revision=revision+1",
-                        itemId, userId, taskId, title, Boolean.TRUE.equals(item.completed()), order);
+                Timestamp remindAt = reminderTimestamp(item.remindAt());
+                jdbcTemplate.update("INSERT INTO task_checklist_item(public_id,user_id,task_id,title,completed,sort_order,remind_at) " +
+                                "VALUES(?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),completed=VALUES(completed)," +
+                                "sort_order=VALUES(sort_order),remind_at=VALUES(remind_at)," +
+                                "fired_at=IF(VALUES(remind_at) <=> remind_at, fired_at, NULL)," +
+                                "deleted=FALSE,deleted_at=NULL,revision=revision+1",
+                        itemId, userId, taskId, title, Boolean.TRUE.equals(item.completed()), order, remindAt);
             }
+        }
+    }
+
+    private Timestamp reminderTimestamp(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return Timestamp.from(Instant.parse(value));
+        } catch (java.time.format.DateTimeParseException error) {
+            throw new IllegalArgumentException("检查项提醒时间格式不正确");
         }
     }
 
@@ -1504,11 +1516,12 @@ public class TaskService {
         List<String> tags = jdbcTemplate.query("SELECT t.public_id FROM task_tag t JOIN task_tag_link l ON l.tag_id=t.id " +
                         "JOIN task x ON x.id=l.task_id WHERE x.public_id=? ORDER BY t.sort_order, t.id",
                 (row, rowNum) -> row.getString(1), publicId);
-        List<TaskModels.ChecklistItem> checklist = jdbcTemplate.query("SELECT public_id,title,completed,sort_order,revision " +
+        List<TaskModels.ChecklistItem> checklist = jdbcTemplate.query("SELECT public_id,title,completed,sort_order,revision,remind_at " +
                         "FROM task_checklist_item WHERE task_id=(SELECT id FROM task WHERE public_id=? AND user_id=?) " +
                         "AND deleted=FALSE ORDER BY sort_order,id", (row, rowNum) -> new TaskModels.ChecklistItem(
                         row.getString("public_id"), row.getString("title"), row.getBoolean("completed"),
-                        row.getInt("sort_order"), row.getLong("revision")), publicId, userId);
+                        row.getInt("sort_order"), row.getLong("revision"),
+                        row.getTimestamp("remind_at") == null ? null : instant(row.getTimestamp("remind_at"))), publicId, userId);
         int completedSubtasks = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM task child JOIN task parent ON parent.id=child.parent_id " +
                 "WHERE parent.public_id=? AND child.user_id=? AND child.deleted=FALSE AND child.status='COMPLETED'", Integer.class, publicId, userId);
         int totalSubtasks = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM task child JOIN task parent ON parent.id=child.parent_id " +

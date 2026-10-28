@@ -1273,3 +1273,21 @@ test('笔记形态：无勾选/优先级/互转，菜单精简，转换为任务
   // 新建时按清单类型推断条目类型
   assert.match(tasksStore, /const itemKind = payload\.itemKind \|\| \(targetList\?\.objectType === 'NOTE' \? 'NOTE' : 'TASK'\)/)
 })
+
+test('检查项级提醒与正计时（P2-FE126）', async () => {
+  // 检查项行内闹钟 + 提醒面板
+  assert.match(workspaceView, /class="clone-checklist-remind"[\s\S]{0,240}@click\.stop="openChecklistReminder\(item, index\)"/)
+  assert.match(workspaceView, /class="clone-checklist-reminder-popover"[\s\S]{0,400}setChecklistReminderOffset\(0\)[\s\S]{0,200}setChecklistReminderOffset\(1\)/)
+  assert.match(workspaceView, /async function saveChecklistReminder\(item, index\)[\s\S]{0,260}new Date\(checklistReminderDraft\.value\)[\s\S]{0,120}updateChecklistReminder\(index, value\.toISOString\(\)\)/)
+  assert.match(workspaceView, /async function clearChecklistReminder\(item, index\)[\s\S]{0,160}updateChecklistReminder\(index, null\)/)
+  assert.match(workspaceView, /async function updateChecklistReminder\(index, isoValue\)[\s\S]{0,260}remindAt: isoValue[\s\S]{0,120}applyDetailChecklist\(checklist\)/)
+  // 正计时：菜单可直接开始，payload 传 plannedMinutes=0
+  assert.match(workspaceView, /@click="startDetailFocus\('COUNT_UP'\)">开始正计时/)
+  assert.match(workspaceView, /if \(mode === "COUNT_UP"\) payload\.plannedMinutes = 0/)
+  // 专注 store：正计时用已用时长，且不会自动完成
+  const focusStore = await readFile(new URL('../stores/taskFocus.js', import.meta.url), 'utf8')
+  assert.match(focusStore, /isCountUp: state => Boolean\(state\.current && !Number\(state\.current\.plannedMinutes\)\)/)
+  assert.match(focusStore, /elapsedSeconds: state => state\.current \? Math\.max\(0, Math\.floor\(\(state\.now - new Date\(state\.current\.startedAt\)\.getTime\(\)\) \/ 1000\)\) : 0/)
+  assert.match(focusStore, /displayLabel\(\) \{ return this\.isCountUp \? this\.elapsedLabel : this\.remainingLabel \}/)
+  assert.match(focusStore, /if \(this\.current && !this\.isCountUp && this\.remainingSeconds === 0\) this\.complete\(\)/)
+})

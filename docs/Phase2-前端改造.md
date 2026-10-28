@@ -1212,3 +1212,21 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 **部署**：后端重新打包并重建镜像（`deploy-backend:itemkind` → tag 为 `deploy-backend`，旧镜像保留为 `deploy-backend:previous`），compose 重建 `salary-backend` 容器，启动 4.5s，日志无 SQL 异常。
 
 **验证**：笔记本条形态（无勾选/优先级/互转/检查项/子任务、设置提醒、笔记动态、菜单 12 项）；笔记 → 任务（留在「QA笔记形态」清单，UI 立即变任务形态）；收集箱任务 → 笔记 → 再转回任务（清单始终为收集箱）。门禁 218/218、typecheck、build 通过。截图 tmp/qa28-*.png。
+
+### P2-FE126 检查项级提醒 + 专注正计时（2026-10-28）
+
+用户确认要做两项后端能力。
+
+**检查项级提醒**
+- 表结构：`task_checklist_item` 新增 `remind_at`（用户设置的提醒时间）与 `fired_at`（已推送标记），迁移 `V50__task_checklist_reminder.sql`（幂等 + `(remind_at, fired_at)` 索引）。
+- 模型：`ChecklistItem`/`ChecklistCommand` 增加 `remindAt`（ISO 字符串）；`TaskService` 读 checklist 时返回、保存时写入；提醒时间变化时自动清空 `fired_at`（可重新提醒）。
+- 推送：`TaskReminderService.scanChecklist()`（每 30s，ShedLock 保证单实例）扫描 `remind_at <= now AND fired_at IS NULL` 的未删除、未完成任务下的检查项 → `fireChecklist()` 以 `fired_at` 原子抢占去重 → 写入 `task_inbox_message`（`CHECKLIST_DUE`，标题=任务名、正文=检查项）→ 记录 `task_activity`（触发了检查项提醒）→ SSE 推送。窗口收窄为 `<= now`，不再提前触发。
+- 前端：检查项行 hover 出现闹钟按钮（已设提醒时常亮高亮），点开面板可选「今天稍后 / 明天 9:00」快捷时间或自定义，支持清除；保存走 `checklist` 整体更新（带 `remindAt`）。
+
+**专注正计时**
+- 后端：`plannedMinutes=0` 表示正计时——`startFocus` 允许 0、不写计划结束时间（`plannedEndAt=null`）；`finishFocus` 对正计时按实际分钟计不封顶（至少 1 分钟）；补录（指定日期）仍要求填写时长。
+- 前端：更多菜单「开始正计时」启用（传 `plannedMinutes: 0`）；`taskFocus` store 新增 `isCountUp/elapsedSeconds/elapsedLabel/displayLabel`，正计时显示已用时长且**不会自动完成**；专注页标签显示「正计时中」，顶部迷你条同步。
+
+**验证**：检查项提醒端到端——设置 40 秒后提醒，扫描触发后 `fired_at` 写入、`task_inbox_message` 出现 `CHECKLIST_DUE`（任务「111」/检查项「QA提醒检查项」）、详情动态出现「触发了检查项提醒」；正计时——API 启动返回 `plannedMinutes=0 / plannedEndAt=null`，页面显示「正计时中」且 00:13→00:15 递增，完成后 `actualMinutes=1`。门禁 219/219、typecheck、build 通过。测试数据已清理。
+
+**部署**：后端重新打包 → 新镜像 tag 为 `deploy-backend`（旧版本继续保留 `deploy-backend:previous`）→ compose 重建容器，V50 迁移自动应用，启动 5.4s。

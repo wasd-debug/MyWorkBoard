@@ -131,11 +131,19 @@ public final class TaskModels {
     }
 
     @Schema(name = "TaskChecklistItem")
-    public record ChecklistItem(String publicId, String title, boolean completed, int sortOrder, long revision) {
+    public record ChecklistItem(String publicId, String title, boolean completed, int sortOrder, long revision,
+                                @Schema(type = "string", format = "date-time") String remindAt) {
+        public ChecklistItem(String publicId, String title, boolean completed, int sortOrder, long revision) {
+            this(publicId, title, completed, sortOrder, revision, null);
+        }
     }
 
     @Schema(name = "TaskChecklistCommand")
-    public record ChecklistCommand(String publicId, String title, Boolean completed, Integer sortOrder) {
+    public record ChecklistCommand(String publicId, String title, Boolean completed, Integer sortOrder,
+                                   @Schema(type = "string", format = "date-time") String remindAt) {
+        public ChecklistCommand(String publicId, String title, Boolean completed, Integer sortOrder) {
+            this(publicId, title, completed, sortOrder, null);
+        }
     }
 
     @Schema(name = "TaskItem")
