@@ -110,6 +110,21 @@ function nodeMarkdown(node) {
     }
     case 'BLOCKQUOTE': return children.trim().split('\n').map(line => line ? `> ${line}` : '>').join('\n')
     case 'HR': return '---'
+    // 表格必须还原为 Markdown 表格语法，否则编辑其它段落时表格会被拍平成纯文本而消失
+    case 'TABLE': {
+      const rows = [...node.querySelectorAll('tr')]
+      if (!rows.length) return children
+      const cellText = cell => (cell.textContent || '').replace(/\s+/g, ' ').trim().replace(/\|/g, '\\|')
+      const cellsOf = row => [...row.children].filter(cell => ['TH', 'TD'].includes(cell.tagName)).map(cellText)
+      const header = cellsOf(rows[0])
+      if (!header.length) return children
+      const body = rows.slice(1).map(row => {
+        const values = cellsOf(row)
+        while (values.length < header.length) values.push('')
+        return `| ${values.slice(0, header.length).join(' | ')} |`
+      })
+      return [`| ${header.join(' | ')} |`, `| ${header.map(() => '---').join(' | ')} |`, ...body].join('\n')
+    }
     case 'UL': case 'OL': {
       const ordered = node.tagName === 'OL'
       return [...node.children].filter(child => child.tagName === 'LI').map((item, index) => {

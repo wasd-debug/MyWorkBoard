@@ -1178,3 +1178,12 @@ test('摘要页布局：整块编辑器 + 顶部图标（分组/显示内容）+
   assert.match(summaryView, /async function saveToNote\(list\)[\s\S]*store\.create\(\{ title: reportTitle\(\), listId: list\.publicId, description \}\)/)
   assert.match(summaryView, /objectType === 'NOTE'/)
 })
+
+test('摘要页显示内容菜单不超出视口，编辑器保留表格结构（P2-FE120）', async () => {
+  const summaryView = await readFile(new URL('./TaskSummaryWorkspace.vue', import.meta.url), 'utf8')
+  // 图标菜单右对齐需用高特异性选择器（否则被 .summary-menu 的 left:0 覆盖而右溢）
+  assert.match(summaryView, /\.summary-menu\.summary-icon-panel\{left:auto;right:0/)
+  // 编辑器把表格 DOM 还原为 Markdown 表格语法，避免编辑其它段落时表格被拍平丢失
+  assert.match(taskRichTextEditor, /case 'TABLE': \{[\s\S]*querySelectorAll\('tr'\)[\s\S]*\|\s\$\{header\.join/)
+  assert.match(taskRichTextEditor, /const cellsOf = row => \[\.\.\.row\.children\]\.filter\(cell => \['TH', 'TD'\]\.includes\(cell\.tagName\)\)/)
+})

@@ -377,13 +377,14 @@ onBeforeUnmount(() => {
 .summary-icon-menu>summary{display:grid;width:32px;height:32px;place-items:center;border-radius:6px;color:var(--ink2);list-style:none;cursor:pointer}
 .summary-icon-menu>summary::-webkit-details-marker{display:none}
 .summary-icon-menu>summary:hover,.summary-icon-menu[open]>summary{background:var(--accent-soft);color:var(--accent)}
-.summary-icon-panel{left:auto;right:0;min-width:190px}
 .summary-filters{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .summary-popover>summary,.summary-range{display:inline-flex;min-height:34px;align-items:center;gap:7px;padding:0 10px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink2);font-size:12px}
 .summary-range{gap:6px;padding:3px 8px}.summary-range input{width:122px;border:0;background:transparent;color:var(--ink);font:inherit}.summary-range span{color:var(--muted)}
 .summary-popover{position:relative}.summary-popover>summary{list-style:none;cursor:pointer}.summary-popover>summary::-webkit-details-marker{display:none}.summary-popover[open]>summary{border-color:var(--accent)}
 .summary-menu{position:absolute;z-index:20;top:calc(100% + 5px);left:0;display:grid;min-width:190px;max-height:min(55vh,420px);gap:2px;overflow:auto;padding:6px;border:1px solid var(--line);border-radius:7px;background:var(--card);box-shadow:0 10px 28px rgb(15 23 42 / 16%)}
 .summary-menu button{display:flex;min-height:34px;align-items:center;justify-content:space-between;gap:12px;padding:6px 8px;border:0;border-radius:4px;background:transparent;color:var(--ink2);font:inherit;font-size:12px;text-align:left;cursor:pointer}.summary-menu button:hover,.summary-menu button.active{background:var(--accent-soft);color:var(--accent)}.summary-menu strong{padding:5px 8px;color:var(--muted);font-size:11px;font-weight:550}.summary-menu hr{width:100%;margin:4px 0;border:0;border-top:1px solid var(--line)}
+/* 右上角图标菜单右对齐展开（需写在 .summary-menu 之后，否则被其 left:0 覆盖而超出视口右缘） */
+.summary-menu.summary-icon-panel{left:auto;right:0;min-width:190px}
 .summary-check-option{display:flex;min-height:30px;align-items:center;gap:8px;padding:4px 8px;color:var(--ink2);font-size:12px;cursor:pointer}.summary-check-option input{accent-color:var(--accent)}.summary-fields-menu{min-width:180px}
 .summary-menu-actions{display:flex;gap:8px;padding:8px 4px 2px;border-top:1px solid var(--line)}
 .summary-menu-actions button{flex:1;display:inline-flex;min-height:30px;align-items:center;justify-content:center;padding:0 12px;border:1px solid var(--line);border-radius:6px;font-size:12px;cursor:pointer}
