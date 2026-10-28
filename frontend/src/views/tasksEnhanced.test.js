@@ -263,7 +263,7 @@ test('task detail repeat is a passive marker and is configured from the date pop
 })
 
 test('task detail description uses the isolated Milkdown editor prototype', async () => {
-  assert.match(workspaceView, /<TaskMilkdownEditor v-model="inlineDescriptionDraft"/)
+  assert.match(workspaceView, /<TaskMilkdownEditor ref="detailDescriptionEditor" v-model="inlineDescriptionDraft"/)
   assert.match(workspaceView, /defineAsyncComponent\(\(\) => import\("\.\.\/components\/tasks\/TaskMilkdownEditor\.vue"\)\)/)
   assert.match(workspaceView, /TaskRichTextEditor v-model="commentDraft"/)
   const editor = await readFile(new URL('../components/tasks/TaskMilkdownEditorSurface.vue', import.meta.url), 'utf8')
@@ -1194,4 +1194,30 @@ test('摘要页显示内容菜单不超出视口，编辑器保留表格结构�
   // 编辑器把表格 DOM 还原为 Markdown 表格语法，避免编辑其它段落时表格被拍平丢失
   assert.match(taskRichTextEditor, /case 'TABLE': \{[\s\S]*querySelectorAll\('tr'\)[\s\S]*\|\s\$\{header\.join/)
   assert.match(taskRichTextEditor, /const cellsOf = row => \[\.\.\.row\.children\]\.filter\(cell => \['TH', 'TD'\]\.includes\(cell\.tagName\)\)/)
+})
+
+test('任务详情栏第一批改造：检查项、描述插入菜单、标签、底部清单（P2-FE123）', async () => {
+  // 检查项：拖动排序 / 回车续建 / 删除
+  assert.match(workspaceView, /class="clone-checklist-row"[\s\S]{0,400}draggable="true"[\s\S]{0,400}@drop\.prevent="dropDetailChecklist\(index\)"/)
+  assert.match(workspaceView, /class="clone-checklist-remove"[\s\S]{0,160}removeDetailChecklistItem\(selectedTask, index\)/)
+  assert.match(workspaceView, /placeholder="输入检查项，回车创建下一条"/)
+  assert.match(workspaceView, /async function submitDetailChecklistDraft\(\)[\s\S]*detailChecklistDraftOpen\.value = true[\s\S]*nextTick\(\(\) => detailChecklistDraftInput\.value\?\.focus\(\)\)/)
+  assert.match(workspaceView, /function dropDetailChecklist\(target\)[\s\S]*next\.splice\(target, 0, moved\)[\s\S]*void applyDetailChecklist\(next\)/)
+  // 描述区「+」插入菜单 12 项
+  assert.match(workspaceView, /class="clone-detail-block-add-trigger" aria-label="插入内容"/)
+  for (const label of ['一级标题', '二级标题', '三级标题', '无序列表', '有序列表', '检查项', '引用', '水平分割线', '附件', '子任务', '标签', '关联任务/笔记']) {
+    assert.ok(workspaceView.includes(label), `missing block menu item ${label}`)
+  }
+  assert.match(workspaceView, /detailDescriptionEditor\.value\?\.focusEditor\(\);\n    detailDescriptionEditor\.value\?\.runToolbar\(kind\)/)
+  assert.match(workspaceView, /function insertDetailBlock\(kind\)[\s\S]*kind === "attachment"[\s\S]*kind === "subtask"[\s\S]*kind === "tag"[\s\S]*kind === "linkTask"/)
+  assert.match(workspaceView, /function chooseDetailLinkTask\(task\)[\s\S]*url\.searchParams\.set\("task", task\.publicId\)[\s\S]*insertLink\(/)
+  // 标签：删除 / 跳转 / 多选添加
+  assert.match(workspaceView, /class="clone-detail-tag-remove"[\s\S]{0,160}removeDetailTag\(tagId\)/)
+  assert.match(workspaceView, /class="clone-detail-tag-name"[\s\S]{0,160}router\.push\(`\/tasks\/tag\/\$\{tagId\}`\)/)
+  assert.match(workspaceView, /class="clone-detail-tag-picker"[\s\S]*draftDetailTagIds\.includes\(tag\.publicId\)[\s\S]*applyDetailTags/)
+  // 底部清单选择弹层
+  assert.match(workspaceView, /class="clone-detail-footer-list"[\s\S]{0,200}toggleDetailListPicker/)
+  assert.match(workspaceView, /async function moveDetailTaskToList\(list\)[\s\S]*store\.update\(task, \{ listId: list\.publicId \}\)/)
+  // 复制链接打开页面时首屏即展开任务详情
+  assert.match(workspaceView, /watch\(\n  \(\) => \[route\.query\.task, store\.tasks\.length\],[\s\S]{0,400}\{ immediate: true \}/)
 })

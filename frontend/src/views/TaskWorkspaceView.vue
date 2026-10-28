@@ -911,7 +911,7 @@
           </div></div></div></Teleport>
         </div>
         <div class="clone-detail-toolbar-actions">
-          <button ref="priorityPopoverAnchor" type="button" class="clone-detail-priority-tool" :data-priority="editorOpen ? draft.priority : selectedTask?.priority" aria-label="设置优先级" :aria-expanded="priorityPopoverOpen" @click.stop="togglePriorityPopover">⚑</button>
+          <button ref="priorityPopoverAnchor" type="button" class="clone-detail-priority-tool" :data-priority="editorOpen ? draft.priority : selectedTask?.priority" aria-label="设置优先级" :aria-expanded="priorityPopoverOpen" @click.stop="togglePriorityPopover"><Flag :size="17" /></button>
           <Teleport to="body"><div v-if="priorityPopoverOpen" class="clone-toolbar-popover clone-priority-toolbar-popover" :style="attributePopoverStyle('priority')" @click.stop>
             <strong>优先级</strong>
             <button v-for="option in priorityOptions" :key="option.value" type="button" class="clone-priority-option" :class="[`priority-${option.value.toLowerCase()}`, { active: (editorOpen ? draft.priority : selectedTask?.priority) === option.value }]" @click="editorOpen ? (draft.priority = option.value) : setTaskPriority(option.value); priorityPopoverOpen = false"><i aria-hidden="true"></i><span>{{ option.label }}</span></button>
@@ -1152,23 +1152,78 @@
           <button type="button" class="clone-detail-content-toggle" aria-label="在描述和检查事项之间转换" :title="selectedTask.checklist?.length ? '转换为描述' : '转换为检查事项'" @click="toggleDescriptionChecklist(selectedTask)"><ListTodo v-if="selectedTask.checklist?.length" :size="16" /><AlignLeft v-else :size="16" /></button>
         </div>
         <div class="clone-detail-description-block" :class="{ 'toolbar-open': detailRichToolbarOpen }">
-          <TaskMilkdownEditor v-model="inlineDescriptionDraft" :toolbar-visible="detailRichToolbarOpen" label="任务描述" placeholder="输入内容…" @update:model-value="scheduleInlineDescriptionSave" @focus="holdInlineDescriptionSync" @blur="releaseInlineDescriptionSync" />
+          <div class="clone-detail-block-add">
+            <button type="button" class="clone-detail-block-add-trigger" aria-label="插入内容" :aria-expanded="detailBlockMenuOpen" @click.stop="toggleDetailBlockMenu"><Plus :size="16" /></button>
+            <div v-if="detailBlockMenuOpen" class="clone-detail-block-menu" role="menu" aria-label="插入内容" @click.stop>
+              <button role="menuitem" type="button" @click="insertDetailBlock('heading1')"><Heading1 :size="16" />一级标题</button>
+              <button role="menuitem" type="button" @click="insertDetailBlock('heading2')"><Heading2 :size="16" />二级标题</button>
+              <button role="menuitem" type="button" @click="insertDetailBlock('heading3')"><Heading3 :size="16" />三级标题</button>
+              <button role="menuitem" type="button" @click="insertDetailBlock('list')"><List :size="16" />无序列表</button>
+              <button role="menuitem" type="button" @click="insertDetailBlock('ordered')"><ListOrdered :size="16" />有序列表</button>
+              <button role="menuitem" type="button" @click="insertDetailBlock('check')"><CheckSquare :size="16" />检查项</button>
+              <button role="menuitem" type="button" @click="insertDetailBlock('quote')"><Quote :size="16" />引用</button>
+              <button role="menuitem" type="button" @click="insertDetailBlock('divider')"><Minus :size="16" />水平分割线</button>
+              <div class="clone-detail-more-separator" aria-hidden="true"></div>
+              <button role="menuitem" type="button" @click="insertDetailBlock('attachment')"><Paperclip :size="16" />附件</button>
+              <button role="menuitem" type="button" @click="insertDetailBlock('subtask')"><ListPlus :size="16" />子任务</button>
+              <button role="menuitem" type="button" @click="insertDetailBlock('tag')"><Tag :size="16" />标签</button>
+              <button role="menuitem" type="button" @click="insertDetailBlock('linkTask')"><Link :size="16" />关联任务/笔记</button>
+            </div>
+            <div v-if="detailLinkPickerOpen" class="clone-detail-link-picker" role="dialog" aria-label="关联任务或笔记" @click.stop>
+              <input v-model="detailLinkQuery" type="text" aria-label="搜索任务或笔记" placeholder="搜索" />
+              <div class="clone-detail-link-options">
+                <button v-for="task in detailLinkOptions" :key="task.publicId" type="button" @click="chooseDetailLinkTask(task)"><span>{{ task.title }}</span><small>{{ listName(task.listId) }}</small></button>
+                <span v-if="!detailLinkOptions.length">没有匹配的任务</span>
+              </div>
+              <div class="clone-popover-actions"><button type="button" @click="detailLinkPickerOpen = false">取消</button></div>
+            </div>
+          </div>
+          <TaskMilkdownEditor ref="detailDescriptionEditor" v-model="inlineDescriptionDraft" :toolbar-visible="detailRichToolbarOpen" label="任务描述" placeholder="输入内容…" @update:model-value="scheduleInlineDescriptionSave" @focus="holdInlineDescriptionSync" @blur="releaseInlineDescriptionSync" />
           <small v-if="inlineDescriptionError" class="clone-inline-save-status error" role="alert">{{ inlineDescriptionError }}</small>
         </div>
         <section v-if="selectedTask.focusMinutes" class="clone-detail-focus-summary" aria-label="专注记录">
           <Timer :size="14" /><span>累计专注</span><strong>{{ selectedTask.focusMinutes }} 分钟</strong>
         </section>
-        <section v-if="selectedTask.checklist?.length" class="clone-checklist-read" aria-label="检查项">
-          <header><strong>检查项</strong><span class="clone-checklist-progress-label">{{ selectedTask.checklist.filter((item) => item.completed).length }}/{{ selectedTask.checklist.length }}</span></header>
-          <div class="clone-detail-checklist-progress" role="progressbar" :aria-valuenow="selectedTask.checklist.filter((item) => item.completed).length" :aria-valuemin="0" :aria-valuemax="selectedTask.checklist.length"><span :style="{ width: `${selectedTask.checklist.filter((item) => item.completed).length / selectedTask.checklist.length * 100}%` }"></span></div>
-          <div v-for="(item, index) in selectedTask.checklist" :key="item.publicId || `${index}:${item.title}`" class="clone-checklist-row" :data-checklist-index="index">
+        <section class="clone-checklist-read" :class="{ 'is-empty': !selectedTask.checklist?.length }" aria-label="检查项">
+          <div v-if="selectedTask.checklist?.length" class="clone-detail-checklist-progress" role="progressbar" :aria-valuenow="selectedTask.checklist.filter((item) => item.completed).length" :aria-valuemin="0" :aria-valuemax="selectedTask.checklist.length"><span :style="{ width: `${selectedTask.checklist.filter((item) => item.completed).length / selectedTask.checklist.length * 100}%` }"></span></div>
+          <div
+            v-for="(item, index) in selectedTask.checklist"
+            :key="item.publicId || `${index}:${item.title}`"
+            class="clone-checklist-row"
+            :class="{ completed: item.completed, 'drop-target': detailChecklistDropTarget === index }"
+            :data-checklist-index="index"
+            draggable="true"
+            @dragstart="startDetailChecklistDrag(index, $event)"
+            @dragover.prevent="detailChecklistDropTarget = index"
+            @dragleave="detailChecklistDropTarget === index ? detailChecklistDropTarget = null : null"
+            @drop.prevent="dropDetailChecklist(index)"
+            @dragend="detailChecklistDragIndex = null; detailChecklistDropTarget = null"
+          >
+            <button type="button" class="clone-checklist-grip" aria-label="拖动排序" tabindex="-1"><GripVertical :size="14" /></button>
             <input type="checkbox" :checked="item.completed" @change="toggleChecklistItem(selectedTask, item)" />
-            <input v-if="detailChecklistEditingIndex === index" v-model="detailChecklistDraft" type="text" class="clone-detail-checklist-title-input" :aria-label="`编辑检查项 ${index + 1}`" @keydown.enter.prevent="$event.target.blur()" @keydown.esc.prevent="cancelDetailChecklistEdit(item)" @blur="saveDetailChecklistTitle(selectedTask, index)" />
-            <span v-else :class="{ completed: item.completed }" @click.stop.prevent="beginDetailChecklistEdit(item, index)">{{ item.title }}</span>
+            <input v-if="detailChecklistEditingIndex === index" v-model="detailChecklistDraft" type="text" class="clone-detail-checklist-title-input" :aria-label="`编辑检查项 ${index + 1}`" @keydown.enter.prevent="saveDetailChecklistTitleAndNext(selectedTask, index)" @keydown.esc.prevent="cancelDetailChecklistEdit(item)" @blur="saveDetailChecklistTitle(selectedTask, index)" />
+            <span v-else :class="{ completed: item.completed }" @click.stop.prevent="beginDetailChecklistEdit(item, index)">{{ item.title || '无标题' }}</span>
+            <button type="button" class="clone-checklist-remove" :aria-label="`删除检查项${item.title || index + 1}`" @click.stop="removeDetailChecklistItem(selectedTask, index)"><Trash2 :size="14" /></button>
           </div>
+          <form v-if="detailChecklistDraftOpen" class="clone-checklist-draft" @submit.prevent="submitDetailChecklistDraft">
+            <span class="clone-checklist-grip is-placeholder" aria-hidden="true"><GripVertical :size="14" /></span>
+            <input ref="detailChecklistDraftInput" v-model="detailChecklistNewDraft" type="text" aria-label="新增检查项" placeholder="输入检查项，回车创建下一条" @keydown.esc.prevent="cancelDetailChecklistDraft" />
+          </form>
+          <button v-else type="button" class="clone-checklist-add" @click="startDetailChecklistDraft"><Plus :size="15" />添加检查项</button>
         </section>
-        <div class="clone-detail-tags-row" v-if="selectedTask.tagIds?.length">
-          <Tag :size="14" /><span v-for="tagId in selectedTask.tagIds" :key="tagId" class="clone-detail-tag">#{{ tagName(tagId) }}</span><button type="button" aria-label="添加标签" @click="openEdit(selectedTask)"><Plus :size="14" /></button>
+        <div class="clone-detail-tags-row" v-if="selectedTask">
+          <span v-for="tagId in selectedTask.tagIds || []" :key="tagId" class="clone-detail-tag" :style="taskTagStyle(tagId)">
+            <button type="button" class="clone-detail-tag-name" :aria-label="`查看标签${tagName(tagId)}`" @click.stop="router.push(`/tasks/tag/${tagId}`)">#{{ tagName(tagId) }}</button>
+            <button type="button" class="clone-detail-tag-remove" :aria-label="`移除标签${tagName(tagId)}`" @click.stop="removeDetailTag(tagId)"><X :size="11" /></button>
+          </span>
+          <div class="clone-detail-tag-add">
+            <button type="button" class="clone-detail-tag-add-trigger" aria-label="添加标签" :aria-expanded="detailTagPickerOpen" @click.stop="toggleDetailTagPicker"><Plus :size="14" /></button>
+            <div v-if="detailTagPickerOpen" class="clone-detail-tag-picker" role="group" aria-label="选择标签" @click.stop>
+              <label v-for="tag in sortedTags" :key="tag.publicId"><input type="checkbox" :checked="draftDetailTagIds.includes(tag.publicId)" @change="toggleDraftDetailTag(tag.publicId, $event.target.checked)" />#{{ tag.name }}</label>
+              <span v-if="!sortedTags.length">暂无标签</span>
+              <div class="clone-popover-actions"><button type="button" @click="detailTagPickerOpen = false">取消</button><button type="button" class="clone-popover-save" :disabled="detailTagSaving" @click="applyDetailTags">{{ detailTagSaving ? '保存中…' : '确定' }}</button></div>
+            </div>
+          </div>
         </div>
         <section v-if="selectedTask" class="clone-detail-subtasks" aria-label="子任务">
           <header><strong>子任务</strong><span>{{ detailSubtasks.length }}</span><button type="button" aria-label="添加子任务" title="添加子任务" @click="createSubtask(selectedTask)"><Plus :size="15" /></button></header>
@@ -1257,7 +1312,12 @@
         <p v-if="commentError" class="clone-error" role="alert">{{ commentError }}</p>
       </form>
       <footer v-if="selectedTask && !editorOpen" class="clone-detail-footer" aria-label="详情工具">
-          <button type="button" class="clone-detail-footer-list" aria-label="任务清单" @click="openEdit(selectedTask)"><ListTodo :size="17" /><span>{{ listName(selectedTask.listId) }}</span></button>
+          <button type="button" class="clone-detail-footer-list" aria-label="任务清单" :aria-expanded="detailListPickerOpen" @click.stop="toggleDetailListPicker"><ListTodo :size="17" /><span>{{ listName(selectedTask.listId) }}</span></button>
+          <div v-if="detailListPickerOpen" class="clone-detail-list-picker" role="listbox" aria-label="移动到清单" @click.stop>
+            <input v-model="detailListQuery" type="text" aria-label="搜索清单" placeholder="搜索" />
+            <button v-for="list in detailListOptions" :key="list.publicId" type="button" role="option" :aria-selected="list.publicId === selectedTask.listId" @click="moveDetailTaskToList(list)"><span class="clone-detail-list-dot" :style="{ backgroundColor: list.color || 'transparent' }"></span>{{ list.name }}</button>
+            <span v-if="!detailListOptions.length">没有匹配的清单</span>
+          </div>
           <div class="clone-detail-footer-actions">
             <button type="button" aria-label="文本样式" :aria-pressed="detailRichToolbarOpen" @click="detailRichToolbarOpen = !detailRichToolbarOpen; if (detailRichToolbarOpen) commentComposerOpen = false"><AlignLeft :size="17" /></button>
             <button type="button" aria-label="打开评论" :aria-pressed="commentComposerOpen" @click="commentComposerOpen = !commentComposerOpen; if (commentComposerOpen) detailRichToolbarOpen = false; commentError = ''"><MessageCircle :size="17" /><small v-if="comments.length">{{ comments.length }}</small></button>
@@ -1437,6 +1497,9 @@ import {
   Bell,
   Check,
   CheckCircle2,
+  Heading1,
+  Heading2,
+  Heading3,
   CheckSquare,
   ChevronDown,
   ChevronLeft,
@@ -1467,6 +1530,9 @@ import {
   GripVertical,
   Inbox,
   ListFilter,
+  ListOrdered,
+  Minus,
+  Quote,
   List,
   ListPlus,
   ListTree,
@@ -4592,10 +4658,187 @@ function handleManualSync(event) {
     }
   })().catch(() => {});
 }
+// 描述区「+」插入菜单：格式项调用编辑器命令，资源项触发附件/子任务/标签/关联任务
+const detailBlockMenuOpen = ref(false);
+const detailDescriptionEditor = ref(null);
+const detailLinkPickerOpen = ref(false);
+const detailLinkQuery = ref("");
+const detailLinkOptions = computed(() => {
+  const keyword = detailLinkQuery.value.trim().toLowerCase();
+  const candidates = store.tasks.filter(task => !task.deleted && task.publicId !== selectedTask.value?.publicId);
+  const matched = keyword ? candidates.filter(task => String(task.title || "").toLowerCase().includes(keyword)) : candidates;
+  return matched.slice(0, 20);
+});
+function toggleDetailBlockMenu() {
+  detailBlockMenuOpen.value = !detailBlockMenuOpen.value;
+  if (detailBlockMenuOpen.value) {
+    detailLinkPickerOpen.value = false;
+    detailLinkQuery.value = "";
+  }
+}
+function insertDetailBlock(kind) {
+  detailBlockMenuOpen.value = false;
+  if (["heading1", "heading2", "heading3", "list", "ordered", "check", "quote", "divider"].includes(kind)) {
+    // 先让编辑器获得焦点，否则块级命令在无选区时不生效（描述为空时点「+」插入标题会没反应）
+    detailDescriptionEditor.value?.focusEditor();
+    detailDescriptionEditor.value?.runToolbar(kind);
+    return;
+  }
+  if (kind === "attachment") {
+    detailAttachmentInput.value?.click();
+    return;
+  }
+  if (kind === "subtask") {
+    createSubtask(selectedTask.value);
+    return;
+  }
+  if (kind === "tag") {
+    if (!detailTagPickerOpen.value) toggleDetailTagPicker();
+    return;
+  }
+  if (kind === "linkTask") {
+    detailLinkQuery.value = "";
+    detailLinkPickerOpen.value = true;
+  }
+}
+function chooseDetailLinkTask(task) {
+  const url = new URL("/tasks/all", window.location.origin);
+  url.searchParams.set("task", task.publicId);
+  detailDescriptionEditor.value?.insertLink(task.title || "未命名任务", url.href);
+  detailLinkPickerOpen.value = false;
+}
+
+// 底部清单选择：搜索 + 点击移动
+const detailListPickerOpen = ref(false);
+const detailListQuery = ref("");
+const detailListOptions = computed(() => {
+  const keyword = detailListQuery.value.trim().toLowerCase();
+  const lists = activeLists.value;
+  return keyword ? lists.filter(list => String(list.name || "").toLowerCase().includes(keyword)) : lists;
+});
+function toggleDetailListPicker() {
+  detailListPickerOpen.value = !detailListPickerOpen.value;
+  if (detailListPickerOpen.value) {
+    detailListQuery.value = "";
+    detailTagPickerOpen.value = false;
+    detailBlockMenuOpen.value = false;
+  }
+}
+async function moveDetailTaskToList(list) {
+  const task = selectedTask.value;
+  detailListPickerOpen.value = false;
+  if (!task || list.publicId === task.listId) return;
+  try {
+    const updated = await store.update(task, { listId: list.publicId });
+    if (selectedTask.value?.publicId === task.publicId) selectedTask.value = updated;
+  } catch (error) {
+    store.error = error?.response?.data?.detail || error?.message || "移动清单失败";
+  }
+}
+const detailTagPickerOpen = ref(false);
+const draftDetailTagIds = ref([]);
+const detailTagSaving = ref(false);
+function toggleDetailTagPicker() {
+  detailTagPickerOpen.value = !detailTagPickerOpen.value;
+  draftDetailTagIds.value = [...(selectedTask.value?.tagIds || [])];
+}
+function toggleDraftDetailTag(id, checked) {
+  draftDetailTagIds.value = checked ? [...new Set([...draftDetailTagIds.value, id])] : draftDetailTagIds.value.filter(value => value !== id);
+}
+async function applyDetailTags() {
+  const task = selectedTask.value;
+  if (!task || detailTagSaving.value) return;
+  detailTagSaving.value = true;
+  try {
+    const updated = await store.update(task, { tagIds: draftDetailTagIds.value });
+    if (selectedTask.value?.publicId === task.publicId) selectedTask.value = updated;
+    detailTagPickerOpen.value = false;
+  } catch (error) {
+    store.error = error?.response?.data?.detail || error?.message || "标签保存失败";
+  } finally {
+    detailTagSaving.value = false;
+  }
+}
+async function removeDetailTag(tagId) {
+  const task = selectedTask.value;
+  if (!task) return;
+  try {
+    const updated = await store.update(task, { tagIds: (task.tagIds || []).filter(id => id !== tagId) });
+    if (selectedTask.value?.publicId === task.publicId) selectedTask.value = updated;
+    draftDetailTagIds.value = draftDetailTagIds.value.filter(id => id !== tagId);
+  } catch (error) {
+    store.error = error?.response?.data?.detail || error?.message || "移除标签失败";
+  }
+}
 function beginDetailChecklistEdit(item, index) {
   detailChecklistEditingIndex.value = index;
   detailChecklistDraft.value = item.title || "";
   void nextTick(() => document.querySelector(`[data-checklist-index="${index}"] .clone-detail-checklist-title-input`)?.focus());
+}
+// 检查项：拖动排序 / 回车续建 / 删除
+const detailChecklistDraftOpen = ref(false);
+const detailChecklistNewDraft = ref("");
+const detailChecklistDraftInput = ref(null);
+const detailChecklistDragIndex = ref(null);
+const detailChecklistDropTarget = ref(null);
+async function applyDetailChecklist(checklist) {
+  const task = selectedTask.value;
+  if (!task) return;
+  try {
+    const updated = await store.update(task, { checklist: checklist.map((item, index) => ({ ...item, sortOrder: index })) });
+    if (selectedTask.value?.publicId === task.publicId) selectedTask.value = updated;
+  } catch (error) {
+    store.error = error?.response?.data?.detail || error?.message || "检查项保存失败";
+  }
+}
+function startDetailChecklistDrag(index, event) {
+  detailChecklistDragIndex.value = index;
+  event.dataTransfer?.setData("text/plain", String(index));
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+}
+function dropDetailChecklist(target) {
+  const from = detailChecklistDragIndex.value;
+  detailChecklistDragIndex.value = null;
+  detailChecklistDropTarget.value = null;
+  const task = selectedTask.value;
+  if (from === null || from === target || !task?.checklist) return;
+  const next = [...task.checklist];
+  const [moved] = next.splice(from, 1);
+  next.splice(target, 0, moved);
+  void applyDetailChecklist(next);
+}
+async function removeDetailChecklistItem(task, index) {
+  if (!task?.checklist) return;
+  const next = task.checklist.filter((_, itemIndex) => itemIndex !== index);
+  if (selectedTask.value?.publicId !== task.publicId) return;
+  await applyDetailChecklist(next);
+}
+function startDetailChecklistDraft() {
+  detailChecklistDraftOpen.value = true;
+  void nextTick(() => detailChecklistDraftInput.value?.focus());
+}
+function cancelDetailChecklistDraft() {
+  detailChecklistNewDraft.value = "";
+  detailChecklistDraftOpen.value = false;
+}
+async function submitDetailChecklistDraft() {
+  const title = detailChecklistNewDraft.value.trim();
+  const task = selectedTask.value;
+  if (!task) return;
+  if (!title) {
+    detailChecklistDraftOpen.value = false;
+    return;
+  }
+  detailChecklistNewDraft.value = "";
+  await applyDetailChecklist([...(task.checklist || []), { title, completed: false, sortOrder: (task.checklist || []).length }]);
+  // 回车续建：保持输入行打开并聚焦，连续录入
+  detailChecklistDraftOpen.value = true;
+  void nextTick(() => detailChecklistDraftInput.value?.focus());
+}
+// 编辑已有项按回车：保存后聚焦底部输入行，直接录入下一条
+async function saveDetailChecklistTitleAndNext(task, index) {
+  await saveDetailChecklistTitle(task, index);
+  startDetailChecklistDraft();
 }
 function cancelDetailChecklistEdit(item) {
   detailChecklistDraft.value = item.title || "";
@@ -6902,6 +7145,17 @@ function closeQuickDateMenuOnOutsidePointer(event) {
   quickDateMenu.value = "";
   stopQuickFlyoutObserver();
 }
+// 通过链接直接打开任务：需在首屏任务尚未加载完时也生效（watch tasks 长度），否则复制出的链接点开是空详情
+watch(
+  () => [route.query.task, store.tasks.length],
+  () => {
+    const target = route.query.task;
+    if (!target) return;
+    const task = store.tasks.find(item => item.publicId === target);
+    if (task && selectedTask.value?.publicId !== target && !editorOpen.value) openDetail(task);
+  },
+  { immediate: true },
+);
 watch(
   () => route.fullPath,
   () => {
@@ -8755,6 +9009,20 @@ const SidebarSection = {
 .clone-detail-title h2 button:hover svg, .clone-detail-title h2 button:focus-visible svg { opacity: 1; }
 .clone-inline-title-input { min-width: 0; flex: 1; padding: 2px 5px; border: 1px solid var(--accent); border-radius: 4px; background: var(--card); color: var(--ink); font: inherit; font-size: 19px; }
 .clone-detail-description-block { position: relative; min-width: 0; padding: 2px 0; }
+.clone-detail-block-add { position: absolute; z-index: 7; top: 0; left: -24px; }
+.clone-detail-block-add-trigger { display: grid; width: 20px; height: 20px; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); opacity: .55; cursor: pointer; }
+.clone-detail-block-add-trigger:hover { background: var(--accent-soft); color: var(--accent); opacity: 1; }
+.clone-detail-block-menu { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; display: grid; min-width: 190px; padding: 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); box-shadow: 0 12px 30px rgb(15 23 42 / 18%); }
+.clone-detail-block-menu button { display: flex; align-items: center; gap: 9px; min-height: 30px; padding: 5px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.clone-detail-block-menu button:hover { background: var(--accent-soft); color: var(--accent); }
+.clone-detail-link-picker { position: absolute; z-index: 32; top: calc(100% + 4px); left: 0; display: grid; gap: 4px; width: 250px; max-height: 340px; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); box-shadow: 0 12px 30px rgb(15 23 42 / 18%); }
+.clone-detail-link-picker > input { min-height: 30px; padding: 0 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--ink); font: inherit; font-size: 12px; }
+.clone-detail-link-options { display: grid; gap: 1px; max-height: 220px; overflow: auto; }
+.clone-detail-link-options button { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 30px; padding: 5px 7px; border: 0; border-radius: 4px; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.clone-detail-link-options button:hover { background: var(--accent-soft); color: var(--accent); }
+.clone-detail-link-options small { color: var(--muted); font-size: 11px; }
+.clone-detail-link-options span { padding: 4px 7px; color: var(--muted); font-size: 12px; }
+
 .clone-detail-description-block :deep(.task-rich-editor), .clone-detail-description-block :deep(.task-milkdown-editor) { position: static; border: 0; border-radius: 0; background: transparent; overflow: visible; }
 .clone-detail-description-block :deep(.task-rich-toolbar) { position: absolute; right: clamp(88px, calc(var(--clone-detail-width) * .2), 112px); bottom: 56px; z-index: 8; display: flex; flex-wrap: nowrap; width: max-content; max-width: calc(100% - 112px); max-height: 0; gap: 3px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; margin: 0; padding: 0 8px; border: 1px solid transparent; border-radius: 9px; background: var(--card); box-shadow: 0 5px 20px rgb(15 23 42 / 14%); opacity: 0; visibility: hidden; pointer-events: none; transition: max-height 160ms ease, opacity 120ms ease, visibility 0s linear 160ms; }
 .clone-detail-description-block :deep(.task-rich-toolbar::-webkit-scrollbar) { display: none; }
@@ -8812,19 +9080,26 @@ const SidebarSection = {
 .clone-detail-tags-row button { display: grid; width: 26px; height: 26px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-checklist-editor > header button:hover,
 .clone-detail-tags-row button:hover { background: var(--accent-soft); color: var(--accent); }
-.clone-checklist-row { display: flex; align-items: center; gap: 9px; min-height: 34px; border-bottom: 1px solid color-mix(in srgb, var(--line) 52%, transparent); }
+.clone-checklist-row { display: grid; grid-template-columns: 16px 18px minmax(0, 1fr) 22px; align-items: center; gap: 8px; min-height: 34px; border-bottom: 1px solid color-mix(in srgb, var(--line) 52%, transparent); }
+.clone-checklist-grip { display: grid; place-items: center; width: 16px; height: 20px; padding: 0; border: 0; background: transparent; color: var(--muted); opacity: 0; cursor: grab; }
+.clone-checklist-row:hover .clone-checklist-grip { opacity: .55; }
+.clone-checklist-remove { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); opacity: 0; cursor: pointer; }
+.clone-checklist-row:hover .clone-checklist-remove { opacity: .7; }
+.clone-checklist-row:hover .clone-checklist-remove:hover { background: color-mix(in srgb, var(--down) 12%, transparent); color: var(--down); opacity: 1; }
+.clone-checklist-row.drop-target { box-shadow: inset 0 2px 0 var(--accent); }
+.clone-checklist-draft { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 34px; }
+.clone-checklist-draft input { min-width: 0; padding: 4px 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; outline: none; }
+.clone-checklist-draft .is-placeholder { opacity: .25; }
 .clone-checklist-row.drop-target { border-top: 2px solid var(--accent); }
-.clone-checklist-row .clone-checklist-grip { opacity: .55; cursor: grab; touch-action: none; }
+.clone-checklist-row .clone-checklist-grip { cursor: grab; touch-action: none; }
 .clone-checklist-row .clone-checklist-grip:active { cursor: grabbing; }
 .clone-checklist-row input[type="checkbox"] { flex: 0 0 auto; width: 15px; min-height: 15px; margin: 0; accent-color: var(--accent); }
 .clone-checklist-row input[type="text"], .clone-checklist-row > input:not([type]) { flex: 1; min-width: 0; min-height: 30px; padding: 4px 0; border: 0; background: transparent; }
-.clone-checklist-row button { display: grid; place-items: center; width: 26px; height: 26px; border: 0; background: transparent; color: var(--muted); opacity: .35; cursor: pointer; }
-.clone-checklist-row:hover button { opacity: 1; }
 .clone-checklist-row span { flex: 1; min-width: 0; padding: 4px 0; color: var(--ink2); font-size: 13px; cursor: text; }
 .clone-checklist-row span:hover { color: var(--ink); }
 .clone-checklist-row .clone-detail-checklist-title-input { flex: 1; min-width: 0; min-height: 28px; padding: 3px 0; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--accent) 52%, transparent); outline: 0; background: transparent; color: var(--ink2); font: inherit; font-size: 13px; }
 .clone-checklist-row .completed, .clone-checklist-row input.completed { color: var(--muted); text-decoration: line-through; }
-.clone-checklist-add { display: inline-flex; align-items: center; gap: 6px; justify-self: start; margin-top: 7px; padding: 5px 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
+.clone-checklist-add { display: inline-flex; align-items: center; gap: 6px; justify-self: start; margin-top: 7px; padding: 5px 0; border: 0; background: transparent; color: var(--accent); font-size: 12px; cursor: pointer; }
 .clone-checklist-add:hover { color: var(--accent); }
 .clone-checklist-read > header span { color: var(--muted); font-size: 11px; }
 .clone-checklist-progress-label { min-width: 30px; text-align: right; }
@@ -8843,13 +9118,31 @@ const SidebarSection = {
   transition: width 180ms ease;
 }
 .clone-detail-tags-row { display: flex; align-items: center; gap: 6px; padding: 10px 0; border-top: 1px solid var(--line); color: var(--muted); }
-.clone-detail-tag { padding: 3px 7px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 11px; }
+.clone-detail-tag { display: inline-flex; align-items: center; gap: 2px; padding: 3px 4px 3px 8px; border-radius: 10px; background: color-mix(in srgb, var(--task-tag-color, var(--accent)) 18%, transparent); color: color-mix(in srgb, var(--task-tag-color, var(--accent)) 74%, var(--ink)); font-size: 11px; }
+.clone-detail-tag-name { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; white-space: nowrap; cursor: pointer; }
+.clone-detail-tag-name:hover { text-decoration: underline; }
+.clone-detail-tag-remove { display: grid; place-items: center; width: 15px; height: 15px; padding: 0; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--ink) 16%, transparent); color: var(--card); opacity: 0; cursor: pointer; }
+.clone-detail-tag:hover .clone-detail-tag-remove { opacity: 1; }
+.clone-detail-tag-add { position: relative; display: inline-flex; }
+.clone-detail-tag-add-trigger { display: grid; width: 22px; height: 22px; place-items: center; padding: 0; border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line)); border-radius: 11px; background: transparent; color: var(--accent); cursor: pointer; }
+.clone-detail-tag-add-trigger:hover { background: var(--accent-soft); }
+.clone-detail-tag-picker { position: absolute; z-index: 30; bottom: calc(100% + 6px); left: 0; display: grid; gap: 2px; min-width: 190px; max-height: 260px; overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); box-shadow: 0 10px 28px rgb(15 23 42 / 16%); }
+.clone-detail-tag-picker label { display: flex; align-items: center; gap: 7px; padding: 4px 6px; border-radius: 4px; color: var(--ink2); font-size: 12px; cursor: pointer; }
+.clone-detail-tag-picker label:hover { background: var(--accent-soft); }
+.clone-detail-tag-picker span { padding: 4px 6px; color: var(--muted); font-size: 12px; }
 .clone-detail-secondary { display: grid; gap: 16px; padding-top: 12px; }
 .clone-detail-footer { position: absolute; right: 0; bottom: 0; left: 0; z-index: 4; display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--card) 98%, var(--paper)); }
 .clone-detail-footer-actions { position: relative; }
 .clone-detail-footer button { display: inline-flex; align-items: center; gap: 6px; min-width: 28px; min-height: 30px; padding: 5px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
 .clone-detail-footer button:hover, .clone-detail-footer button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
-.clone-detail-footer-list { min-width: 0 !important; max-width: 50%; overflow: hidden; }
+.clone-detail-footer-list { position: relative; min-width: 0 !important; max-width: 50%; overflow: hidden; }
+.clone-detail-list-picker { position: absolute; z-index: 40; bottom: calc(100% + 8px); left: 0; display: grid; gap: 2px; min-width: 230px; max-height: 320px; overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); box-shadow: 0 12px 30px rgb(15 23 42 / 18%); }
+.clone-detail-list-picker input { min-height: 30px; margin-bottom: 4px; padding: 0 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--ink); font: inherit; font-size: 12px; }
+.clone-detail-list-picker button { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 5px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.clone-detail-list-picker button:hover { background: var(--accent-soft); color: var(--accent); }
+.clone-detail-list-picker button[aria-selected="true"] { color: var(--accent); font-weight: 600; }
+.clone-detail-list-picker span { padding: 4px 8px; color: var(--muted); font-size: 12px; }
+.clone-detail-list-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; }
 .clone-detail-footer-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clone-detail-footer-actions { display: flex; align-items: center; gap: 8px; }
 .clone-detail-footer-actions small { color: var(--accent); font-size: 10px; }

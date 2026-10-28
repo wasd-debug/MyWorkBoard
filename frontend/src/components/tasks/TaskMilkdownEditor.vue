@@ -49,6 +49,18 @@ const toolbar = [
 function leaveEditor(event) {
   if (!event.currentTarget.contains(event.relatedTarget)) focused.value = false
 }
+
+// 供外部「+ 插入」菜单调用（标题级别 / 块格式 / 插入链接）
+function runToolbar(key) {
+  surface.value?.runToolbar(key)
+}
+function insertLink(text, href) {
+  surface.value?.insertLink(text, href)
+}
+function focusEditor() {
+  surface.value?.focusEditor()
+}
+defineExpose({ runToolbar, insertLink, focusEditor })
 </script>
 
 <style scoped>

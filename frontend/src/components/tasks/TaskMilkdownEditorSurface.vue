@@ -178,6 +178,9 @@ function runToolbar(key) {
   if (!crepeInstance) return
   const commands = {
     heading: [wrapInHeadingCommand.key, 2],
+    heading1: [wrapInHeadingCommand.key, 1],
+    heading2: [wrapInHeadingCommand.key, 2],
+    heading3: [wrapInHeadingCommand.key, 3],
     bold: [toggleStrongCommand.key],
     list: [wrapInBulletListCommand.key],
     ordered: [wrapInOrderedListCommand.key],
@@ -193,6 +196,17 @@ function runToolbar(key) {
     return
   }
   if (command) crepeInstance.action(callCommand(command, payload))
+}
+
+// 供「+」插入菜单使用：在光标处插入一段带链接的文字（关联任务/笔记）
+function insertLink(text, href) {
+  const view = crepeInstance?.ctx.get(editorViewCtx)
+  if (!view || !text) return
+  const { from } = view.state.selection
+  view.dispatch(view.state.tr.insertText(text, from))
+  const linkMark = view.state.schema.marks.link
+  if (linkMark && href) view.dispatch(view.state.tr.addMark(from, from + text.length, linkMark.create({ href })))
+  view.focus()
 }
 
 function renderSlashMenu(menu, items) {
@@ -269,7 +283,11 @@ function wrapCurrentBlockInChecklist() {
   }
 }
 
-defineExpose({ runToolbar })
+function focusEditor() {
+  crepeInstance?.ctx.get(editorViewCtx)?.focus()
+}
+
+defineExpose({ runToolbar, insertLink, focusEditor })
 </script>
 
 <style>
