@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildCalendarEvents, daySummary, habitScheduledOn, taskWindow } from './calendarEvents.js'
 import { eachDay, toDateKey } from './calendarRange.js'
+import { layoutColumns } from './calendarTimeGrid.js'
 
 const days = eachDay(new Date(2026, 9, 19), new Date(2026, 9, 26))
 const lists = [{ publicId: 'list-work', color: '#6bcb77' }, { publicId: 'list-study', color: '#4d96ff' }]
@@ -241,4 +242,37 @@ test('跨夜但有实际时刻的任务仍留在时间轴并裁切', () => {
   assert.equal(dayEvents(result, '2026-10-19').allDay.length, 0)
   assert.equal(dayEvents(result, '2026-10-19').timed.length, 1)
   assert.equal(dayEvents(result, '2026-10-19').timed[0].promoted, false)
+})
+
+test('起止都是 00:00 的任务按当天全天处理而不是 15 分钟时间块', () => {
+  const result = buildCalendarEvents({
+    days, lists, tags,
+    tasks: [{ publicId: 'midnight', title: '个人工作台', allDay: false, startAt: '2026-10-19T00:00:00', dueAt: '2026-10-19T00:00:00', status: 'OPEN' }]
+  })
+  assert.equal(dayEvents(result, '2026-10-19').allDay.length, 1)
+  assert.equal(dayEvents(result, '2026-10-19').timed.length, 0)
+  assert.equal(dayEvents(result, '2026-10-19').allDay[0].promoted, true)
+})
+
+test('00:00 起但有时长的任务仍留在时间轴', () => {
+  const result = buildCalendarEvents({
+    days, lists, tags,
+    tasks: [{ publicId: 'early', title: '早班', allDay: false, startAt: '2026-10-19T00:00:00', dueAt: '2026-10-19T01:00:00', status: 'OPEN' }]
+  })
+  assert.equal(dayEvents(result, '2026-10-19').allDay.length, 0)
+  assert.equal(dayEvents(result, '2026-10-19').timed.length, 1)
+})
+
+test('凌晨开始的三个重叠任务并排分列', () => {
+  const result = buildCalendarEvents({
+    days, lists, tags,
+    tasks: [
+      { publicId: 'a', title: 'A', allDay: false, startAt: '2026-10-19T00:30:00', dueAt: '2026-10-19T11:30:00', status: 'OPEN' },
+      { publicId: 'b', title: 'B', allDay: false, startAt: '2026-10-19T00:30:00', dueAt: '2026-10-19T09:30:00', status: 'OPEN' },
+      { publicId: 'c', title: 'C', allDay: false, startAt: '2026-10-19T05:30:00', dueAt: '2026-10-19T09:30:00', status: 'OPEN' }
+    ]
+  })
+  const layout = layoutColumns(dayEvents(result, '2026-10-19').timed)
+  assert.equal(layout.get('a').columns, 3)
+  assert.equal(new Set(['a', 'b', 'c'].map(id => layout.get(id).column)).size, 3)
 })

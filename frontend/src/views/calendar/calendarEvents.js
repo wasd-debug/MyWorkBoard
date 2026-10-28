@@ -25,6 +25,8 @@ export function habitScheduledOn(habit, date) {
 /** 整日对齐（00:00 起、00:00 或 23:59 止）且跨度接近整天的有刻任务，实际是跨天任务，应放进全天区。 */
 export function spansWholeDays(window) {
   if (!window || window.allDay) return false
+  // 起止都是 00:00（没有时长）的条目等价于「当天全天」，不能画成 15 分钟的时间块
+  if (window.midnightZero) return true
   const { start, end } = window
   if (start.getHours() !== 0 || start.getMinutes() !== 0) return false
   const duration = end.getTime() - start.getTime()
@@ -42,9 +44,12 @@ export function taskWindow(task) {
   let end = task.dueAt ? new Date(task.dueAt) : new Date(start.getTime())
   if (Number.isNaN(end.getTime()) || end.getTime() < start.getTime()) end = new Date(start.getTime())
   const duration = Number(task.durationMinutes) || 0
-  if (!allDay && duration && end.getTime() === start.getTime()) end = new Date(start.getTime() + duration * 60000)
-  if (!allDay && end.getTime() === start.getTime()) end = new Date(start.getTime() + DEFAULT_TIMED_MINUTES * 60000)
-  return { start, end, allDay }
+  const zeroLength = end.getTime() === start.getTime()
+  const midnightZero = !allDay && zeroLength && !duration
+    && start.getHours() === 0 && start.getMinutes() === 0
+  if (!allDay && duration && zeroLength) end = new Date(start.getTime() + duration * 60000)
+  if (!allDay && !midnightZero && end.getTime() === start.getTime()) end = new Date(start.getTime() + DEFAULT_TIMED_MINUTES * 60000)
+  return { start, end, allDay, midnightZero }
 }
 
 function enumerateKeys(startKey, endKey) {
