@@ -22,7 +22,14 @@
       </button>
       <div v-show="!allDayCollapsed" class="cal-allday-body">
         <div class="cal-allday-cols" :style="colsStyle">
-          <div v-for="day in days" :key="`allday-${toDateKey(day)}`" class="cal-allday-col" :style="{ paddingTop: `${laneHeight}px` }">
+          <div
+            v-for="day in days"
+            :key="`allday-${toDateKey(day)}`"
+            class="cal-allday-col"
+            :style="{ paddingTop: `${laneHeight}px` }"
+            :title="`在 ${day.getMonth() + 1}月${day.getDate()}日 新建全天任务`"
+            @click="$emit('create-allday', day)"
+          >
             <button
               v-for="event in allDayOf(day)"
               :key="event.id"
@@ -79,6 +86,7 @@
           :key="`col-${toDateKey(day)}`"
           class="cal-col"
           :class="{ today: toDateKey(day) === todayKey }"
+          @pointerdown="startRangeDrag(day, $event)"
           @click="handleColumnClick(day, $event)"
         >
           <span v-for="mark in marks" :key="`line-${mark.minutes}`" class="cal-line" :style="{ top: `${((mark.minutes - viewWindow.start) / 60) * hourHeight}px` }"></span>
@@ -97,14 +105,20 @@
             }]"
             :style="blockStyle(block)"
             :title="blockTitle(block.event)"
-            @click.stop="$emit('open-event', block.event, $event)"
+            @pointerdown.stop="startBlockDrag(block, $event)"
+            @click.stop="handleBlockClick(block.event, $event)"
           >
+            <span class="cal-block-handle is-top" @pointerdown.stop="startBlockResize(block, 'start', $event)"></span>
+            <span class="cal-block-handle is-bottom" @pointerdown.stop="startBlockResize(block, 'end', $event)"></span>
             <span class="cal-block-title">
               <Timer v-if="block.event.kind === 'focus'" :size="10" />
               <span>{{ block.event.title }}</span>
             </span>
-            <span class="cal-block-time">{{ block.event.startLabel }}<template v-if="block.event.endLabel"> – {{ block.event.endLabel }}</template></span>
+            <span class="cal-block-time">{{ blockLabel(block) }}</span>
           </button>
+          <div v-if="selection && selection.dayKey === toDateKey(day)" class="cal-selection" :style="selectionStyle">
+            <span>{{ selectionLabel }}</span>
+          </div>
           <div v-if="toDateKey(day) === todayKey && nowVisible" class="cal-now" :style="{ top: `${nowTop}px` }"><i></i></div>
         </div>
       </div>
@@ -126,6 +140,7 @@ import { tintStyle } from './calendarColors.js'
 import {
   MINUTES_PER_DAY, blockGeometry, hourMarks, layoutColumns, minutesToLabel, snapMinutes, visibleWindow
 } from './calendarTimeGrid.js'
+import { dragRange, formatDuration, moveBlock, pointerToMinutes, resizeBlock } from './calendarDrag.js'
 
 const props = defineProps({
   days: { type: Array, required: true },
@@ -141,13 +156,18 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'open-event', 'create-at', 'select-day',
+  'open-event', 'create-at', 'create-allday', 'create-range', 'move-block', 'resize-block', 'select-day',
   'update:hiddenTop', 'update:hiddenBottom', 'update:allDayHeight', 'update:allDayCollapsed'
 ])
 
 const GUTTER = 52
 const scrollEl = ref(null)
 const now = ref(new Date())
+const selection = ref(null)
+const dragPreview = ref(null)
+let dragContext = null
+let suppressColumnClick = false
+let suppressBlockClick = false
 
 const gridStyle = computed(() => ({ gridTemplateColumns: `${GUTTER}px repeat(${props.days.length}, minmax(0, 1fr))` }))
 const colsStyle = computed(() => ({ gridTemplateColumns: `repeat(${props.days.length}, minmax(0, 1fr))` }))
@@ -197,11 +217,20 @@ function blocksOf(day) {
   })
 }
 
+function blockTimes(block) {
+  const preview = dragPreview.value?.id === block.event.id ? dragPreview.value : null
+  const startMinutes = preview ? preview.startMinutes : block.event.startMinutes
+  const endMinutes = preview ? preview.endMinutes : block.event.endMinutes
+  return { startMinutes, endMinutes, preview: Boolean(preview) }
+}
+
 function blockStyle(block) {
   const width = 100 / block.columns
+  const { startMinutes, endMinutes } = blockTimes(block)
+  const geometry = blockGeometry(startMinutes, endMinutes, viewWindow.value, props.hourHeight)
   return {
-    top: `${block.geometry.top}px`,
-    height: `${Math.max(18, block.geometry.height)}px`,
+    top: `${geometry.top}px`,
+    height: `${Math.max(18, geometry.height)}px`,
     left: `${(block.column * width).toFixed(3)}%`,
     width: `calc(${width.toFixed(3)}% - 4px)`,
     borderLeftColor: block.event.color,
@@ -217,7 +246,109 @@ function blockTitle(event) {
   return parts.join(' · ')
 }
 
+function blockLabel(block) {
+  const { startMinutes, endMinutes } = blockTimes(block)
+  return `${minutesToLabel(startMinutes)} – ${minutesToLabel(endMinutes)}`
+}
+
+const selectionStyle = computed(() => {
+  if (!selection.value) return {}
+  const start = Math.max(selection.value.startMinutes, viewWindow.value.start)
+  const end = Math.min(selection.value.endMinutes, viewWindow.value.end)
+  return {
+    top: `${((start - viewWindow.value.start) / 60) * props.hourHeight}px`,
+    height: `${Math.max(12, ((end - start) / 60) * props.hourHeight)}px`
+  }
+})
+
+const selectionLabel = computed(() => {
+  if (!selection.value) return ''
+  return `${minutesToLabel(selection.value.startMinutes)} – ${minutesToLabel(selection.value.endMinutes)} · ${formatDuration(selection.value.endMinutes - selection.value.startMinutes)}`
+})
+
+function startRangeDrag(day, event) {
+  if (event.button !== 0 || event.target.closest('.cal-block')) return
+  const rect = event.currentTarget.getBoundingClientRect()
+  const startMinutes = pointerToMinutes(event.clientY - rect.top, props.hourHeight, viewWindow.value.start)
+  dragContext = { day, rect, startMinutes, startY: event.clientY, moved: false }
+  selection.value = null
+  window.addEventListener('pointermove', onRangeMove)
+  window.addEventListener('pointerup', onRangeUp)
+}
+
+function onRangeMove(event) {
+  if (!dragContext) return
+  if (Math.abs(event.clientY - dragContext.startY) > 5) dragContext.moved = true
+  if (!dragContext.moved) return
+  const current = pointerToMinutes(event.clientY - dragContext.rect.top, props.hourHeight, viewWindow.value.start)
+  const range = dragRange(dragContext.startMinutes, current)
+  selection.value = { dayKey: toDateKey(dragContext.day), ...range }
+}
+
+function onRangeUp() {
+  window.removeEventListener('pointermove', onRangeMove)
+  window.removeEventListener('pointerup', onRangeUp)
+  const context = dragContext
+  const picked = selection.value
+  dragContext = null
+  selection.value = null
+  if (!context || !context.moved || !picked) return
+  suppressColumnClick = true
+  window.setTimeout(() => { suppressColumnClick = false }, 0)
+  emit('create-range', context.day, picked.startMinutes, picked.endMinutes)
+}
+
+function startBlockDrag(block, event) {
+  if (event.button !== 0) return
+  startBlockGesture(block, 'move', event)
+}
+
+function startBlockResize(block, edge, event) {
+  if (event.button !== 0) return
+  startBlockGesture(block, edge, event)
+}
+
+function startBlockGesture(block, mode, event) {
+  const startY = event.clientY
+  const originStart = block.event.startMinutes
+  const originEnd = block.event.endMinutes
+  let moved = false
+  const move = moveEvent => {
+    if (Math.abs(moveEvent.clientY - startY) > 3) moved = true
+    if (!moved) return
+    const delta = ((moveEvent.clientY - startY) / props.hourHeight) * 60
+    const next = mode === 'move'
+      ? moveBlock(originStart, originEnd - originStart, delta)
+      : resizeBlock(originStart, originEnd, mode, delta)
+    dragPreview.value = { id: block.event.id, ...next }
+  }
+  const up = () => {
+    window.removeEventListener('pointermove', move)
+    window.removeEventListener('pointerup', up)
+    const preview = dragPreview.value
+    dragPreview.value = null
+    if (!moved || !preview) return
+    suppressBlockClick = true
+    window.setTimeout(() => { suppressBlockClick = false }, 0)
+    emit(mode === 'move' ? 'move-block' : 'resize-block', block.event, preview.startMinutes, preview.endMinutes)
+  }
+  window.addEventListener('pointermove', move)
+  window.addEventListener('pointerup', up)
+}
+
+function handleBlockClick(event, nativeEvent) {
+  if (suppressBlockClick) {
+    suppressBlockClick = false
+    return
+  }
+  emit('open-event', event, nativeEvent)
+}
+
 function handleColumnClick(day, event) {
+  if (suppressColumnClick) {
+    suppressColumnClick = false
+    return
+  }
   if (event.target.closest('.cal-block')) return
   const column = event.currentTarget
   const rect = column.getBoundingClientRect()
@@ -502,6 +633,44 @@ onBeforeUnmount(() => { window.clearInterval(ticker) })
   min-width: 0;
   border-right: 1px solid var(--line);
   cursor: crosshair;
+  touch-action: none;
+}
+.cal-selection {
+  position: absolute;
+  right: 2px;
+  left: 2px;
+  z-index: 2;
+  border: 1px dashed var(--accent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  pointer-events: none;
+}
+.cal-selection span {
+  position: absolute;
+  top: 2px;
+  left: 5px;
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.cal-block-handle {
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 6px;
+  cursor: ns-resize;
+  opacity: 0;
+}
+.cal-block-handle.is-top {
+  top: -2px;
+}
+.cal-block-handle.is-bottom {
+  bottom: -2px;
+}
+.cal-block:hover .cal-block-handle {
+  opacity: 1;
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 .cal-col:last-child {
   border-right: 0;
@@ -539,6 +708,7 @@ onBeforeUnmount(() => { window.clearInterval(ticker) })
 }
 .cal-block {
   position: absolute;
+  touch-action: none;
   display: flex;
   flex-direction: column;
   gap: 1px;

@@ -111,6 +111,7 @@
           :holidays="holidayMap"
           @select-day="selectDay"
           @open-event="openEvent"
+          @select-range="createSpan"
         />
 
         <div v-else-if="view === 'year'" class="cal-year">
@@ -149,6 +150,10 @@
           @open-event="openEvent"
           @select-day="selectDay"
           @create-at="createAt"
+          @create-allday="createAllday"
+          @create-range="createRange"
+          @move-block="rescheduleBlock"
+          @resize-block="rescheduleBlock"
           @update:hidden-top="updateTimePrefs({ hiddenTop: $event })"
           @update:hidden-bottom="updateTimePrefs({ hiddenBottom: $event })"
           @update:all-day-height="updateTimePrefs({ allDayHeight: $event })"
@@ -289,6 +294,8 @@ import {
 } from './calendar/calendarRange.js'
 import { buildCalendarEvents } from './calendar/calendarEvents.js'
 import { minutesToLabel, snapMinutes } from './calendar/calendarTimeGrid.js'
+import { fromDateKey } from './calendar/calendarRange.js'
+import { formatDuration, spanToInstants } from './calendar/calendarDrag.js'
 import { TASK_COLOR_MODES, mergedColorSettings, tintStyle } from './calendar/calendarColors.js'
 
 const route = useRoute()
@@ -320,7 +327,7 @@ const error = ref('')
 const viewMenu = ref(false)
 const moreOpen = ref(false)
 const settings = reactive({ open: false })
-const quickAdd = reactive({ open: false, title: '', priority: 'NONE', listId: '', saving: false, date: startOfDay(new Date()), startMinutes: null })
+const quickAdd = reactive({ open: false, title: '', priority: 'NONE', listId: '', saving: false, date: startOfDay(new Date()), startMinutes: null, endMinutes: null, spanEnd: null })
 const dayPopover = reactive({ open: false, date: startOfDay(new Date()), x: 0, y: 0 })
 const quickInputEl = ref(null)
 const shellEl = ref(null)
@@ -376,8 +383,11 @@ const quickAddDateLabel = computed(() => {
   const day = quickAdd.date
   const same = toDateKey(day) === todayKey.value
   const base = `${day.getMonth() + 1}月${day.getDate()}日，${same ? '今天' : formatWeekday(day)}`
+  if (quickAdd.spanEnd) return `${day.getMonth() + 1}月${day.getDate()}日 – ${quickAdd.spanEnd.getMonth() + 1}月${quickAdd.spanEnd.getDate()}日，全天`
   if (quickAdd.startMinutes == null) return base
-  return `${base}, ${minutesToLabel(snapMinutes(quickAdd.startMinutes, 15))}`
+  const from = minutesToLabel(snapMinutes(quickAdd.startMinutes, 15))
+  const to = minutesToLabel(snapMinutes(quickAdd.endMinutes ?? quickAdd.startMinutes + 30, 15))
+  return `${base}, ${from} – ${to}`
 })
 
 const dayPopoverTitle = computed(() => `${dayPopover.date.getMonth() + 1}月${dayPopover.date.getDate()}日 ${formatWeekday(dayPopover.date)}`)
@@ -578,6 +588,35 @@ function createAt(day, minutes) {
   void openQuickAdd(day, minutes)
 }
 
+function createAllday(day) {
+  void openQuickAdd(day)
+}
+
+function createRange(day, startMinutes, endMinutes) {
+  void openQuickAdd(day, startMinutes, { endMinutes })
+}
+
+function createSpan(startKey, endKey) {
+  const start = fromDateKey(startKey)
+  const end = fromDateKey(endKey)
+  void openQuickAdd(start, null, { spanEnd: end })
+}
+
+async function rescheduleBlock(event, startMinutes, endMinutes) {
+  if (!event || event.kind !== 'task') return
+  const task = tasksStore.tasks.find(item => item.publicId === event.id)
+  if (!task) return
+  const day = fromDateKey(event.startKey)
+  const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(startMinutes / 60), startMinutes % 60, 0)
+  const end = new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(endMinutes / 60), endMinutes % 60, 0)
+  try {
+    await tasksStore.update(task, { startAt: start.toISOString(), dueAt: end.toISOString(), allDay: false })
+    message.success(`已改到 ${minutesToLabel(startMinutes)} – ${minutesToLabel(endMinutes)}`)
+  } catch (cause) {
+    message.error(cause?.response?.data?.detail || cause?.message || '改期失败')
+  }
+}
+
 function addFromPopover() {
   const target = dayPopover.date
   dayPopover.open = false
@@ -590,6 +629,10 @@ const swipe = { startX: 0, startY: 0, active: false, suppressClick: false }
 function onSwipeStart(event) {
   if (event.pointerType === 'mouse' && event.button !== 0) return
   if (view.value !== 'month' && view.value !== 'multiWeek') return
+  // 在日期网格（含跨天泳道）上按下属于「拖选多天 / 点开浮层」，不能同时当成翻页手势
+  if (event.target?.closest?.('.cal-week')) return
+  // 在日期网格（含跨天泳道）上按下属于「拖选多天 / 点开浮层」，不能同时当成翻页手势
+  if (event.target?.closest?.('.cal-week')) return
   swipe.startX = event.clientX
   swipe.startY = event.clientY
   swipe.active = true
@@ -634,12 +677,14 @@ function openEvent(event) {
   }
 }
 
-async function openQuickAdd(day, startMinutes = null) {
+async function openQuickAdd(day, startMinutes = null, options = {}) {
   viewMenu.value = false
   moreOpen.value = false
   dayPopover.open = false
   quickAdd.date = startOfDay(day || selectedDay.value || anchor.value)
   quickAdd.startMinutes = Number.isFinite(startMinutes) ? startMinutes : null
+  quickAdd.endMinutes = Number.isFinite(options.endMinutes) ? options.endMinutes : (quickAdd.startMinutes == null ? null : quickAdd.startMinutes + 30)
+  quickAdd.spanEnd = options.spanEnd ? startOfDay(options.spanEnd) : null
   quickAdd.title = ''
   quickAdd.priority = 'NONE'
   quickAdd.listId = tasksStore.inbox?.publicId || calendarLists.value[0]?.publicId || ''
@@ -658,11 +703,23 @@ async function saveQuickAdd() {
   quickAdd.saving = true
   try {
     const day = startOfDay(quickAdd.date)
-    const timed = quickAdd.startMinutes != null
-    const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), timed ? Math.floor(quickAdd.startMinutes / 60) : 0, timed ? quickAdd.startMinutes % 60 : 0, 0)
-    const end = timed ? new Date(start.getTime() + 30 * 60000) : start
+    let payload
+    if (quickAdd.spanEnd) {
+      const span = spanToInstants(toDateKey(day), toDateKey(quickAdd.spanEnd))
+      payload = { allDay: true, startAt: span.startAt, dueAt: span.dueAt }
+    } else if (quickAdd.startMinutes != null) {
+      const startMinutes = snapMinutes(quickAdd.startMinutes, 15)
+      const endMinutes = Math.max(startMinutes + 15, snapMinutes(quickAdd.endMinutes ?? startMinutes + 30, 15))
+      const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(startMinutes / 60), startMinutes % 60, 0)
+      const endDay = endMinutes >= 1440 ? new Date(day.getTime() + 86400000) : day
+      const normalizedEnd = endMinutes >= 1440 ? endMinutes - 1440 : endMinutes
+      const end = new Date(endDay.getFullYear(), endDay.getMonth(), endDay.getDate(), Math.floor(normalizedEnd / 60), normalizedEnd % 60, 0)
+      payload = { allDay: false, startAt: start.toISOString(), dueAt: end.toISOString() }
+    } else {
+      payload = { allDay: true, startAt: day.toISOString(), dueAt: day.toISOString() }
+    }
     await tasksStore.create({
-      title, allDay: !timed, startAt: start.toISOString(), dueAt: end.toISOString(),
+      title, ...payload,
       priority: quickAdd.priority, listId: quickAdd.listId || tasksStore.inbox?.publicId || ''
     })
     quickAdd.open = false

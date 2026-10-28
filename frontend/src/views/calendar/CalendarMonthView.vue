@@ -10,6 +10,7 @@
         :key="`week-${index}`"
         class="cal-week"
         :style="{ '--lane-height': `${weekViews[index].laneHeight}px` }"
+        @pointerdown="onWeekPointerDown($event)"
       >
         <div class="cal-week-gutter" :aria-label="`第 ${weekNumber(week[0])} 周`">{{ weekNumber(week[0]) }}<small>周</small></div>
         <div
@@ -20,9 +21,12 @@
             muted: muteOutsideMonth && day.getMonth() !== monthIndex,
             today: dayKey(day) === todayKey,
             selected: dayKey(day) === selectedKey,
-            weekend: [0, 6].includes(day.getDay())
+            weekend: [0, 6].includes(day.getDay()),
+            'in-range': isInRange(day)
           }"
-          @click="$emit('select-day', day, $event)"
+          :data-date="dayKey(day)"
+          @pointerenter="onDayPointerEnter(day)"
+          @click="handleDayClick(day, $event)"
         >
           <header class="cal-day-head">
             <span class="cal-day-num">{{ day.getDate() }}</span>
@@ -38,7 +42,7 @@
               :class="[`kind-${event.kind}`, { 'is-done': event.done }]"
               :style="tintStyle(event.color, event.kind === 'holiday' ? 18 : 15)"
               :title="eventTitle(event)"
-              @click.stop="$emit('open-event', event, $event)"
+              @click.stop="handleEventClick(event, $event)"
             >
               <span v-if="event.kind === 'task'" class="cal-ev-dot" :class="{ 'is-done': event.done }" :style="{ borderColor: event.color }"></span>
               <span v-else-if="event.kind === 'habit'" class="cal-ev-icon" :style="{ color: event.color }">
@@ -75,7 +79,7 @@
               ...tintStyle(segment.event.color, segment.event.kind === 'holiday' ? 18 : 15)
             }"
             :title="`${segment.event.title}${segment.continuesBefore ? '（前面还有）' : ''}${segment.continuesAfter ? '（后面还有）' : ''}`"
-            @click.stop="$emit('open-event', segment.event, $event)"
+            @click.stop="handleEventClick(segment.event, $event)"
           >
             <span class="cal-ev-dot" :class="{ 'is-done': segment.event.done }" :style="{ borderColor: segment.event.color }"></span>
             <span class="cal-ev-title">{{ segment.event.title }}</span>
@@ -88,7 +92,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { Briefcase, CalendarClock, CalendarOff, Circle, CircleCheck, Coins, Hourglass } from 'lucide-vue-next'
 import { WEEKDAY_LABELS, isoWeekNumber, toDateKey } from './calendarRange.js'
 import { tintStyle } from './calendarColors.js'
@@ -106,7 +110,78 @@ const props = defineProps({
   holidays: { type: Object, default: () => ({}) }
 })
 
-defineEmits(['select-day', 'open-event'])
+const emit = defineEmits(['select-day', 'open-event', 'select-range'])
+
+const dayDrag = ref(null)
+let suppressClick = false
+
+function cellAtPoint(x, y) {
+  const stack = document.elementsFromPoint(x, y) || []
+  return stack.find(element => element.classList?.contains('cal-day')) || null
+}
+
+function onWeekPointerDown(event) {
+  if (event.button !== 0) return
+  const cell = event.target.closest?.('.cal-day') || cellAtPoint(event.clientX, event.clientY)
+  const key = cell?.dataset?.date
+  if (!key) return
+  dayDrag.value = { startKey: key, endKey: key, moved: false }
+  window.addEventListener('pointermove', onDayPointerMove)
+  window.addEventListener('pointerup', onDayPointerUp, { once: true })
+}
+
+// 泳道层盖在日期格之上，pointerenter 会落到泳道上，因此按坐标回溯命中的日期格
+function onDayPointerMove(event) {
+  if (!dayDrag.value) return
+  const cell = cellAtPoint(event.clientX, event.clientY)
+  const key = cell?.dataset?.date
+  if (!key) return
+  if (key !== dayDrag.value.startKey) dayDrag.value.moved = true
+  dayDrag.value.endKey = key
+}
+
+function onDayPointerEnter(day) {
+  if (!dayDrag.value) return
+  const key = toDateKey(day)
+  if (key !== dayDrag.value.startKey) dayDrag.value.moved = true
+  dayDrag.value.endKey = key
+}
+
+function onDayPointerUp() {
+  window.removeEventListener('pointermove', onDayPointerMove)
+  const state = dayDrag.value
+  dayDrag.value = null
+  if (!state || !state.moved || state.startKey === state.endKey) return
+  suppressClick = true
+  window.setTimeout(() => { suppressClick = false }, 0)
+  const [startKey, endKey] = state.startKey <= state.endKey ? [state.startKey, state.endKey] : [state.endKey, state.startKey]
+  emit('select-range', startKey, endKey)
+}
+
+function handleDayClick(day, event) {
+  if (suppressClick) {
+    suppressClick = false
+    return
+  }
+  emit('select-day', day, event)
+}
+
+function handleEventClick(event, nativeEvent) {
+  if (suppressClick) {
+    suppressClick = false
+    return
+  }
+  emit('open-event', event, nativeEvent)
+}
+
+function isInRange(day) {
+  if (!dayDrag.value || !dayDrag.value.moved) return false
+  const key = toDateKey(day)
+  const [from, to] = dayDrag.value.startKey <= dayDrag.value.endKey
+    ? [dayDrag.value.startKey, dayDrag.value.endKey]
+    : [dayDrag.value.endKey, dayDrag.value.startKey]
+  return key >= from && key <= to
+}
 
 const weekViews = computed(() => props.weeks.map(week => {
   const packed = packWeekLanes(week, props.byDay)
@@ -237,6 +312,14 @@ function eventTitle(event) {
 }
 .cal-day.selected {
   background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+.cal-day.in-range {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+.cal-day.in-range {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent);
 }
 .cal-day-head {
   display: flex;
