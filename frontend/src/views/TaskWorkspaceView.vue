@@ -858,10 +858,10 @@
       <template v-else>
       <header v-if="selectedTask || editorOpen" class="clone-detail-toolbar" @pointerdown.stop>
         <div class="clone-detail-toolbar-main">
-          <button v-if="!editorOpen" type="button" class="clone-detail-status-tool" :class="{ completed: selectedTask?.status === 'COMPLETED', abandoned: selectedTask?.status === 'ABANDONED' }" :aria-label="selectedTask?.status === 'COMPLETED' ? '重新打开任务' : '标记任务完成'" @click="toggleComplete(selectedTask)"><Check v-if="selectedTask?.status === 'COMPLETED'" :size="14" /></button>
-          <button v-else type="button" class="clone-detail-status-tool" :class="{ completed: draft.status === 'COMPLETED', abandoned: draft.status === 'ABANDONED' }" aria-label="任务完成状态" @click="draft.status = draft.status === 'COMPLETED' ? 'OPEN' : 'COMPLETED'"><Check v-if="draft.status === 'COMPLETED'" :size="14" /></button>
+          <button v-if="!editorOpen && !isNoteSelected" type="button" class="clone-detail-status-tool" :class="{ completed: selectedTask?.status === 'COMPLETED', abandoned: selectedTask?.status === 'ABANDONED' }" :aria-label="selectedTask?.status === 'COMPLETED' ? '重新打开任务' : '标记任务完成'" @click="toggleComplete(selectedTask)"><Check v-if="selectedTask?.status === 'COMPLETED'" :size="14" /></button>
+          <button v-else-if="editorOpen && !isNoteSelected" type="button" class="clone-detail-status-tool" :class="{ completed: draft.status === 'COMPLETED', abandoned: draft.status === 'ABANDONED' }" aria-label="任务完成状态" @click="draft.status = draft.status === 'COMPLETED' ? 'OPEN' : 'COMPLETED'"><Check v-if="draft.status === 'COMPLETED'" :size="14" /></button>
           <button ref="datePopoverAnchor" type="button" class="clone-detail-tool" aria-label="设置日期" :aria-expanded="datePopoverOpen" @click.stop="toggleDatePopover">
-            <CalendarClock :size="15" /><span>{{ editorOpen && draft.dueAt ? formatDate(draft.dueAt) : selectedTask?.dueAt ? formatDate(selectedTask.dueAt) : '设置日期' }}</span>
+            <CalendarClock :size="15" /><span>{{ editorOpen && draft.dueAt ? formatDate(draft.dueAt) : selectedTask?.dueAt ? formatDate(selectedTask.dueAt) : isNoteSelected ? '设置提醒' : '设置日期' }}</span>
           </button>
           <span v-if="editorOpen ? (draft.rrule === 'CUSTOM' ? draft.customRrule : draft.rrule) : selectedTask?.rrule" class="clone-detail-repeat-indicator" role="img" aria-label="重复任务" title="重复任务">
             <Repeat2 :size="15" />
@@ -910,7 +910,7 @@
             <div class="clone-popover-actions"><button type="button" @click="resetDetailRepeat">清除</button><button type="button" class="clone-popover-save" @click="saveDetailRepeat">完成</button></div>
           </div></div></div></Teleport>
         </div>
-        <div class="clone-detail-toolbar-actions">
+        <div v-if="!isNoteSelected" class="clone-detail-toolbar-actions">
           <button ref="priorityPopoverAnchor" type="button" class="clone-detail-priority-tool" :data-priority="editorOpen ? draft.priority : selectedTask?.priority" aria-label="设置优先级" :aria-expanded="priorityPopoverOpen" @click.stop="togglePriorityPopover"><Flag :size="17" /></button>
           <Teleport to="body"><div v-if="priorityPopoverOpen" class="clone-toolbar-popover clone-priority-toolbar-popover" :style="attributePopoverStyle('priority')" @click.stop>
             <strong>优先级</strong>
@@ -1149,7 +1149,7 @@
         <div class="clone-detail-title">
           <h2 v-if="!inlineTitleEditing"><button type="button" aria-label="编辑任务标题" @click="beginInlineTitleEdit">{{ selectedTask.title }}</button></h2>
           <input v-else v-model="inlineTitleDraft" class="clone-inline-title-input" aria-label="任务标题" maxlength="500" autofocus @keydown.enter.prevent="$event.target.blur()" @keydown.esc.prevent="cancelInlineTitleEdit" @blur="saveInlineTitle" />
-          <button type="button" class="clone-detail-content-toggle" aria-label="在描述和检查事项之间转换" :title="selectedTask.checklist?.length ? '转换为描述' : '转换为检查事项'" @click="toggleDescriptionChecklist(selectedTask)"><ListTodo v-if="selectedTask.checklist?.length" :size="16" /><AlignLeft v-else :size="16" /></button>
+          <button v-if="!isNoteSelected" type="button" class="clone-detail-content-toggle" aria-label="在描述和检查事项之间转换" :title="selectedTask.checklist?.length ? '转换为描述' : '转换为检查事项'" @click="toggleDescriptionChecklist(selectedTask)"><ListTodo v-if="selectedTask.checklist?.length" :size="16" /><AlignLeft v-else :size="16" /></button>
         </div>
         <div class="clone-detail-description-block" :class="{ 'toolbar-open': detailRichToolbarOpen }">
           <div class="clone-detail-block-add">
@@ -1184,7 +1184,7 @@
         <section v-if="selectedTask.focusMinutes" class="clone-detail-focus-summary" aria-label="专注记录">
           <Timer :size="14" /><span>累计专注</span><strong>{{ selectedTask.focusMinutes }} 分钟</strong>
         </section>
-        <section class="clone-checklist-read" :class="{ 'is-empty': !selectedTask.checklist?.length }" aria-label="检查项">
+        <section v-if="!isNoteSelected" class="clone-checklist-read" :class="{ 'is-empty': !selectedTask.checklist?.length }" aria-label="检查项">
           <div v-if="selectedTask.checklist?.length" class="clone-detail-checklist-progress" role="progressbar" :aria-valuenow="selectedTask.checklist.filter((item) => item.completed).length" :aria-valuemin="0" :aria-valuemax="selectedTask.checklist.length"><span :style="{ width: `${selectedTask.checklist.filter((item) => item.completed).length / selectedTask.checklist.length * 100}%` }"></span></div>
           <div
             v-for="(item, index) in selectedTask.checklist"
@@ -1225,7 +1225,7 @@
             </div>
           </div>
         </div>
-        <section v-if="selectedTask" class="clone-detail-subtasks" aria-label="子任务">
+        <section v-if="selectedTask && !isNoteSelected" class="clone-detail-subtasks" aria-label="子任务">
           <header><strong>子任务</strong><span>{{ detailSubtasks.length }}</span><button type="button" aria-label="添加子任务" title="添加子任务" @click="createSubtask(selectedTask)"><Plus :size="15" /></button></header>
           <article
             v-for="(child, childIndex) in detailSubtasks"
@@ -1253,7 +1253,7 @@
           <button v-else type="button" class="clone-detail-subtask-add" @click="createSubtask(selectedTask)"><Plus :size="16" />添加子任务</button>
         </section>
         <section v-if="activities.length" class="clone-detail-activity-inline" aria-label="任务动态">
-          <header><strong>任务动态</strong><span>{{ activities.length }}</span><button type="button" @click="showDetailActivity">查看全部</button></header>
+          <header><strong>{{ isNoteSelected ? '笔记动态' : '任务动态' }}</strong><span>{{ activities.length }}</span><button type="button" @click="showDetailActivity">查看全部</button></header>
           <ol>
             <li v-for="item in activities.slice(0, 5)" :key="item.publicId">
               <span class="clone-detail-activity-dot" aria-hidden="true"></span>
@@ -1346,10 +1346,10 @@
             <button type="button" aria-label="更多详情操作" aria-haspopup="menu" :aria-expanded="detailMoreOpen" @click.stop="detailMoreOpen = !detailMoreOpen; detailMoreSection = ''"><Ellipsis :size="17" /></button>
           </div>
           <div v-if="detailMoreOpen" class="clone-detail-more-menu" role="menu" aria-label="任务详情更多操作" @pointerdown.stop @click.stop>
-            <button role="menuitem" type="button" @click="detailMoreOpen = false; createSubtask(selectedTask)"><ListPlus :size="17" />添加子任务</button>
-            <button role="menuitem" type="button" @click="associateTaskParent"><ListTree :size="17" />关联主任务</button>
+            <button v-if="!isNoteSelected" role="menuitem" type="button" @click="detailMoreOpen = false; createSubtask(selectedTask)"><ListPlus :size="17" />添加子任务</button>
+            <button v-if="!isNoteSelected" role="menuitem" type="button" @click="associateTaskParent"><ListTree :size="17" />关联主任务</button>
             <button role="menuitem" type="button" @click="pinDetailTask"><Pin :size="17" />置顶</button>
-            <button role="menuitem" type="button" @click="abandonDetailTask"><CircleX :size="17" />放弃</button>
+            <button v-if="!isNoteSelected" role="menuitem" type="button" @click="abandonDetailTask"><CircleX :size="17" />放弃</button>
             <button role="menuitem" type="button" :aria-expanded="detailMoreSection === 'move'" @click="detailMoreSection = detailMoreSection === 'move' ? '' : 'move'"><FolderInput :size="17" />移动到<ChevronRight :size="15" /></button>
             <div v-if="detailMoreSection === 'move'" class="clone-detail-more-submenu" role="group" aria-label="移动到清单">
               <button v-for="list in activeLists" :key="list.publicId" type="button" :disabled="list.publicId === selectedTask.listId" @click="moveDetailTaskFromMenu(list)">{{ list.name }}</button>
@@ -1360,22 +1360,19 @@
               <span v-if="!sortedTags.length">暂无标签</span>
             </div>
             <button role="menuitem" type="button" @click="chooseDetailAttachment"><Paperclip :size="17" />上传附件</button>
-            <button role="menuitem" type="button" :aria-expanded="detailMoreSection === 'focus'" @click="detailMoreSection = detailMoreSection === 'focus' ? '' : 'focus'"><CircleDot :size="17" />开始专注<ChevronRight :size="15" /></button>
+            <button v-if="!isNoteSelected" role="menuitem" type="button" :aria-expanded="detailMoreSection === 'focus'" @click="detailMoreSection = detailMoreSection === 'focus' ? '' : 'focus'"><CircleDot :size="17" />开始专注<ChevronRight :size="15" /></button>
             <div v-if="detailMoreSection === 'focus'" class="clone-detail-more-submenu" role="group" aria-label="专注方式">
               <button type="button" @click="startDetailFocus('POMODORO')">开始番茄专注</button>
               <button type="button" @click="startEstimatedFocus">预计番茄时长…</button>
               <button type="button" disabled title="正计时需要后端支持无上限专注，暂未开放">开始正计时</button>
             </div>
             <div class="clone-detail-more-separator" aria-hidden="true"></div>
-            <button role="menuitem" type="button" @click="showDetailActivity"><SlidersHorizontal :size="17" />任务动态</button>
-            <button role="menuitem" type="button" @click="openTaskTemplateDialog"><FileText :size="17" />保存为模板</button>
+            <button role="menuitem" type="button" @click="showDetailActivity"><SlidersHorizontal :size="17" />{{ isNoteSelected ? '笔记动态' : '任务动态' }}</button>
+            <button v-if="!isNoteSelected" role="menuitem" type="button" @click="openTaskTemplateDialog"><FileText :size="17" />保存为模板</button>
             <button role="menuitem" type="button" @click="duplicateDetailTask"><CopyPlus :size="17" />创建副本</button>
             <button role="menuitem" type="button" @click="copyDetailTaskLink"><Link :size="17" />复制链接</button>
-            <button role="menuitem" type="button" :aria-expanded="detailMoreSection === 'note'" @click="detailMoreSection = detailMoreSection === 'note' ? '' : 'note'"><StickyNote :size="17" />转换为笔记<ChevronRight :size="15" /></button>
-            <div v-if="detailMoreSection === 'note'" class="clone-detail-more-submenu" role="group" aria-label="选择笔记清单">
-              <button v-for="list in noteLists" :key="list.publicId" type="button" @click="convertDetailTaskToNote(list)">{{ list.name }}</button>
-              <span v-if="!noteLists.length">请先创建笔记清单</span>
-            </div>
+            <button v-if="!isNoteSelected" role="menuitem" type="button" @click="convertDetailTaskToNoteNow"><StickyNote :size="17" />转换为笔记</button>
+            <button v-else role="menuitem" type="button" @click="convertDetailNoteToTask"><FileText :size="17" />转换为任务</button>
             <button role="menuitem" type="button" @click="openExportDialog"><Download :size="17" />导出<ChevronRight :size="15" /></button>
             <button role="menuitem" type="button" @click="printDetailTask"><Printer :size="17" />打印</button>
             <button role="menuitem" type="button" @click="openDetailTaskNote"><StickyNote :size="17" />打开便签</button>
@@ -2022,6 +2019,8 @@ const filterDraftValid = computed(() => {
   return organizationDialog.filter.dueRange !== "CUSTOM" || Boolean(organizationDialog.filter.dueStart && organizationDialog.filter.dueEnd && organizationDialog.filter.dueEnd > organizationDialog.filter.dueStart);
 });
 const selectedTask = ref(null);
+// 笔记与任务共用一条记录：形态由所在清单类型决定（后续支持条目级类型）
+const isNoteSelected = computed(() => Boolean(selectedTask.value && isNoteTask(selectedTask.value)));
 const detailParentPickerOpen = ref(false);
 const detailParentQuery = ref("");
 const trashClearOpen = ref(false);
@@ -2719,6 +2718,10 @@ function taskList(task) {
   return store.lists.find((item) => item.publicId === task.listId);
 }
 function isNoteTask(task) {
+  if (!task) return false;
+  // 条目级类型优先（转换后仍可留在任意类型清单），旧数据回退到清单类型
+  if (task.itemKind === "NOTE") return true;
+  if (task.itemKind === "TASK") return false;
   return taskList(task)?.objectType === "NOTE";
 }
 function taskListColor(task) {
@@ -3898,6 +3901,31 @@ async function copyDetailTaskLink() {
     message.success("任务链接已复制");
   } catch {
     message.warning("复制失败，请检查浏览器剪贴板权限");
+  }
+}
+// 转换为笔记/任务：只切换条目级类型（itemKind），条目可留在任意类型清单
+async function convertDetailTaskToNoteNow() {
+  const task = selectedTask.value;
+  closeDetailMore();
+  if (!task) return;
+  try {
+    const updated = await store.update(task, { itemKind: "NOTE" });
+    if (selectedTask.value?.publicId === task.publicId) selectedTask.value = updated;
+    message.success("已转换为笔记");
+  } catch (error) {
+    store.error = error?.response?.data?.detail || error?.message || "转换失败";
+  }
+}
+async function convertDetailNoteToTask() {
+  const task = selectedTask.value;
+  closeDetailMore();
+  if (!task) return;
+  try {
+    const updated = await store.update(task, { itemKind: "TASK" });
+    if (selectedTask.value?.publicId === task.publicId) selectedTask.value = updated;
+    message.success("已转换为任务");
+  } catch (error) {
+    store.error = error?.response?.data?.detail || error?.message || "转换失败";
   }
 }
 async function convertDetailTaskToNote(list) {

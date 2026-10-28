@@ -19,4 +19,10 @@ public class KvEntry {
 
     /** 值 */
     private String value;
+
+    // 显式访问器：部分构建环境未启用 Lombok 注解处理，手写 getter/setter 保证可编译
+    public String getKey() { return key; }
+    public void setKey(String key) { this.key = key; }
+    public String getValue() { return value; }
+    public void setValue(String value) { this.value = value; }
 }

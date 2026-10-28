@@ -41,7 +41,7 @@ class TaskSyncIntegrationTest extends MySqlIntegrationTestSupport {
         String listId = UUID.randomUUID().toString();
         SyncPayload payload = new SyncPayload(listId, null, null, null, null, null, null, null, null, null,
                 null, 0L, null, null, null, "稀疏清单", null, null, 3_000_000_000L, false,
-                null, null, Map.of());
+                null, null, Map.of(), null);
         SyncOperation operation = new SyncOperation("list-rank", "task-list", listId,
                 SyncAction.UPSERT, 0L, payload);
 
@@ -194,7 +194,7 @@ class TaskSyncIntegrationTest extends MySqlIntegrationTestSupport {
 
     private SyncOperation efficiencyOperation(String opId, String type, String id, long revision, Map<String, Object> extra) {
         SyncPayload payload = new SyncPayload(id, null, null, null, null, null, null, null, null, null, null,
-                revision, null, null, null, null, null, null, null, null, null, null, extra);
+                revision, null, null, null, null, null, null, null, null, null, null, extra, null);
         return new SyncOperation(opId, type, id, SyncAction.UPSERT, revision, payload);
     }
 

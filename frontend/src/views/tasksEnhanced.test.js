@@ -1247,3 +1247,29 @@ test('任务详情栏第二批：子任务交互、更多菜单细化、导出�
   assert.match(workspaceView, /function saveTaskTemplateFromDialog\(\)[\s\S]*localStorage\.setItem\(taskTemplateStorageKey\(\)/)
   assert.doesNotMatch(workspaceView, /window\.prompt\("模板名称"/)
 })
+
+test('笔记形态：无勾选/优先级/互转，菜单精简，转换为任务保留清单（P2-FE125）', async () => {
+  // 条目级类型优先，旧数据回退到清单类型
+  assert.match(workspaceView, /function isNoteTask\(task\) \{[\s\S]{0,220}if \(task\.itemKind === "NOTE"\) return true;\n  if \(task\.itemKind === "TASK"\) return false;[\s\S]{0,120}taskList\(task\)\?\.objectType === "NOTE"/)
+  assert.match(workspaceView, /const isNoteSelected = computed\(\(\) => Boolean\(selectedTask\.value && isNoteTask\(selectedTask\.value\)\)\)/)
+  // 笔记形态隐藏任务控件
+  assert.match(workspaceView, /v-if="!editorOpen && !isNoteSelected" type="button" class="clone-detail-status-tool"/)
+  assert.match(workspaceView, /<div v-if="!isNoteSelected" class="clone-detail-toolbar-actions">/)
+  assert.match(workspaceView, /v-if="!isNoteSelected" type="button" class="clone-detail-content-toggle"/)
+  assert.match(workspaceView, /v-if="!isNoteSelected" class="clone-checklist-read"/)
+  assert.match(workspaceView, /v-if="selectedTask && !isNoteSelected" class="clone-detail-subtasks"/)
+  assert.match(workspaceView, /isNoteSelected \? '设置提醒' : '设置日期'/)
+  // 菜单：笔记隐藏任务项，显示转换为任务；动态文案切换
+  for (const label of ['添加子任务', '关联主任务', '放弃', '开始专注', '保存为模板']) {
+    const pattern = new RegExp(`v-if="!isNoteSelected"[^>]*>[^<]*(?:<[^>]+>)*[^<]*${label}`)
+    assert.match(workspaceView, pattern)
+  }
+  assert.match(workspaceView, /v-if="!isNoteSelected" role="menuitem" type="button" @click="convertDetailTaskToNoteNow"><StickyNote :size="17" \/>转换为笔记/)
+  assert.match(workspaceView, /v-else role="menuitem" type="button" @click="convertDetailNoteToTask"><FileText :size="17" \/>转换为任务/)
+  assert.match(workspaceView, /isNoteSelected \? '笔记动态' : '任务动态'/)
+  // 转换只改条目类型，不改清单
+  assert.match(workspaceView, /async function convertDetailNoteToTask\(\)[\s\S]{0,320}store\.update\(task, \{ itemKind: "TASK" \}\)/)
+  assert.match(workspaceView, /async function convertDetailTaskToNoteNow\(\)[\s\S]{0,320}store\.update\(task, \{ itemKind: "NOTE" \}\)/)
+  // 新建时按清单类型推断条目类型
+  assert.match(tasksStore, /const itemKind = payload\.itemKind \|\| \(targetList\?\.objectType === 'NOTE' \? 'NOTE' : 'TASK'\)/)
+})

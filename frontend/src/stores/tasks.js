@@ -309,7 +309,11 @@ export const useTasksStore = defineStore('tasks', {
     async create(payload) {
       this.saving = true
       try {
-        return await this.saveLocal({ ...payload, publicId: createClientId(), listId: payload.listId || this.inbox?.publicId || '',
+        const targetListId = payload.listId || this.inbox?.publicId || ''
+        const targetList = this.lists.find(list => list.publicId === targetListId)
+        // 条目级类型：显式传入优先，否则按所在清单类型推断（笔记清单里新建即为笔记）
+        const itemKind = payload.itemKind || (targetList?.objectType === 'NOTE' ? 'NOTE' : 'TASK')
+        return await this.saveLocal({ ...payload, itemKind, publicId: createClientId(), listId: targetListId,
           sortOrder: payload.sortOrder ?? this.tasks.filter(item => item.listId === (payload.listId || this.inbox?.publicId || '') && item.status === 'OPEN' && !item.deleted).length,
           status: 'OPEN', source: 'WEB', revision: 0, completedAt: null, abandonedAt: null })
       } finally { this.saving = false }

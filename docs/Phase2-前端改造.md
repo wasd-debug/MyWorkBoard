@@ -1193,3 +1193,22 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 - 门禁 217/217（新增第二批 17 项断言，修正两处旧导出/模板断言）、typecheck、build、diff-check 通过。实测：子任务拖动/右键/点击进详情、中间栏加子任务后自动进详情、更多菜单 17 项（移动到与专注子菜单正常）、导出弹窗 Markdown↔纯文本切换、模板弹窗预填标题、动态常驻 5 条。截图 tmp/qa27-*.png。
 
 **未做（需确认/后端）**：开始正计时（后端需支持无上限专注）、笔记版更多菜单（插入摘要 / 笔记动态 / 转换为任务）、检查项级提醒（后端字段）、打开便签（用户已确认暂缓）。
+
+### P2-FE125 笔记形态与「转换为任务/笔记」（2026-10-28）
+
+用户要求：笔记版更多菜单去掉「插入摘要」（保留摘要页保存到笔记清单入口），笔记动态与任务动态一致；笔记右侧栏与任务不同形态（无打勾、无优先级、无检查事项/描述互转，更多菜单精简）；**转换后任务与笔记都能留在任意类型清单**。
+
+**后端（条目级类型 item_kind）**
+- `task` 表新增 `item_kind VARCHAR(10) NOT NULL DEFAULT 'TASK'`（迁移 `V49__task_item_kind.sql`，幂等写法 + 索引），`V49` 追加在 V48 之后。
+- `TaskModels.TaskItem/TaskCommand/SyncPayload` 增加 `itemKind`；`TaskService` 的 `TASK_COLUMNS`、行映射、INSERT、UPDATE、递归实例复制均带上该字段；`TaskSyncService` 从 `payload.extra.itemKind` 读取（前端同步载荷把附加字段放在 extra）。
+- 顺带修复：`KvEntry` 缺 getter 导致 app 模块无法编译（当前 Maven 环境 Lombok 注解处理未生效），改为显式 getter/setter；两个测试的构造参数同步更新。
+
+**前端**
+- `isNoteTask` 优先读 `task.itemKind`（NOTE/TASK），无该字段的旧数据回退到「所在清单 objectType」，兼容历史数据。
+- 新增 `isNoteSelected`；笔记形态隐藏：完成勾选框、优先级按钮、描述↔检查项互转按钮、检查项区、子任务区；日期按钮文案改为「设置提醒」。
+- 笔记更多菜单：隐藏 添加子任务 / 关联主任务 / 放弃 / 开始专注 / 保存为模板；「任务动态」文案随形态显示为「笔记动态」；显示「转换为任务」。
+- `转换为笔记 / 转换为任务` 只切换 `itemKind`，**不改所在清单**（满足「转换后仍可留在任意类型清单」）；新建条目按所在清单类型推断 `itemKind`（笔记清单里新建即为笔记）。
+
+**部署**：后端重新打包并重建镜像（`deploy-backend:itemkind` → tag 为 `deploy-backend`，旧镜像保留为 `deploy-backend:previous`），compose 重建 `salary-backend` 容器，启动 4.5s，日志无 SQL 异常。
+
+**验证**：笔记本条形态（无勾选/优先级/互转/检查项/子任务、设置提醒、笔记动态、菜单 12 项）；笔记 → 任务（留在「QA笔记形态」清单，UI 立即变任务形态）；收集箱任务 → 笔记 → 再转回任务（清单始终为收集箱）。门禁 218/218、typecheck、build 通过。截图 tmp/qa28-*.png。
