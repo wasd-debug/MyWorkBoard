@@ -82,12 +82,22 @@ function formatMoney(value) {
   return String(Math.round(Number(value) * 100) / 100)
 }
 
+/** 全天区固定层级：跨日任务 → 全天任务 → 习惯 → 已完成任务 → 已完成习惯。
+ *  倒数日插在「未完成习惯」与「已完成任务」之间；节日/流水属于日期标记，压到最后，
+ *  避免把当天真正要做的条目挤下去。 */
+export function allDayRank(item) {
+  if (!item) return 99
+  if (item.startKey && item.endKey && item.startKey !== item.endKey) return -10
+  if (item.kind === EVENT_KINDS.TASK) return item.done ? 30 : 10
+  if (item.kind === EVENT_KINDS.HABIT) return item.done ? 40 : 20
+  if (item.kind === EVENT_KINDS.COUNTDOWN) return 25
+  return 50
+}
+
 function sortAllDay(items) {
-  const kindOrder = { holiday: 0, task: 1, ledger: 2, habit: 3, countdown: 4 }
   return items.sort((left, right) => {
-    const byKind = (kindOrder[left.kind] ?? 9) - (kindOrder[right.kind] ?? 9)
-    if (byKind) return byKind
-    if (Number(left.done) !== Number(right.done)) return Number(left.done) - Number(right.done)
+    const byRank = allDayRank(left) - allDayRank(right)
+    if (byRank) return byRank
     const priority = (PRIORITY_ORDER[left.priority] ?? 3) - (PRIORITY_ORDER[right.priority] ?? 3)
     if (priority) return priority
     return String(left.title).localeCompare(String(right.title), 'zh-Hans-CN')

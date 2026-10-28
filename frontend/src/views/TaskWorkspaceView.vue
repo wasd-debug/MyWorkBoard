@@ -866,49 +866,90 @@
           <span v-if="editorOpen ? (draft.rrule === 'CUSTOM' ? draft.customRrule : draft.rrule) : selectedTask?.rrule" class="clone-detail-repeat-indicator" role="img" aria-label="重复任务" title="重复任务">
             <Repeat2 :size="15" />
           </span>
-          <Teleport to="body"><div v-if="datePopoverOpen" class="clone-toolbar-popover clone-date-toolbar-popover" :style="attributePopoverStyle('date')" @click.stop>
-            <div class="clone-date-popover-tabs"><button type="button" :class="{ active: datePickerMode === 'DATE' }" @click="datePickerMode = 'DATE'">日期</button><button type="button" :class="{ active: datePickerMode === 'RANGE' }" @click="datePickerMode = 'RANGE'">时间段</button></div>
-            <div class="clone-date-quick-actions"><button type="button" @click="setDatePopoverOffset(0)">今天</button><button type="button" @click="setDatePopoverOffset(1)">明天</button><button type="button" @click="setDatePopoverOffset(7)">下周</button><button type="button" @click="setDatePopoverOffset(null)">清除</button></div>
-            <div class="clone-date-calendar-head"><button type="button" aria-label="上个月" @click="datePickerMonth = new Date(datePickerMonth.getFullYear(), datePickerMonth.getMonth() - 1, 1)">‹</button><strong>{{ datePickerMonthLabel }}</strong><button type="button" aria-label="下个月" @click="datePickerMonth = new Date(datePickerMonth.getFullYear(), datePickerMonth.getMonth() + 1, 1)">›</button></div>
-            <div class="clone-date-calendar-grid" role="grid" aria-label="选择日期"><span v-for="day in datePickerWeekdays" :key="day">{{ day }}</span><button v-for="cell in datePickerDays" :key="cell.key" type="button" :class="{ 'other-month': cell.otherMonth, selected: cell.selected, today: cell.today }" @click="selectDatePickerDay(cell.date)">{{ cell.date.getDate() }}</button></div>
-            <template v-if="datePickerMode === 'RANGE'"><label class="clone-date-time-field">开始<input v-if="editorOpen" v-model="draft.startAt" type="datetime-local" aria-label="开始时间" /><input v-else v-model="datePopoverStart" type="datetime-local" aria-label="开始时间" /></label><label class="clone-date-time-field">结束<input v-if="editorOpen" v-model="draft.dueAt" type="datetime-local" aria-label="结束时间" /><input v-else v-model="datePopoverDue" type="datetime-local" aria-label="结束时间" /></label></template>
-            <label v-else class="clone-date-time-field">时间<input v-if="editorOpen" v-model="draft.dueAt" type="datetime-local" aria-label="截止日期时间" /><input v-else v-model="datePopoverDue" type="datetime-local" aria-label="截止日期时间" /></label>
-            <button type="button" class="clone-popover-save" :disabled="dateSaving" @click="confirmTaskDueDate">{{ dateSaving ? '保存中…' : '确定' }}</button>
-            <div class="clone-detail-date-reminder">
-              <button type="button" class="clone-detail-date-reminder-trigger" :class="{ active: editorOpen ? draft.reminderEnabled : quickReminder.reminder }" aria-label="设置提醒" :aria-expanded="reminderPopoverOpen" @click.stop="toggleReminderPopover"><Bell :size="14" /><span>{{ editorOpen ? (draft.reminderEnabled ? '提醒已开启' : '添加提醒') : (quickReminder.reminder ? '提醒已开启' : '添加提醒') }}</span><ChevronRight :size="13" /></button>
-              <div v-if="reminderPopoverOpen" class="clone-detail-date-reminder-popover" @click.stop>
-                <strong>提醒</strong>
-                <p v-if="reminderLoading" class="clone-muted">正在读取提醒…</p>
-                <template v-else>
-                  <label class="clone-inline-check"><input v-model="reminderEnabledModel" type="checkbox" />启用站内提醒</label>
-                  <template v-if="reminderEnabledModel">
-                    <label class="clone-reminder-popover-field">方式<select v-model="reminderKindModel"><option value="RELATIVE">相对截止时间</option><option value="ABSOLUTE">指定时间</option></select></label>
-                    <label v-if="reminderKindModel === 'RELATIVE'" class="clone-reminder-popover-field">提前<select v-model.number="reminderOffsetModel"><option :value="0">准时</option><option :value="5">5 分钟</option><option :value="15">15 分钟</option><option :value="30">30 分钟</option><option :value="60">1 小时</option><option :value="1440">1 天</option></select></label>
-                    <label v-else class="clone-reminder-popover-field">提醒时间<input v-model="remindLocalModel" type="datetime-local" /></label>
-                    <label class="clone-inline-check"><input v-model="dailyUntilDoneModel" type="checkbox" />未完成时每日提醒</label>
-                  </template>
-                  <div class="clone-popover-actions"><button v-if="!editorOpen && quickReminder.reminder" type="button" @click="disableTaskReminder">关闭提醒</button><button v-if="editorOpen" type="button" @click="reminderPopoverOpen = false">完成后保存</button><button v-else type="button" class="clone-popover-save" :disabled="reminderSaving" @click="saveTaskReminder">{{ reminderSaving ? '保存中…' : '保存提醒' }}</button></div>
-                </template>
-              </div>
-            </div>
-            <div class="clone-date-repeat-section">
-              <button type="button" class="clone-date-repeat-trigger" :aria-expanded="repeatPopoverOpen" @click.stop="toggleRepeatPopover"><Repeat2 :size="14" /><span>{{ recurrenceLabel(editorOpen ? (draft.rrule === 'CUSTOM' ? draft.customRrule : draft.rrule) : selectedTask?.rrule) || '重复' }}</span><ChevronRight :size="13" /></button>
-          <div v-if="repeatPopoverOpen" class="clone-detail-repeat-inline" @click.stop>
-            <div class="clone-repeat-popover-header"><strong>重复</strong><button type="button" class="clone-popover-close" aria-label="关闭重复设置" @click="repeatPopoverOpen = false"><X :size="15" /></button></div>
-            <div class="clone-quick-repeat-presets clone-detail-repeat-presets"><button v-for="option in quickRepeatPresets" :key="option.value" type="button" :class="{ active: detailRepeat.preset === option.value }" @click="selectDetailRepeatPreset(option.value)">{{ option.label }}</button></div>
-            <template v-if="detailRepeat.preset === 'CUSTOM'">
-              <div class="clone-quick-repeat-grid"><label>重复方式<select v-model="detailRepeat.mode"><option value="DUE_DATE">到期重复</option><option value="COMPLETION_DATE">完成重复</option></select></label><label>频率<select v-model="detailRepeat.frequency" @change="setDetailRepeatFrequency"><option value="DAILY">每天</option><option value="WEEKLY">每周</option><option value="MONTHLY">每月</option><option value="YEARLY">每年</option></select></label><label>间隔<input v-model.number="detailRepeat.interval" type="number" min="1" max="365" /></label></div>
-              <div v-if="detailRepeat.frequency === 'WEEKLY'" class="clone-quick-repeat-days"><span>每周</span><label v-for="day in DAY_CODES" :key="`detail-repeat-${day}`"><input v-model="detailRepeat.weekdays" type="checkbox" :value="day" />{{ { MO: '一', TU: '二', WE: '三', TH: '四', FR: '五', SA: '六', SU: '日' }[day] }}</label></div>
-              <div v-if="['MONTHLY', 'YEARLY'].includes(detailRepeat.frequency)" class="clone-quick-repeat-grid"><label>重复日期<select v-model="detailRepeat.monthMode"><option value="DATE">按日期</option><option value="WEEKDAY">按星期</option><option v-if="detailRepeat.frequency === 'MONTHLY'" value="WORKDAY">按工作日</option></select></label><label v-if="detailRepeat.frequency === 'YEARLY'">月份<select v-model.number="detailRepeat.month"><option v-for="month in 12" :key="month" :value="month">{{ month }} 月</option></select></label><template v-if="detailRepeat.monthMode === 'WEEKDAY'"><label>第几周<select v-model.number="detailRepeat.ordinal"><option v-for="ordinal in 5" :key="ordinal" :value="ordinal">第 {{ ordinal }} 个</option><option :value="-1">最后一个</option></select></label><label>星期<select v-model="detailRepeat.weekday"><option v-for="day in DAY_CODES" :key="day" :value="day">{{ { MO: '周一', TU: '周二', WE: '周三', TH: '周四', FR: '周五', SA: '周六', SU: '周日' }[day] }}</option></select></label></template><label v-if="detailRepeat.monthMode === 'WORKDAY'">工作日<select v-model.number="detailRepeat.workdayPosition"><option :value="1">第一个工作日</option><option :value="-1">最后一个工作日</option></select></label></div>
-              <div v-if="['MONTHLY', 'YEARLY'].includes(detailRepeat.frequency) && detailRepeat.monthMode === 'DATE'" class="clone-quick-repeat-date-calendar" aria-label="选择重复日期"><span v-for="weekday in quickWeekdays" :key="`detail-repeat-weekday-${weekday}`">{{ weekday }}</span><span v-for="(day, index) in detailRepeatCalendarDays.filter(value => !value)" :key="`detail-repeat-empty-${index}`" class="clone-quick-repeat-date-spacer"></span><button v-for="day in detailRepeatCalendarDays.filter(Boolean)" :key="`detail-repeat-day-${day}`" type="button" :aria-pressed="!detailRepeat.lastDay && detailRepeat.monthDays.includes(day)" :class="{ active: !detailRepeat.lastDay && detailRepeat.monthDays.includes(day) }" @click="toggleDetailRepeatMonthDay(day)">{{ day }}</button><button type="button" class="clone-quick-repeat-last-day" :aria-pressed="detailRepeat.lastDay" :class="{ active: detailRepeat.lastDay }" @click="detailRepeat.lastDay = true">最后一天</button></div>
-              <div v-if="detailRepeat.frequency === 'DAILY'" class="clone-repeat-special-grid"><label><input v-model="detailRepeat.skipWeekends" type="checkbox" />跳过双休日</label><label><input v-model="detailRepeat.skipLegalHolidays" type="checkbox" />跳过法定节假日</label></div>
-              <div v-else-if="detailRepeat.frequency === 'WEEKLY' || (['MONTHLY', 'YEARLY'].includes(detailRepeat.frequency) && detailRepeat.monthMode === 'WEEKDAY')" class="clone-repeat-special-grid"><label><input v-model="detailRepeat.skipLegalHolidays" type="checkbox" />跳过法定节假日</label></div>
-            </template>
-            <div v-if="['LUNAR_MONTHLY', 'LUNAR_YEARLY'].includes(detailRepeat.preset)" class="clone-quick-repeat-grid"><label v-if="detailRepeat.preset === 'LUNAR_YEARLY'">农历月份<select v-model.number="detailRepeat.lunarMonth"><option v-for="month in 12" :key="month" :value="month">{{ month }} 月</option></select></label><label>农历日期<select v-model.number="detailRepeat.lunarDay"><option v-for="day in 30" :key="day" :value="day">{{ day }} 日</option></select></label></div>
-            <div v-if="detailRepeat.preset" class="clone-quick-repeat-end"><span>结束条件</span><label><input v-model="detailRepeat.endMode" type="radio" value="NEVER" />永不结束</label><label><input v-model="detailRepeat.endMode" type="radio" value="UNTIL" />按日期结束<input v-if="detailRepeat.endMode === 'UNTIL'" v-model="detailRepeat.until" type="date" /></label><label><input v-model="detailRepeat.endMode" type="radio" value="COUNT" />按次数结束<input v-if="detailRepeat.endMode === 'COUNT'" v-model.number="detailRepeat.count" type="number" min="1" /></label></div>
-            <p v-if="detailRepeatError" class="clone-error" role="alert">{{ detailRepeatError }}</p>
-            <div class="clone-popover-actions"><button type="button" @click="resetDetailRepeat">清除</button><button type="button" class="clone-popover-save" @click="saveDetailRepeat">完成</button></div>
-          </div></div></div></Teleport>
+          <Teleport to="body"><div v-if="datePopoverOpen" class="clone-date-popover-shell" :style="detailDatePopoverStyle" @click.stop>
+            <TaskDateTimePopover
+              :mode="datePickerMode"
+              :month="datePickerMonth"
+              :calendar-days="datePickerDays"
+              :month-label="datePickerMonthLabel"
+              :selected-key="detailDateSelectedKey"
+              :time="detailDateTimeValue"
+              :all-day="detailDateAllDay"
+              apply-label="确定"
+              @update:mode="datePickerMode = $event"
+              @quick-date="applyDetailQuickDate"
+              @move-month="datePickerMonth = new Date(datePickerMonth.getFullYear(), datePickerMonth.getMonth() + $event, 1)"
+              @select-date="selectDateKey($event)"
+              @clear-date="applyDetailClearDate"
+              @toggle-all-day="setDetailAllDay"
+              @apply="confirmTaskDueDate"
+            >
+              <template #rows="{ mode: rowMode }">
+                <div class="clone-date-rows">
+                  <div class="clone-date-rowline">
+                    <Clock3 :size="14" />
+                    <span class="clone-date-rowlabel">时间</span>
+                    <button type="button" class="clone-date-rowvalue" :aria-expanded="detailTimeRowOpen" @click.stop="detailTimeRowOpen = !detailTimeRowOpen">
+                      {{ detailDateAllDay ? '全天' : (rowMode === 'RANGE' ? '时间段' : (detailDateTimeValue || '设置时间')) }}
+                      <ChevronDown :size="13" :class="{ rotated: detailTimeRowOpen }" />
+                    </button>
+                  </div>
+                  <div v-if="detailTimeRowOpen" class="clone-date-rowinputs">
+                    <label v-if="rowMode === 'RANGE'">开始<input v-model="detailStartModel" type="datetime-local" aria-label="开始时间" /></label>
+                    <label>{{ rowMode === 'RANGE' ? '结束' : '时间' }}<input v-model="detailDueModel" type="datetime-local" aria-label="日期时间" /></label>
+                    <label class="clone-inline-check"><input type="checkbox" :checked="detailDateAllDay" @change="setDetailAllDay($event.target.checked)" />全天</label>
+                  </div>
+
+                  <div class="clone-date-rowline">
+                    <Bell :size="14" />
+                    <span class="clone-date-rowlabel">提醒</span>
+                    <button type="button" class="clone-date-rowvalue" :class="{ active: editorOpen ? draft.reminderEnabled : quickReminder.reminder }" aria-label="设置提醒" :aria-expanded="reminderPopoverOpen" @click.stop="toggleReminderPopover">
+                      {{ editorOpen ? (draft.reminderEnabled ? '已开启' : '未设置') : (quickReminder.reminder ? '已开启' : '未设置') }}
+                      <ChevronDown :size="13" :class="{ rotated: reminderPopoverOpen }" />
+                    </button>
+                  </div>
+                  <div v-if="reminderPopoverOpen" class="clone-detail-date-reminder-popover is-inline" @click.stop>
+                    <p v-if="reminderLoading" class="clone-muted">正在读取提醒…</p>
+                    <template v-else>
+                      <label class="clone-inline-check"><input v-model="reminderEnabledModel" type="checkbox" />启用站内提醒</label>
+                      <template v-if="reminderEnabledModel">
+                        <label class="clone-reminder-popover-field">方式<select v-model="reminderKindModel"><option value="RELATIVE">相对截止时间</option><option value="ABSOLUTE">指定时间</option></select></label>
+                        <label v-if="reminderKindModel === 'RELATIVE'" class="clone-reminder-popover-field">提前<select v-model.number="reminderOffsetModel"><option :value="0">准时</option><option :value="5">5 分钟</option><option :value="15">15 分钟</option><option :value="30">30 分钟</option><option :value="60">1 小时</option><option :value="1440">1 天</option></select></label>
+                        <label v-else class="clone-reminder-popover-field">提醒时间<input v-model="remindLocalModel" type="datetime-local" /></label>
+                        <label class="clone-inline-check"><input v-model="dailyUntilDoneModel" type="checkbox" />未完成时每日提醒</label>
+                      </template>
+                      <div class="clone-popover-actions"><button v-if="!editorOpen && quickReminder.reminder" type="button" @click="disableTaskReminder">关闭提醒</button><button v-if="editorOpen" type="button" @click="reminderPopoverOpen = false">完成后保存</button><button v-else type="button" class="clone-popover-save" :disabled="reminderSaving" @click="saveTaskReminder">{{ reminderSaving ? '保存中…' : '保存提醒' }}</button></div>
+                    </template>
+                  </div>
+
+                  <div class="clone-date-rowline">
+                    <Repeat2 :size="14" />
+                    <span class="clone-date-rowlabel">重复</span>
+                    <button type="button" class="clone-date-rowvalue" :aria-expanded="repeatPopoverOpen" @click.stop="toggleRepeatPopover">
+                      {{ recurrenceLabel(editorOpen ? (draft.rrule === 'CUSTOM' ? draft.customRrule : draft.rrule) : selectedTask?.rrule) || '不重复' }}
+                      <ChevronDown :size="13" :class="{ rotated: repeatPopoverOpen }" />
+                    </button>
+                  </div>
+                  <div v-if="repeatPopoverOpen" class="clone-detail-repeat-inline is-inline" @click.stop>
+                    <div class="clone-repeat-popover-header"><strong>重复</strong><button type="button" class="clone-popover-close" aria-label="关闭重复设置" @click="repeatPopoverOpen = false"><X :size="15" /></button></div>
+                    <div class="clone-quick-repeat-presets clone-detail-repeat-presets"><button v-for="option in quickRepeatPresets" :key="option.value" type="button" :class="{ active: detailRepeat.preset === option.value }" @click="selectDetailRepeatPreset(option.value)">{{ option.label }}</button></div>
+                    <template v-if="detailRepeat.preset === 'CUSTOM'">
+                      <div class="clone-quick-repeat-grid"><label>重复方式<select v-model="detailRepeat.mode"><option value="DUE_DATE">到期重复</option><option value="COMPLETION_DATE">完成重复</option></select></label><label>频率<select v-model="detailRepeat.frequency" @change="setDetailRepeatFrequency"><option value="DAILY">每天</option><option value="WEEKLY">每周</option><option value="MONTHLY">每月</option><option value="YEARLY">每年</option></select></label><label>间隔<input v-model.number="detailRepeat.interval" type="number" min="1" max="365" /></label></div>
+                      <div v-if="detailRepeat.frequency === 'WEEKLY'" class="clone-quick-repeat-days"><span>每周</span><label v-for="day in DAY_CODES" :key="`detail-repeat-${day}`"><input v-model="detailRepeat.weekdays" type="checkbox" :value="day" />{{ { MO: '一', TU: '二', WE: '三', TH: '四', FR: '五', SA: '六', SU: '日' }[day] }}</label></div>
+                      <div v-if="['MONTHLY', 'YEARLY'].includes(detailRepeat.frequency)" class="clone-quick-repeat-grid"><label>重复日期<select v-model="detailRepeat.monthMode"><option value="DATE">按日期</option><option value="WEEKDAY">按星期</option><option v-if="detailRepeat.frequency === 'MONTHLY'" value="WORKDAY">按工作日</option></select></label><label v-if="detailRepeat.frequency === 'YEARLY'">月份<select v-model.number="detailRepeat.month"><option v-for="month in 12" :key="month" :value="month">{{ month }} 月</option></select></label><template v-if="detailRepeat.monthMode === 'WEEKDAY'"><label>第几周<select v-model.number="detailRepeat.ordinal"><option v-for="ordinal in 5" :key="ordinal" :value="ordinal">第 {{ ordinal }} 个</option><option :value="-1">最后一个</option></select></label><label>星期<select v-model="detailRepeat.weekday"><option v-for="day in DAY_CODES" :key="day" :value="day">{{ { MO: '周一', TU: '周二', WE: '周三', TH: '周四', FR: '周五', SA: '周六', SU: '周日' }[day] }}</option></select></label></template><label v-if="detailRepeat.monthMode === 'WORKDAY'">工作日<select v-model.number="detailRepeat.workdayPosition"><option :value="1">第一个工作日</option><option :value="-1">最后一个工作日</option></select></label></div>
+                      <div v-if="['MONTHLY', 'YEARLY'].includes(detailRepeat.frequency) && detailRepeat.monthMode === 'DATE'" class="clone-quick-repeat-date-calendar" aria-label="选择重复日期"><span v-for="weekday in quickWeekdays" :key="`detail-repeat-weekday-${weekday}`">{{ weekday }}</span><span v-for="(day, index) in detailRepeatCalendarDays.filter(value => !value)" :key="`detail-repeat-empty-${index}`" class="clone-quick-repeat-date-spacer"></span><button v-for="day in detailRepeatCalendarDays.filter(Boolean)" :key="`detail-repeat-day-${day}`" type="button" :aria-pressed="!detailRepeat.lastDay && detailRepeat.monthDays.includes(day)" :class="{ active: !detailRepeat.lastDay && detailRepeat.monthDays.includes(day) }" @click="toggleDetailRepeatMonthDay(day)">{{ day }}</button><button type="button" class="clone-quick-repeat-last-day" :aria-pressed="detailRepeat.lastDay" :class="{ active: detailRepeat.lastDay }" @click="detailRepeat.lastDay = true">最后一天</button></div>
+                      <div v-if="detailRepeat.frequency === 'DAILY'" class="clone-repeat-special-grid"><label><input v-model="detailRepeat.skipWeekends" type="checkbox" />跳过双休日</label><label><input v-model="detailRepeat.skipLegalHolidays" type="checkbox" />跳过法定节假日</label></div>
+                      <div v-else-if="detailRepeat.frequency === 'WEEKLY' || (['MONTHLY', 'YEARLY'].includes(detailRepeat.frequency) && detailRepeat.monthMode === 'WEEKDAY')" class="clone-repeat-special-grid"><label><input v-model="detailRepeat.skipLegalHolidays" type="checkbox" />跳过法定节假日</label></div>
+                    </template>
+                    <div v-if="['LUNAR_MONTHLY', 'LUNAR_YEARLY'].includes(detailRepeat.preset)" class="clone-quick-repeat-grid"><label v-if="detailRepeat.preset === 'LUNAR_YEARLY'">农历月份<select v-model.number="detailRepeat.lunarMonth"><option v-for="month in 12" :key="month" :value="month">{{ month }} 月</option></select></label><label>农历日期<select v-model.number="detailRepeat.lunarDay"><option v-for="day in 30" :key="day" :value="day">{{ day }} 日</option></select></label></div>
+                    <div v-if="detailRepeat.preset" class="clone-quick-repeat-end"><span>结束条件</span><label><input v-model="detailRepeat.endMode" type="radio" value="NEVER" />永不结束</label><label><input v-model="detailRepeat.endMode" type="radio" value="UNTIL" />按日期结束<input v-if="detailRepeat.endMode === 'UNTIL'" v-model="detailRepeat.until" type="date" /></label><label><input v-model="detailRepeat.endMode" type="radio" value="COUNT" />按次数结束<input v-if="detailRepeat.endMode === 'COUNT'" v-model.number="detailRepeat.count" type="number" min="1" /></label></div>
+                    <p v-if="detailRepeatError" class="clone-error" role="alert">{{ detailRepeatError }}</p>
+                    <div class="clone-popover-actions"><button type="button" @click="resetDetailRepeat">清除</button><button type="button" class="clone-popover-save" @click="saveDetailRepeat">完成</button></div>
+                  </div>
+                </div>
+              </template>
+            </TaskDateTimePopover>
+          </div></Teleport>
         </div>
         <div v-if="!isNoteSelected" class="clone-detail-toolbar-actions">
           <button ref="priorityPopoverAnchor" type="button" class="clone-detail-priority-tool" :data-priority="editorOpen ? draft.priority : selectedTask?.priority" aria-label="设置优先级" :aria-expanded="priorityPopoverOpen" @click.stop="togglePriorityPopover"><Flag :size="17" /></button>
@@ -3093,11 +3134,54 @@ function toggleDatePopover() {
   if (datePopoverOpen.value) {
     datePopoverDue.value = toLocal(editorOpen.value ? draft.dueAt : selectedTask.value?.dueAt);
     datePopoverStart.value = toLocal(editorOpen.value ? draft.startAt : selectedTask.value?.startAt);
+    datePopoverAllDay.value = Boolean(editorOpen.value ? draft.allDay : selectedTask.value?.allDay);
+    detailTimeRowOpen.value = false;
     datePickerMode.value = "DATE";
     const currentValue = editorOpen.value ? draft.dueAt : selectedTask.value?.dueAt;
     const currentDate = currentValue ? new Date(currentValue) : new Date();
     datePickerMonth.value = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
   }
+}
+const detailTimeRowOpen = ref(false);
+/** 浮层的日期输入在编辑态写回草稿，浏览态写回临时值，两边共用同一套控件 */
+const detailStartModel = computed({
+  get: () => (editorOpen.value ? draft.startAt : datePopoverStart.value),
+  set: value => { if (editorOpen.value) draft.startAt = value; else datePopoverStart.value = value; }
+});
+const detailDueModel = computed({
+  get: () => (editorOpen.value ? draft.dueAt : datePopoverDue.value),
+  set: value => { if (editorOpen.value) draft.dueAt = value; else datePopoverDue.value = value; }
+});
+const detailDateSelectedKey = computed(() => {
+  const value = detailDueModel.value;
+  return value ? dateKey(new Date(value)) : "";
+});
+/** 复用 TaskDateTimePopover 时按 378px 宽度自行定位，不再套用旧的 560px 固定浮层 */
+const detailDatePopoverStyle = computed(() => {
+  void popoverViewportRevision.value;
+  const anchor = datePopoverAnchor.value;
+  if (!anchor || typeof window === "undefined") return { position: "fixed", zIndex: 1000, top: "80px", left: "24px" };
+  const rect = anchor.getBoundingClientRect();
+  const width = Math.min(378, window.innerWidth - 24);
+  const height = Math.min(660, window.innerHeight - 24);
+  const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
+  let top = rect.bottom + 8;
+  if (top + height > window.innerHeight - 12) top = Math.max(12, rect.top - height - 8);
+  if (top + height > window.innerHeight - 12) top = Math.max(12, window.innerHeight - height - 12);
+  return { position: "fixed", zIndex: 1000, top: `${top}px`, left: `${left}px`, width: `${width}px` };
+});
+function selectDateKey(key) {
+  const [year, month, day] = String(key || "").split("-").map(Number);
+  if (!year) return;
+  selectDatePickerDay(new Date(year, month - 1, day));
+}
+function applyDetailQuickDate(kind) {
+  if (kind === "NEXT_MONTH") { chooseDetailDatePreset("NEXT_MONTH"); return; }
+  setDatePopoverOffset(kind === "TOMORROW" ? 1 : kind === "NEXT_WEEK" ? 7 : 0);
+}
+function applyDetailClearDate() {
+  setDatePopoverOffset(null);
+  setDetailAllDay(false);
 }
 function refreshAttributePopoverLayout() {
   popoverViewportRevision.value += 1;
@@ -9004,6 +9088,20 @@ const SidebarSection = {
 }
 .clone-date-toolbar-popover,
 .clone-priority-toolbar-popover { position: fixed; inset: auto; box-sizing: border-box; min-width: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+.clone-date-popover-shell { position: fixed; z-index: 1000; box-sizing: border-box; }
+.clone-date-popover-shell .task-date-time-popover { width: 100%; max-width: none; box-shadow: 0 18px 40px rgb(15 23 42 / 22%); }
+.clone-date-rows { display: grid; gap: 2px; margin-top: 2px; }
+.clone-date-rowline { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 2px; border-top: 1px solid var(--line); color: var(--ink2); font-size: 12.5px; }
+.clone-date-rowlabel { flex: 0 0 auto; }
+.clone-date-rowvalue { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; padding: 0 4px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
+.clone-date-rowvalue:hover { background: var(--accent-soft); color: var(--accent); }
+.clone-date-rowvalue.active { color: var(--accent); }
+.clone-date-rowvalue svg.rotated { transform: rotate(180deg); }
+.clone-date-rowinputs { display: grid; gap: 6px; padding: 6px 2px 8px 22px; }
+.clone-date-rowinputs label { display: flex; align-items: center; gap: 8px; color: var(--ink2); font-size: 12px; }
+.clone-date-rowinputs input[type="datetime-local"] { min-width: 0; flex: 1; min-height: 30px; padding: 0 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; }
+.clone-detail-date-reminder-popover.is-inline { position: static; width: auto; margin: 2px 0 8px 22px; box-shadow: none; }
+.clone-detail-repeat-inline.is-inline { margin: 2px 0 8px 22px; padding-top: 8px; }
 .clone-date-toolbar-popover { width: min(560px, calc(100vw - 24px)); }
 .clone-toolbar-popover strong { color: var(--ink2); font-size: 12px; }
 .clone-toolbar-popover button { min-height: 29px; padding: 5px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ink2); text-align: left; cursor: pointer; }

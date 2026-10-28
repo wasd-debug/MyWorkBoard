@@ -1370,3 +1370,26 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 - 排期：任务行 `draggable`，月格与时间轴列都接受 drop —— 落到月格排成当天全天任务，落到时间轴按落点换算 15 分钟并生成 30 分钟有刻任务；也支持点行直接排到当前选中日期。成功后 toast 提示并刷新日历。
 - 过期口径：全天任务（或零点对齐）按日期比较，今天到期不算过期——否则排到今天的任务会一直留在「已过期」筛选里（这是本轮实测发现的坑）。
 - 门禁：316/316 Node 测试、typecheck、build 通过；浏览器实测面板分组（工作/生活/学习）、已过期筛选 6 条、拖拽「写周报」到 10/7 提示「已安排到 10月7日」、点击排期到选中日期同样生效，控制台无错误。证据 `calendar-plan-panel-desktop-20261028.png`、`calendar-plan-priority-20261028.png`。
+
+### P2-CAL10 任务浮层改为任务右栏浮层版（2026-10-28）
+
+- 新增 `frontend/src/views/calendar/CalendarTaskCard.vue`（340px）替换原来的只读摘要卡：顶部是状态勾选 / 日期 / 重复标记 / 优先级旗 / 关闭，中间是「已专注 10h」、标题、描述、检查项、标签，底部是清单切换与专注/详情/删除。
+- 全部字段就地编辑：标题、描述失焦即 `tasksStore.update`；检查项点勾切换；标签可加可删（`+` 弹出未选标签）；清单与优先级各有一个行内菜单/循环按钮。编辑后事件条与月视图标题同步刷新（数据来自 store 派生）。
+- 日期按钮点开复用 `TaskDateTimePopover`（`:calendar-days` 带农历副标），确定后写 `startAt/dueAt/allDay`，全天任务按本地零点对齐。
+- 卡片内点空白会收起行内菜单；`Escape` 与点击日历空白仍由外层关闭。
+- 门禁：浏览器实测改标题、描述、优先级循环、加标签、切清单、日期快捷「明天」+ 确定后按钮变「10月29日」，控制台 0 报错。证据 `calendar-task-card-20261028.png`、`calendar-task-card-date-20261028.png`。
+
+### P2-CAL11 习惯/专注浮层与全天区层级（2026-10-28）
+
+- 习惯浮层只保留 图标 + 名字 + 一个按钮：未完成是实心「我做到了」，已完成是描边「重置」；图标走 `TaskOrganizationIcon` 解析（数据库里存的是 `shield` 这类图标名，`resolveOrganizationIcon` 已改为大小写不敏感并补了 `Shield`）。
+- 专注浮层：状态徽标 + 关联任务名 + 改关联按钮（可搜索、可解除）+ 时间跨度 + 时长 + 想法 textarea + 删除。
+- 全天区排序改为固定层级，见 `calendarEvents.js` 的 `allDayRank()`：跨日(-10) → 全天任务(10) → 习惯(20) → 倒数日(25) → 已完成任务(30) → 已完成习惯(40) → 节日/流水(50)。习惯在全天区、泳道、日程行都用自身图标（圆形色底）而不是圆点。
+- 后端：新增 `V51__focus_session_note.sql`（`focus_session.note`）、`FocusSessionUpdateCommand`、`PUT /api/v1/tasks/focus/sessions/{publicId}`（`If-Match` 版本校验，`taskId` 传空串表示解除关联），`FocusSession` 增加 `note` 字段；前端 `apiUpdateFocusSession`。
+- 门禁：浏览器实测 10/28 全天区顺序为「工作(已改名) → 排序-跨日B → 戒（图标）→ 排序-全天A（已完成）」；专注浮层写想法提示「已保存」、重开仍在、改关联任务后标题变「单词」；习惯浮层图标渲染为 SVG。证据 `calendar-allday-order-20261028.png`、`calendar-focus-card-20261028.png`、`calendar-habit-card-20261028.png`。
+
+### P2-CAL12 日程视图增量加载重写与右栏日期浮层复用（2026-10-28）
+
+- 旧的「滚动阈值 + scrollHeight 补偿」在两端都不好用：顶部已经 `scrollTop=0` 时不再产生 scroll 事件，用户继续上滚没有任何反应；补 scrollTop 的时机又常与数据渲染错开，画面会跳。
+- 新实现：首屏先定位到今天（今天没有条目则落到之后最近的一天）→ `IntersectionObserver` 观察上下哨兵 → 顶部滚不动时用 `wheel` / `touchmove` 兜底触发 → 插入更早内容后按「首个可见日期 + 相对偏移」把画面钉住（`captureAnchor` / `restoreAnchor`）。内容撑不满视口时最多连补 2 批，`moreBefore/moreAfter` 由父层按 180 天上限下发，避免拉穿。
+- 任务页右栏的「时间」直接复用 `TaskDateTimePopover`：`clone-date-popover-shell` 里放组件本体，`#rows` 插槽放「时间 / 提醒 / 重复」三行，行内展开输入与提醒/重复的原有弹层；旧的 560px 内联浮层（tabs + 文本快捷按钮 + 自绘日历）整套删除。
+- 门禁：318/318 Node 测试（新增 2 条全天区排序用例，另修正 3 处断言到新结构）、typecheck、build 通过；浏览器实测日程首屏首段为 2026-10-28、上滚 6 次后 30→60 段且 scrollTop 由 34 变 1978（内容前置但画面未跳）、右栏日期浮层出现 3 行且 `task-date-time-popover` 为 1。证据 `calendar-agenda-scroll-20261028.png`、`task-detail-date-popover-20261028.png`。

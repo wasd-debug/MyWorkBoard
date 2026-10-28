@@ -5,6 +5,7 @@ import com.salarytracker.task.TaskEfficiencyModels.Countdown;
 import com.salarytracker.task.TaskEfficiencyModels.CountdownCommand;
 import com.salarytracker.task.TaskEfficiencyModels.FocusFinishCommand;
 import com.salarytracker.task.TaskEfficiencyModels.FocusSession;
+import com.salarytracker.task.TaskEfficiencyModels.FocusSessionUpdateCommand;
 import com.salarytracker.task.TaskEfficiencyModels.FocusSettings;
 import com.salarytracker.task.TaskEfficiencyModels.FocusSettingsCommand;
 import com.salarytracker.task.TaskEfficiencyModels.FocusStartCommand;
@@ -75,6 +76,13 @@ public class TaskEfficiencyController {
     public ApiResponse<FocusSession> finish(@PathVariable String publicId, @RequestBody FocusFinishCommand body,
                                             @RequestHeader("If-Match") String ifMatch) {
         return ApiResponse.ok(service.finishFocus(publicId, body, ifMatch));
+    }
+
+    @PutMapping(value = "/focus/sessions/{publicId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')") @Operation(operationId = "updateFocusSession")
+    public ApiResponse<FocusSession> update(@PathVariable String publicId, @RequestBody FocusSessionUpdateCommand body,
+                                            @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(service.updateFocus(publicId, body, ifMatch));
     }
 
     @DeleteMapping("/focus/sessions/{publicId}") @PreAuthorize("hasAuthority('task:write')")

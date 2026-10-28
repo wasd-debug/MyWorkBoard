@@ -22,11 +22,16 @@ public final class TaskEfficiencyModels {
     @Schema(name = "FocusSession")
     public record FocusSession(String publicId, String taskId, String taskTitle, int plannedMinutes,
                                int actualMinutes, String startedAt, String plannedEndAt, String endedAt,
-                               String status, String deviceLabel, long revision) {
+                               String status, String deviceLabel, String note, long revision) {
     }
 
     @Schema(name = "FocusStartCommand")
     public record FocusStartCommand(String taskId, Integer plannedMinutes, String deviceLabel, String requestedDate) {
+    }
+
+    /** 专注记录改「想法」或改「关联任务」。taskId 传空串表示解除关联，传 null 表示不改。 */
+    @Schema(name = "FocusSessionUpdateCommand")
+    public record FocusSessionUpdateCommand(String taskId, String note) {
     }
 
     @Schema(name = "FocusFinishCommand")

@@ -42,7 +42,8 @@
               :title="event.title"
               @click.stop="$emit('open-event', event, $event)"
             >
-              <span class="cal-ev-dot" :class="{ 'is-done': event.done }" :style="{ borderColor: event.color }"></span>
+              <span v-if="event.kind === 'habit' && event.habit?.icon" class="cal-ev-mark" :style="{ background: event.color }"><TaskOrganizationIcon :value="event.habit.icon" :size="9" /></span>
+              <span v-else class="cal-ev-dot" :class="{ 'is-done': event.done }" :style="{ borderColor: event.color }"></span>
               <span class="cal-ev-title">{{ event.title }}</span>
               <span v-if="event.openChecklist" class="cal-ev-extra">+{{ event.openChecklist }}</span>
             </button>
@@ -64,7 +65,8 @@
             :title="segment.event.title"
             @click.stop="$emit('open-event', segment.event, $event)"
           >
-            <span class="cal-ev-dot" :class="{ 'is-done': segment.event.done }" :style="{ borderColor: segment.event.color }"></span>
+            <span v-if="segment.event.kind === 'habit' && segment.event.habit?.icon" class="cal-ev-mark" :style="{ background: segment.event.color }"><TaskOrganizationIcon :value="segment.event.habit.icon" :size="9" /></span>
+            <span v-else class="cal-ev-dot" :class="{ 'is-done': segment.event.done }" :style="{ borderColor: segment.event.color }"></span>
             <span class="cal-ev-title">{{ segment.event.title }}</span>
             <span v-if="segment.continuesAfter" class="cal-ev-extra">→</span>
           </button>
@@ -145,6 +147,7 @@ import {
   MINUTES_PER_DAY, blockGeometry, hourMarks, layoutColumns, minutesToLabel, snapMinutes, visibleWindow
 } from './calendarTimeGrid.js'
 import { dragRange, formatDuration, moveBlock, pointerToMinutes, resizeBlock } from './calendarDrag.js'
+import TaskOrganizationIcon from '../../components/tasks/TaskOrganizationIcon.vue'
 
 const props = defineProps({
   days: { type: Array, required: true },
@@ -841,6 +844,23 @@ onBeforeUnmount(() => { window.clearInterval(ticker) })
   height: 8px;
   border: 1.5px solid currentColor;
   border-radius: 50%;
+}
+/* 习惯在全天区用自身图标（圆形色底），与任务的空心圆点区分开 */
+.cal-ev-mark {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 9px;
+  line-height: 1;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 18%);
+}
+.cal-allday-item.is-done .cal-ev-mark,
+.cal-allday-lane.is-done .cal-ev-mark {
+  opacity: .55;
 }
 .cal-ev-dot.is-done {
   background: currentColor;

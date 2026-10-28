@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildCalendarEvents, daySummary, habitScheduledOn, taskWindow } from './calendarEvents.js'
+import { allDayRank, buildCalendarEvents, daySummary, habitScheduledOn, taskWindow } from './calendarEvents.js'
 import { eachDay, toDateKey } from './calendarRange.js'
 import { layoutColumns } from './calendarTimeGrid.js'
 
@@ -173,7 +173,7 @@ test('daySummary 统计当天条目与完成数', () => {
   assert.deepEqual(daySummary(dayEvents(result, '2026-10-19')), { total: 2, done: 1, timed: 1, allDay: 1 })
 })
 
-test('节假日排在最前并按休班着色', () => {
+test('节假日排在任务与习惯之后并按休班着色', () => {
   const result = buildCalendarEvents({
     days: days.slice(0, 1), lists, tags,
     holidays: [{ date: '2026-10-19', name: '调休', off: false }, { date: '2026-12-25', name: '圣诞节', off: true }],
@@ -181,8 +181,9 @@ test('节假日排在最前并按休班着色', () => {
   })
   const list = dayEvents(result, '2026-10-19').allDay
   assert.equal(list.length, 2)
-  assert.equal(list[0].kind, 'holiday')
-  assert.equal(list[0].color, '#8b92a3')
+  assert.equal(list[0].kind, 'task')
+  assert.equal(list[1].kind, 'holiday')
+  assert.equal(list[1].color, '#8b92a3')
 })
 
 test('工时条目生成带时间的块并标注加班', () => {
@@ -275,4 +276,28 @@ test('凌晨开始的三个重叠任务并排分列', () => {
   const layout = layoutColumns(dayEvents(result, '2026-10-19').timed)
   assert.equal(layout.get('a').columns, 3)
   assert.equal(new Set(['a', 'b', 'c'].map(id => layout.get(id).column)).size, 3)
+})
+
+test('allDayRank 固定层级：跨日 → 全天任务 → 习惯 → 已完成任务 → 已完成习惯', () => {
+  const spanning = { kind: 'task', done: false, startKey: '2026-10-19', endKey: '2026-10-21' }
+  const openTask = { kind: 'task', done: false, startKey: '2026-10-19', endKey: '2026-10-19' }
+  const openHabit = { kind: 'habit', done: false, startKey: '2026-10-19', endKey: '2026-10-19' }
+  const doneTask = { kind: 'task', done: true, startKey: '2026-10-19', endKey: '2026-10-19' }
+  const doneHabit = { kind: 'habit', done: true, startKey: '2026-10-19', endKey: '2026-10-19' }
+  const ranks = [spanning, openTask, openHabit, doneTask, doneHabit].map(allDayRank)
+  assert.deepEqual(ranks, [...ranks].sort((left, right) => left - right))
+  assert.equal(new Set(ranks).size, 5)
+})
+
+test('全天区按 跨日/任务/习惯/已完成 排序，忽略插入顺序', () => {
+  const result = buildCalendarEvents({
+    days, lists, tags,
+    tasks: [
+      { publicId: 'done', title: '已完成任务', allDay: true, startAt: '2026-10-19T00:00:00', status: 'COMPLETED', listId: 'list-work' },
+      { publicId: 'open', title: '全天任务', allDay: true, startAt: '2026-10-19T00:00:00', status: 'OPEN', listId: 'list-work' }
+    ],
+    habits: [{ publicId: 'h1', name: '阅读', icon: '✓', frequency: 'DAILY', startDate: '2026-09-01', targetCount: 1 }],
+    habitCheckins: [{ habitId: 'h1', date: '2026-10-19', status: 'DONE', count: 1 }]
+  })
+  assert.deepEqual(dayEvents(result, '2026-10-19').allDay.map(item => item.title), ['全天任务', '已完成任务', '阅读'])
 })

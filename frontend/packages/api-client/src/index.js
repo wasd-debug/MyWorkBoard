@@ -307,6 +307,7 @@ export const apiGetCurrentFocus = async () => data(await api.get('/api/v1/tasks/
 export const apiStartFocus = async payload => data(await api.post('/api/v1/tasks/focus/sessions', payload, { headers: { 'Idempotency-Key': crypto.randomUUID() } }))
 export const apiFinishFocus = async (publicId, status, currentRevision) => data(await api.post(`/api/v1/tasks/focus/sessions/${publicId}/finish`, { status }, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiDeleteFocus = async (publicId, currentRevision) => data(await api.delete(`/api/v1/tasks/focus/sessions/${publicId}`, { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiUpdateFocusSession = async (publicId, payload, currentRevision) => data(await api.put(`/api/v1/tasks/focus/sessions/${publicId}`, payload, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiGetFocusStats = async () => data(await api.get('/api/v1/tasks/focus/stats'))
 export const apiListHabits = async (archived = false) => data(await api.get('/api/v1/tasks/habits', { params: { archived } }))
 export const apiCreateHabit = async payload => data(await api.post('/api/v1/tasks/habits', payload))

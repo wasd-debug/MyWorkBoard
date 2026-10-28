@@ -11,6 +11,7 @@ import com.salarytracker.task.TaskEfficiencyModels.FocusSession;
 import com.salarytracker.task.TaskEfficiencyModels.FocusSettings;
 import com.salarytracker.task.TaskEfficiencyModels.FocusSettingsCommand;
 import com.salarytracker.task.TaskEfficiencyModels.FocusStartCommand;
+import com.salarytracker.task.TaskEfficiencyModels.FocusSessionUpdateCommand;
 import com.salarytracker.task.TaskEfficiencyModels.FocusStats;
 import com.salarytracker.task.TaskEfficiencyModels.Habit;
 import com.salarytracker.task.TaskEfficiencyModels.HabitCheckin;
@@ -159,6 +160,28 @@ public class TaskEfficiencyService {
             Long linkedTask = jdbc.queryForObject("SELECT task_id FROM focus_session WHERE public_id=?", Long.class, publicId);
             applyFocusCompletion(userId, publicId, linkedTask, actual);
         }
+        return focusById(userId, publicId);
+    }
+
+    /** 修改专注记录的「想法」或「关联任务」。改关联任务只动 focus_session.task_id，
+     *  已计入旧任务的 focus_minutes 不回溯（与滴答一致：历史专注量不回滚）。 */
+    @Transactional
+    public FocusSession updateFocus(String publicId, FocusSessionUpdateCommand command, String ifMatch) {
+        long userId = currentUser.id();
+        FocusSession before = focusById(userId, publicId);
+        long expected = revision(ifMatch);
+        if (before.revision() != expected) throw new ConflictException("专注记录版本已变化", before.revision());
+        String note = command != null && command.note() != null ? optional(command.note(), 1000) : before.note();
+        Long taskId;
+        String requestTask = command == null ? null : command.taskId();
+        if (requestTask == null) {
+            taskId = before.taskId() == null || before.taskId().isBlank() ? null : taskId(userId, before.taskId());
+        } else {
+            taskId = requestTask.isBlank() ? null : taskId(userId, requestTask);
+        }
+        int changed = jdbc.update("UPDATE focus_session SET note=?,task_id=?,revision=revision+1 " +
+                "WHERE public_id=? AND user_id=? AND revision=?", note, taskId, publicId, userId, expected);
+        if (changed == 0) throw new ConflictException("专注记录版本已变化", before.revision());
         return focusById(userId, publicId);
     }
 
@@ -410,7 +433,7 @@ public class TaskEfficiencyService {
                 row.getInt("planned_minutes"), row.getInt("actual_minutes"), started.toString(),
                 row.getInt("planned_minutes") > 0 ? started.plusSeconds(row.getInt("planned_minutes") * 60L).toString() : null,
                 instant(row.getTimestamp("ended_at")),
-                row.getString("status"), row.getString("device_label"), row.getLong("revision"));
+                row.getString("status"), row.getString("device_label"), row.getString("note"), row.getLong("revision"));
     }
 
     private void applyFocusCompletion(long userId, String publicId, Long taskId, int actual) {

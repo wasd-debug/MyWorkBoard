@@ -165,6 +165,8 @@
           :today-key="todayKey"
           :lunar="lunarLabels"
           :holidays="holidayMap"
+          :more-before="agendaExtra.before < AGENDA_HORIZON"
+          :more-after="agendaExtra.after < AGENDA_HORIZON"
           @open-event="openEvent"
           @load-more="loadAgendaMore"
         />
@@ -196,19 +198,25 @@
       :task="cardTask"
       :habit="cardHabit"
       :countdown="cardCountdown"
+      :session="cardFocus"
       :lists="calendarLists"
+      :tags="calendarTags"
+      :tasks="tasksStore.tasks"
+      :lunar="lunarLabels"
       :habit-streak="cardStreak"
+      :focus-minutes="cardFocusMinutes"
       :style="cardStyle"
       @close="closeEventCard"
       @complete="completeCard"
       @reopen="reopenCard"
-      @priority="setCardPriority"
-      @move="moveCard"
+      @update="updateCardTask"
       @delete="deleteCard"
       @focus="focusCard"
       @open-detail="openDetail"
       @checkin="checkinCard"
       @undo-checkin="undoCheckinCard"
+      @update-focus="updateCardFocus"
+      @delete-focus="deleteCardFocus"
     />
 
     <div v-if="dayPopover.open" class="cal-day-popover" :style="dayPopoverStyle" role="dialog" :aria-label="dayPopoverTitle" @click.stop>
@@ -304,7 +312,7 @@ import { message } from '../services/message.js'
 import { useAppStore } from '../stores/app.js'
 import { useTasksStore } from '../stores/tasks.js'
 import { useTaskFocusStore } from '../stores/taskFocus.js'
-import { apiGetTaskCalendar, apiListFocusSessions, apiListTaskFilterTasks, apiListTaskFilters } from '../../packages/api-client/src/index.js'
+import { apiDeleteFocus, apiGetTaskCalendar, apiListFocusSessions, apiListTaskFilterTasks, apiListTaskFilters, apiUpdateFocusSession } from '../../packages/api-client/src/index.js'
 import {
   SPAN_CONFIG, SPAN_KEYS, VIEW_KEYS, VIEW_LABELS, VIEW_SHORTCUTS, WEEKDAY_LABELS,
   addDays, addMonths, clampSpan, formatWeekday, monthWeeks, resolveRange, shiftAnchor, startOfDay, toDateKey, viewLabel as spanViewLabel, yearMonths
@@ -323,6 +331,9 @@ const appStore = useAppStore()
 
 const isTaskRoute = computed(() => route.path.startsWith('/tasks'))
 const CAL_ROW_MIN_HEIGHT = 96
+// 日程视图按「步进 30 天」向两端增量取数，单侧最多补到半年，避免接口范围过大
+const AGENDA_STEP_DAYS = 30
+const AGENDA_HORIZON = 180
 const today = ref(startOfDay(new Date()))
 const todayKey = computed(() => toDateKey(today.value))
 const anchor = ref(startOfDay(new Date()))
@@ -454,6 +465,23 @@ const cardEvent = computed(() => {
   return base
 })
 
+// 专注浮层直接从会话列表取实时数据（id 形如 focus:<publicId>:<日期>）
+const cardFocus = computed(() => {
+  const base = eventCard.event
+  if (!base || base.kind !== 'focus') return null
+  const publicId = String(base.id || '').split(':')[1] || ''
+  return focusSessions.value.find(item => item.publicId === publicId) || base.session || null
+})
+
+const cardFocusMinutes = computed(() => {
+  const task = cardTask.value
+  if (!task) return 0
+  const total = focusSessions.value
+    .filter(item => item.taskId === task.publicId && item.status !== 'ABORTED')
+    .reduce((sum, item) => sum + (Number(item.actualMinutes) || 0), 0)
+  return Math.max(total, Number(task.focusMinutes) || 0)
+})
+
 const cardStreak = computed(() => {
   const habit = cardHabit.value
   if (!habit) return 0
@@ -494,15 +522,42 @@ async function reopenCard() {
   }
 }
 
-async function setCardPriority(priority) {
-  if (!cardTask.value) return
-  await tasksStore.update(cardTask.value, { priority })
+async function updateCardTask(patch) {
+  const task = cardTask.value
+  if (!task || !patch) return
+  try {
+    await tasksStore.update(task, patch)
+  } catch (cause) {
+    message.error(cause?.response?.data?.detail || cause?.message || '保存失败')
+  }
 }
 
-async function moveCard(listId) {
-  if (!cardTask.value || !listId) return
-  await tasksStore.update(cardTask.value, { listId })
-  message.success('已移动清单')
+async function updateCardFocus(patch) {
+  const session = cardFocus.value
+  if (!session || !patch) return
+  try {
+    const next = await apiUpdateFocusSession(session.publicId, patch, session.revision)
+    const index = focusSessions.value.findIndex(item => item.publicId === session.publicId)
+    if (index >= 0) focusSessions.value.splice(index, 1, next)
+    else focusSessions.value = [...focusSessions.value, next]
+    message.success('已保存')
+  } catch (cause) {
+    message.error(cause?.response?.data?.detail || cause?.message || '保存失败')
+  }
+}
+
+async function deleteCardFocus() {
+  const session = cardFocus.value
+  if (!session) return
+  if (!window.confirm('删除这条专注记录？')) return
+  try {
+    await apiDeleteFocus(session.publicId, session.revision)
+    focusSessions.value = focusSessions.value.filter(item => item.publicId !== session.publicId)
+    closeEventCard()
+    message.success('已删除')
+  } catch (cause) {
+    message.error(cause?.response?.data?.detail || cause?.message || '删除失败')
+  }
 }
 
 async function deleteCard() {
@@ -748,12 +803,13 @@ function closeDayPopover() {
 }
 
 function loadAgendaMore(direction) {
+  const step = AGENDA_STEP_DAYS
   if (direction === 'before') {
-    if (agendaExtra.before >= 180) return
-    agendaExtra.before += 30
+    if (agendaExtra.before >= AGENDA_HORIZON) return
+    agendaExtra.before = Math.min(AGENDA_HORIZON, agendaExtra.before + step)
   } else {
-    if (agendaExtra.after >= 180) return
-    agendaExtra.after += 30
+    if (agendaExtra.after >= AGENDA_HORIZON) return
+    agendaExtra.after = Math.min(AGENDA_HORIZON, agendaExtra.after + step)
   }
 }
 
@@ -858,8 +914,9 @@ function openEvent(event, nativeEvent) {
   }
   const pointerX = Number.isFinite(nativeEvent?.clientX) ? nativeEvent.clientX : window.innerWidth / 2
   const pointerY = Number.isFinite(nativeEvent?.clientY) ? nativeEvent.clientY : 180
-  const width = 296
-  const height = 330
+  // 任务浮层是任务右栏的浮层版，比旧卡片高，按内容估个高度再做边界收拢
+  const width = event.kind === 'task' ? 340 : 316
+  const height = event.kind === 'task' ? 470 : 260
   eventCard.event = event
   eventCard.x = Math.min(Math.max(12, pointerX + 10), Math.max(12, window.innerWidth - width - 12))
   eventCard.y = Math.min(Math.max(52, pointerY - 10), Math.max(52, window.innerHeight - height - 12))

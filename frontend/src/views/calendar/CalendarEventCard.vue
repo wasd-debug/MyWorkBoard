@@ -1,193 +1,259 @@
 <template>
-  <section class="cal-card" :style="style" role="dialog" :aria-label="heading" @click.stop>
-    <header>
-      <span class="cal-card-dot" :style="{ background: event.color }"></span>
-      <div class="cal-card-title">
-        <b>{{ isTask && task ? task.title : event.title }}</b>
-        <small>{{ subtitle }}</small>
-      </div>
-      <button type="button" class="cal-card-close" aria-label="关闭详情" @click="$emit('close')"><X :size="14" /></button>
-    </header>
+  <CalendarTaskCard
+    v-if="event.kind === 'task' && task"
+    :task="task"
+    :lists="lists"
+    :tags="tags"
+    :lunar="lunar"
+    :focus-minutes="focusMinutes"
+    :style="style"
+    @close="$emit('close')"
+    @complete="$emit('complete')"
+    @reopen="$emit('reopen')"
+    @update="$emit('update', $event)"
+    @delete="$emit('delete')"
+    @focus="$emit('focus')"
+    @open-detail="$emit('open-detail')"
+  />
 
-    <div v-if="isTask && task" class="cal-card-body">
-      <button
-        type="button"
-        class="cal-card-check"
-        :class="{ 'is-done': task.status === 'COMPLETED' }"
-        :aria-pressed="task.status === 'COMPLETED'"
-        @click="$emit(task.status === 'COMPLETED' ? 'reopen' : 'complete')"
-      >
-        <Check v-if="task.status === 'COMPLETED'" :size="12" />
-        <span>{{ task.status === 'COMPLETED' ? '已完成，点击恢复' : '标记完成' }}</span>
-      </button>
+  <section v-else-if="event.kind === 'habit' && habit" class="cal-pop is-habit" :style="style" role="dialog" aria-label="习惯" @click.stop>
+    <button type="button" class="cal-pop-close" aria-label="关闭" @click="$emit('close')"><X :size="14" /></button>
+    <div class="cal-habit-head">
+      <span class="cal-habit-icon" :style="{ background: habit.color || 'var(--accent)' }"><TaskOrganizationIcon :value="habit.icon || '✓'" :size="18" /></span>
+      <b>{{ habit.name }}</b>
+    </div>
+    <button type="button" class="cal-habit-btn" :class="{ 'is-ghost': habitDone }" @click="$emit(habitDone ? 'undo-checkin' : 'checkin')">
+      {{ habitDone ? '重置' : '我做到了' }}
+    </button>
+  </section>
 
-      <div class="cal-card-meta">
-        <span><CalendarDays :size="12" />{{ scheduleText }}</span>
-        <span v-if="listName"><FolderClosed :size="12" />{{ listName }}</span>
-        <span v-if="task.openChecklistCount"><ListChecks :size="12" />还有 {{ task.openChecklistCount }} 项检查</span>
-      </div>
-
-      <div class="cal-card-row">
-        <span class="cal-card-label">优先级</span>
-        <div class="cal-card-flags">
-          <button
-            v-for="item in priorities"
-            :key="item.value"
-            type="button"
-            :class="['cal-flag', `is-${item.value.toLowerCase()}`, { on: (task.priority || 'NONE') === item.value }]"
-            :aria-pressed="(task.priority || 'NONE') === item.value"
-            :title="item.label"
-            @click="$emit('priority', item.value)"
-          ><Flag :size="12" /></button>
+  <section v-else-if="event.kind === 'focus' && session" class="cal-pop is-focus" :style="style" role="dialog" aria-label="专注记录" @click.stop>
+    <header class="cal-focus-head">
+      <span class="cal-focus-badge" :class="{ done: session.status === 'COMPLETED' }"><Check :size="11" /></span>
+      <b>{{ session.taskTitle || '未关联任务' }}</b>
+      <div class="cal-focus-link">
+        <button type="button" aria-label="修改关联任务" title="修改关联任务" @click.stop="taskMenu = !taskMenu"><Link2 :size="14" /></button>
+        <div v-if="taskMenu" class="cal-focus-menu" @click.stop>
+          <input v-model="taskQuery" class="cal-focus-search" placeholder="搜索任务…" aria-label="搜索任务" />
+          <button v-for="item in taskChoices" :key="item.publicId" type="button" @click="relinkTask(item.publicId)">{{ item.title }}</button>
+          <button v-if="session.taskId" type="button" class="is-clear" @click="relinkTask('')">解除关联</button>
+          <p v-if="!taskChoices.length">没有匹配的任务</p>
         </div>
       </div>
-
-      <div class="cal-card-row">
-        <span class="cal-card-label">清单</span>
-        <select :value="task.listId" aria-label="移动到清单" @change="$emit('move', $event.target.value)">
-          <option v-for="list in lists" :key="list.publicId" :value="list.publicId">{{ list.name }}</option>
-        </select>
-      </div>
-    </div>
-
-    <div v-else-if="event.kind === 'habit' && habit" class="cal-card-body">
-      <button
-        type="button"
-        class="cal-card-check"
-        :class="{ 'is-done': habitDone }"
-        :aria-pressed="habitDone"
-        @click="$emit(habitDone ? 'undo-checkin' : 'checkin')"
-      >
-        <Check v-if="habitDone" :size="12" />
-        <span>{{ habitDone ? '今天已完成，点击撤销' : '我做到了' }}</span>
-      </button>
-      <p class="cal-card-hint">{{ habitDone ? '已计入今天的打卡与连续天数。' : '打卡后计入连续天数与完成率。' }}<template v-if="habitStreak > 0"> 当前连续 {{ habitStreak }} 天。</template></p>
-    </div>
-
-    <div v-else-if="event.kind === 'countdown' && countdown" class="cal-card-body">
-      <p class="cal-card-hint">{{ countdown.repeatYearly ? '每年重复' : '仅此一次' }} · 目标日期 {{ countdown.targetDate }}</p>
-    </div>
-
-    <div v-else-if="event.kind === 'focus'" class="cal-card-body">
-      <p class="cal-card-hint">专注 {{ event.startLabel }}<template v-if="event.endLabel"> – {{ event.endLabel }}</template> · {{ event.done ? '已完成' : '已中断' }}</p>
-    </div>
-
-    <footer>
-      <button v-if="isTask && task" type="button" class="cal-card-btn" @click="$emit('focus')"><Timer :size="13" />专注</button>
-      <button v-if="isTask && task" type="button" class="cal-card-btn" @click="$emit('open-detail')"><ExternalLink :size="13" />详情</button>
-      <button v-if="event.kind === 'habit'" type="button" class="cal-card-btn" @click="$emit('open-detail')"><ExternalLink :size="13" />习惯页</button>
-      <button v-if="event.kind === 'countdown'" type="button" class="cal-card-btn" @click="$emit('open-detail')"><ExternalLink :size="13" />倒数日</button>
-      <button v-if="event.kind === 'focus'" type="button" class="cal-card-btn" @click="$emit('open-detail')"><ExternalLink :size="13" />专注页</button>
-      <button v-if="isTask && task" type="button" class="cal-card-btn is-danger" @click="$emit('delete')"><Trash2 :size="13" />删除</button>
+    </header>
+    <p class="cal-focus-row"><Clock :size="13" /><span>{{ spanText }}</span></p>
+    <p class="cal-focus-row"><Timer :size="13" /><span>{{ durationText }}</span></p>
+    <textarea v-model="noteDraft" class="cal-focus-note" placeholder="记录你的想法…" aria-label="专注想法" @blur="saveNote"></textarea>
+    <footer class="cal-focus-foot">
+      <button v-if="session.status !== 'RUNNING'" type="button" class="is-danger" title="删除专注记录" aria-label="删除专注记录" @click="$emit('delete-focus')"><Trash2 :size="14" /></button>
     </footer>
+  </section>
+
+  <section v-else-if="event.kind === 'countdown' && countdown" class="cal-pop is-countdown" :style="style" role="dialog" aria-label="倒数日" @click.stop>
+    <button type="button" class="cal-pop-close" aria-label="关闭" @click="$emit('close')"><X :size="14" /></button>
+    <div class="cal-habit-head">
+      <span class="cal-habit-icon" :style="{ background: event.color }"><Hourglass :size="16" /></span>
+      <b>{{ countdown.title }}</b>
+    </div>
+    <p class="cal-pop-hint">{{ countdown.repeatYearly ? '每年重复' : '仅此一次' }} · {{ countdown.targetDate }}</p>
   </section>
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { CalendarDays, Check, ExternalLink, Flag, FolderClosed, ListChecks, Timer, Trash2, X } from 'lucide-vue-next'
+import { computed, ref, watch } from 'vue'
+import { Check, Clock, Hourglass, Link2, Timer, Trash2, X } from 'lucide-vue-next'
+import CalendarTaskCard from './CalendarTaskCard.vue'
+import TaskOrganizationIcon from '../../components/tasks/TaskOrganizationIcon.vue'
 
 const props = defineProps({
   event: { type: Object, required: true },
   task: { type: Object, default: null },
   habit: { type: Object, default: null },
   countdown: { type: Object, default: null },
+  session: { type: Object, default: null },
   lists: { type: Array, default: () => [] },
-  habitStreak: { type: Number, default: 0 },
+  tags: { type: Array, default: () => [] },
+  tasks: { type: Array, default: () => [] },
+  lunar: { type: Object, default: () => ({}) },
+  focusMinutes: { type: Number, default: 0 },
   style: { type: Object, default: () => ({}) }
 })
 
-defineEmits(['close', 'complete', 'reopen', 'priority', 'move', 'delete', 'focus', 'open-detail', 'checkin', 'undo-checkin'])
+const emit = defineEmits([
+  'close', 'complete', 'reopen', 'update', 'delete', 'focus', 'open-detail',
+  'checkin', 'undo-checkin', 'update-focus', 'delete-focus'
+])
 
-const priorities = [
-  { value: 'HIGH', label: '高优先级' },
-  { value: 'MEDIUM', label: '中优先级' },
-  { value: 'LOW', label: '低优先级' },
-  { value: 'NONE', label: '无优先级' }
-]
+const noteDraft = ref('')
+const taskMenu = ref(false)
+const taskQuery = ref('')
 
-const isTask = computed(() => props.event?.kind === 'task')
+watch(() => props.session?.publicId, () => {
+  noteDraft.value = props.session?.note || ''
+  taskMenu.value = false
+  taskQuery.value = ''
+}, { immediate: true })
+
 const habitDone = computed(() => Boolean(props.event?.done))
-const heading = computed(() => props.event?.title || '详情')
-const listName = computed(() => props.lists.find(item => item.publicId === props.task?.listId)?.name || '')
-const subtitle = computed(() => {
-  if (isTask.value) {
-    if (props.event.startLabel && props.event.endLabel) return `${props.event.startLabel} – ${props.event.endLabel}`
-    return props.event.allDay ? '全天' : props.event.startLabel || ''
-  }
-  if (props.event.kind === 'habit') return '习惯'
-  if (props.event.kind === 'countdown') return '倒数日'
-  if (props.event.kind === 'focus') return '专注记录'
-  return ''
+
+const spanText = computed(() => {
+  const session = props.session
+  if (!session) return ''
+  const start = new Date(session.startedAt)
+  const end = session.endedAt ? new Date(session.endedAt) : null
+  const format = date => `${date.getMonth() + 1}月${date.getDate()}日 ${pad(date.getHours())}:${pad(date.getMinutes())}`
+  return end ? `${format(start)} - ${format(end)}` : `${format(start)} - 进行中`
 })
 
-function dayLabel(key) {
-  const [year, month, day] = String(key || '').split('-').map(Number)
-  if (!year) return key || ''
-  const date = new Date(year, month - 1, day)
-  const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()]
-  return `${month}月${day}日 ${weekday}`
+const durationText = computed(() => {
+  const minutes = Number(props.session?.actualMinutes) || Number(props.session?.plannedMinutes) || 0
+  if (!minutes) return '0m'
+  if (minutes < 60) return `${minutes}m`
+  const hours = minutes / 60
+  return `${Math.round(hours * 10) / 10}h`
+})
+
+const taskChoices = computed(() => {
+  const query = taskQuery.value.trim()
+  return props.tasks
+    .filter(item => !item.deleted && item.itemKind !== 'NOTE')
+    .filter(item => !query || String(item.title || '').includes(query))
+    .slice(0, 30)
+})
+
+function pad(value) {
+  return String(value).padStart(2, '0')
 }
 
-const scheduleText = computed(() => {
-  const event = props.event
-  if (event.allDay) {
-    const span = event.startKey === event.endKey ? dayLabel(event.startKey) : `${dayLabel(event.startKey)} – ${dayLabel(event.endKey)}`
-    return `${span} · 全天`
-  }
-  return `${dayLabel(event.startKey)} ${event.startLabel || ''}${event.endLabel ? ` – ${event.endLabel}` : ''}`
-})
+function saveNote() {
+  const next = noteDraft.value
+  if (next === (props.session?.note || '')) return
+  emit('update-focus', { note: next })
+}
+
+function relinkTask(taskId) {
+  taskMenu.value = false
+  emit('update-focus', { taskId })
+}
 </script>
 
 <style scoped>
-.cal-card {
+.cal-pop {
   position: fixed;
   z-index: 58;
   display: flex;
-  width: 296px;
   flex-direction: column;
-  overflow: hidden;
+  gap: 10px;
+  padding: 14px;
   border: 1px solid var(--line2);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--card);
-  box-shadow: 0 18px 44px rgba(15, 23, 42, .22);
+  box-shadow: 0 20px 48px rgb(15 23 42 / 24%);
+  color: var(--ink);
 }
-.cal-card > header {
+.cal-pop.is-habit {
+  width: 268px;
+}
+.cal-pop.is-focus {
+  width: 316px;
+}
+.cal-pop.is-countdown {
+  width: 262px;
+}
+.cal-pop-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.cal-pop-close:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+.cal-habit-head {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 11px 12px 9px;
-  border-bottom: 1px solid var(--line);
+  align-items: center;
+  gap: 10px;
+  padding-right: 22px;
 }
-.cal-card-dot {
+.cal-habit-icon {
+  display: grid;
   flex: 0 0 auto;
-  width: 9px;
-  height: 9px;
-  margin-top: 4px;
+  width: 38px;
+  height: 38px;
+  place-items: center;
   border-radius: 50%;
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
 }
-.cal-card-title {
+.cal-habit-head b {
+  font-size: 17px;
+  font-weight: 650;
+}
+.cal-habit-btn {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cal-habit-btn.is-ghost {
+  border-color: var(--line2);
+  background: transparent;
+  color: var(--ink2);
+}
+.cal-habit-btn.is-ghost:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.cal-focus-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 4px;
+}
+.cal-focus-badge {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+}
+.cal-focus-badge:not(.done) {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+}
+.cal-focus-head b {
   min-width: 0;
   flex: 1;
-}
-.cal-card-title b {
-  display: block;
   overflow: hidden;
-  color: var(--ink);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.cal-card-title small {
-  display: block;
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 10.5px;
-}
-.cal-card-close {
-  display: grid;
+.cal-focus-link {
+  position: relative;
   flex: 0 0 auto;
+}
+.cal-focus-link > button {
+  display: grid;
   place-items: center;
   width: 24px;
   height: 24px;
@@ -195,134 +261,117 @@ const scheduleText = computed(() => {
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
+  cursor: pointer;
 }
-.cal-card-close:hover {
+.cal-focus-link > button:hover {
   background: var(--paper);
   color: var(--ink);
 }
-.cal-card-body {
+.cal-focus-menu {
+  position: absolute;
+  top: 28px;
+  right: 0;
+  z-index: 4;
   display: flex;
+  width: 208px;
+  max-height: 232px;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
-}
-.cal-card-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 10px;
+  gap: 1px;
+  overflow: auto;
+  padding: 6px;
   border: 1px solid var(--line2);
-  border-radius: 7px;
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 14px 32px rgb(15 23 42 / 20%);
+}
+.cal-focus-search {
+  min-height: 27px;
+  margin-bottom: 3px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
+.cal-focus-menu button {
+  min-height: 26px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 6px;
   background: transparent;
   color: var(--ink2);
   font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.cal-card-check:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+.cal-focus-menu button:hover {
+  background: var(--paper);
+  color: var(--ink);
 }
-.cal-card-check.is-done {
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  color: var(--accent);
+.cal-focus-menu button.is-clear {
+  color: var(--down, #e34d59);
 }
-.cal-card-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
+.cal-focus-menu p {
+  margin: 6px 7px;
   color: var(--muted);
   font-size: 11px;
 }
-.cal-card-meta span {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.cal-card-row {
+.cal-focus-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 7px;
+  margin: 0;
+  color: var(--ink2);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
 }
-.cal-card-label {
+.cal-focus-row svg {
   color: var(--muted);
-  font-size: 11px;
 }
-.cal-card-flags {
-  display: inline-flex;
-  gap: 2px;
+.cal-focus-note {
+  width: 100%;
+  min-height: 84px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.55;
+  resize: vertical;
 }
-.cal-flag {
+.cal-focus-note:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: var(--card);
+}
+.cal-focus-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+.cal-focus-foot button {
   display: grid;
   place-items: center;
   width: 26px;
-  height: 24px;
-  border: 1px solid transparent;
+  height: 26px;
+  border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
+  cursor: pointer;
 }
-.cal-flag:hover {
-  background: var(--paper);
+.cal-focus-foot button.is-danger:hover {
+  color: var(--down, #e34d59);
 }
-.cal-flag.on.is-high {
-  background: color-mix(in srgb, var(--priority-high, #e34d59) 14%, transparent);
-  color: var(--priority-high, #e34d59);
-}
-.cal-flag.on.is-medium {
-  background: color-mix(in srgb, var(--priority-medium, #e69b2d) 14%, transparent);
-  color: var(--priority-medium, #e69b2d);
-}
-.cal-flag.on.is-low {
-  background: color-mix(in srgb, var(--priority-low, #4d78db) 14%, transparent);
-  color: var(--priority-low, #4d78db);
-}
-.cal-flag.on.is-none {
-  background: var(--paper);
-  color: var(--ink2);
-}
-.cal-card-row select {
-  max-width: 168px;
-  height: 27px;
-  padding: 0 6px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 11.5px;
-}
-.cal-card-hint {
+.cal-pop-hint {
   margin: 0;
   color: var(--muted);
   font-size: 11.5px;
-  line-height: 1.5;
-}
-.cal-card > footer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 9px 12px 11px;
-  border-top: 1px solid var(--line);
-}
-.cal-card-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--ink2);
-  font-size: 11.5px;
-}
-.cal-card-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.cal-card-btn.is-danger:hover {
-  border-color: var(--down);
-  color: var(--down);
 }
 </style>
