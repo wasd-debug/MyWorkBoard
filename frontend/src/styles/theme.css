@@ -886,6 +886,10 @@ html.dark .ui-button.variant-ink:hover:not(:disabled) { background: color-mix(in
    AI 工作台重构 · shared workspace language
    ============================================================ */
 :root {
+  /* 任务优先级三色：低=蓝、中=橙、高=红（中间栏、右侧栏、菜单与弹窗统一引用） */
+  --priority-high: #e34d59;
+  --priority-medium: #e69b2d;
+  --priority-low: #4d78db;
   --workspace-bg: #f7f8fa;
   --workspace-surface: #ffffff;
   --workspace-line: #e6e9ef;

@@ -299,7 +299,7 @@ onBeforeUnmount(() => {
 .timeline-bar:hover { filter: brightness(1.08); }
 .timeline-bar em { min-width: 0; overflow: hidden; padding: 0 6px; color: #fff; font-size: 10px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 .timeline-bar.milestone { width: 12px!important; min-width: 12px; justify-content: center; }
-.timeline-bar.priority-high { background: #dc2626; }.timeline-bar.priority-medium { background: #d97706; }.timeline-bar.priority-low { background: #2563eb; }
+.timeline-bar.priority-high { background: var(--priority-high); }.timeline-bar.priority-medium { background: var(--priority-medium); }.timeline-bar.priority-low { background: var(--priority-low); }
 .timeline-empty { margin: 0; color: var(--muted); font-size: 13px; }
 @media(max-width:700px) { .timeline-head.is-embedded { justify-content: flex-start; }.timeline-controls { width: 100%; }.timeline-row,.timeline-axis-row { grid-template-columns: 160px auto; }.timeline-grid { --timeline-label-width:160px!important; }.timeline-controls { gap: 6px; }.timeline-menu { flex: 1; }.timeline-menu-trigger { width: 100%; justify-content: space-between; }.timeline-menu-popover { right: auto; left: 0; min-width: 100%; }.timeline-period { justify-content: space-between; }.timeline-period-range { gap: 3px; }.timeline-period-range strong { max-width: 35vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.timeline-period-controls { gap: 4px; }.timeline-period select { max-width: 72px; } }
 </style>

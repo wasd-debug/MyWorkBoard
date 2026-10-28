@@ -640,7 +640,7 @@
               <strong>{{ task.title }}</strong>
             </div>
             <div v-if="showTags && task.tagIds?.length" class="clone-inline-board-tags" :aria-label="taskTagSummary(task)">
-              <span v-for="tagId in visibleTaskTagIds(task)" :key="tagId" class="clone-inline-board-tag" :style="taskTagStyle(tagId)">#{{ tagName(tagId) }}</span>
+              <span v-for="tagId in visibleTaskTagIds(task)" :key="tagId" class="clone-inline-board-tag" :style="taskTagStyle(tagId)">{{ tagName(tagId) }}</span>
               <span v-if="task.tagIds.length > visibleTaskTagIds(task).length" class="clone-inline-board-tag-more" tabindex="0" :aria-label="taskTagSummary(task)" @mouseenter="showTagFlyout(task, $event)" @mouseleave="hideTagFlyoutSoon" @focus="showTagFlyout(task, $event)" @blur="hideTagFlyoutSoon">+{{ task.tagIds.length - visibleTaskTagIds(task).length }}</span>
             </div>
             <div class="clone-inline-board-meta">
@@ -823,7 +823,7 @@
           <label class="clone-batch-field"><CalendarClock :size="17" /><input v-model="batchDueAt" type="datetime-local" aria-label="批量设置日期" @input="batchDueClear = false" /><button v-if="batchDueAt" type="button" aria-label="选择清除日期" title="选择清除日期" @click="batchDueAt = ''; batchDueClear = true"><X :size="14" /></button><button type="button" class="clone-batch-apply" :disabled="!batchDueAt && !batchDueClear" @click="applyBatch('RESCHEDULE', { dueAt: batchDueClear ? '' : new Date(batchDueAt).toISOString() })">{{ batchDueClear ? '清除' : '应用' }}</button></label>
           <label class="clone-batch-field"><Flag :size="17" /><select v-model="batchPriority" aria-label="批量设置优先级"><option v-for="option in priorityOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select><button type="button" class="clone-batch-apply" @click="applyBatch('PRIORITY', { priority: batchPriority })">应用</button></label>
           <label class="clone-batch-field"><ListTodo :size="17" /><select v-model="batchListId" aria-label="批量移动到清单"><option value="">选择清单</option><option v-for="list in activeLists" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select><button type="button" class="clone-batch-apply" :disabled="!batchListId" @click="applyBatch('MOVE', { listId: batchListId })">应用</button></label>
-          <details class="clone-batch-tags"><summary><Tag :size="17" /><span>选择标签</span><small>{{ batchTagIds.length || '' }}</small></summary><div><label v-for="tag in sortedTags" :key="tag.publicId"><input v-model="batchTagIds" type="checkbox" :value="tag.publicId" />#{{ tag.name }}</label><button type="button" class="clone-batch-apply" :disabled="!batchTagIds.length" @click="applyBatch('TAGS', { tagIds: batchTagIds })">应用标签</button></div></details>
+          <details class="clone-batch-tags"><summary><Tag :size="17" /><span>选择标签</span><small>{{ batchTagIds.length || '' }}</small></summary><div><label v-for="tag in sortedTags" :key="tag.publicId"><input v-model="batchTagIds" type="checkbox" :value="tag.publicId" />{{ tag.name }}</label><button type="button" class="clone-batch-apply" :disabled="!batchTagIds.length" @click="applyBatch('TAGS', { tagIds: batchTagIds })">应用标签</button></div></details>
         </div>
         <div class="clone-batch-actions">
           <button type="button" class="batch-action-complete" @click="applyBatch('COMPLETE')"><CheckSquare :size="22" /><span>完成</span></button>
@@ -848,7 +848,7 @@
             <ol>
               <li v-for="item in group.items" :key="item.publicId">
                 <span class="clone-list-activity-icon" :class="activityTone(item)"><component :is="activityIcon(item)" :size="16" /></span>
-                <div class="clone-list-activity-copy"><p><strong>{{ item.actorName || '当前用户' }}</strong> {{ item.summary }} <button type="button" class="clone-list-activity-task" @click="openActivityTask(item)">{{ item.taskTitle || '未知任务' }}</button><RouterLink v-for="tag in activityTags(item)" :key="tag.publicId" :to="`/tasks/tag/${tag.publicId}`" class="clone-list-activity-tag" :style="{ '--activity-tag-color': tag.color || 'var(--accent)' }">#{{ tag.name }}</RouterLink></p><time>{{ formatListActivityTime(item.createdAt) }}</time></div>
+                <div class="clone-list-activity-copy"><p><strong>{{ item.actorName || '当前用户' }}</strong> {{ item.summary }} <button type="button" class="clone-list-activity-task" @click="openActivityTask(item)">{{ item.taskTitle || '未知任务' }}</button><RouterLink v-for="tag in activityTags(item)" :key="tag.publicId" :to="`/tasks/tag/${tag.publicId}`" class="clone-list-activity-tag" :style="{ '--activity-tag-color': tag.color || 'var(--accent)' }">{{ tag.name }}</RouterLink></p><time>{{ formatListActivityTime(item.createdAt) }}</time></div>
               </li>
             </ol>
           </section>
@@ -1219,19 +1219,11 @@
           </form>
           <button v-else type="button" class="clone-checklist-add" @click="startDetailChecklistDraft"><Plus :size="15" />添加检查项</button>
         </section>
-        <div class="clone-detail-tags-row" v-if="selectedTask">
-          <span v-for="tagId in selectedTask.tagIds || []" :key="tagId" class="clone-detail-tag" :style="taskTagStyle(tagId)">
-            <button type="button" class="clone-detail-tag-name" :aria-label="`查看标签${tagName(tagId)}`" @click.stop="router.push(`/tasks/tag/${tagId}`)">#{{ tagName(tagId) }}</button>
-            <button type="button" class="clone-detail-tag-remove" :aria-label="`移除标签${tagName(tagId)}`" @click.stop="removeDetailTag(tagId)"><X :size="11" /></button>
+        <div class="clone-detail-tags-row" v-if="selectedTask && selectedTask.tagIds?.length">
+          <span v-for="tagId in selectedTask.tagIds" :key="tagId" class="clone-detail-tag" :style="taskTagStyle(tagId)">
+            <button type="button" class="clone-detail-tag-name" :aria-label="`查看标签${tagName(tagId)}`" @click.stop="router.push(`/tasks/tag/${tagId}`)">{{ tagName(tagId) }}</button>
+            <button type="button" class="clone-detail-tag-remove" :aria-label="`移除标签${tagName(tagId)}`" @click.stop="removeDetailTag(tagId)"><X :size="9" /></button>
           </span>
-          <div class="clone-detail-tag-add">
-            <button type="button" class="clone-detail-tag-add-trigger" aria-label="添加标签" :aria-expanded="detailTagPickerOpen" @click.stop="toggleDetailTagPicker"><Plus :size="14" /></button>
-            <div v-if="detailTagPickerOpen" class="clone-detail-tag-picker" role="group" aria-label="选择标签" @click.stop>
-              <label v-for="tag in sortedTags" :key="tag.publicId"><input type="checkbox" :checked="draftDetailTagIds.includes(tag.publicId)" @change="toggleDraftDetailTag(tag.publicId, $event.target.checked)" />#{{ tag.name }}</label>
-              <span v-if="!sortedTags.length">暂无标签</span>
-              <div class="clone-popover-actions"><button type="button" @click="detailTagPickerOpen = false">取消</button><button type="button" class="clone-popover-save" :disabled="detailTagSaving" @click="applyDetailTags">{{ detailTagSaving ? '保存中…' : '确定' }}</button></div>
-            </div>
-          </div>
         </div>
         <section v-if="selectedTask && !isNoteSelected" class="clone-detail-subtasks" aria-label="子任务">
           <header><strong>子任务</strong><span>{{ detailSubtasks.length }}</span><button type="button" aria-label="添加子任务" title="添加子任务" @click="createSubtask(selectedTask)"><Plus :size="15" /></button></header>
@@ -1345,7 +1337,7 @@
             </div>
             <button role="menuitem" type="button" :aria-expanded="detailMoreSection === 'tags'" @click="detailMoreSection = detailMoreSection === 'tags' ? '' : 'tags'"><Tag :size="17" />标签<ChevronRight :size="15" /></button>
             <div v-if="detailMoreSection === 'tags'" class="clone-detail-more-submenu" role="group" aria-label="任务标签">
-              <label v-for="tag in sortedTags" :key="tag.publicId"><input type="checkbox" :checked="selectedTask.tagIds?.includes(tag.publicId)" @change="toggleDetailTaskTag(tag)" />#{{ tag.name }}</label>
+              <label v-for="tag in sortedTags" :key="tag.publicId"><input type="checkbox" :checked="selectedTask.tagIds?.includes(tag.publicId)" @change="toggleDetailTaskTag(tag)" />{{ tag.name }}</label>
               <span v-if="!sortedTags.length">暂无标签</span>
             </div>
             <button role="menuitem" type="button" @click="chooseDetailAttachment"><Paperclip :size="17" />上传附件</button>
@@ -1405,7 +1397,7 @@
       <button type="button" @click="contextSubmenu = contextSubmenu === 'list' ? '' : 'list'"><ListTodo :size="14" />移至清单<ChevronDown :size="13" /></button>
       <div v-if="contextSubmenu === 'list'" class="clone-context-submenu"><button v-for="list in activeLists" :key="list.publicId" type="button" :disabled="list.publicId === context.task?.listId" @click="moveContextTask(list)">{{ list.name }}</button></div>
       <button type="button" @click="contextSubmenu = contextSubmenu === 'tags' ? '' : 'tags'"><Tag :size="14" />设置标签<ChevronDown :size="13" /></button>
-      <div v-if="contextSubmenu === 'tags'" class="clone-context-submenu"><label v-for="tag in sortedTags" :key="tag.publicId"><input type="checkbox" :checked="context.task?.tagIds?.includes(tag.publicId)" @change="toggleContextTag(tag)" />#{{ tag.name }}</label><span v-if="!sortedTags.length">暂无标签</span></div>
+      <div v-if="contextSubmenu === 'tags'" class="clone-context-submenu"><label v-for="tag in sortedTags" :key="tag.publicId"><input type="checkbox" :checked="context.task?.tagIds?.includes(tag.publicId)" @change="toggleContextTag(tag)" />{{ tag.name }}</label><span v-if="!sortedTags.length">暂无标签</span></div>
       <button type="button" @click="createSubtask(context.task, { openDetail: true }); closeContext()"><Plus :size="14" />添加子任务</button>
       <button type="button" @click="startContextFocus"><Timer :size="14" />开始专注</button>
       <button type="button" @click="copyContextTaskLink"><Copy :size="14" />复制任务链接</button>
@@ -1461,7 +1453,7 @@
             <div class="clone-filter-mode" role="tablist" aria-label="筛选器模式"><button type="button" role="tab" :aria-selected="organizationDialog.filter.mode === 'BASIC'" @click="organizationDialog.filter.mode = 'BASIC'">普通</button><button type="button" role="tab" :aria-selected="organizationDialog.filter.mode === 'ADVANCED'" @click="organizationDialog.filter.mode = 'ADVANCED'">高级</button></div>
             <template v-if="organizationDialog.filter.mode === 'BASIC'">
               <div class="clone-filter-field"><span>清单</span><details class="clone-filter-select"><summary @click="closeOtherFilterSelect('list')">{{ filterListSummary }}<ChevronDown :size="14" /></summary><div class="clone-filter-select-menu" role="group" aria-label="清单范围" @click.stop><label><input type="checkbox" :checked="filterListAllSelected" @change="organizationDialog.filter.listIds = []" />所有清单</label><hr /><label v-for="group in sortedListGroups" :key="group.publicId"><input type="checkbox" :checked="groupListSelected(group.publicId)" @change="toggleFilterGroup(group.publicId, $event.target.checked)" />{{ group.name }}（文件夹）</label><label v-for="list in activeLists" :key="list.publicId" :class="{ 'is-child-list': list.groupId }"><input type="checkbox" :checked="filterListAllSelected || organizationDialog.filter.listIds.includes(list.publicId)" @change="toggleFilterList(list.publicId, $event.target.checked)" />{{ list.name }}</label></div></details></div>
-              <div class="clone-filter-field"><span>标签</span><details class="clone-filter-select"><summary @click="closeOtherFilterSelect('tag')">{{ filterTagSummary }}<ChevronDown :size="14" /></summary><div class="clone-filter-select-menu" role="group" aria-label="标签范围" @click.stop><label><input type="radio" v-model="organizationDialog.filter.tagMode" value="ALL" @change="organizationDialog.filter.tagIds = []" />所有</label><hr /><label><input type="radio" v-model="organizationDialog.filter.tagMode" value="HAS_TAGS" @change="organizationDialog.filter.tagIds = []" />有标签</label><label><input type="radio" v-model="organizationDialog.filter.tagMode" value="NO_TAGS" @change="organizationDialog.filter.tagIds = []" />无标签</label><hr /><label v-for="tag in sortedTags" :key="tag.publicId" class="clone-filter-tag-option"><input type="checkbox" :checked="organizationDialog.filter.tagMode === 'SELECTED' && organizationDialog.filter.tagIds.includes(tag.publicId)" @change="toggleFilterTag(tag.publicId, $event.target.checked)" />#{{ tag.name }}</label></div></details></div>
+              <div class="clone-filter-field"><span>标签</span><details class="clone-filter-select"><summary @click="closeOtherFilterSelect('tag')">{{ filterTagSummary }}<ChevronDown :size="14" /></summary><div class="clone-filter-select-menu" role="group" aria-label="标签范围" @click.stop><label><input type="radio" v-model="organizationDialog.filter.tagMode" value="ALL" @change="organizationDialog.filter.tagIds = []" />所有</label><hr /><label><input type="radio" v-model="organizationDialog.filter.tagMode" value="HAS_TAGS" @change="organizationDialog.filter.tagIds = []" />有标签</label><label><input type="radio" v-model="organizationDialog.filter.tagMode" value="NO_TAGS" @change="organizationDialog.filter.tagIds = []" />无标签</label><hr /><label v-for="tag in sortedTags" :key="tag.publicId" class="clone-filter-tag-option"><input type="checkbox" :checked="organizationDialog.filter.tagMode === 'SELECTED' && organizationDialog.filter.tagIds.includes(tag.publicId)" @change="toggleFilterTag(tag.publicId, $event.target.checked)" />{{ tag.name }}</label></div></details></div>
               <label class="clone-filter-field"><span>日期</span><select v-model="organizationDialog.filter.dueRange" @change="setFilterDueRange"><option value="ANY">所有</option><option value="NONE">无日期</option><option value="OVERDUE">已过期</option><option value="REPEATING">重复日期</option><option value="TODAY">今天</option><option value="TOMORROW">明天</option><option value="THIS_WEEK">本周</option><option value="NEXT_WEEK">下周</option><option value="THIS_MONTH">本月</option><option value="NEXT_MONTH">下月</option><option value="CUSTOM">时间段</option></select></label>
               <div v-if="organizationDialog.filter.dueRange === 'CUSTOM'" class="clone-filter-date-range"><label><span><CalendarClock :size="14" />时间段</span><select aria-label="开始日期" :value="organizationDialog.filter.dueStart" @change="setFilterDateEndpoint('start', $event.target.value)"><option v-for="option in filterDateOptions" :key="option.value" :value="option.value" :disabled="option.offset === 30">{{ option.label }}</option></select></label><label class="clone-filter-date-separator">~</label><label><select aria-label="结束日期" :value="organizationDialog.filter.dueEnd" @change="setFilterDateEndpoint('end', $event.target.value)"><option v-for="option in filterDateOptions" :key="option.value" :value="option.value" :disabled="option.value <= organizationDialog.filter.dueStart">{{ option.label }}</option></select></label></div>
               <fieldset class="clone-filter-priorities"><legend>优先级</legend><label><input type="radio" name="filter-priority-all" :checked="organizationDialog.filter.priorities.length === 0" @change="organizationDialog.filter.priorities = []" />所有</label><label v-for="option in filterPriorityOptions" :key="option.value"><input v-model="organizationDialog.filter.priorities" type="checkbox" :value="option.value" />{{ option.label }}</label></fieldset>
@@ -8179,9 +8171,9 @@ const SidebarSection = {
 .clone-quick-add form .clone-quick-submit { min-height: 30px; padding: 0 10px; font-size: 12px; white-space: nowrap; }
 .clone-quick-add form .clone-quick-action.active,
 .clone-quick-add form .clone-quick-icon-action.active { color: var(--accent); }
-.clone-quick-add form .clone-quick-priority-action[data-priority="HIGH"] { color: var(--down); }
-.clone-quick-add form .clone-quick-priority-action[data-priority="MEDIUM"] { color: var(--warn); }
-.clone-quick-add form .clone-quick-priority-action[data-priority="LOW"] { color: #4f82dd; }
+.clone-quick-add form .clone-quick-priority-action[data-priority="HIGH"] { color: var(--priority-high); }
+.clone-quick-add form .clone-quick-priority-action[data-priority="MEDIUM"] { color: var(--priority-medium); }
+.clone-quick-add form .clone-quick-priority-action[data-priority="LOW"] { color: var(--priority-low); }
 .clone-quick-add form .clone-quick-priority-action[data-priority="NONE"] { color: var(--muted); }
 .clone-quick-list-dot { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: var(--line2); }
 .clone-quick-action-panel { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; width: fit-content; max-width: 100%; margin: -8px 0 12px 24px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); box-shadow: 0 5px 18px rgba(20, 27, 38, .12); }
@@ -8197,11 +8189,11 @@ const SidebarSection = {
 .clone-quick-priority-option > svg:first-child,
 .clone-board-quick-priority-option > svg:first-child { flex: none; color: var(--muted); }
 .clone-quick-priority-option[data-priority="HIGH"] > svg:first-child,
-.clone-board-quick-priority-option[data-priority="HIGH"] > svg:first-child { color: var(--down); }
+.clone-board-quick-priority-option[data-priority="HIGH"] > svg:first-child { color: var(--priority-high); }
 .clone-quick-priority-option[data-priority="MEDIUM"] > svg:first-child,
-.clone-board-quick-priority-option[data-priority="MEDIUM"] > svg:first-child { color: var(--warn); }
+.clone-board-quick-priority-option[data-priority="MEDIUM"] > svg:first-child { color: var(--priority-medium); }
 .clone-quick-priority-option[data-priority="LOW"] > svg:first-child,
-.clone-board-quick-priority-option[data-priority="LOW"] > svg:first-child { color: #4f82dd; }
+.clone-board-quick-priority-option[data-priority="LOW"] > svg:first-child { color: var(--priority-low); }
 .clone-quick-priority-option[data-priority="NONE"] > svg:first-child,
 .clone-board-quick-priority-option[data-priority="NONE"] > svg:first-child { color: var(--muted); }
 .clone-quick-action-panel label:has(input[type="checkbox"]) { padding: 3px 5px; border-radius: 4px; color: var(--ink); }
@@ -8610,8 +8602,8 @@ const SidebarSection = {
 .clone-inline-board-check { display: grid; width: 17px; height: 17px; flex: 0 0 17px; place-items: center; margin-top: 1px; padding: 0; border: 1.5px solid var(--muted); border-radius: 5px; background: transparent; color: var(--accent-contrast, #fff); cursor: pointer; }
 .clone-inline-board-check:hover { border-color: var(--accent); }
 .clone-inline-board-check.completed { border-color: var(--accent); background: var(--accent); }
-.clone-inline-board-card[data-priority="HIGH"] .clone-inline-board-check { border-color: var(--down); }
-.clone-inline-board-card[data-priority="MEDIUM"] .clone-inline-board-check { border-color: var(--warn); }
+.clone-inline-board-card[data-priority="HIGH"] .clone-inline-board-check { border-color: var(--priority-high); }
+.clone-inline-board-card[data-priority="MEDIUM"] .clone-inline-board-check { border-color: var(--priority-medium); }
 .clone-inline-board-note-icon { flex: 0 0 auto; margin-top: 2px; color: var(--accent); }
 .clone-inline-board-tags { display: flex; flex-wrap: wrap; gap: 4px; padding-left: 25px; }
 .clone-inline-board-tag, .clone-inline-board-tag-more { display: inline-flex; max-width: 120px; align-items: center; min-height: 20px; padding: 1px 7px; overflow: hidden; border-radius: 10px; background: color-mix(in srgb, var(--task-tag-color, var(--accent)) 14%, transparent); color: color-mix(in srgb, var(--task-tag-color, var(--accent)) 74%, var(--ink)); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
@@ -8689,9 +8681,9 @@ const SidebarSection = {
 .clone-task-row em[data-priority="MEDIUM"] {
   color: var(--warn);
 }
-.clone-task-row[data-priority="HIGH"] .clone-check::before { border-color: var(--down); }
-.clone-task-row[data-priority="MEDIUM"] .clone-check::before { border-color: var(--warn); }
-.clone-task-row[data-priority="LOW"] .clone-check::before { border-color: var(--accent); }
+.clone-task-row[data-priority="HIGH"] .clone-check::before { border-color: var(--priority-high); }
+.clone-task-row[data-priority="MEDIUM"] .clone-check::before { border-color: var(--priority-medium); }
+.clone-task-row[data-priority="LOW"] .clone-check::before { border-color: var(--priority-low); }
 .clone-row-more {
   flex: none;
 }
@@ -8987,8 +8979,9 @@ const SidebarSection = {
 .clone-detail-toolbar-main > .clone-detail-tool[aria-label="设置日期"] { max-width: 150px; }
 .clone-detail-repeat-indicator { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; color: var(--muted); pointer-events: none; }
 .clone-detail-priority-tool { color: var(--muted); font-size: 20px; line-height: 1; }
-.clone-detail-priority-tool[data-priority="HIGH"] { color: var(--down); }
-.clone-detail-priority-tool[data-priority="MEDIUM"] { color: var(--warn); }
+.clone-detail-priority-tool[data-priority="HIGH"] { color: var(--priority-high); }
+.clone-detail-priority-tool[data-priority="MEDIUM"] { color: var(--priority-medium); }
+.clone-detail-priority-tool[data-priority="LOW"] { color: var(--priority-low); }
 .clone-detail-content-toggle {
   display: grid;
   width: 28px;
@@ -9339,9 +9332,9 @@ const SidebarSection = {
 .clone-detail-subtask-grip { display: grid; place-items: center; color: var(--muted); opacity: 0; cursor: grab; }
 .clone-detail-subtask-row:hover .clone-detail-subtask-grip { opacity: .5; }
 .clone-detail-subtask-priority { display: inline-flex; color: var(--muted); }
-.clone-detail-subtask-priority[data-priority="HIGH"] { color: var(--down); }
-.clone-detail-subtask-priority[data-priority="MEDIUM"] { color: #e8a33d; }
-.clone-detail-subtask-priority[data-priority="LOW"] { color: var(--accent); }
+.clone-detail-subtask-priority[data-priority="HIGH"] { color: var(--priority-high); }
+.clone-detail-subtask-priority[data-priority="MEDIUM"] { color: var(--priority-medium); }
+.clone-detail-subtask-priority[data-priority="LOW"] { color: var(--priority-low); }
 .clone-detail-subtask-check { display: grid; width: 17px; height: 17px; flex: 0 0 17px; place-items: center; padding: 0; border: 1.5px solid var(--line2); border-radius: 5px; background: transparent; color: var(--accent); cursor: pointer; }
 .clone-detail-subtask-row.completed .clone-detail-subtask-check { border-color: var(--accent); background: var(--accent); color: white; }
 .clone-detail-subtask-title { min-width: 0; flex: 1 1 auto; overflow: hidden; padding: 5px 0; border: 0; background: transparent; color: inherit; font: inherit; font-size: 13px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: text; }
@@ -9365,9 +9358,7 @@ const SidebarSection = {
 .clone-checklist-editor > header,
 .clone-checklist-read > header { display: flex; align-items: center; justify-content: space-between; padding: 12px 0 5px; color: var(--ink2); font-size: 12px; }
 .clone-checklist-editor > header button,
-.clone-detail-tags-row button { display: grid; width: 26px; height: 26px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-checklist-editor > header button:hover,
-.clone-detail-tags-row button:hover { background: var(--accent-soft); color: var(--accent); }
 .clone-checklist-row { position: relative; display: grid; grid-template-columns: 16px 18px minmax(0, 1fr) 22px 22px; align-items: center; gap: 8px; min-height: 34px; border-bottom: 1px solid color-mix(in srgb, var(--line) 52%, transparent); }
 .clone-checklist-remind { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); opacity: 0; cursor: pointer; }
 .clone-checklist-row:hover .clone-checklist-remind { opacity: .7; }
@@ -9417,19 +9408,15 @@ const SidebarSection = {
   background: var(--accent);
   transition: width 180ms ease;
 }
-.clone-detail-tags-row { display: flex; align-items: center; gap: 6px; padding: 10px 0; border-top: 1px solid var(--line); color: var(--muted); }
-.clone-detail-tag { display: inline-flex; align-items: center; gap: 2px; padding: 3px 4px 3px 8px; border-radius: 10px; background: color-mix(in srgb, var(--task-tag-color, var(--accent)) 18%, transparent); color: color-mix(in srgb, var(--task-tag-color, var(--accent)) 74%, var(--ink)); font-size: 11px; }
-.clone-detail-tag-name { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; white-space: nowrap; cursor: pointer; }
+.clone-detail-tags-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 0; border-top: 1px solid var(--line); color: var(--muted); }
+.clone-detail-tag { position: relative; display: inline-flex; width: fit-content; max-width: 100%; align-items: center; padding: 2px 7px; border-radius: 8px; background: color-mix(in srgb, var(--task-tag-color, var(--accent)) 16%, transparent); color: color-mix(in srgb, var(--task-tag-color, var(--accent)) 76%, var(--ink)); font-size: 10px; line-height: 1.55; }
+.clone-detail-tag-remove { position: absolute; top: -5px; right: -5px; display: grid; width: 13px; height: 13px; place-items: center; padding: 0; border: 1px solid color-mix(in srgb, var(--task-tag-color, var(--accent)) 42%, var(--line)); border-radius: 50%; background: var(--card); color: color-mix(in srgb, var(--task-tag-color, var(--accent)) 82%, var(--ink)); opacity: .7; cursor: pointer; transition: opacity 120ms ease; }
+.clone-detail-tag:hover .clone-detail-tag-remove { opacity: 1; }
+.clone-detail-tag-remove:hover { background: var(--down); border-color: var(--down); color: #fff; }
+.clone-detail-tag-name { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .clone-detail-tag-name:hover { text-decoration: underline; }
 .clone-detail-tag-remove { display: grid; place-items: center; width: 15px; height: 15px; padding: 0; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--ink) 16%, transparent); color: var(--card); opacity: 0; cursor: pointer; }
 .clone-detail-tag:hover .clone-detail-tag-remove { opacity: 1; }
-.clone-detail-tag-add { position: relative; display: inline-flex; }
-.clone-detail-tag-add-trigger { display: grid; width: 22px; height: 22px; place-items: center; padding: 0; border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line)); border-radius: 11px; background: transparent; color: var(--accent); cursor: pointer; }
-.clone-detail-tag-add-trigger:hover { background: var(--accent-soft); }
-.clone-detail-tag-picker { position: absolute; z-index: 30; bottom: calc(100% + 6px); left: 0; display: grid; gap: 2px; min-width: 190px; max-height: 260px; overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); box-shadow: 0 10px 28px rgb(15 23 42 / 16%); }
-.clone-detail-tag-picker label { display: flex; align-items: center; gap: 7px; padding: 4px 6px; border-radius: 4px; color: var(--ink2); font-size: 12px; cursor: pointer; }
-.clone-detail-tag-picker label:hover { background: var(--accent-soft); }
-.clone-detail-tag-picker span { padding: 4px 6px; color: var(--muted); font-size: 12px; }
 .clone-detail-secondary { display: grid; gap: 16px; padding-top: 12px; }
 .clone-detail-footer { position: absolute; right: 0; bottom: 0; left: 0; z-index: 4; display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--card) 98%, var(--paper)); }
 .clone-detail-footer-actions { position: relative; }
@@ -9486,9 +9473,9 @@ const SidebarSection = {
 .clone-priority-toolbar-popover { right: 12px; left: auto; width: 168px; min-width: 168px; }
 .clone-priority-toolbar-popover .clone-priority-option { display: flex; width: 100%; align-items: center; gap: 9px; white-space: nowrap; }
 .clone-priority-option i { display: block; width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; background: var(--muted); }
-.clone-priority-option.priority-high i { background: #e34d59; }
-.clone-priority-option.priority-medium i { background: #e69b2d; }
-.clone-priority-option.priority-low i { background: #4d78db; }
+.clone-priority-option.priority-high i { background: var(--priority-high); }
+.clone-priority-option.priority-medium i { background: var(--priority-medium); }
+.clone-priority-option.priority-low i { background: var(--priority-low); }
 .clone-priority-option.priority-none i { border: 1px solid var(--muted); background: transparent; }
 .clone-detail-read dl {
   margin: 0;

@@ -1211,10 +1211,19 @@ test('任务详情栏第一批改造：检查项、描述插入菜单、标签�
   assert.match(workspaceView, /detailDescriptionEditor\.value\?\.focusEditor\(\);\n    detailDescriptionEditor\.value\?\.runToolbar\(kind\)/)
   assert.match(workspaceView, /function insertDetailBlock\(kind\)[\s\S]*kind === "attachment"[\s\S]*kind === "subtask"[\s\S]*kind === "tag"[\s\S]*kind === "linkTask"/)
   assert.match(workspaceView, /function chooseDetailLinkTask\(task\)[\s\S]*url\.searchParams\.set\("task", task\.publicId\)[\s\S]*insertLink\(/)
-  // 标签：删除 / 跳转 / 多选添加
+  // 标签：胶囊不带 #、右上角小 × 删除、点击跳转；添加走更多菜单（不再有 + 与选择器）
   assert.match(workspaceView, /class="clone-detail-tag-remove"[\s\S]{0,160}removeDetailTag\(tagId\)/)
-  assert.match(workspaceView, /class="clone-detail-tag-name"[\s\S]{0,160}router\.push\(`\/tasks\/tag\/\$\{tagId\}`\)/)
-  assert.match(workspaceView, /class="clone-detail-tag-picker"[\s\S]*draftDetailTagIds\.includes\(tag\.publicId\)[\s\S]*applyDetailTags/)
+  assert.match(workspaceView, /class="clone-detail-tag-name"[\s\S]{0,200}router\.push\(`\/tasks\/tag\/\$\{tagId\}`\)">\{\{ tagName\(tagId\) \}\}/)
+  assert.doesNotMatch(workspaceView, /clone-detail-tag-add-trigger/)
+  assert.doesNotMatch(workspaceView, /clone-detail-tag-picker/)
+  assert.doesNotMatch(workspaceView, /#\{\{/)
+  // 优先级三色统一为低蓝 / 中橙 / 高红
+  assert.match(workspaceView, /\.clone-task-row\[data-priority="LOW"\] \.clone-check::before \{ border-color: var\(--priority-low\); \}/)
+  assert.match(workspaceView, /\.clone-detail-priority-tool\[data-priority="LOW"\] \{ color: var\(--priority-low\); \}/)
+  const themeCss = await readFile(new URL('../styles/theme.css', import.meta.url), 'utf8')
+  assert.match(themeCss, /--priority-high: #e34d59;/)
+  assert.match(themeCss, /--priority-medium: #e69b2d;/)
+  assert.match(themeCss, /--priority-low: #4d78db;/)
   // 底部清单选择弹层
   assert.match(workspaceView, /class="clone-detail-footer-list"[\s\S]{0,200}toggleDetailListPicker/)
   assert.match(workspaceView, /async function moveDetailTaskToList\(list\)[\s\S]*store\.update\(task, \{ listId: list\.publicId \}\)/)
