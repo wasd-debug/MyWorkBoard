@@ -1235,8 +1235,11 @@ test('任务详情栏第二批：子任务交互、更多菜单细化、导出�
   assert.match(workspaceView, /detailMoreSection === 'move'[\s\S]{0,400}moveDetailTaskFromMenu\(list\)/)
   assert.match(workspaceView, /开始番茄专注[\s\S]{0,200}预计番茄时长…[\s\S]{0,200}开始正计时/)
   assert.match(workspaceView, /async function confirmEstimatedFocus\(\)[\s\S]*startDetailFocus\("POMODORO", minutes\)/)
-  // 任务动态常驻下部
-  assert.match(workspaceView, /class="clone-detail-activity-inline"[\s\S]{0,320}activities\.slice\(0, 5\)/)
+  // 任务/笔记动态改为菜单触发的浮层（不再常驻在详情下部）
+  assert.match(workspaceView, /class="clone-detail-activity-panel"/)
+  assert.match(workspaceView, /v-for="item in activities"/)
+  assert.match(workspaceView, /async function openActivityPanel\(\)[\s\S]{0,300}await loadActivity\(target\)/)
+  assert.doesNotMatch(workspaceView, /clone-detail-activity-inline/)
   // 导出弹窗：Markdown / 纯文本预览 + 复制 + 下载
   assert.match(workspaceView, /<Dialog v-model:open="exportDialogOpen" title="导出"/)
   assert.match(workspaceView, /clone-export-tabs[\s\S]{0,400}exportFormat = 'markdown'[\s\S]{0,200}exportFormat = 'text'/)

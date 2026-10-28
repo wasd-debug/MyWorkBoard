@@ -1230,3 +1230,11 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 **验证**：检查项提醒端到端——设置 40 秒后提醒，扫描触发后 `fired_at` 写入、`task_inbox_message` 出现 `CHECKLIST_DUE`（任务「111」/检查项「QA提醒检查项」）、详情动态出现「触发了检查项提醒」；正计时——API 启动返回 `plannedMinutes=0 / plannedEndAt=null`，页面显示「正计时中」且 00:13→00:15 递增，完成后 `actualMinutes=1`。门禁 219/219、typecheck、build 通过。测试数据已清理。
 
 **部署**：后端重新打包 → 新镜像 tag 为 `deploy-backend`（旧版本继续保留 `deploy-backend:previous`）→ compose 重建容器，V50 迁移自动应用，启动 5.4s。
+
+### P2-FE127 任务/笔记动态改为菜单触发浮层（2026-10-28）
+
+- 移除详情栏下部的常驻「任务动态」区块（P2-FE124 加入）与「附加信息」里的「活动记录」section，避免同一内容三处出现。
+- 更多菜单「任务动态 / 笔记动态」改为打开**浮层**：右栏内绝对定位卡片（宽 ≤360px、最大高 62%），标题随任务/笔记形态切换，右上角关闭；列表显示摘要 + 相对时间，含加载中/空/离线提示。
+- 右键菜单把旧的「显示附件、动态与属性」（展开下半区）替换为「任务动态 / 笔记动态」，点击直接打开同一浮层；`showDetailActivity` 保留为 `openActivityPanel` 的别名，不再修改 `detailSecondaryOpen`。
+- 附件仍可通过行内附件指示图标打开（`openTaskIndicator('attachments')` 保留展开附加信息并定位到附件区）。
+- 门禁 219/219（更新第二批关于动态的断言）、typecheck、build 通过。实测：详情页无任何常驻动态；更多菜单点「任务动态」浮层出现 20 条并可关闭；右键菜单出现「任务动态」且旧入口消失，点击同样弹出浮层。截图 tmp/qa30-*.png。

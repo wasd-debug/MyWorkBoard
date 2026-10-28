@@ -1260,15 +1260,6 @@
           </form>
           <button v-else type="button" class="clone-detail-subtask-add" @click="createSubtask(selectedTask)"><Plus :size="16" />添加子任务</button>
         </section>
-        <section v-if="activities.length" class="clone-detail-activity-inline" aria-label="任务动态">
-          <header><strong>{{ isNoteSelected ? '笔记动态' : '任务动态' }}</strong><span>{{ activities.length }}</span><button type="button" @click="showDetailActivity">查看全部</button></header>
-          <ol>
-            <li v-for="item in activities.slice(0, 5)" :key="item.publicId">
-              <span class="clone-detail-activity-dot" aria-hidden="true"></span>
-              <div><p>{{ item.summary }}</p><time>{{ formatListActivityTime(item.createdAt) }}</time></div>
-            </li>
-          </ol>
-        </section>
         <section v-if="detailFieldsOpen" class="clone-detail-secondary" aria-label="更多任务字段">
           <section class="clone-detail-properties" aria-label="任务属性编辑">
             <label>清单<select v-model="detailFieldsDraft.listId"><option v-for="list in activeLists" :key="list.publicId" :value="list.publicId">{{ list.name }}</option></select></label>
@@ -1315,16 +1306,6 @@
               <button type="button" :aria-label="`下载附件${file.fileName}`" @click="downloadAttachment(file)"><Download :size="14" /></button>
             </li>
           </ul>
-        </section>
-        <section class="clone-activity-section">
-          <h3>活动记录</h3>
-          <p v-if="activityLoading" class="clone-muted">加载中…</p>
-          <p v-else-if="!activities.length" class="clone-muted">{{ store.online ? "暂无活动记录" : "离线时无法加载活动记录" }}</p>
-          <ol v-else>
-            <li v-for="item in activities" :key="item.publicId">
-              <strong>{{ item.summary }}</strong><time>{{ formatDate(item.createdAt) }}</time>
-            </li>
-          </ol>
         </section>
         <section class="clone-detail-properties" aria-label="任务属性">
           <button type="button" @click="openEdit(selectedTask)"><span>开始时间</span><strong>{{ selectedTask.startAt ? formatDate(selectedTask.startAt) : '未设置' }}</strong></button>
@@ -1375,7 +1356,7 @@
               <button type="button" @click="startDetailFocus('COUNT_UP')">开始正计时</button>
             </div>
             <div class="clone-detail-more-separator" aria-hidden="true"></div>
-            <button role="menuitem" type="button" @click="showDetailActivity"><SlidersHorizontal :size="17" />{{ isNoteSelected ? '笔记动态' : '任务动态' }}</button>
+            <button role="menuitem" type="button" @click="openActivityPanel"><SlidersHorizontal :size="17" />{{ isNoteSelected ? '笔记动态' : '任务动态' }}</button>
             <button v-if="!isNoteSelected" role="menuitem" type="button" @click="openTaskTemplateDialog"><FileText :size="17" />保存为模板</button>
             <button role="menuitem" type="button" @click="duplicateDetailTask"><CopyPlus :size="17" />创建副本</button>
             <button role="menuitem" type="button" @click="copyDetailTaskLink"><Link :size="17" />复制链接</button>
@@ -1388,6 +1369,25 @@
           </div>
           <input ref="detailAttachmentInput" class="clone-detail-attachment-input" type="file" aria-label="选择任务附件" @change="uploadAttachment" />
       </footer>
+      <section v-if="activityPanelOpen" class="clone-detail-activity-panel" role="dialog" :aria-label="isNoteTask(activityPanelTask) ? '笔记动态' : '任务动态'" @click.stop>
+        <header>
+          <strong>{{ isNoteTask(activityPanelTask) ? '笔记动态' : '任务动态' }}</strong>
+          <button type="button" aria-label="关闭动态" @click="activityPanelOpen = false"><X :size="16" /></button>
+        </header>
+        <div class="clone-detail-activity-panel-body">
+          <p v-if="activityLoading" class="clone-muted">加载中…</p>
+          <p v-else-if="!activities.length" class="clone-muted">{{ store.online ? '暂无动态' : '离线时无法加载动态' }}</p>
+          <ol v-else>
+            <li v-for="item in activities" :key="item.publicId">
+              <span class="clone-detail-activity-dot" aria-hidden="true"></span>
+              <div>
+                <p>{{ item.summary }}</p>
+                <time>{{ formatListActivityTime(item.createdAt) }}</time>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </section>
       </template>
     </aside>
 
@@ -1409,7 +1409,7 @@
       <button type="button" @click="createSubtask(context.task, { openDetail: true }); closeContext()"><Plus :size="14" />添加子任务</button>
       <button type="button" @click="startContextFocus"><Timer :size="14" />开始专注</button>
       <button type="button" @click="copyContextTaskLink"><Copy :size="14" />复制任务链接</button>
-      <button v-if="selectedTask?.publicId === context.task?.publicId" type="button" @click="detailSecondaryOpen = !detailSecondaryOpen; closeContext()"><Layers3 :size="14" />{{ detailSecondaryOpen ? '隐藏附加信息' : '显示附件、动态与属性' }}</button>
+      <button type="button" @click="contextActivityTask = context.task; closeContext(); openActivityPanel()"><SlidersHorizontal :size="14" />{{ isNoteTask(context.task) ? '笔记动态' : '任务动态' }}</button>
       <div class="clone-context-divider" aria-hidden="true"></div>
       <button type="button" @click="duplicateTask(context.task); closeContext()"><Copy :size="14" />创建副本</button>
       <button type="button" class="danger" @click="deleteTask(context.task); closeContext()"><Trash2 :size="14" />删除任务</button>
@@ -3864,11 +3864,21 @@ function saveTaskTemplateFromDialog() {
     message.error("模板保存失败");
   }
 }
-async function showDetailActivity() {
+// 任务/笔记动态：由更多菜单（或右键菜单）触发的浮层，不再展开详情下半区
+const activityPanelOpen = ref(false);
+const activityPanelTask = ref(null);
+const contextActivityTask = ref(null);
+async function openActivityPanel() {
   closeDetailMore();
-  detailSecondaryOpen.value = true;
-  await nextTick();
-  document.querySelector(".clone-detail-secondary .clone-activity-section")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  const target = contextActivityTask.value || selectedTask.value;
+  contextActivityTask.value = null;
+  if (!target) return;
+  activityPanelTask.value = target;
+  activityPanelOpen.value = true;
+  await loadActivity(target);
+}
+async function showDetailActivity() {
+  await openActivityPanel();
 }
 function taskTemplateStorageKey() {
   return `task-detail-templates:${store.accountScope || "anonymous"}`;
@@ -9289,16 +9299,18 @@ const SidebarSection = {
 .clone-detail-subtasks > header span { color: var(--muted); font-variant-numeric: tabular-nums; }
 .clone-detail-subtasks > header > button { display: grid; width: 26px; height: 26px; place-items: center; margin-left: auto; border: 0; border-radius: 50%; background: transparent; color: var(--accent); cursor: pointer; }
 .clone-detail-subtasks > header > button:hover { background: var(--accent-soft); }
-.clone-detail-activity-inline { margin-top: 3px; padding-top: 9px; border-top: 1px solid var(--line); }
-.clone-detail-activity-inline > header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
-.clone-detail-activity-inline > header strong { color: var(--ink); font-size: 13px; font-weight: 600; }
-.clone-detail-activity-inline > header span { color: var(--muted); font-size: 11px; }
-.clone-detail-activity-inline > header button { margin-left: auto; padding: 0; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 11px; cursor: pointer; }
-.clone-detail-activity-inline ol { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
-.clone-detail-activity-inline li { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 8px; align-items: start; }
+.clone-detail-activity-panel { position: absolute; z-index: 45; right: 10px; bottom: 58px; display: flex; width: min(360px, calc(100% - 20px)); max-height: min(62%, 470px); flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--card); box-shadow: 0 16px 40px rgb(15 23 42 / 22%); }
+.clone-detail-activity-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+.clone-detail-activity-panel > header strong { color: var(--ink); font-size: 13px; font-weight: 600; }
+.clone-detail-activity-panel > header button { display: grid; width: 24px; height: 24px; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
+.clone-detail-activity-panel > header button:hover { background: var(--accent-soft); color: var(--accent); }
+.clone-detail-activity-panel-body { overflow: auto; padding: 9px 12px 12px; }
+.clone-detail-activity-panel-body ol { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.clone-detail-activity-panel-body li { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 8px; align-items: start; }
 .clone-detail-activity-dot { width: 6px; height: 6px; margin-top: 6px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 62%, transparent); }
-.clone-detail-activity-inline li p { margin: 0; color: var(--ink2); font-size: 12px; line-height: 1.5; }
-.clone-detail-activity-inline li time { color: var(--muted); font-size: 11px; }
+.clone-detail-activity-panel-body li p { margin: 0; color: var(--ink2); font-size: 12px; line-height: 1.5; }
+.clone-detail-activity-panel-body li time { color: var(--muted); font-size: 11px; }
+.clone-detail-activity-panel-body .clone-muted { margin: 4px 0; font-size: 12px; }
 .clone-export-body { display: grid; gap: 10px; min-width: min(560px, 80vw); }
 .clone-export-tabs { display: inline-flex; justify-self: center; padding: 3px; border-radius: 8px; background: color-mix(in srgb, var(--ink) 7%, transparent); }
 .clone-export-tabs button { min-height: 28px; padding: 0 18px; border: 0; border-radius: 6px; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
@@ -9310,16 +9322,7 @@ const SidebarSection = {
 .clone-template-form footer { display: flex; justify-content: flex-end; gap: 8px; }
 .clone-focus-estimate-field { display: grid; gap: 6px; color: var(--ink2); font-size: 12px; }
 .clone-focus-estimate-field input { min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); font: inherit; }
-.clone-detail-activity-inline { margin-top: 3px; padding-top: 9px; border-top: 1px solid var(--line); }
-.clone-detail-activity-inline > header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
-.clone-detail-activity-inline > header strong { color: var(--ink); font-size: 13px; font-weight: 600; }
-.clone-detail-activity-inline > header span { color: var(--muted); font-size: 11px; }
-.clone-detail-activity-inline > header button { margin-left: auto; padding: 0; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 11px; cursor: pointer; }
-.clone-detail-activity-inline ol { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
-.clone-detail-activity-inline li { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 8px; align-items: start; }
 .clone-detail-activity-dot { width: 6px; height: 6px; margin-top: 6px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 62%, transparent); }
-.clone-detail-activity-inline li p { margin: 0; color: var(--ink2); font-size: 12px; line-height: 1.5; }
-.clone-detail-activity-inline li time { color: var(--muted); font-size: 11px; }
 .clone-export-body { display: grid; gap: 10px; min-width: min(560px, 80vw); }
 .clone-export-tabs { display: inline-flex; justify-self: center; padding: 3px; border-radius: 8px; background: color-mix(in srgb, var(--ink) 7%, transparent); }
 .clone-export-tabs button { min-height: 28px; padding: 0 18px; border: 0; border-radius: 6px; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
