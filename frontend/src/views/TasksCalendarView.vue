@@ -81,6 +81,7 @@
             <button type="button" class="cal-icon-btn" aria-label="更多" title="更多" :aria-expanded="moreOpen" @click.stop="moreOpen = !moreOpen"><MoreHorizontal :size="17" /></button>
             <div v-if="moreOpen" class="cal-menu is-more" role="menu" @click.stop>
               <button type="button" role="menuitem" class="cal-menu-row" @click="openSettings"><Settings2 :size="15" /><span class="cal-menu-label">显示设置</span></button>
+              <button type="button" role="menuitem" class="cal-menu-row" @click="openPlanPanel"><ListTodo :size="15" /><span class="cal-menu-label">安排任务</span></button>
               <div class="cal-menu-row is-print" role="menuitem" tabindex="0" @click.stop="printMenuOpen = !printMenuOpen" @keydown.enter.prevent="printMenuOpen = !printMenuOpen">
                 <Printer :size="15" /><span class="cal-menu-label">打印</span>
                 <ChevronDown :size="12" :style="{ transform: printMenuOpen ? 'rotate(180deg)' : 'none' }" />
@@ -119,6 +120,7 @@
           @select-day="selectDay"
           @open-event="openEvent"
           @select-range="createSpan"
+          @drop-task="dropTask"
         />
 
         <CalendarYearView
@@ -153,6 +155,7 @@
           @update:hidden-bottom="updateTimePrefs({ hiddenBottom: $event })"
           @update:all-day-height="updateTimePrefs({ allDayHeight: $event })"
           @update:all-day-collapsed="updateTimePrefs({ allDayCollapsed: $event })"
+          @drop-task="dropTask"
         />
 
         <CalendarAgendaView
@@ -167,6 +170,25 @@
         />
       </div>
     </div>
+
+    <CalendarTaskPanel
+      v-if="planPanel.open"
+      :tasks="tasksStore.tasks"
+      :lists="calendarLists"
+      :tags="calendarTags"
+      :group-by="planPanel.groupBy"
+      :undated="planPanel.undated"
+      :overdue="planPanel.overdue"
+      :hide-notes="planPanel.hideNotes"
+      :hide-hierarchy="planPanel.hideHierarchy"
+      @close="planPanel.open = false"
+      @update:group-by="updatePlanPanel({ groupBy: $event })"
+      @update:undated="updatePlanPanel({ undated: $event })"
+      @update:overdue="updatePlanPanel({ overdue: $event })"
+      @update:hide-notes="updatePlanPanel({ hideNotes: $event })"
+      @update:hide-hierarchy="updatePlanPanel({ hideHierarchy: $event })"
+      @schedule="scheduleFromPanel"
+    />
 
     <CalendarEventCard
       v-if="eventCard.open && cardEvent"
@@ -269,7 +291,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Flag, FolderClosed, MoreHorizontal, PanelLeft, Plus, Printer, Settings2, X } from 'lucide-vue-next'
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Flag, FolderClosed, ListTodo, MoreHorizontal, PanelLeft, Plus, Printer, Settings2, X } from 'lucide-vue-next'
 import CalendarSidebar from './calendar/CalendarSidebar.vue'
 import CalendarMonthView from './calendar/CalendarMonthView.vue'
 import CalendarTimeGrid from './calendar/CalendarTimeGrid.vue'
@@ -277,6 +299,7 @@ import CalendarEventCard from './calendar/CalendarEventCard.vue'
 import CalendarYearView from './calendar/CalendarYearView.vue'
 import CalendarAgendaView from './calendar/CalendarAgendaView.vue'
 import CalendarSettingsDialog from './calendar/CalendarSettingsDialog.vue'
+import CalendarTaskPanel from './calendar/CalendarTaskPanel.vue'
 import { message } from '../services/message.js'
 import { useAppStore } from '../stores/app.js'
 import { useTasksStore } from '../stores/tasks.js'
@@ -338,6 +361,7 @@ const cellHeight = ref(120)
 const timePrefs = reactive({ hiddenTop: 420, hiddenBottom: 1380, allDayHeight: 120, allDayCollapsed: false })
 const agendaExtra = reactive({ before: 0, after: 0 })
 const calendarLayers = reactive({ worktime: true, ledger: true, holiday: true, habit: true })
+const planPanel = reactive({ open: false, groupBy: 'list', undated: true, overdue: false, hideNotes: false, hideHierarchy: false })
 const collapsed = computed(() => collapsedManual.value ?? narrow.value)
 
 const calendarLists = computed(() => tasksStore.lists.filter(item => !item.archived))
@@ -535,7 +559,8 @@ function savePreferences() {
     localStorage.setItem(preferenceKey.value, JSON.stringify({
       view: view.value, spans: { ...spans }, colorSettings: { ...colorSettings }, scope: scope.value,
       timePrefs: { ...timePrefs },
-      layers: { ...calendarLayers }
+      layers: { ...calendarLayers },
+      planPanel: { groupBy: planPanel.groupBy, undated: planPanel.undated, overdue: planPanel.overdue, hideNotes: planPanel.hideNotes, hideHierarchy: planPanel.hideHierarchy }
     }))
   } catch { /* 忽略存储配额错误 */ }
 }
@@ -558,7 +583,7 @@ function readPreferences() {
       })
     }
     if (stored.layers) Object.assign(calendarLayers, stored.layers)
-    if (stored.layers) Object.assign(calendarLayers, stored.layers)
+    if (stored.planPanel) Object.assign(planPanel, stored.planPanel)
     if (stored.scope && ['all', 'custom', 'filter'].includes(stored.scope.mode)) {
       scope.value = { mode: stored.scope.mode, listIds: stored.scope.listIds || [], tagIds: stored.scope.tagIds || [], filterId: stored.scope.filterId || '' }
     }
@@ -920,12 +945,52 @@ function printCalendar(mode = 'detail') {
   }, 60)
 }
 
+function openPlanPanel() {
+  moreOpen.value = false
+  planPanel.open = true
+}
+
+function updatePlanPanel(patch) {
+  Object.assign(planPanel, patch)
+  savePreferences()
+}
+
+async function scheduleTaskTo(task, dateKey, minutes) {
+  if (!task) return
+  const day = fromDateKey(dateKey)
+  if (minutes == null) {
+    const instant = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, 0, 0)
+    await tasksStore.update(task, { allDay: true, startAt: instant.toISOString(), dueAt: instant.toISOString() })
+  } else {
+    const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(minutes / 60), minutes % 60, 0)
+    const end = new Date(start.getTime() + 30 * 60000)
+    await tasksStore.update(task, { allDay: false, startAt: start.toISOString(), dueAt: end.toISOString() })
+  }
+  message.success(`已安排到 ${day.getMonth() + 1}月${day.getDate()}日`)
+}
+
+async function scheduleFromPanel(task) {
+  const target = toDateKey(selectedDay.value || anchor.value)
+  await scheduleTaskTo(task, target, null)
+}
+
+async function dropTask(dateKey, minutes, event) {
+  const id = event?.dataTransfer?.getData('application/x-calendar-task')
+    || event?.dataTransfer?.getData('text/plain')
+  const task = tasksStore.tasks.find(item => item.publicId === id)
+  if (!task) return
+  try {
+    await scheduleTaskTo(task, dateKey, minutes)
+  } catch (cause) {
+    message.error(cause?.response?.data?.detail || cause?.message || '排期失败')
+  }
+}
+
 function applyLayers(next) {
   Object.assign(calendarLayers, next)
   savePreferences()
   void loadRange()
 }
-
 
 function applyColorSettings(next) {
   Object.assign(colorSettings, next)

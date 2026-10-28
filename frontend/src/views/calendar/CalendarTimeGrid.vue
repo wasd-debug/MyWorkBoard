@@ -90,6 +90,8 @@
           :class="{ today: toDateKey(day) === todayKey }"
           @pointerdown="startRangeDrag(day, $event)"
           @click="handleColumnClick(day, $event)"
+          @dragover.prevent
+          @drop.prevent="onColumnDrop(day, $event)"
         >
           <span v-for="mark in marks" :key="`line-${mark.minutes}`" class="cal-line" :style="{ top: `${((mark.minutes - viewWindow.start) / 60) * hourHeight}px` }"></span>
           <button
@@ -158,7 +160,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'open-event', 'create-at', 'create-allday', 'create-range', 'move-block', 'resize-block', 'select-day',
+  'open-event', 'create-at', 'create-allday', 'create-range', 'move-block', 'resize-block', 'select-day', 'drop-task',
   'update:hiddenTop', 'update:hiddenBottom', 'update:allDayHeight', 'update:allDayCollapsed'
 ])
 
@@ -354,6 +356,12 @@ function handleBlockClick(event, nativeEvent) {
     return
   }
   emit('open-event', event, nativeEvent)
+}
+
+function onColumnDrop(day, event) {
+  const rect = event.currentTarget.getBoundingClientRect()
+  const minutes = pointerToMinutes(event.clientY - rect.top, props.hourHeight, viewWindow.value.start)
+  emit('drop-task', toDateKey(day), minutes, event)
 }
 
 function handleColumnClick(day, event) {

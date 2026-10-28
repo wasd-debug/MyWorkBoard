@@ -27,6 +27,8 @@
           :data-date="dayKey(day)"
           @pointerenter="onDayPointerEnter(day)"
           @click="handleDayClick(day, $event)"
+          @dragover.prevent
+          @drop.prevent="$emit('drop-task', dayKey(day), null, $event)"
         >
           <header class="cal-day-head">
             <span class="cal-day-num">{{ day.getDate() }}</span>
@@ -110,7 +112,7 @@ const props = defineProps({
   holidays: { type: Object, default: () => ({}) }
 })
 
-const emit = defineEmits(['select-day', 'open-event', 'select-range'])
+const emit = defineEmits(['select-day', 'open-event', 'select-range', 'drop-task'])
 
 const dayDrag = ref(null)
 let suppressClick = false
