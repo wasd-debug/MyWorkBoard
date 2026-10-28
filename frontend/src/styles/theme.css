@@ -1368,6 +1368,9 @@ body { background:var(--paper); color:var(--ink); }
 @media (min-width:901px) and (max-width:1279px) {
   .app-shell:has(.clone-task-shell) .bottom-nav { display:none !important; }
 }
+/* 日历工作区自行占满视口并内部滚动，页面容器不再提供外边距与最大宽度 */
+.app-main:has(.cal-shell) .page-content { max-width:none; min-height:0; padding:0; }
+.app-shell:has(.cal-shell) .bottom-nav { display:none !important; }
 @media (prefers-reduced-motion:reduce) { .workspace-module-card,.card,.panel { animation:none !important; transition:none !important; } }
 
 /* GPT-style AI workspace */

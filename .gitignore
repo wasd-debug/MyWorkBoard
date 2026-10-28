@@ -13,6 +13,7 @@ deploy/.env
 !/docs/Agent功能覆盖与中文评测集.md
 !/docs/MCP连接指南.md
 !/docs/后续特性路线图.md
+!/docs/日历视图复刻计划.md
 outputs/p2-i7-ticktick-import-sample/滴答清单_导入测试样本.xlsx
 backups/salary-before-task-focus-import-20261013-085828.sql
 backups/salary-before-task-focus-import-20261013-085901.sql.gz

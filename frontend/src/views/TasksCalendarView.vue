@@ -1,198 +1,1238 @@
 <template>
-  <section class="task-calendar-page" @click="closeDateMenu">
-    <header class="calendar-head">
-      <div><p>{{ aggregateMode ? '工作台' : '任务' }}</p><h1>{{ aggregateMode ? '日历' : '任务日历' }}</h1></div>
-      <div class="calendar-actions">
-        <button type="button" title="上一时间段" aria-label="上一时间段" @click="navigate('prev')"><ChevronLeft /></button>
-        <button type="button" @click="navigate('today')">今天</button>
-        <button type="button" title="下一时间段" aria-label="下一时间段" @click="navigate('next')"><ChevronRight /></button>
-      </div>
-    </header>
+  <section ref="shellEl" class="cal-shell" :class="{ 'is-collapsed': collapsed, 'is-task-route': isTaskRoute }" @click="closeMenus">
+    <CalendarSidebar
+      v-if="!collapsed"
+      :anchor="anchor"
+      :today="today"
+      :selected="selectedDay"
+      :lunar="lunarLabels"
+      :holidays="holidayMap"
+      :lists="calendarLists"
+      :tags="calendarTags"
+      :filters="filters"
+      :scope="scope"
+      @move-month="moveMonth"
+      @go-today="goToday"
+      @select="jumpToDate"
+      @update:scope="applyScope"
+    />
 
-    <div class="calendar-toolbar">
-      <div class="view-switch" aria-label="日历视图">
-        <button v-for="item in views" :key="item.key" type="button" :class="{ on: view === item.key }" @click="setView(item.key)">{{ item.label }}</button>
+    <div class="cal-main">
+      <header class="cal-head">
+        <div class="cal-head-left">
+          <button
+            type="button"
+            class="cal-icon-btn"
+            :aria-label="collapsed ? '展开侧边栏' : '收起侧边栏'"
+            :title="collapsed ? '展开侧边栏' : '收起侧边栏'"
+            @click.stop="toggleSidebar"
+          >
+            <PanelLeft :size="16" />
+          </button>
+          <span class="cal-title"><CalendarDays :size="15" aria-hidden="true" />{{ range.title }}</span>
+        </div>
+        <div class="cal-head-right">
+          <button type="button" class="cal-icon-btn" aria-label="新增任务" title="新增任务" @click.stop="openQuickAdd"><Plus :size="17" /></button>
+          <div class="cal-menu-wrap">
+            <button type="button" class="cal-text-btn" :aria-expanded="viewMenu" @click.stop="toggleViewMenu">
+              {{ viewLabelText }}<ChevronDown :size="13" aria-hidden="true" />
+            </button>
+            <div v-if="viewMenu" class="cal-menu" role="menu" @click.stop>
+              <button
+                v-for="key in VIEW_KEYS"
+                :key="key"
+                type="button"
+                role="menuitemradio"
+                :aria-checked="view === key"
+                class="cal-menu-row"
+                @click="setView(key)"
+              >
+                <span class="cal-menu-label">{{ VIEW_LABELS[key] }}</span>
+                <span class="cal-menu-tail">{{ VIEW_SHORTCUTS[key] }}</span>
+              </button>
+              <div class="cal-menu-divider"></div>
+              <div
+                v-for="key in SPAN_KEYS"
+                :key="key"
+                class="cal-menu-row is-span"
+                :class="{ active: view === key }"
+                role="menuitemradio"
+                :aria-checked="view === key"
+                tabindex="0"
+                @click="setView(key)"
+                @keydown.enter.prevent="setView(key)"
+              >
+                <span class="cal-menu-label">{{ SPAN_CONFIG[key].label }}</span>
+                <span class="cal-span-stepper" @click.stop>
+                  <button type="button" :aria-label="`减少${SPAN_CONFIG[key].label}`" :disabled="spans[key] <= SPAN_CONFIG[key].min" @click="changeSpan(key, -1)">−</button>
+                  <b>{{ spans[key] }}</b>
+                  <button type="button" :aria-label="`增加${SPAN_CONFIG[key].label}`" :disabled="spans[key] >= SPAN_CONFIG[key].max" @click="changeSpan(key, 1)">+</button>
+                  <small>{{ SPAN_CONFIG[key].unit }}</small>
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="cal-nav">
+            <button type="button" aria-label="上一段" title="上一段" @click.stop="navigate('prev')"><ChevronLeft :size="15" /></button>
+            <button type="button" class="cal-nav-today" @click.stop="navigate('today')">今天</button>
+            <button type="button" aria-label="下一段" title="下一段" @click.stop="navigate('next')"><ChevronRight :size="15" /></button>
+          </div>
+          <div class="cal-menu-wrap">
+            <button type="button" class="cal-icon-btn" aria-label="更多" title="更多" :aria-expanded="moreOpen" @click.stop="moreOpen = !moreOpen"><MoreHorizontal :size="17" /></button>
+            <div v-if="moreOpen" class="cal-menu is-more" role="menu" @click.stop>
+              <button type="button" role="menuitem" class="cal-menu-row" @click="openSettings"><Settings2 :size="15" /><span class="cal-menu-label">显示设置</span></button>
+              <button type="button" role="menuitem" class="cal-menu-row" @click="printCalendar"><Printer :size="15" /><span class="cal-menu-label">打印</span></button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <p v-if="error" class="cal-error">{{ error }}</p>
+      <div v-if="loading" class="cal-loading" role="status" aria-label="正在加载日历数据"></div>
+
+      <div ref="bodyEl" class="cal-body">
+        <CalendarMonthView
+          v-if="view === 'month' || view === 'multiWeek'"
+          :weeks="range.weeks"
+          :by-day="calendarData.byDay"
+          :row-limit="rowLimit"
+          :today-key="todayKey"
+          :selected-key="selectedKey"
+          :month-index="view === 'month' ? anchor.getMonth() : -1"
+          :mute-outside-month="view === 'month'"
+          :lunar="lunarLabels"
+          :holidays="holidayMap"
+          @select-day="selectDay"
+          @open-event="openEvent"
+        />
+
+        <div v-else-if="view === 'year'" class="cal-year">
+          <section v-for="month in yearMonths(anchor)" :key="month.month" class="cal-year-month" :aria-label="month.label">
+            <h3>{{ month.label }}</h3>
+            <div class="cal-year-dow">
+              <span v-for="label in WEEKDAY_LABELS" :key="label">{{ label }}</span>
+            </div>
+            <div class="cal-year-grid">
+              <button
+                v-for="day in month.weeks.flat()"
+                :key="toDateKey(day)"
+                type="button"
+                class="cal-year-day"
+                :class="{ muted: day.getMonth() !== month.month - 1, today: toDateKey(day) === todayKey, 'has-event': hasEvents(day) }"
+                :title="subLabel(day)"
+                @click.stop="openDayFromYear(day)"
+              >
+                <span>{{ day.getDate() }}</span><i v-if="hasEvents(day)"></i>
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <div v-else class="cal-stack" :class="{ 'is-agenda': view === 'agenda' }">
+          <div v-for="day in stackDays" :key="toDateKey(day)" class="cal-stack-day">
+            <header class="cal-stack-head">
+              <b>{{ day.getDate() }}</b>
+              <span class="cal-stack-weekday">{{ formatWeekday(day) }}</span>
+              <small v-if="subLabel(day)">{{ subLabel(day) }}</small>
+            </header>
+            <div class="cal-stack-body">
+              <p v-if="!dayEvents(day).length" class="cal-stack-empty">无安排</p>
+              <button
+                v-for="event in dayEvents(day)"
+                :key="event.id"
+                type="button"
+                class="cal-row"
+                :class="{ 'is-done': event.done, 'is-static': event.kind === 'holiday' }"
+                :style="tintStyle(event.color, 14)"
+                @click.stop="openEvent(event)"
+              >
+                <span class="cal-row-dot" :style="{ borderColor: event.color }" :class="{ 'is-done': event.done }"></span>
+                <span class="cal-row-title">{{ event.title }}</span>
+                <span v-if="event.startLabel" class="cal-row-time">{{ event.startLabel }}<template v-if="event.endLabel"> – {{ event.endLabel }}</template></span>
+                <span v-else-if="event.openChecklist" class="cal-row-extra">+{{ event.openChecklist }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-      <div v-if="view === 'week' || view === 'month'" class="range-switch" :aria-label="view === 'week' ? '多日范围' : '多周范围'">
-        <button v-for="size in rangeOptions" :key="size" type="button" :class="{ on: rangeSize === size }" @click="setRangeSize(size)">{{ size }}{{ view === 'week' ? '日' : '周' }}</button>
-      </div>
-      <fieldset v-if="aggregateMode" class="layer-switch"><legend>显示内容</legend>
-        <label v-for="item in layerOptions" :key="item.key"><input v-model="layers[item.key]" type="checkbox" @change="saveAndReload">{{ item.label }}<span v-if="layerFailed(item.key)">暂不可用</span></label>
-        <label><input v-model="lunarEnabled" type="checkbox" @change="saveAndReload">农历</label>
-      </fieldset>
-      <div class="calendar-more-wrap"><button type="button" class="calendar-more-button" aria-label="更多日历操作" @click.stop="moreOpen = !moreOpen"><MoreHorizontal :size="18" /></button><div v-if="moreOpen" class="calendar-more-menu" role="menu"><button type="button" role="menuitem" @click="openCalendarSettings">显示设置</button><button type="button" role="menuitem" @click="openTask(null, dateOnly(anchor)); moreOpen = false">安排任务</button><button type="button" role="menuitem" @click="openSubscription">订阅日历</button><button type="button" role="menuitem" @click="printCalendar">打印</button></div></div>
     </div>
 
-    <p v-if="error" class="calendar-error">{{ error }}</p>
-    <aside class="calendar-filter-sidebar" aria-label="日历来源筛选"><div class="mini-calendar-head"><strong>{{ monthLabel }}</strong><div><button type="button" aria-label="上个月" @click="moveMiniMonth(-1)"><ChevronLeft :size="14" /></button><button type="button" aria-label="下个月" @click="moveMiniMonth(1)"><ChevronRight :size="14" /></button></div></div><div class="mini-calendar-grid"><span v-for="label in weekLabels" :key="label">{{ label }}</span><button v-for="cell in miniDays" :key="cell.key" type="button" :class="{ muted: cell.muted, today: cell.today }" @click="jumpToDate(cell.date)">{{ cell.day }}</button></div><label class="calendar-source-row source-all"><input v-model="sourceAll" type="checkbox" @change="toggleAllSources"><strong>全部</strong></label><div class="source-heading">清单</div><label v-for="list in calendarLists" :key="list.publicId" class="calendar-source-row"><input v-model="selectedLists" type="checkbox" :value="list.publicId" @change="saveAndReload"><span>{{ list.name }}</span></label><div class="source-heading">过滤器</div><label v-for="filter in calendarFilters" :key="filter.publicId" class="calendar-source-row"><input v-model="selectedFilters" type="checkbox" :value="filter.publicId" @change="saveAndReload"><span>{{ filter.name }}</span></label><div class="source-heading">标签</div><label v-for="tag in calendarTags" :key="tag.publicId" class="calendar-source-row"><input v-model="selectedTags" type="checkbox" :value="tag.publicId" @change="saveAndReload"><span>#{{ tag.name }}</span></label></aside>
-    <div v-if="loading" class="calendar-loading">正在加载日历…</div>
-    <div v-show="view !== 'year'" class="full-calendar-wrap" @contextmenu="openDateMenu"><FullCalendar ref="calendarRef" :options="calendarOptions" /></div>
-
-    <section v-if="view === 'year'" class="year-grid" :aria-label="`${year} 年任务密度`">
-      <button v-for="month in yearMonths" :key="month.month" type="button" class="year-month" @click="openMonth(month.month)">
-        <span>{{ month.month }} 月</span><b>{{ month.count }}</b><small>{{ month.count ? '项任务' : '暂无任务' }}</small><i :style="{ '--density': month.density }"></i>
-      </button>
-    </section>
-
-    <div v-if="dateMenu.open" class="calendar-context-menu" :style="dateMenuStyle" role="menu" :aria-label="`${dateMenu.date} 新增记录`" @click.stop>
-      <header><b>{{ formatMenuDate(dateMenu.date) }}</b><button type="button" aria-label="关闭菜单" @click="closeDateMenu"><X /></button></header>
-      <button type="button" role="menuitem" @click="createForDate('task')"><ListPlus />新增任务</button>
-      <button v-if="aggregateMode" type="button" role="menuitem" @click="createForDate('ledger')"><ReceiptText />新增流水</button>
-      <button v-if="aggregateMode" type="button" role="menuitem" @click="createForDate('worktime')"><Clock3 />新增工时</button>
-      <button v-if="aggregateMode" type="button" role="menuitem" @click="createForDate('focus')"><Timer />新增专注</button>
+    <div v-if="quickAdd.open" class="cal-quick" role="dialog" aria-label="新增任务" @click.stop>
+      <header>
+        <span class="cal-quick-date"><CalendarDays :size="14" />{{ quickAddDateLabel }}</span>
+        <button type="button" class="cal-quick-flag" :class="{ on: quickAdd.priority === 'HIGH' }" :aria-pressed="quickAdd.priority === 'HIGH'" aria-label="设为高优先级" title="高优先级" @click="quickAdd.priority = quickAdd.priority === 'HIGH' ? 'NONE' : 'HIGH'"><Flag :size="14" /></button>
+      </header>
+      <textarea
+        ref="quickInputEl"
+        v-model="quickAdd.title"
+        class="cal-quick-input"
+        rows="3"
+        placeholder="准备做什么？"
+        @keydown.enter.exact.prevent="saveQuickAdd"
+        @keydown.esc.prevent="closeQuickAdd"
+      ></textarea>
+      <footer>
+        <div class="cal-quick-list">
+          <FolderClosed :size="14" />
+          <select v-model="quickAdd.listId" aria-label="清单">
+            <option v-for="list in calendarLists" :key="list.publicId" :value="list.publicId">{{ list.name }}</option>
+          </select>
+        </div>
+        <div class="cal-quick-actions">
+          <button type="button" class="cal-quick-cancel" @click="closeQuickAdd">取消</button>
+          <button type="button" class="cal-quick-save" :disabled="!quickAdd.title.trim() || quickAdd.saving" @click="saveQuickAdd">{{ quickAdd.saving ? '保存中…' : '保存' }}</button>
+        </div>
+      </footer>
     </div>
 
-    <section v-if="editorOpen" class="calendar-task-editor" aria-label="任务编辑">
-      <header><strong>{{ selectedTask ? '编辑任务' : '新建任务' }}</strong><button type="button" aria-label="关闭任务编辑" @click="editorOpen = false"><X :size="17" /></button></header>
-      <form id="calendar-task-editor" class="calendar-task-form" @submit.prevent="saveTask">
-        <label>标题<Input v-model="taskForm.title" placeholder="要完成什么？" /></label>
-        <div class="calendar-form-grid"><label>优先级<select v-model="taskForm.priority"><option value="NONE">无</option><option value="LOW">低</option><option value="MEDIUM">中</option><option value="HIGH">高</option></select></label><label>全天任务<span class="calendar-check"><input v-model="taskForm.allDay" type="checkbox">全天</span></label></div>
-        <label>开始时间<Input v-model="taskForm.startAt" type="datetime-local" /></label>
-        <label>截止时间<Input v-model="taskForm.dueAt" type="datetime-local" /></label>
-        <p v-if="editorError" class="calendar-error">{{ editorError }}</p>
-      </form>
-      <footer><Button v-if="selectedTask" variant="danger" :disabled="saving" type="button" @click="deleteTask"><Trash2 />删除</Button><Button type="submit" form="calendar-task-editor" :disabled="saving || !taskForm.title.trim()"><Save />{{ saving ? '保存中…' : '保存' }}</Button></footer>
-    </section>
+    <div v-if="settings.open" class="cal-dialog-mask" @click.self="settings.open = false">
+      <section class="cal-dialog" role="dialog" aria-label="显示设置">
+        <header>
+          <h2>显示设置</h2>
+          <button type="button" aria-label="关闭显示设置" @click="settings.open = false"><X :size="16" /></button>
+        </header>
+        <div class="cal-dialog-body">
+          <div class="cal-setting-row">
+            <span>显示方式</span>
+            <select v-model="colorSettings.taskColorMode" @change="savePreferences">
+              <option v-for="mode in TASK_COLOR_MODES" :key="mode.value" :value="mode.value">{{ mode.label }}</option>
+            </select>
+          </div>
+          <p class="cal-setting-hint">{{ activeColorHint }}</p>
+          <div class="cal-setting-list">
+            <div v-for="list in calendarLists" :key="list.publicId" class="cal-setting-item">
+              <span class="cal-setting-icon"><TaskOrganizationIcon :value="list.icon" :size="14" :style="{ color: list.color || 'var(--ink2)' }" /></span>
+              <span class="cal-setting-name">{{ list.name }}</span>
+              <label class="cal-color-swatch" :style="{ background: list.color || '#4d96ff' }" :title="`修改「${list.name}」颜色`">
+                <input type="color" :value="list.color || '#4d96ff'" :aria-label="`修改「${list.name}」颜色`" @change="updateListColor(list, $event.target.value)" />
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
   </section>
 </template>
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import FullCalendar from '@fullcalendar/vue3'
-import dayGridPlugin from '@fullcalendar/daygrid'
-import timeGridPlugin from '@fullcalendar/timegrid'
-import interactionPlugin from '@fullcalendar/interaction'
-import zhCnLocale from '@fullcalendar/core/locales/zh-cn'
-import { ChevronLeft, ChevronRight, Clock3, ListPlus, MoreHorizontal, ReceiptText, Save, Timer, Trash2, X } from 'lucide-vue-next'
-import { apiGetTaskCalendar } from '../../packages/api-client/src/index.js'
-import Button from '../components/ui/Button.vue'
-import Input from '../components/ui/Input.vue'
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Flag, FolderClosed, MoreHorizontal, PanelLeft, Plus, Printer, Settings2, X } from 'lucide-vue-next'
+import CalendarSidebar from './calendar/CalendarSidebar.vue'
+import CalendarMonthView from './calendar/CalendarMonthView.vue'
+import TaskOrganizationIcon from '../components/tasks/TaskOrganizationIcon.vue'
 import { message } from '../services/message.js'
-import { useTasksStore } from '../stores/tasks.js'
 import { useAppStore } from '../stores/app.js'
+import { useTasksStore } from '../stores/tasks.js'
+import { apiGetTaskCalendar, apiListFocusSessions, apiListTaskFilterTasks, apiListTaskFilters } from '../../packages/api-client/src/index.js'
+import {
+  SPAN_CONFIG, SPAN_KEYS, VIEW_KEYS, VIEW_LABELS, VIEW_SHORTCUTS, WEEKDAY_LABELS,
+  addMonths, clampSpan, formatWeekday, resolveRange, shiftAnchor, startOfDay, toDateKey, viewLabel as spanViewLabel, yearMonths
+} from './calendar/calendarRange.js'
+import { buildCalendarEvents } from './calendar/calendarEvents.js'
+import { TASK_COLOR_MODES, mergedColorSettings, tintStyle } from './calendar/calendarColors.js'
 
-const route = useRoute(); const router = useRouter(); const tasksStore = useTasksStore(); const appStore = useAppStore()
-const aggregateMode = computed(() => route.path === '/calendar')
-const calendarRef = ref(null); const loading = ref(false); const saving = ref(false); const error = ref(''); const editorError = ref(''); const moreOpen = ref(false)
-const editorOpen = ref(false); const selectedTask = ref(null); const view = ref(window.innerWidth <= 1024 ? 'day' : 'month')
-const rangeSize = ref(window.innerWidth <= 1024 ? 3 : 6); const anchor = ref(new Date())
-let restoringView = false
-const response = ref({ tasks: [], worktime: [], ledger: [], holidays: [], habits: [], lunar: [], layers: {} })
-const layers = reactive({ worktime: true, ledger: true, holiday: true, habit: true }); const lunarEnabled = ref(true)
-const selectedLists = ref([]); const selectedTags = ref([]); const selectedFilters = ref([]); const sourceAll = ref(true); const filterTaskIds = ref(new Set())
-const taskForm = reactive({ title: '', priority: 'NONE', startAt: '', dueAt: '', allDay: false })
-const dateMenu = reactive({ open: false, date: '', x: 0, y: 0 })
-const views = [{ key: 'day', label: '日' }, { key: 'week', label: '周' }, { key: 'month', label: '月' }, { key: 'year', label: '年' }]
-const layerOptions = [{ key: 'worktime', label: '工时' }, { key: 'ledger', label: '流水' }, { key: 'holiday', label: '节假日' }, { key: 'habit', label: '习惯' }]
-const preferenceKey = computed(() => `calendar_preferences_v2:${aggregateMode.value ? 'global' : 'tasks'}:${appStore.authUser?.id || 'local'}`)
-const dateMenuStyle = computed(() => ({ left: `${dateMenu.x}px`, top: `${dateMenu.y}px` }))
+const route = useRoute()
+const router = useRouter()
+const tasksStore = useTasksStore()
+const appStore = useAppStore()
+
+const isTaskRoute = computed(() => route.path.startsWith('/tasks'))
+const today = ref(startOfDay(new Date()))
+const todayKey = computed(() => toDateKey(today.value))
+const anchor = ref(startOfDay(new Date()))
+const selectedDay = ref(startOfDay(new Date()))
+const view = ref('month')
+const spans = reactive({ multiDay: SPAN_CONFIG.multiDay.defaultSpan, multiWeek: SPAN_CONFIG.multiWeek.defaultSpan })
+const colorSettings = reactive(mergedColorSettings())
+const scope = ref({ mode: 'all', listIds: [], tagIds: [], filterId: '' })
+const filters = ref([])
+const holidayMap = ref({})
+const lunarLabels = ref({})
+const focusSessions = ref([])
+const filterTaskIds = ref(new Set())
+const loading = ref(false)
+const error = ref('')
+const viewMenu = ref(false)
+const moreOpen = ref(false)
+const settings = reactive({ open: false })
+const quickAdd = reactive({ open: false, title: '', priority: 'NONE', listId: '', saving: false, date: startOfDay(new Date()) })
+const quickInputEl = ref(null)
+const shellEl = ref(null)
+const bodyEl = ref(null)
+const widthBucket = value => (value < 768 ? 'phone' : value < 1180 ? 'tablet' : 'wide')
+let currentBucket = typeof window !== 'undefined' ? widthBucket(window.innerWidth) : 'wide'
+const narrow = ref(currentBucket !== 'wide')
+const collapsedManual = ref(null)
+const rowLimit = ref(4)
+const collapsed = computed(() => collapsedManual.value ?? narrow.value)
+
 const calendarLists = computed(() => tasksStore.lists.filter(item => !item.archived))
 const calendarTags = computed(() => tasksStore.tags)
-const calendarFilters = ref([])
-const weekLabels = ['一', '二', '三', '四', '五', '六', '日']
-const monthLabel = computed(() => new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' }).format(anchor.value))
-const miniDays = computed(() => { const first = new Date(anchor.value.getFullYear(), anchor.value.getMonth(), 1); const start = new Date(first); const weekday = (first.getDay() + 6) % 7; start.setDate(first.getDate() - weekday); return Array.from({ length: 42 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return { key: dateOnly(date), date, day: date.getDate(), muted: date.getMonth() !== anchor.value.getMonth(), today: dateOnly(date) === dateOnly(new Date()) } }) })
+const range = computed(() => resolveRange({ view: view.value, span: spans[view.value], anchor: anchor.value }))
+const viewLabelText = computed(() => spanViewLabel(view.value, spans[view.value]))
+const selectedKey = computed(() => toDateKey(selectedDay.value))
+const activeColorHint = computed(() => TASK_COLOR_MODES.find(mode => mode.value === colorSettings.taskColorMode)?.hint || '')
 
-function pad(value) { return String(value).padStart(2, '0') }
-function dateOnly(value) { return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}` }
-function localInput(value) { if (!value) return ''; const date = new Date(value); return `${dateOnly(date)}T${pad(date.getHours())}:${pad(date.getMinutes())}` }
-function instant(value) { return value ? new Date(value).toISOString() : '' }
+const scopeFilter = computed(() => {
+  const current = scope.value
+  if (current.mode === 'filter') return task => filterTaskIds.value.has(task.publicId)
+  if (current.mode !== 'custom') return null
+  const listIds = new Set(current.listIds || [])
+  const tagIds = new Set(current.tagIds || [])
+  if (!listIds.size && !tagIds.size) return null
+  return task => (listIds.size ? listIds.has(task.listId) : true)
+    && (tagIds.size ? (task.tagIds || []).some(id => tagIds.has(id)) : true)
+})
+
+const calendarData = computed(() => buildCalendarEvents({
+  days: range.value.days,
+  tasks: tasksStore.tasks,
+  habits: tasksStore.habits,
+  habitCheckins: tasksStore.habitCheckins,
+  countdowns: tasksStore.countdowns,
+  focusSessions: focusSessions.value,
+  holidays: Object.values(holidayMap.value),
+  lists: tasksStore.lists,
+  tags: tasksStore.tags,
+  colorSettings,
+  taskFilter: scopeFilter.value
+}))
+
+const stackDays = computed(() => {
+  if (view.value !== 'agenda') return range.value.days
+  return range.value.days.filter(day => dayEvents(day).length)
+})
+
+const quickAddDateLabel = computed(() => {
+  const day = quickAdd.date
+  const same = toDateKey(day) === todayKey.value
+  return `${day.getMonth() + 1}月${day.getDate()}日，${same ? '今天' : formatWeekday(day)}`
+})
+
+function dayEvents(day) {
+  const bucket = calendarData.value.byDay.get(toDateKey(day))
+  return bucket ? [...bucket.allDay, ...bucket.timed] : []
+}
+
+function hasEvents(day) {
+  return dayEvents(day).length > 0
+}
+
+function subLabel(day) {
+  const key = toDateKey(day)
+  return holidayMap.value[key]?.name || lunarLabels.value[key] || ''
+}
+
+const preferenceKey = computed(() => `calendar_view_v1:${appStore.authUser?.id || 'local'}`)
+
+function savePreferences() {
+  try {
+    localStorage.setItem(preferenceKey.value, JSON.stringify({
+      view: view.value, spans: { ...spans }, colorSettings: { ...colorSettings }, scope: scope.value
+    }))
+  } catch { /* 忽略存储配额错误 */ }
+}
+
 function readPreferences() {
   try {
     const stored = JSON.parse(localStorage.getItem(preferenceKey.value) || '{}')
-    if (views.some(item => item.key === stored.view)) view.value = stored.view
-    const allowed = view.value === 'week' ? [3, 5, 7] : view.value === 'month' ? [2, 4, 6] : []
-    let normalized = false
-    if (allowed.includes(stored.rangeSize)) rangeSize.value = stored.rangeSize
-    else if (allowed.length && stored.rangeSize != null) {
-      rangeSize.value = allowed.includes(rangeSize.value) ? rangeSize.value : allowed[allowed.length - 1]
-      normalized = true
+    if (VIEW_KEYS.includes(stored.view) || SPAN_KEYS.includes(stored.view)) view.value = stored.view
+    if (stored.spans) {
+      spans.multiDay = clampSpan('multiDay', stored.spans.multiDay)
+      spans.multiWeek = clampSpan('multiWeek', stored.spans.multiWeek)
     }
-    Object.assign(layers, stored.layers || {})
-    if (typeof stored.lunar === 'boolean') lunarEnabled.value = stored.lunar
-    selectedLists.value = Array.isArray(stored.selectedLists) ? stored.selectedLists : []
-    selectedTags.value = Array.isArray(stored.selectedTags) ? stored.selectedTags : []
-    selectedFilters.value = Array.isArray(stored.selectedFilters) ? stored.selectedFilters : []
-    sourceAll.value = stored.sourceAll !== false
-    if (normalized) savePreferences()
-  } catch { /* use defaults */ }
+    Object.assign(colorSettings, mergedColorSettings(stored.colorSettings))
+    if (stored.scope && ['all', 'custom', 'filter'].includes(stored.scope.mode)) {
+      scope.value = { mode: stored.scope.mode, listIds: stored.scope.listIds || [], tagIds: stored.scope.tagIds || [], filterId: stored.scope.filterId || '' }
+    }
+  } catch { /* 使用默认偏好 */ }
 }
-function savePreferences() { localStorage.setItem(preferenceKey.value, JSON.stringify({ view: view.value, rangeSize: rangeSize.value, layers: { ...layers }, lunar: lunarEnabled.value, selectedLists: selectedLists.value, selectedTags: selectedTags.value, selectedFilters: selectedFilters.value, sourceAll: sourceAll.value })) }
-function range() { const current = anchor.value; if (view.value === 'year') return { from: `${current.getFullYear()}-01-01`, to: `${current.getFullYear() + 1}-01-01` }; const api = calendarRef.value?.getApi(); if (api) return { from: dateOnly(api.view.activeStart), to: dateOnly(api.view.activeEnd) }; const from = new Date(current.getFullYear(), current.getMonth(), 1); return { from: dateOnly(from), to: dateOnly(new Date(current.getFullYear(), current.getMonth() + 1, 1)) } }
-async function load() { loading.value = true; error.value = ''; try { const selected = aggregateMode.value ? Object.entries(layers).filter(([, enabled]) => enabled).map(([key]) => key).join(',') : ''; response.value = await apiGetTaskCalendar({ ...range(), layers: selected, lunar: lunarEnabled.value ? 1 : 0 }); if (!calendarFilters.value.length && tasksStore.online) { const { apiListTaskFilters } = await import('../../packages/api-client/src/index.js'); calendarFilters.value = await apiListTaskFilters() } if (selectedFilters.value.length && tasksStore.online) { const { apiListTaskFilterTasks } = await import('../../packages/api-client/src/index.js'); const rows = await Promise.all(selectedFilters.value.map(id => apiListTaskFilterTasks(id, { size: 500 }))); filterTaskIds.value = new Set(rows.flatMap(row => row?.items || []).map(task => task.publicId)); response.value = { ...response.value, tasks: response.value.tasks.filter(task => filterTaskIds.value.has(task.publicId)) } } else filterTaskIds.value = new Set() } catch (cause) { error.value = cause?.response?.data?.detail || cause?.message || '日历加载失败' } finally { loading.value = false } }
-async function saveAndReload() { sourceAll.value = !(selectedLists.value.length || selectedTags.value.length || selectedFilters.value.length); savePreferences(); await load() }
-function layerFailed(key) { return layers[key] && response.value.layers?.[key]?.available === false }
-function eventSource() { const allowedList = !sourceAll.value && selectedLists.value.length ? new Set(selectedLists.value) : null; const events = response.value.tasks.filter(task => !allowedList || allowedList.has(task.listId)).filter(task => !selectedTags.value.length || (task.tagIds || []).some(tag => selectedTags.value.includes(tag))).map(task => ({ id: task.publicId, title: task.title, start: task.startAt || task.dueAt, end: task.dueAt && task.startAt ? task.dueAt : undefined, allDay: task.allDay, editable: task.status !== 'COMPLETED', classNames: [`priority-${String(task.priority).toLowerCase()}`], extendedProps: { type: 'task', task } })); if (!aggregateMode.value) return events.filter(item => item.start); for (const item of response.value.worktime || []) events.push({ title: `${item.start}–${item.end || '未打卡'}${item.overtimeMinutes > 0 ? ` · 加班${Math.round(item.overtimeMinutes / 60 * 10) / 10}h` : ''}`, start: `${item.date}T${item.start || '00:00'}`, end: item.end ? `${item.date}T${item.end}` : undefined, editable: false, classNames: ['overlay-worktime'], extendedProps: { type: 'worktime', date: item.date } }); for (const item of response.value.ledger || []) events.push({ title: `收 ${item.income} / 支 ${item.expense}`, start: item.date, allDay: true, editable: false, classNames: ['overlay-ledger'], extendedProps: { type: 'ledger', date: item.date } }); for (const item of response.value.holidays || []) events.push({ title: `${item.off ? '休' : '班'} · ${item.name}`, start: item.date, allDay: true, editable: false, classNames: ['overlay-holiday'], extendedProps: { type: 'holiday', date: item.date } }); for (const item of response.value.habits || []) events.push({ title: `习惯 ${item.completed}/${item.total}`, start: item.date, allDay: true, editable: false, classNames: ['overlay-habit'], extendedProps: { type: 'habit', date: item.date } }); return events.filter(item => item.start) }
-const lunarMap = computed(() => new Map((response.value.lunar || []).map(item => [item.date, item])))
-const rangeOptions = computed(() => view.value === 'week' ? [3, 5, 7] : [2, 4, 6])
-const calendarOptions = computed(() => ({ plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin], initialView: calendarView(view.value), headerToolbar: false, locale: zhCnLocale, firstDay: 1, height: 'auto', editable: window.innerWidth > 1024, eventResizableFromStart: true, fixedWeekCount: view.value === 'month' && rangeSize.value >= 4, showNonCurrentDates: true, views: { timeGridRange: { type: 'timeGrid', duration: { days: rangeSize.value }, dateIncrement: { days: rangeSize.value } }, dayGridRange: { type: 'dayGrid', duration: { weeks: 2 }, dateIncrement: { weeks: 2 } } }, dayMaxEvents: 3, nowIndicator: true, events: eventSource(), datesSet(info) { if (!restoringView) anchor.value = info.view.currentStart; if (!loading.value) load() }, dayCellContent(info) { const lunar = lunarMap.value.get(dateOnly(info.date)); return { html: `<span>${info.dayNumberText}</span>${lunar ? `<small>${lunar.festival || lunar.solarTerm || lunar.lunarDate}</small>` : ''}` } }, eventDrop: persistEventChange, eventResize: persistEventChange, eventClick: handleEventClick }))
-function calendarView(value) { return value === 'day' ? 'timeGridDay' : value === 'week' ? 'timeGridRange' : rangeSize.value >= 4 ? 'dayGridMonth' : 'dayGridRange' }
-async function restorePreferencesAndView() {
-  readPreferences()
+
+function applyScope(next) {
+  scope.value = next
+  savePreferences()
+  if (next.mode === 'filter' && next.filterId) void loadFilterTasks(next.filterId)
+  else filterTaskIds.value = new Set()
+}
+
+async function loadFilterTasks(filterId) {
+  try {
+    const rows = await apiListTaskFilterTasks(filterId, { size: 500 })
+    filterTaskIds.value = new Set((rows?.items || []).map(item => item.publicId))
+  } catch (cause) {
+    filterTaskIds.value = new Set()
+    message.error(cause?.response?.data?.detail || '过滤器任务加载失败')
+  }
+}
+
+async function loadRange() {
+  loading.value = true
+  error.value = ''
+  const from = toDateKey(range.value.start)
+  const to = toDateKey(range.value.end)
+  try {
+    const [calendar, sessions] = await Promise.all([
+      apiGetTaskCalendar({ from, to, layers: 'holiday', lunar: 1 }),
+      apiListFocusSessions({ from, to }).catch(() => [])
+    ])
+    holidayMap.value = Object.fromEntries((calendar?.holidays || []).map(item => [item.date, item]))
+    lunarLabels.value = Object.fromEntries((calendar?.lunar || []).map(item => [item.date, item.festival || item.solarTerm || item.lunarDate]))
+    focusSessions.value = sessions || []
+  } catch (cause) {
+    error.value = cause?.response?.data?.detail || cause?.message || '日历数据加载失败'
+  } finally {
+    loading.value = false
+    await nextTick()
+    measure()
+  }
+}
+
+async function loadFilters() {
+  try {
+    filters.value = (await apiListTaskFilters()) || []
+  } catch {
+    filters.value = []
+  }
+}
+
+function measure() {
+  if (typeof window === 'undefined') return
+  const bucket = widthBucket(window.innerWidth)
+  // 断点变化时清掉手动开关，避免“手机上被强制展开”的遗留状态
+  if (bucket !== currentBucket) {
+    currentBucket = bucket
+    narrow.value = bucket !== 'wide'
+    collapsedManual.value = null
+  }
+  const body = bodyEl.value
+  if (!body) return
+  if (view.value === 'month' || view.value === 'multiWeek') {
+    const rows = range.value.weeks.length || 5
+    const cell = (body.clientHeight - 28) / rows
+    rowLimit.value = Math.max(2, Math.floor((cell - 26) / 20))
+  }
+}
+
+function toggleSidebar() {
+  collapsedManual.value = !collapsed.value
+}
+
+function closeMenus() {
+  viewMenu.value = false
+  moreOpen.value = false
+}
+
+function toggleViewMenu() {
+  moreOpen.value = false
+  viewMenu.value = !viewMenu.value
+}
+
+function setView(next) {
+  view.value = next
+  viewMenu.value = false
+  savePreferences()
+}
+
+function changeSpan(key, delta) {
+  spans[key] = clampSpan(key, spans[key] + delta)
+  savePreferences()
+}
+
+function navigate(direction) {
+  anchor.value = shiftAnchor(anchor.value, { view: view.value, span: spans[view.value], direction })
+  if (direction === 'today') {
+    selectedDay.value = startOfDay(new Date())
+    today.value = startOfDay(new Date())
+  }
+}
+
+function moveMonth(delta) {
+  anchor.value = addMonths(anchor.value, delta)
+}
+
+function goToday() {
+  navigate('today')
+}
+
+function jumpToDate(date) {
+  anchor.value = startOfDay(date)
+  selectedDay.value = startOfDay(date)
+}
+
+function selectDay(day) {
+  selectedDay.value = startOfDay(day)
+}
+
+function openDayFromYear(day) {
+  anchor.value = startOfDay(day)
+  selectedDay.value = startOfDay(day)
+  view.value = 'day'
+  savePreferences()
+}
+
+function openEvent(event) {
+  if (!event || event.kind === 'holiday') return
+  if (event.kind === 'task') {
+    void router.push({ path: '/tasks/all', query: { task: event.id } })
+  } else if (event.kind === 'habit') {
+    void router.push('/tasks/habits')
+  } else if (event.kind === 'countdown') {
+    void router.push('/tasks/countdowns')
+  } else if (event.kind === 'focus') {
+    void router.push('/tasks/focus')
+  }
+}
+
+async function openQuickAdd() {
+  viewMenu.value = false
+  moreOpen.value = false
+  quickAdd.date = startOfDay(selectedDay.value || anchor.value)
+  quickAdd.title = ''
+  quickAdd.priority = 'NONE'
+  quickAdd.listId = tasksStore.inbox?.publicId || calendarLists.value[0]?.publicId || ''
+  quickAdd.open = true
   await nextTick()
-  if (view.value === 'year') return load()
-  const api = calendarRef.value?.getApi()
-  const restoredView = calendarView(view.value)
-  if (api && api.view.type !== restoredView) {
-    restoringView = true
-    api.changeView(restoredView, anchor.value)
-    restoringView = false
-    await load()
-  } else await load()
+  quickInputEl.value?.focus()
 }
-async function setView(next) { view.value = next; savePreferences(); if (next !== 'year') await nextTick(() => { calendarRef.value?.getApi().changeView(calendarView(next)); load() }); else await load() }
-async function setRangeSize(size) { rangeSize.value = size; savePreferences(); await nextTick(); calendarRef.value?.getApi().changeView(calendarView(view.value)); await load() }
-function navigate(direction) { if (view.value === 'year') { const delta = direction === 'prev' ? -1 : direction === 'next' ? 1 : 0; anchor.value = direction === 'today' ? new Date() : new Date(anchor.value.getFullYear() + delta, 0, 1); load(); return } const api = calendarRef.value?.getApi(); if (!api) return; api[direction](); anchor.value = api.getDate() }
-function localTask(calendarTask) { return { ...(tasksStore.tasks.find(item => item.publicId === calendarTask.publicId) || {}), ...calendarTask } }
-function localTaskProjection() {
-  const { from, to } = range()
-  return tasksStore.tasks.filter(task => {
-    if (task.deleted) return false
-    const value = task.startAt || task.dueAt
-    if (!value) return false
-    const date = dateOnly(new Date(value))
-    return date >= from && date < to
-  }).map(task => ({ publicId: task.publicId, title: task.title, status: task.status, priority: task.priority,
-    startAt: task.startAt, dueAt: task.dueAt, allDay: task.allDay, timezone: task.timezone,
-    durationMinutes: task.durationMinutes, revision: task.revision }))
+
+function closeQuickAdd() {
+  quickAdd.open = false
 }
-async function refreshTasks() {
-  if (tasksStore.online) { await tasksStore.syncNow(); await load() }
-  else response.value = { ...response.value, tasks: localTaskProjection() }
+
+async function saveQuickAdd() {
+  const title = quickAdd.title.trim()
+  if (!title || quickAdd.saving) return
+  quickAdd.saving = true
+  try {
+    const day = startOfDay(quickAdd.date)
+    const instant = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, 0, 0).toISOString()
+    await tasksStore.create({
+      title, allDay: true, startAt: instant, dueAt: instant, priority: quickAdd.priority,
+      listId: quickAdd.listId || tasksStore.inbox?.publicId || ''
+    })
+    quickAdd.open = false
+    message.success('任务已创建')
+  } catch (cause) {
+    message.error(cause?.response?.data?.detail || cause?.message || '任务创建失败')
+  } finally {
+    quickAdd.saving = false
+  }
 }
-function openTask(task = null, date = '') { selectedTask.value = task ? localTask(task) : null; editorError.value = ''; Object.assign(taskForm, { title: selectedTask.value?.title || '', priority: selectedTask.value?.priority || 'NONE', startAt: localInput(selectedTask.value?.startAt), dueAt: selectedTask.value?.dueAt ? localInput(selectedTask.value.dueAt) : date ? `${date}T09:00` : '', allDay: Boolean(selectedTask.value?.allDay) }); editorOpen.value = true }
-async function saveTask() { saving.value = true; editorError.value = ''; try { const payload = { ...(selectedTask.value || {}), title: taskForm.title.trim(), priority: taskForm.priority, startAt: instant(taskForm.startAt), dueAt: instant(taskForm.dueAt), allDay: taskForm.allDay, timezone: selectedTask.value?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai' }; if (selectedTask.value) await tasksStore.update(selectedTask.value, payload); else await tasksStore.create({ ...payload, listId: tasksStore.inbox?.publicId || '' }); editorOpen.value = false; await refreshTasks() } catch (cause) { editorError.value = cause?.message || '任务保存失败' } finally { saving.value = false } }
-async function deleteTask() { if (!selectedTask.value || !window.confirm(`删除任务“${selectedTask.value.title}”？`)) return; saving.value = true; try { await tasksStore.remove(selectedTask.value); editorOpen.value = false; await refreshTasks() } catch (cause) { editorError.value = cause?.message || '任务删除失败' } finally { saving.value = false } }
-async function persistEventChange(change) { const task = localTask(change.event.extendedProps.task); try { await tasksStore.update(task, { startAt: change.event.start?.toISOString() || '', dueAt: change.event.end?.toISOString() || change.event.start?.toISOString() || '', allDay: change.event.allDay, durationMinutes: change.event.end && change.event.start ? Math.round((change.event.end - change.event.start) / 60000) : task.durationMinutes }); await refreshTasks() } catch (cause) { change.revert(); error.value = cause?.message || '任务改期失败，已恢复原时间' } }
-function handleEventClick(info) { const data = info.event.extendedProps; if (data.type === 'task') openTask(data.task); else if (data.type === 'worktime') router.push({ path: '/punch', query: { date: data.date } }); else if (data.type === 'ledger') router.push({ path: '/ledger/transactions', query: { from: data.date, to: data.date } }) }
-function contextDate(target) { const cell = target.closest('[data-date]'); if (cell?.dataset.date) return cell.dataset.date.slice(0, 10); return dateOnly(calendarRef.value?.getApi().getDate() || anchor.value) }
-function openDateMenu(event) { const date = contextDate(event.target); if (!date) return; event.preventDefault(); event.stopPropagation(); dateMenu.date = date; dateMenu.x = Math.min(event.clientX, window.innerWidth - 210); dateMenu.y = Math.min(event.clientY, window.innerHeight - (aggregateMode.value ? 230 : 120)); dateMenu.open = true }
-function closeDateMenu() { dateMenu.open = false }
-function createForDate(type) { const date = dateMenu.date; closeDateMenu(); if (type === 'task') openTask(null, date); else if (type === 'ledger') router.push({ path: '/ledger/transactions', query: { action: 'create', date, from: date, to: date } }); else if (type === 'worktime') router.push({ path: '/punch', query: { date } }); else router.push({ path: '/tasks/focus', query: { date } }) }
-function formatMenuDate(value) { return value ? new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date(`${value}T00:00:00`)) : '' }
-const year = computed(() => anchor.value.getFullYear())
-const yearMonths = computed(() => Array.from({ length: 12 }, (_, index) => { const count = response.value.tasks.filter(task => { const date = new Date(task.startAt || task.dueAt); return date.getFullYear() === year.value && date.getMonth() === index }).length; return { month: index + 1, count, density: Math.min(1, count / 12) } }))
-async function openMonth(month) { anchor.value = new Date(year.value, month - 1, 1); view.value = 'month'; rangeSize.value = 6; savePreferences(); await nextTick(); const api = calendarRef.value?.getApi(); api?.changeView('dayGridMonth', anchor.value); await load() }
-function handleEscape(event) { if (event.key === 'Escape') closeDateMenu() }
-function toggleAllSources() { if (sourceAll.value) { selectedLists.value = []; selectedTags.value = []; selectedFilters.value = [] } saveAndReload() }
-function moveMiniMonth(delta) { anchor.value = new Date(anchor.value.getFullYear(), anchor.value.getMonth() + delta, 1); navigate(delta < 0 ? 'prev' : 'next') }
-function jumpToDate(date) { anchor.value = new Date(date); calendarRef.value?.getApi().gotoDate(date); moreOpen.value = false }
-function openCalendarSettings() { moreOpen.value = false; router.push('/tasks/settings#calendar') }
-function openSubscription() { moreOpen.value = false; router.push('/tasks/settings#ics') }
-function printCalendar() { moreOpen.value = false; window.print() }
-watch(() => appStore.authUser?.id, () => restorePreferencesAndView())
-onMounted(async () => { await tasksStore.init({ waitForRemote: false }); await restorePreferencesAndView(); window.addEventListener('keydown', handleEscape) })
-onBeforeUnmount(() => window.removeEventListener('keydown', handleEscape))
+
+function openSettings() {
+  moreOpen.value = false
+  settings.open = true
+}
+
+function printCalendar() {
+  moreOpen.value = false
+  window.print()
+}
+
+async function updateListColor(list, color) {
+  try {
+    await tasksStore.updateList(list, { color })
+    message.success('清单颜色已更新')
+  } catch (cause) {
+    message.error(cause?.response?.data?.detail || cause?.message || '清单颜色保存失败')
+  }
+}
+
+let observer
+function onKeydown(event) {
+  if (event.key !== 'Escape') return
+  if (quickAdd.open) closeQuickAdd()
+  else if (settings.open) settings.open = false
+  else closeMenus()
+}
+
+watch([() => range.value.start.getTime(), () => range.value.end.getTime()], () => { void loadRange() })
+watch(preferenceKey, () => { readPreferences(); void loadRange() })
+
+async function ensureStore() {
+  // 登录切换会话时旧索引库可能正在关闭，init 会抛 InvalidStateError；此处只做一次补拉，避免把错误抛到全局错误边界
+  try {
+    await tasksStore.init({ waitForRemote: false })
+  } catch { /* 会话切换中，交由下面的补拉处理 */ }
+  if (!tasksStore.lists.length && tasksStore.online) {
+    try {
+      await tasksStore.refreshServer()
+    } catch { /* 网络异常时保留空态并沿用接口错误提示 */ }
+  }
+}
+
+onMounted(async () => {
+  readPreferences()
+  window.addEventListener('keydown', onKeydown)
+  if (typeof ResizeObserver !== 'undefined' && shellEl.value) {
+    observer = new ResizeObserver(() => measure())
+    observer.observe(shellEl.value)
+  }
+  window.addEventListener('resize', measure)
+  await ensureStore()
+  if (scope.value.mode === 'filter' && scope.value.filterId) void loadFilterTasks(scope.value.filterId)
+  await Promise.all([loadFilters(), loadRange()])
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('resize', measure)
+  observer?.disconnect()
+})
 </script>
 
 <style scoped>
-.task-calendar-page{max-width:1500px;margin:0 auto;padding:34px 36px 90px;color:var(--ink)}.calendar-head,.calendar-toolbar{display:flex;align-items:center;justify-content:space-between;gap:20px}.calendar-head p{margin:0 0 4px;color:var(--muted);font-size:.75rem;font-weight:700}.calendar-head h1{margin:0;font-size:2rem;letter-spacing:0}.calendar-actions,.view-switch,.range-switch{display:flex;border:1px solid var(--line);background:var(--panel)}.calendar-actions button,.view-switch button,.range-switch button{min-height:38px;border:0;border-right:1px solid var(--line);background:transparent;color:var(--ink);padding:0 13px}.calendar-actions button:last-child,.view-switch button:last-child,.range-switch button:last-child{border-right:0}.calendar-actions svg{width:17px}.view-switch button.on,.range-switch button.on{background:var(--accent);color:#fff;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 72%,#000)}:global(html.dark) .view-switch button.on,:global(html.dark) .range-switch button.on{color:#132019}.calendar-toolbar{margin:24px 0 18px;padding:13px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.layer-switch{display:flex;flex-wrap:wrap;gap:14px;border:0;padding:0;margin:0}.layer-switch legend{position:absolute;width:1px;height:1px;overflow:hidden}.layer-switch label{display:flex;align-items:center;gap:6px;font-size:.8125rem}.layer-switch span{color:var(--down);font-size:.6875rem}.calendar-error{padding:10px 12px;border-left:3px solid var(--down);background:color-mix(in srgb,var(--down) 8%,transparent)}.calendar-loading{padding:12px 0;color:var(--muted)}.full-calendar-wrap{min-height:620px}.full-calendar-wrap :deep(.fc){--fc-border-color:var(--line);--fc-page-bg-color:transparent;--fc-neutral-bg-color:var(--panel2);--fc-list-event-hover-bg-color:var(--panel2);font-size:.8125rem}.full-calendar-wrap :deep(.fc-theme-standard td),.full-calendar-wrap :deep(.fc-theme-standard th){border-color:var(--line)}.full-calendar-wrap :deep(.fc-col-header-cell-cushion){padding:10px 4px;color:var(--muted)}.full-calendar-wrap :deep(.fc-daygrid-day-number){display:flex;justify-content:space-between;width:100%;padding:7px}.full-calendar-wrap :deep(.fc-daygrid-day-number small){color:var(--muted);font-size:.65rem}.full-calendar-wrap :deep(.fc-day-other){background:color-mix(in srgb,var(--panel2) 62%,transparent)}.full-calendar-wrap :deep(.fc-day-other .fc-daygrid-day-top),.full-calendar-wrap :deep(.fc-day-other .fc-daygrid-day-events){opacity:.42}.full-calendar-wrap :deep(.fc-event){border-radius:2px;border:0;padding:2px 4px;cursor:pointer}.full-calendar-wrap :deep(.overlay-worktime){background:#2f746f}.full-calendar-wrap :deep(.overlay-ledger){background:#667049}.full-calendar-wrap :deep(.overlay-holiday){background:#a45449;cursor:default}.full-calendar-wrap :deep(.priority-high){background:var(--priority-high)}.full-calendar-wrap :deep(.priority-medium){background:var(--priority-medium);color:#1f2321}.year-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line)}.year-month{position:relative;display:grid;grid-template-columns:1fr auto;gap:5px;text-align:left;min-height:150px;padding:18px;border:0;background:var(--panel);color:var(--ink);overflow:hidden}.year-month>span{font-weight:700}.year-month>b{font-size:1.75rem}.year-month small{color:var(--muted)}.year-month i{position:absolute;left:0;right:0;bottom:0;height:calc(10px + var(--density) * 58px);background:color-mix(in srgb,#2f746f calc(18% + var(--density) * 60%),transparent)}.calendar-context-menu{position:fixed;z-index:80;width:190px;border:1px solid var(--line2);background:var(--panel);box-shadow:0 14px 36px #0003}.calendar-context-menu header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--line);font-size:.75rem}.calendar-context-menu header button{display:grid;place-items:center;width:26px;height:26px;border:0;background:transparent;color:var(--muted)}.calendar-context-menu svg{width:16px;height:16px}.calendar-context-menu>button{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;padding:0 12px;border:0;background:transparent;color:var(--ink);text-align:left}.calendar-context-menu>button:hover{background:var(--accent-soft);color:var(--accent)}.calendar-task-form{display:grid;gap:16px}.calendar-task-form>label,.calendar-form-grid>label{display:grid;gap:7px;color:var(--ink2);font-size:.75rem;font-weight:700}.calendar-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.calendar-task-form select{min-height:40px;padding:8px 10px;border:1px solid var(--line2);background:var(--card);color:var(--ink)}.calendar-check{display:flex;align-items:center;min-height:40px;gap:8px;font-weight:500}
-@media(max-width:1023px){.task-calendar-page{padding:22px 14px 110px}.calendar-head{align-items:flex-end}.calendar-toolbar{align-items:flex-start;flex-direction:column}.view-switch,.range-switch{width:100%}.view-switch button,.range-switch button{flex:1}.year-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.year-month{min-height:112px}.full-calendar-wrap{min-height:540px}.full-calendar-wrap :deep(.fc-event-title){white-space:normal}.calendar-actions button{padding:0 10px}}
-@media(max-width:420px){.calendar-head h1{font-size:1.65rem}.calendar-actions button:nth-child(2){padding:0 8px}.year-month{padding:12px}.layer-switch{gap:10px}.full-calendar-wrap :deep(.fc-timegrid-axis){display:none}.calendar-form-grid{grid-template-columns:1fr}}
-.full-calendar-wrap :deep(.overlay-habit){background:#6a5680;cursor:default}
-.calendar-toolbar{position:relative}.calendar-more-wrap{position:relative;margin-left:auto}.calendar-more-button{display:grid;place-items:center;width:36px;height:36px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink)}.calendar-more-button:hover{background:var(--accent-soft);color:var(--accent)}.calendar-more-menu{position:absolute;z-index:30;top:42px;right:0;display:grid;min-width:150px;padding:6px;border:1px solid var(--line);border-radius:8px;background:var(--card);box-shadow:0 12px 28px #0002}.calendar-more-menu button{padding:9px 10px;border:0;background:transparent;color:var(--ink);text-align:left}.calendar-more-menu button:hover{background:var(--accent-soft);color:var(--accent)}.calendar-filter-sidebar{float:left;width:220px;min-height:620px;margin-right:20px;padding:10px 12px;border-right:1px solid var(--line);color:var(--ink)}.mini-calendar-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:.82rem}.mini-calendar-head button{display:inline-grid;place-items:center;width:26px;height:26px;border:0;background:transparent;color:var(--muted)}.mini-calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:18px;text-align:center;font-size:.68rem}.mini-calendar-grid>span{padding:4px 0;color:var(--muted)}.mini-calendar-grid>button{height:25px;border:0;border-radius:50%;background:transparent;color:var(--ink);font-size:.68rem}.mini-calendar-grid>button.muted{color:var(--muted);opacity:.5}.mini-calendar-grid>button.today{background:var(--accent);color:#fff}.calendar-source-row{display:flex;align-items:center;gap:7px;min-height:32px;font-size:.78rem}.calendar-source-row input{accent-color:var(--accent)}.source-heading{margin:14px 0 4px;color:var(--muted);font-size:.7rem;font-weight:700}.full-calendar-wrap{margin-left:240px}
-@media(max-width:1023px){.calendar-more-wrap{position:absolute;right:0;top:12px}.calendar-filter-sidebar{float:none;width:auto;min-height:0;margin:0 0 14px;padding:10px 0;border-right:0;border-bottom:1px solid var(--line)}.full-calendar-wrap{margin-left:0}}
-.calendar-task-editor{position:fixed;z-index:60;top:84px;right:32px;width:min(430px,calc(100vw - 32px));max-height:calc(100vh - 120px);overflow:auto;border:1px solid var(--line2);background:var(--card);box-shadow:0 18px 48px rgba(15,23,42,.2)}.calendar-task-editor>header{display:flex;align-items:center;justify-content:space-between;min-height:52px;padding:0 16px;border-bottom:1px solid var(--line);color:var(--ink)}.calendar-task-editor>header button{display:grid;place-items:center;width:34px;height:34px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--muted)}.calendar-task-editor .calendar-task-form{padding:18px}.calendar-task-editor>footer{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid var(--line)}
-@media(max-width:600px){.calendar-task-editor{top:16px;right:16px;width:calc(100vw - 32px);max-height:calc(100vh - 32px)}}
+.cal-shell {
+  position: relative;
+  display: flex;
+  height: calc(100dvh - 88px);
+  margin: 0;
+  background: var(--card);
+  color: var(--ink);
+  overflow: hidden;
+}
+.cal-shell.is-task-route {
+  height: 100dvh;
+}
+.cal-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.cal-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 46px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+.cal-head-left,
+.cal-head-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cal-head-right {
+  gap: 8px;
+}
+.cal-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink2);
+}
+.cal-icon-btn:hover {
+  border-color: var(--line);
+  background: var(--paper);
+  color: var(--ink);
+}
+.cal-title {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: .01em;
+}
+.cal-text-btn {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  gap: 4px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 550;
+}
+.cal-text-btn:hover {
+  background: var(--paper);
+}
+.cal-nav {
+  display: flex;
+  align-items: stretch;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.cal-nav button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  white-space: nowrap;
+  padding: 0 7px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink2);
+  font-size: 12.5px;
+}
+.cal-nav button:last-child {
+  border-right: 0;
+}
+.cal-nav button:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+.cal-nav .cal-nav-today {
+  font-weight: 600;
+}
+.cal-menu-wrap {
+  position: relative;
+}
+.cal-menu {
+  position: absolute;
+  z-index: 40;
+  top: 36px;
+  right: 0;
+  min-width: 208px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 16px 38px rgba(15, 23, 42, .16);
+}
+.cal-menu.is-more {
+  min-width: 168px;
+}
+.cal-menu-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+}
+.cal-menu-row:hover {
+  background: var(--paper);
+}
+.cal-menu-row.active {
+  color: var(--accent);
+}
+.cal-menu-label {
+  min-width: 0;
+  flex: 1;
+}
+.cal-menu-tail {
+  color: var(--muted);
+  font-size: 11px;
+}
+.cal-menu-divider {
+  height: 1px;
+  margin: 5px 8px;
+  background: var(--line);
+}
+.cal-span-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.cal-span-stepper button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink2);
+  font-size: 12px;
+  line-height: 1;
+}
+.cal-span-stepper button:disabled {
+  opacity: .35;
+}
+.cal-span-stepper b {
+  min-width: 16px;
+  color: var(--ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.cal-span-stepper small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.cal-menu-row.active .cal-menu-label,
+.cal-menu-row.active .cal-span-stepper b {
+  color: var(--accent);
+}
+.cal-error {
+  margin: 0;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--down) 8%, transparent);
+  color: var(--down);
+  font-size: 12px;
+}
+.cal-loading {
+  position: relative;
+  flex: 0 0 auto;
+  height: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.cal-loading::after {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 34%;
+  background: var(--accent);
+  content: '';
+  animation: cal-loading-slide 1.1s ease-in-out infinite;
+}
+@keyframes cal-loading-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(320%); }
+}
+.cal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.cal-year {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 18px 24px;
+  padding: 18px;
+}
+.cal-year-month h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.cal-year-dow,
+.cal-year-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  text-align: center;
+}
+.cal-year-dow span {
+  padding-bottom: 3px;
+  color: var(--muted);
+  font-size: 9.5px;
+}
+.cal-year-day {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 24px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.cal-year-day.has-event {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.cal-year-day.muted {
+  color: var(--muted);
+  opacity: .45;
+}
+.cal-year-day.today {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+.cal-year-day i {
+  position: absolute;
+  bottom: 3px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.cal-stack {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0;
+  height: 100%;
+}
+.cal-stack-day {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 8px 8px 12px;
+  border-right: 1px solid var(--line);
+  overflow: auto;
+}
+.cal-stack-day:last-child {
+  border-right: 0;
+}
+.cal-stack.is-agenda {
+  display: block;
+  height: auto;
+  padding: 6px 0 40px;
+}
+.cal-stack.is-agenda .cal-stack-day {
+  border-right: 0;
+  border-bottom: 1px solid var(--line);
+}
+.cal-stack-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding-bottom: 6px;
+  color: var(--ink);
+}
+.cal-stack-head b {
+  font-size: 17px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.cal-stack-weekday {
+  color: var(--ink2);
+  font-size: 11px;
+}
+.cal-stack-head small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10px;
+}
+.cal-stack-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cal-stack-empty {
+  margin: 2px 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.cal-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  text-align: left;
+}
+.cal-row.is-static {
+  cursor: default;
+}
+.cal-row-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+.cal-row-dot.is-done {
+  background: currentColor;
+  box-shadow: inset 0 0 0 1.5px var(--card);
+}
+.cal-row-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cal-row.is-done .cal-row-title {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.cal-row-time,
+.cal-row-extra {
+  flex: 0 0 auto;
+  color: var(--ink2);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.cal-quick {
+  position: absolute;
+  z-index: 50;
+  top: 52px;
+  right: 132px;
+  display: flex;
+  width: min(420px, calc(100vw - 32px));
+  flex-direction: column;
+  padding: 14px 14px 10px;
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 22px 52px rgba(15, 23, 42, .22);
+}
+.cal-quick header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.cal-quick-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.cal-quick-flag {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+.cal-quick-flag.on {
+  color: var(--priority-high, #e34d59);
+}
+.cal-quick-input {
+  width: 100%;
+  min-height: 74px;
+  margin: 10px 0 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.5;
+  outline: none;
+  box-shadow: none;
+  resize: none;
+}
+.cal-quick footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.cal-quick-list {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink2);
+  font-size: 12px;
+}
+.cal-quick-list select {
+  max-width: 132px;
+  border: 0;
+  background: transparent;
+  color: var(--ink2);
+  font-size: 12px;
+  outline: none;
+}
+.cal-quick-actions {
+  display: flex;
+  gap: 6px;
+}
+.cal-quick-actions button {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink2);
+  font-size: 12px;
+}
+.cal-quick-save {
+  border-color: var(--accent) !important;
+  background: var(--accent) !important;
+  color: #fff !important;
+}
+.cal-quick-save:disabled {
+  opacity: .5;
+}
+.cal-dialog-mask {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, .38);
+}
+.cal-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(620px, calc(100vh - 80px));
+  overflow: auto;
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 26px 60px rgba(15, 23, 42, .28);
+}
+.cal-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.cal-dialog h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+.cal-dialog > header button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+.cal-dialog-body {
+  padding: 14px 16px 18px;
+}
+.cal-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.cal-setting-row > span {
+  white-space: nowrap;
+}
+.cal-setting-row select {
+  width: auto;
+  max-width: 200px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+}
+.cal-setting-hint {
+  margin: 8px 0 14px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.cal-setting-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.cal-setting-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  font-size: 12.5px;
+}
+.cal-setting-icon {
+  display: inline-grid;
+  flex: 0 0 18px;
+  place-items: center;
+  width: 18px;
+  overflow: hidden;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.cal-setting-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cal-color-swatch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .12);
+}
+.cal-color-swatch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+@media (max-width: 1023px) {
+  .cal-shell,
+  .cal-shell.is-task-route {
+    height: calc(100dvh - 64px);
+  }
+  .cal-head {
+    gap: 6px;
+    padding: 0 8px;
+  }
+  .cal-head-right {
+    gap: 4px;
+  }
+  .cal-nav .cal-nav-today {
+    padding: 0 6px;
+    font-size: 11.5px;
+  }
+  /* 手机宽度下月格保持可读列宽，横向滚动发生在日历容器内部而不是整页 */
+  .cal-month {
+    min-width: 560px;
+  }
+  .cal-quick {
+    top: 50px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+  }
+  .cal-stack {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    overflow-x: auto;
+  }
+  .cal-year {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    padding: 12px;
+  }
+}
+@media print {
+  .cal-shell {
+    height: auto;
+  }
+  .cal-head,
+  .cal-sidebar,
+  .cal-quick,
+  .cal-dialog-mask {
+    display: none !important;
+  }
+  .cal-body {
+    overflow: visible;
+  }
+}
 </style>

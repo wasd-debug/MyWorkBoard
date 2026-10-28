@@ -573,8 +573,10 @@ test('task workspace keeps reading width and focus states deliberate on wide scr
   assert.match(workspaceView, /\.clone-toolbar-popover button:focus-visible/)
 })
 
-test('task calendar edits tasks in a page panel instead of a drawer', () => {
-  assert.match(calendarView, /class="calendar-task-editor"/)
+test('task calendar creates tasks in an in-place quick add card instead of a drawer', () => {
+  assert.match(calendarView, /class="cal-quick"/)
+  assert.match(calendarView, /placeholder="准备做什么？"/)
+  assert.match(calendarView, /class="cal-shell"/)
   assert.doesNotMatch(calendarView, /<Drawer|ui\/Drawer/)
 })
 
