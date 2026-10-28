@@ -1321,3 +1321,13 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
   - 跨天泳道层盖在日期格之上，`pointerenter` 会落到泳道，改为监听 `window.pointermove` 并用 `elementsFromPoint` 回溯命中的日期格（`data-date`），拖选不再中断；
   - 拖选允许从事件行/泳道起手，事件点击改为 `handleEventClick`，在拖拽后抑制。
 - 门禁：297/297 Node 测试、typecheck、build 通过。浏览器实测：月格 21→23 拖选生成「10月21日 – 10月23日，全天」并落库；日视图点全天区建全天任务；时间轴 13:15→15:15 拖出区间并落库；拖动块 13:15–15:15 → 14:15–16:15；拖下沿 09:00–10:00 → 09:00–11:00；全程无控制台错误。证据 `calendar-span-select/quickadd`、`calendar-range-select/quickadd` 四张。
+
+### P2-CAL5 对象详情浮层（2026-10-28）
+
+- 新增 `CalendarEventCard.vue`：在指针旁弹出 296px 卡片，按事件类型分派任务 / 习惯 / 倒数日 / 专注四种内容，坐标按视口夹取，点击卡片外或 Esc 关闭。
+- 任务卡片：完成 / 恢复、四档优先级（沿用 `--priority-*` 颜色）、移动到清单、日期与清单摘要、未完成检查项数量、专注（以任务开 25 分钟番茄后跳专注页）、打开详情（跳 `/tasks/all?task=`）、删除（二次确认）。
+- 习惯卡片：显示当天打卡态与连续天数，支持「我做到了 / 撤销」，复用 `tasksStore.checkinHabit`，打卡后卡片文案与日历状态同步刷新。
+- 倒数日卡片：显示重复规则与目标日期；专注记录卡片：显示起止与完成状态。两者提供进入对应页面的入口。
+- 卡片数据取实时 store（`cardTask` / `cardHabit` / `cardCountdown`），事件对象只作定位与配色，避免操作后卡片显示旧状态；`cardEvent` 会把 done 状态按最新 checkin / 任务状态重算。
+- 日历里原来的「点任务跳详情」改为「点任务开卡片」，跳转收进卡片的「详情」按钮；工时与流水仍直接跳打卡页 / 流水页。
+- 门禁：300/300 Node 测试、typecheck、build 通过；浏览器实测任务卡片改优先级、标记完成、习惯打卡与撤销、倒数日卡片均生效且无控制台错误。证据 `calendar-task-card-desktop-20261028.png`、`calendar-habit-card-desktop-20261028.png`。

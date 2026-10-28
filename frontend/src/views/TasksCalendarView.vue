@@ -189,6 +189,27 @@
       </div>
     </div>
 
+    <CalendarEventCard
+      v-if="eventCard.open && cardEvent"
+      :event="cardEvent"
+      :task="cardTask"
+      :habit="cardHabit"
+      :countdown="cardCountdown"
+      :lists="calendarLists"
+      :habit-streak="cardStreak"
+      :style="cardStyle"
+      @close="closeEventCard"
+      @complete="completeCard"
+      @reopen="reopenCard"
+      @priority="setCardPriority"
+      @move="moveCard"
+      @delete="deleteCard"
+      @focus="focusCard"
+      @open-detail="openDetail"
+      @checkin="checkinCard"
+      @undo-checkin="undoCheckinCard"
+    />
+
     <div v-if="dayPopover.open" class="cal-day-popover" :style="dayPopoverStyle" role="dialog" :aria-label="dayPopoverTitle" @click.stop>
       <header>
         <div>
@@ -283,14 +304,16 @@ import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Flag, FolderClose
 import CalendarSidebar from './calendar/CalendarSidebar.vue'
 import CalendarMonthView from './calendar/CalendarMonthView.vue'
 import CalendarTimeGrid from './calendar/CalendarTimeGrid.vue'
+import CalendarEventCard from './calendar/CalendarEventCard.vue'
 import TaskOrganizationIcon from '../components/tasks/TaskOrganizationIcon.vue'
 import { message } from '../services/message.js'
 import { useAppStore } from '../stores/app.js'
 import { useTasksStore } from '../stores/tasks.js'
+import { useTaskFocusStore } from '../stores/taskFocus.js'
 import { apiGetTaskCalendar, apiListFocusSessions, apiListTaskFilterTasks, apiListTaskFilters } from '../../packages/api-client/src/index.js'
 import {
   SPAN_CONFIG, SPAN_KEYS, VIEW_KEYS, VIEW_LABELS, VIEW_SHORTCUTS, WEEKDAY_LABELS,
-  addMonths, clampSpan, formatWeekday, resolveRange, shiftAnchor, startOfDay, toDateKey, viewLabel as spanViewLabel, yearMonths
+  addDays, addMonths, clampSpan, formatWeekday, resolveRange, shiftAnchor, startOfDay, toDateKey, viewLabel as spanViewLabel, yearMonths
 } from './calendar/calendarRange.js'
 import { buildCalendarEvents } from './calendar/calendarEvents.js'
 import { minutesToLabel, snapMinutes } from './calendar/calendarTimeGrid.js'
@@ -329,6 +352,8 @@ const moreOpen = ref(false)
 const settings = reactive({ open: false })
 const quickAdd = reactive({ open: false, title: '', priority: 'NONE', listId: '', saving: false, date: startOfDay(new Date()), startMinutes: null, endMinutes: null, spanEnd: null })
 const dayPopover = reactive({ open: false, date: startOfDay(new Date()), x: 0, y: 0 })
+const eventCard = reactive({ open: false, event: null, x: 0, y: 0 })
+const focusStore = useTaskFocusStore()
 const quickInputEl = ref(null)
 const shellEl = ref(null)
 const bodyEl = ref(null)
@@ -394,6 +419,127 @@ const dayPopoverTitle = computed(() => `${dayPopover.date.getMonth() + 1}月${da
 const dayPopoverSub = computed(() => subLabel(dayPopover.date))
 const dayPopoverEvents = computed(() => dayEvents(dayPopover.date))
 const dayPopoverStyle = computed(() => ({ left: `${dayPopover.x}px`, top: `${dayPopover.y}px` }))
+
+const cardTask = computed(() => {
+  const event = eventCard.event
+  if (!event || event.kind !== 'task') return null
+  const task = tasksStore.tasks.find(item => item.publicId === event.id)
+  if (!task) return null
+  return { ...task, openChecklistCount: (task.checklist || []).filter(item => !item.completed).length }
+})
+
+const cardHabit = computed(() => {
+  const event = eventCard.event
+  if (!event || event.kind !== 'habit') return null
+  return tasksStore.habits.find(item => item.publicId === event.habit?.publicId) || null
+})
+
+const cardCountdown = computed(() => {
+  const event = eventCard.event
+  if (!event || event.kind !== 'countdown') return null
+  return tasksStore.countdowns.find(item => item.publicId === event.countdown?.publicId) || null
+})
+
+const cardEvent = computed(() => {
+  const base = eventCard.event
+  if (!base) return null
+  if (base.kind === 'task' && cardTask.value) {
+    return { ...base, title: cardTask.value.title, done: cardTask.value.status === 'COMPLETED', color: cardTask.value.priority ? base.color : base.color }
+  }
+  if (base.kind === 'habit' && cardHabit.value) {
+    const habit = cardHabit.value
+    const done = tasksStore.habitCheckins.some(item => item.habitId === habit.publicId
+      && item.date === base.startKey && item.status === 'DONE'
+      && Number(item.count || 0) >= Number(habit.targetCount || 1))
+    return { ...base, done, title: habit.name || base.title }
+  }
+  if (base.kind === 'countdown' && cardCountdown.value) return { ...base, title: cardCountdown.value.title || base.title }
+  return base
+})
+
+const cardStreak = computed(() => {
+  const habit = cardHabit.value
+  if (!habit) return 0
+  const target = Number(habit.targetCount || 1)
+  const done = new Set(tasksStore.habitCheckins
+    .filter(item => item.habitId === habit.publicId && item.status === 'DONE' && Number(item.count || 0) >= target)
+    .map(item => item.date))
+  let cursor = startOfDay(new Date())
+  if (!done.has(toDateKey(cursor))) cursor = addDays(cursor, -1)
+  let streak = 0
+  while (done.has(toDateKey(cursor))) {
+    streak += 1
+    cursor = addDays(cursor, -1)
+  }
+  return streak
+})
+
+const cardStyle = computed(() => ({ left: `${eventCard.x}px`, top: `${eventCard.y}px` }))
+
+function closeEventCard() {
+  eventCard.open = false
+  eventCard.event = null
+}
+
+async function completeCard() {
+  if (!cardTask.value) return
+  await tasksStore.complete(cardTask.value)
+  message.success('已完成')
+}
+
+async function reopenCard() {
+  if (!cardTask.value) return
+  try {
+    await tasksStore.reopen(cardTask.value)
+    message.success('已恢复')
+  } catch (cause) {
+    message.error(cause?.message || '无法恢复任务')
+  }
+}
+
+async function setCardPriority(priority) {
+  if (!cardTask.value) return
+  await tasksStore.update(cardTask.value, { priority })
+}
+
+async function moveCard(listId) {
+  if (!cardTask.value || !listId) return
+  await tasksStore.update(cardTask.value, { listId })
+  message.success('已移动清单')
+}
+
+async function deleteCard() {
+  const task = cardTask.value
+  if (!task) return
+  if (!window.confirm(`删除任务「${task.title}」？`)) return
+  await tasksStore.remove(task)
+  closeEventCard()
+  message.success('已删除')
+}
+
+async function focusCard() {
+  const task = cardTask.value
+  if (!task) return
+  try {
+    await focusStore.start({ taskId: task.publicId, plannedMinutes: 25 })
+    void router.push('/tasks/focus')
+  } catch (cause) {
+    message.error(cause?.message || '无法开始专注')
+  }
+}
+
+async function checkinCard() {
+  const habit = cardHabit.value
+  if (!habit || !eventCard.event) return
+  await tasksStore.checkinHabit(habit, { date: eventCard.event.startKey, status: 'DONE', count: 1 })
+  message.success('已打卡')
+}
+
+async function undoCheckinCard() {
+  const habit = cardHabit.value
+  if (!habit || !eventCard.event) return
+  await tasksStore.checkinHabit(habit, { date: eventCard.event.startKey, status: 'NONE', count: 0 })
+}
 
 function dayEvents(day) {
   const bucket = calendarData.value.byDay.get(toDateKey(day))
@@ -519,6 +665,7 @@ function closeMenus() {
   viewMenu.value = false
   moreOpen.value = false
   dayPopover.open = false
+  closeEventCard()
 }
 
 function toggleViewMenu() {
@@ -660,21 +807,34 @@ function openDayFromYear(day) {
   savePreferences()
 }
 
-function openEvent(event) {
+function openEvent(event, nativeEvent) {
   if (!event || event.kind === 'holiday') return
-  if (event.kind === 'task') {
-    void router.push({ path: '/tasks/all', query: { task: event.id } })
-  } else if (event.kind === 'habit') {
-    void router.push('/tasks/habits')
-  } else if (event.kind === 'countdown') {
-    void router.push('/tasks/countdowns')
-  } else if (event.kind === 'focus') {
-    void router.push('/tasks/focus')
-  } else if (event.kind === 'worktime') {
+  if (event.kind === 'worktime') {
     void router.push({ path: '/punch', query: { date: event.startKey } })
-  } else if (event.kind === 'ledger') {
-    void router.push({ path: '/ledger/transactions', query: { from: event.startKey, to: event.startKey } })
+    return
   }
+  if (event.kind === 'ledger') {
+    void router.push({ path: '/ledger/transactions', query: { from: event.startKey, to: event.startKey } })
+    return
+  }
+  const pointerX = Number.isFinite(nativeEvent?.clientX) ? nativeEvent.clientX : window.innerWidth / 2
+  const pointerY = Number.isFinite(nativeEvent?.clientY) ? nativeEvent.clientY : 180
+  const width = 296
+  const height = 330
+  eventCard.event = event
+  eventCard.x = Math.min(Math.max(12, pointerX + 10), Math.max(12, window.innerWidth - width - 12))
+  eventCard.y = Math.min(Math.max(52, pointerY - 10), Math.max(52, window.innerHeight - height - 12))
+  eventCard.open = true
+}
+
+function openDetail() {
+  const event = eventCard.event
+  if (!event) return
+  closeEventCard()
+  if (event.kind === 'task') void router.push({ path: '/tasks/all', query: { task: event.id } })
+  else if (event.kind === 'habit') void router.push('/tasks/habits')
+  else if (event.kind === 'countdown') void router.push('/tasks/countdowns')
+  else if (event.kind === 'focus') void router.push('/tasks/focus')
 }
 
 async function openQuickAdd(day, startMinutes = null, options = {}) {
@@ -754,6 +914,7 @@ let observer
 function onKeydown(event) {
   if (event.key !== 'Escape') return
   if (quickAdd.open) closeQuickAdd()
+  else if (eventCard.open) closeEventCard()
   else if (dayPopover.open) closeDayPopover()
   else if (settings.open) settings.open = false
   else closeMenus()
