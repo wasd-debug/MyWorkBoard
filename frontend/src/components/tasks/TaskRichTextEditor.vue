@@ -81,11 +81,43 @@ const rendered = computed(() => renderMarkdown(props.modelValue))
 
 function renderMarkdown(value) {
   try {
-    return DOMPurify.sanitize(marked.parse(value || '', { async: false }), { ALLOWED_URI_REGEXP: /^(?:https?:|mailto:)/i })
+    // breaks: true → 单个换行渲染成 <br>，否则"按一次回车"的换行会在回写时被吃掉
+    const html = marked.parse(value || '', { async: false, breaks: true })
+    // 块级标签之间的换行/缩进是文本节点，编辑器又用了 pre-wrap，会被当成真实空行显示出来
+    const compact = html.replace(/(<pre[\s\S]*?<\/pre>)|>\s*\n\s*</g, (match, pre) => pre || '><')
+    return DOMPurify.sanitize(compact, { ALLOWED_URI_REGEXP: /^(?:https?:|mailto:)/i })
   } catch {
     // 极端内容（超长/异常 Markdown）渲染失败时降级为转义纯文本，避免抛错带崩整页
     return `<p>${String(value || '').replace(/[&<>]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[char])).slice(0, 20000)}</p>`
   }
+}
+
+const BLOCK_TAGS = new Set(['P', 'DIV', 'SECTION', 'ARTICLE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'UL', 'OL', 'BLOCKQUOTE', 'PRE', 'HR', 'TABLE'])
+
+/**
+ * 把块级容器的直接子节点按"块 / 行内"切开：块与块之间是一个空行，行内节点之间按 <br> 走。
+ * 之前直接拼 children，浏览器按回车生成的 <div> / <p> 之间没有分隔符，两行会粘成一行。
+ */
+function containerMarkdown(node) {
+  const parts = []
+  let inline = []
+  const flush = () => {
+    if (!inline.length) return
+    const text = inline.map(nodeMarkdown).join('')
+    inline = []
+    if (text.trim()) parts.push(text)
+  }
+  for (const child of node.childNodes) {
+    if (child.nodeType === Node.ELEMENT_NODE && BLOCK_TAGS.has(child.tagName)) {
+      flush()
+      const md = nodeMarkdown(child).replace(/^\n+|\n+$/g, '')
+      if (md.trim()) parts.push(md)
+    } else {
+      inline.push(child)
+    }
+  }
+  flush()
+  return parts.join('\n\n')
 }
 
 function nodeMarkdown(node) {
@@ -94,7 +126,7 @@ function nodeMarkdown(node) {
   const children = [...node.childNodes].map(nodeMarkdown).join('')
   switch (node.tagName) {
     case 'BR': return '\n'
-    case 'P': return children
+    case 'P': return containerMarkdown(node)
     case 'H1': return `# ${children}`
     case 'H2': return `## ${children}`
     case 'H3': return `### ${children}`
@@ -136,7 +168,7 @@ function nodeMarkdown(node) {
       }).join('\n')
     }
     case 'LI': return children
-    case 'DIV': return children
+    case 'DIV': case 'SECTION': case 'ARTICLE': return containerMarkdown(node)
     case 'SPAN': {
       const color = node.style?.color
       return color ? `<span style="color: ${color}">${children}</span>` : children
@@ -146,7 +178,9 @@ function nodeMarkdown(node) {
 }
 
 function markdownFromEditor() {
-  return [...(editor.value?.childNodes || [])].map(nodeMarkdown).join('\n\n').replace(/\n{3,}/g, '\n\n').trimEnd()
+  const root = editor.value
+  if (!root) return ''
+  return containerMarkdown(root).replace(/\n{3,}/g, '\n\n').trim()
 }
 
 function hasEditorFocus(element) {

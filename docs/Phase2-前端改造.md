@@ -1491,3 +1491,24 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 - **第一次点击按钮没反应**：`onBlur` 里同步 `renderEditorMarkdown()` 会改写编辑器 DOM，触发 blur 的那次点击正处在 mousedown 与 mouseup 之间，mouseup 落到被替换的节点上，click 就丢了。现在 blur 里只关斜杠菜单，重渲染交给原有的 300ms 防抖。
 
 - 门禁：336/336 前端单测（新增 2 条：互斥接线、编辑器紧凑模式与焦点守卫）、typecheck、build 通过；浏览器实测——`/` 菜单 13 项、插入标题并输入内容正常；标签面板新建后自动勾选、搜索框清空、胶囊落到卡片；点优先级后清单/标签/更多浮层数量全为 0；打开日期浮层后优先级浮层消失；Esc 先收浮层、卡片保留；点页面「更多」时快加卡片收起；任务页插入菜单与页面菜单不再并存；日历快加清单浮层被日期浮层顶掉。控制台 0 报错。证据 `qa-quickadd-v2.png`、`qa-workspace-smoke.png`、`qa-smoke.png`、`qa-quadrant-clean.png`。
+
+### P2-QD7 换行错乱、清单浮层排版、日期浮层补提醒与重复（2026-10-29）
+
+**1. 换行错乱（手动输入才复现）**
+两个根因，都在 `TaskRichTextEditor` 的 Markdown ↔ HTML 往返上：
+- **多换行**：`marked` 输出 `<p>a</p>\n<p>b</p>`，标签之间的换行是真实文本节点，而编辑器容器用了 `white-space: pre-wrap`，于是每一对段落之间被多渲染出一个空行。现在渲染后先压掉块级标签之间的空白（`<pre>` 内保持原样），再交给 DOMPurify。
+- **少换行**：`nodeMarkdown` 对 `DIV` 直接拼 children，浏览器回车生成的 `<div>a</div><div>b</div>` 会粘成 `ab`；`markdownFromEditor` 又只按顶层节点 join，混排时同样丢行。现在新增 `containerMarkdown()`：把容器的直接子节点按「块 / 行内」切开，块与块之间补一个空行，行内按 `<br>` 走，`P`/`DIV`/`SECTION`/`ARTICLE` 都走这套。
+- 同时把 `marked` 的 `breaks` 打开：单换行渲染成 `<br>`，否则「按一次回车」的换行会在下一次回写时被吃掉。
+- 语义边界：空行仍然是 Markdown 的段落分隔，连续空行会被折叠（Markdown 没有「空段落」的概念，详情栏用的 Milkdown 也是同一套存储，行为一致）。实测「行 → 空行 → 行 → Shift+Enter 软换行」写入库是 `第一行\n\n第二行\n\n空行后\n软换行`，回写后 DOM 1.2s 内不再变化。
+
+**2. 清单浮层排版错乱（截图里的居中 + 行距过大）**
+三个原因叠加：
+- 卡片原来在日历页是**内联**挂在 `.cal-shell` 里，会继承页面的 `text-align`、行高等排版样式。现在 `TaskQuickAdd` 自己把根节点 `Teleport` 到 `body`（四象限外层那个 Teleport 随之删掉），日历页改为按面板位置算 `fixed` 坐标（`quickStyle`），窄屏自动收进视口。
+- 每行文字用的 `span` 被 `.cal-quick-menu button span { flex: 1 }` 命中，而 `TaskOrganizationIcon` 在图标解析不到时会退化成 `<span>{{ value }}</span>`（库里存的是 emoji 时就是这种情况），图标容器也被 `flex: 1` 撑满，把文字挤到中间。现在文字单独加 `.cal-quick-label` 类承担 `flex: 1`，图标 span 固定 `flex: 0 0 auto`。
+
+**3. 日期浮层补「提醒」「重复」**
+- 日期浮层（复用 `TaskDateTimePopover` 的那个）在「时间」「全天」下面补了两行：提醒（不提醒 / 准时 / 提前 5·15·30 分钟 / 1 小时 / 1 天）、重复（不重复 / 每天 / 每个工作日 / 每周 / 每月 / 每年），与日历任务卡的选项一致。
+- 重复直接进任务载荷的 `rrule`；提醒是独立资源（`POST /tasks/{id}/reminders`），而任务创建是先写本地库、再防抖同步，所以要先 `tasksStore.syncNow()` 拿到服务端 id 再挂提醒，否则会 404。整段是 fire-and-forget，失败不影响任务创建。
+- 四象限与日历两个入口都接了同一套 `reminderMinutes` / `rrule` 状态。
+
+- 门禁：336/336 前端单测、typecheck、build 通过；浏览器实测清单浮层 300×300、行高 32、左对齐；日期浮层提醒/重复控件存在，选「提前 30 分钟 + 每周」后落库 `rrule=FREQ=WEEKLY` 且有 `task_reminder` 记录；输入「第一行⏎第二行⏎⏎空行后⇧⏎软换行」的 DOM 与落库一致且回写稳定。证据 `qa-list-fresh.png`、`qa-date-popover.png`、`qa-linebreak.png`、`qa-quadrant-card.png`。

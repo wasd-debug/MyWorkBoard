@@ -249,7 +249,12 @@ test('task rich editor keeps the native caret during typing and renders markdown
   assert.match(taskRichTextEditor, /function insertCaretMarker\(element\)/)
   assert.match(taskRichTextEditor, /function restoreCaretMarker\(element, marker\)/)
   assert.match(taskRichTextEditor, /EMPTY_BLOCK_CARET/)
-  assert.match(taskRichTextEditor, /map\(nodeMarkdown\)\.join\('\\n\\n'\)/)
+  // 块级容器按块切分：<div>/<p> 之间补空行，行内按 <br> 走
+  assert.match(taskRichTextEditor, /function containerMarkdown\(node\)/)
+  assert.match(taskRichTextEditor, /parts\.join\('\\n\\n'\)/)
+  // 渲染侧：单个换行保留成 <br>，并压掉块级标签之间的换行（pre-wrap 会把它显示成空行）
+  assert.match(taskRichTextEditor, /breaks: true/)
+  assert.match(taskRichTextEditor, /const compact = html\.replace/)
   assert.match(taskRichTextEditor, /task-rich-input :deep\(h1\)[\s\S]*font-size: 1\.65em/)
   assert.match(taskRichTextEditor, /task-rich-input :deep\(h2\)[\s\S]*font-size: 1\.4em/)
 })
@@ -614,6 +619,11 @@ test('quick add card exposes title, description, priority, date, list and tag in
   assert.match(quickAdd, /<TaskDateTimePopover/)
   // 贴顶时浮层改向下展开，避免顶出屏幕
   assert.match(quickAdd, /is-drop/)
+  // 清单/标签行只有文字伸缩，图标（解析不到时会退化成 span）保持原宽
+  assert.match(quickAdd, /class="cal-quick-label"/)
+  assert.match(quickAdd, /button > span:not\(\.cal-quick-label\) \{ flex: 0 0 auto; \}/)
+  // 卡片整体 Teleport 到 body，避免继承页面容器的排版样式
+  assert.match(quickAdd, /^<template>\n  <Teleport to="body">/)
   // 卡片内浮层互斥，且别的浮层打开时整卡收起
   assert.match(quickAdd, /useExclusivePanels\('quickadd'/)
   assert.match(quickAdd, /onForeign/)

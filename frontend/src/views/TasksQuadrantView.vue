@@ -99,35 +99,37 @@
       </div>
     </Teleport>
 
-    <Teleport to="body">
-      <TaskQuickAdd
-        :open="quick.open"
-        :style="quickStyle"
-        :date-label="quickDateLabel"
-        :due-at="quick.dueAt"
-        :all-day="quick.allDay"
-        :title="quick.title"
-        :description="quick.description"
-        :priority="quick.priority"
-        :list-id="quick.listId"
-        :tag-ids="quick.tagIds"
-        :checklist="quick.checklist"
-        :lists="lists"
-        :tags="tags"
-        :saving="quick.saving"
-        :create-tag="quickCreateTag"
-        @update:title="quick.title = $event"
-        @update:description="quick.description = $event"
-        @update:priority="quick.priority = $event"
-        @update:list-id="quick.listId = $event"
-        @update:tag-ids="quick.tagIds = $event"
-        @update:checklist="quick.checklist = $event"
-        @update:due-at="quick.dueAt = $event"
-        @update:all-day="quick.allDay = $event"
-        @save="submitQuick"
-        @close="closeQuick"
-      />
-    </Teleport>
+    <TaskQuickAdd
+      :open="quick.open"
+      :style="quickStyle"
+      :date-label="quickDateLabel"
+      :due-at="quick.dueAt"
+      :all-day="quick.allDay"
+      :title="quick.title"
+      :description="quick.description"
+      :priority="quick.priority"
+      :list-id="quick.listId"
+      :tag-ids="quick.tagIds"
+      :checklist="quick.checklist"
+      :lists="lists"
+      :tags="tags"
+      :saving="quick.saving"
+      :create-tag="quickCreateTag"
+      :reminder-minutes="quick.reminderMinutes"
+      :rrule="quick.rrule"
+      @update:title="quick.title = $event"
+      @update:description="quick.description = $event"
+      @update:priority="quick.priority = $event"
+      @update:list-id="quick.listId = $event"
+      @update:tag-ids="quick.tagIds = $event"
+      @update:checklist="quick.checklist = $event"
+      @update:due-at="quick.dueAt = $event"
+      @update:all-day="quick.allDay = $event"
+      @update:reminder-minutes="quick.reminderMinutes = $event"
+      @update:rrule="quick.rrule = $event"
+      @save="submitQuick"
+      @close="closeQuick"
+    />
 
     <QuadrantEditDialog
       :open="editOpen"
@@ -150,6 +152,7 @@ import QuadrantEditDialog from '../components/tasks/QuadrantEditDialog.vue'
 import TaskQuickAdd from '../components/tasks/TaskQuickAdd.vue'
 import { useAppStore } from '../stores/app.js'
 import { useTasksStore } from '../stores/tasks.js'
+import { apiCreateTaskReminder } from '../../packages/api-client/src/index.js'
 import {
   GROUP_OPTIONS, ORDER_OPTIONS, PRIORITY_OPTIONS, SORT_OPTIONS, buildQuadrantGroups, dateBucket,
   defaultQuadrants, loadState, saveState, splitByQuadrant
@@ -172,7 +175,7 @@ const submenu = ref('')
 const editOpen = ref(false)
 const editing = ref(null)
 // 复用日历那套快速添加卡片（components/tasks/TaskQuickAdd.vue）
-const quick = reactive({ open: false, quadrant: null, title: '', description: '', priority: 'NONE', listId: '', tagIds: [], checklist: [], dueAt: '', allDay: false, saving: false, x: 0, y: 0 })
+const quick = reactive({ open: false, quadrant: null, title: '', description: '', priority: 'NONE', listId: '', tagIds: [], checklist: [], dueAt: '', allDay: false, reminderMinutes: null, rrule: '', saving: false, x: 0, y: 0 })
 const pageMenuAnchor = ref(null)
 
 const tasks = computed(() => tasksStore.tasks.filter(item => !item.deleted))
@@ -290,6 +293,8 @@ async function openQuick(quadrant, event) {
     dueAt: defaults.dueAt || '',
     allDay: false,
     priority: defaults.priority || 'NONE',
+    reminderMinutes: null,
+    rrule: '',
     listId: defaults.listId || tasksStore.inbox?.publicId || '',
     x: rect ? Math.max(12, Math.min(rect.left - 8, window.innerWidth - width - 12)) : 40,
     y: rect ? Math.min(rect.bottom + 6, window.innerHeight - 240) : 120
@@ -322,7 +327,7 @@ async function submitQuick() {
   const due = quick.dueAt ? new Date(quick.dueAt) : null
   quick.saving = true
   try {
-    await tasksStore.create({
+    const created = await tasksStore.create({
       ...defaults,
       title,
       description: quick.description,
@@ -332,8 +337,22 @@ async function submitQuick() {
       priority: quick.priority,
       listId: quick.listId || defaults.listId,
       tagIds: [...quick.tagIds],
+      rrule: quick.rrule || '',
       checklist: quick.checklist.filter(item => item.title.trim()).map(item => ({ title: item.title.trim(), completed: item.completed }))
     })
+    // 提醒是独立资源，且要等任务同步到服务端才有 publicId 可用
+    const publicId = created?.publicId || created?.id
+    const reminderMinutes = quick.reminderMinutes
+    if (publicId && due && reminderMinutes !== null && reminderMinutes !== undefined) {
+      void (async () => {
+        try {
+          await tasksStore.syncNow()
+          await apiCreateTaskReminder(publicId, {
+            kind: 'RELATIVE', offsetMinutes: Number(reminderMinutes), remindAt: null, channel: 'IN_APP', dailyUntilDone: false
+          })
+        } catch { /* 提醒失败不阻塞任务创建 */ }
+      })()
+    }
     quick.open = false
   } catch (cause) {
     error.value = cause?.response?.data?.detail || cause?.message || '创建任务失败'

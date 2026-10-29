@@ -1,4 +1,5 @@
 <template>
+  <Teleport to="body">
   <div v-if="open" ref="rootEl" class="cal-quick" :style="style" role="dialog" :aria-label="ariaLabel" @click.stop @keydown.esc.prevent="onCardEscape">
     <header class="cal-quick-head">
       <button ref="dateBtn" type="button" class="cal-quick-date" :aria-expanded="dateOpen" @click.stop="dateOpen = !dateOpen">
@@ -10,7 +11,7 @@
         </button>
         <div v-if="priorityMenu" class="cal-quick-menu is-priority" @click.stop>
           <button v-for="option in priorityOptions" :key="option.value" type="button" :class="`is-${option.value.toLowerCase()}`" @click="pickPriority(option.value)">
-            <Flag :size="14" /><span>{{ option.label }}</span><Check v-if="priority === option.value" :size="13" />
+            <Flag :size="14" /><span class="cal-quick-label">{{ option.label }}</span><Check v-if="priority === option.value" :size="13" />
           </button>
         </div>
       </div>
@@ -70,7 +71,7 @@
       <label class="cal-quick-search"><Search :size="13" /><input v-model="listQuery" placeholder="搜索" aria-label="搜索清单" /></label>
       <button v-for="list in filteredLists" :key="list.publicId" type="button" :class="{ on: list.publicId === listId }" @click="pickList(list)">
         <TaskOrganizationIcon :value="list.icon" :size="14" :style="{ color: list.color || 'var(--ink2)' }" />
-        <span>{{ list.name }}</span>
+        <span class="cal-quick-label">{{ list.name }}</span>
         <Check v-if="list.publicId === listId" :size="13" />
       </button>
       <p v-if="!filteredLists.length" class="cal-quick-empty">没有匹配的清单</p>
@@ -78,8 +79,8 @@
 
     <!-- 更多：标签 / 检查事项 -->
     <div v-if="moreMenu" class="cal-quick-menu is-more" :class="{ 'is-drop': dropDown }" @click.stop>
-      <button type="button" @click.stop="togglePanel('tag')"><Tag :size="14" /><span>标签</span><em>{{ selectedTags.length || '' }}</em></button>
-      <button type="button" @click.stop="togglePanel('checklist')"><ListChecks :size="14" /><span>检查事项</span></button>
+      <button type="button" @click.stop="togglePanel('tag')"><Tag :size="14" /><span class="cal-quick-label">标签</span><em>{{ selectedTags.length || '' }}</em></button>
+      <button type="button" @click.stop="togglePanel('checklist')"><ListChecks :size="14" /><span class="cal-quick-label">检查事项</span></button>
     </div>
 
     <!-- 标签选择：搜索 + 多选 + 现场新建 + 取消/确定 -->
@@ -89,12 +90,12 @@
         <input v-model="tagQuery" placeholder="输入标签" aria-label="搜索标签" @keydown.enter.prevent="onTagQueryEnter" />
       </label>
       <button v-if="canCreateTag" type="button" class="cal-quick-create-tag" :disabled="creatingTag" @click="createTagFromQuery">
-        <Plus :size="13" /><span>{{ creatingTag ? '创建中…' : `创建「${tagQuery.trim()}」` }}</span>
+        <Plus :size="13" /><span class="cal-quick-label">{{ creatingTag ? '创建中…' : `创建「${tagQuery.trim()}」` }}</span>
       </button>
       <div class="cal-quick-tag-list">
         <button v-for="tag in filteredTags" :key="tag.publicId" type="button" :class="{ on: tagDraft.includes(tag.publicId) }" @click="toggleTagDraft(tag.publicId)">
           <Tag :size="14" :style="{ color: tag.color || 'var(--ink2)' }" />
-          <span>{{ tag.name }}</span>
+          <span class="cal-quick-label">{{ tag.name }}</span>
           <Check v-if="tagDraft.includes(tag.publicId)" :size="13" />
         </button>
         <p v-if="!filteredTags.length && !canCreateTag" class="cal-quick-empty">没有匹配的标签</p>
@@ -134,6 +135,19 @@
                 <span>全天</span>
                 <button type="button" role="switch" :aria-checked="allDayModel" :class="{ on: allDayModel }" @click="allDayModel = !allDayModel"><i></i></button>
               </label>
+              <div class="cal-quick-date-row">
+                <Bell :size="14" /><span>提醒</span>
+                <select :value="reminderValue" aria-label="提醒" @change="$emit('update:reminderMinutes', $event.target.value === '' ? null : Number($event.target.value))">
+                  <option value="">不提醒</option>
+                  <option v-for="option in reminderOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+              </div>
+              <div class="cal-quick-date-row">
+                <Repeat2 :size="14" /><span>重复</span>
+                <select :value="rrule" aria-label="重复" @change="$emit('update:rrule', $event.target.value)">
+                  <option v-for="option in repeatPresets" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+              </div>
               <p v-if="mode === 'RANGE'" class="cal-quick-date-hint">时间段模式会同时设置开始与截止时间。</p>
             </div>
           </template>
@@ -141,11 +155,12 @@
       </div>
     </Teleport>
   </div>
+  </Teleport>
 </template>
 
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from 'vue'
-import { CalendarDays, Check, Clock3, Flag, Inbox, ListChecks, MoreHorizontal, Plus, Search, Tag, X } from 'lucide-vue-next'
+import { Bell, CalendarDays, Check, Clock3, Flag, Inbox, ListChecks, MoreHorizontal, Plus, Repeat2, Search, Tag, X } from 'lucide-vue-next'
 import TaskDateTimePopover from './TaskDateTimePopover.vue'
 import TaskOrganizationIcon from './TaskOrganizationIcon.vue'
 import TaskRichTextEditor from './TaskRichTextEditor.vue'
@@ -167,6 +182,10 @@ const props = defineProps({
   tags: { type: Array, default: () => [] },
   // 传入后可在标签浮层里现场新建，签名 (name) => Promise<tag>
   createTag: { type: Function, default: null },
+  // 相对截止时间的提醒分钟数，null 表示不提醒
+  reminderMinutes: { type: Number, default: null },
+  // 重复规则（RRULE），空串表示不重复
+  rrule: { type: String, default: '' },
   saving: { type: Boolean, default: false },
   placeholder: { type: String, default: '准备做什么？' },
   ariaLabel: { type: String, default: '新增任务' },
@@ -175,8 +194,29 @@ const props = defineProps({
 
 const emit = defineEmits([
   'update:title', 'update:description', 'update:priority', 'update:listId',
-  'update:tagIds', 'update:checklist', 'update:dueAt', 'update:allDay', 'save', 'close'
+  'update:tagIds', 'update:checklist', 'update:dueAt', 'update:allDay',
+  'update:reminderMinutes', 'update:rrule', 'save', 'close'
 ])
+
+const REMINDER_OPTIONS = [
+  { value: 0, label: '准时' },
+  { value: 5, label: '提前 5 分钟' },
+  { value: 15, label: '提前 15 分钟' },
+  { value: 30, label: '提前 30 分钟' },
+  { value: 60, label: '提前 1 小时' },
+  { value: 1440, label: '提前 1 天' }
+]
+const REPEAT_PRESETS = [
+  { value: '', label: '不重复' },
+  { value: 'FREQ=DAILY', label: '每天' },
+  { value: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', label: '每个工作日' },
+  { value: 'FREQ=WEEKLY', label: '每周' },
+  { value: 'FREQ=MONTHLY', label: '每月' },
+  { value: 'FREQ=YEARLY', label: '每年' }
+]
+const reminderOptions = REMINDER_OPTIONS
+const repeatPresets = REPEAT_PRESETS
+const reminderValue = computed(() => (props.reminderMinutes === null || props.reminderMinutes === undefined ? '' : String(props.reminderMinutes)))
 
 const PRIORITY_OPTIONS = [
   { value: 'HIGH', label: '高优先级' },
@@ -500,7 +540,9 @@ function confirmDate() {
 .cal-quick-menu.is-more.is-drop,
 .cal-quick-menu.is-tags.is-drop { top: calc(100% + 4px); bottom: auto; }
 .cal-quick-menu button { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink2); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
-.cal-quick-menu button span { flex: 1; }
+.cal-quick-menu button .cal-quick-label { flex: 1; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+/* 图标解析不到时会退化成 <span>，不能让它跟着伸展，否则文字被挤到中间 */
+.cal-quick-menu button > span:not(.cal-quick-label) { flex: 0 0 auto; }
 .cal-quick-menu button em { color: var(--muted); font-size: 11px; font-style: normal; }
 .cal-quick-menu button:hover { background: var(--paper); color: var(--ink); }
 .cal-quick-menu button.on { color: var(--accent); }
@@ -520,6 +562,7 @@ function confirmDate() {
 .cal-quick-date-rows { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
 .cal-quick-date-row { display: flex; align-items: center; gap: 8px; min-height: 30px; color: var(--ink2); font-size: 12px; }
 .cal-quick-date-row span { flex: 1; }
+.cal-quick-date-row select { width: 128px; min-height: 28px; padding: 0 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; }
 .cal-quick-date-row input { width: 104px; min-height: 28px; padding: 0 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; }
 .cal-quick-date-row.is-switch { justify-content: space-between; }
 .cal-quick-date-row.is-switch button { position: relative; width: 38px; height: 21px; border: 0; border-radius: 11px; background: var(--line2); cursor: pointer; }

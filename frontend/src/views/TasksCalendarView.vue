@@ -252,6 +252,7 @@
 
     <TaskQuickAdd
       :open="quickAdd.open"
+      :style="quickStyle"
       :date-label="quickAddDateLabel"
       :due-at="quickAddDueIso"
       :all-day="quickAdd.allDay"
@@ -265,6 +266,8 @@
       :tags="calendarTags"
       :saving="quickAdd.saving"
       :create-tag="quickCreateTag"
+      :reminder-minutes="quickAdd.reminderMinutes"
+      :rrule="quickAdd.rrule"
       @update:title="quickAdd.title = $event"
       @update:description="quickAdd.description = $event"
       @update:priority="quickAdd.priority = $event"
@@ -272,6 +275,8 @@
       @update:tag-ids="quickAdd.tagIds = $event"
       @update:checklist="quickAdd.checklist = $event"
       @update:all-day="quickAdd.allDay = $event"
+      @update:reminder-minutes="quickAdd.reminderMinutes = $event"
+      @update:rrule="quickAdd.rrule = $event"
       @update:due-at="applyQuickDueAt"
       @save="saveQuickAdd"
       @close="closeQuickAdd"
@@ -313,7 +318,7 @@ import { useExclusivePanels } from '../utils/exclusivePanels.js'
 import { useAppStore } from '../stores/app.js'
 import { useTasksStore } from '../stores/tasks.js'
 import { useTaskFocusStore } from '../stores/taskFocus.js'
-import { apiDeleteFocus, apiGetTaskCalendar, apiListFocusSessions, apiListTaskFilterTasks, apiListTaskFilters, apiUpdateFocusSession } from '../../packages/api-client/src/index.js'
+import { apiCreateTaskReminder, apiDeleteFocus, apiGetTaskCalendar, apiListFocusSessions, apiListTaskFilterTasks, apiListTaskFilters, apiUpdateFocusSession } from '../../packages/api-client/src/index.js'
 import {
   SPAN_CONFIG, SPAN_KEYS, VIEW_KEYS, VIEW_LABELS, VIEW_SHORTCUTS, WEEKDAY_LABELS,
   addDays, addMonths, clampSpan, formatWeekday, monthWeeks, resolveRange, shiftAnchor, startOfDay, toDateKey, viewLabel as spanViewLabel, yearMonths
@@ -360,7 +365,7 @@ const viewMenu = ref(false)
 const moreOpen = ref(false)
 const printMenuOpen = ref(false)
 const settings = reactive({ open: false })
-const quickAdd = reactive({ open: false, title: '', description: '', priority: 'NONE', listId: '', tagIds: [], checklist: [], saving: false, date: startOfDay(new Date()), allDay: true, startMinutes: null, endMinutes: null, spanEnd: null })
+const quickAdd = reactive({ open: false, title: '', description: '', priority: 'NONE', listId: '', tagIds: [], checklist: [], saving: false, date: startOfDay(new Date()), allDay: true, startMinutes: null, endMinutes: null, spanEnd: null, reminderMinutes: null, rrule: '' })
 const dayPopover = reactive({ open: false, date: startOfDay(new Date()), x: 0, y: 0 })
 const eventCard = reactive({ open: false, event: null, x: 0, y: 0 })
 const focusStore = useTaskFocusStore()
@@ -435,6 +440,15 @@ const calendarData = computed(() => buildCalendarEvents({
 }))
 
 // 快速添加卡片上的日期浮层写回：改日期/时间就重设落点
+// 卡片 Teleport 到了 body，定位改成按日历面板算的 fixed 坐标
+const quickStyle = computed(() => {
+  const width = Math.min(420, window.innerWidth - 32)
+  const rect = shellEl.value?.getBoundingClientRect?.()
+  const left = rect ? Math.max(12, Math.min(rect.right - 132 - width, window.innerWidth - width - 12)) : 24
+  const top = rect ? Math.max(12, rect.top + 52) : 80
+  return { position: 'fixed', left: `${left}px`, top: `${top}px`, width: `${width}px`, zIndex: 1300 }
+})
+
 const quickAddDueIso = computed(() => {
   const day = quickAdd.date
   if (quickAdd.spanEnd) return day.toISOString()
@@ -1018,6 +1032,8 @@ async function openQuickAdd(day, startMinutes = null, options = {}) {
   quickAdd.allDay = quickAdd.startMinutes == null || Boolean(quickAdd.spanEnd)
   quickAdd.title = ''
   quickAdd.priority = 'NONE'
+  quickAdd.reminderMinutes = null
+  quickAdd.rrule = ''
   quickAdd.listId = tasksStore.inbox?.publicId || calendarLists.value[0]?.publicId || ''
   quickAdd.open = true
   await nextTick()
@@ -1049,14 +1065,28 @@ async function saveQuickAdd() {
     } else {
       payload = { allDay: true, startAt: day.toISOString(), dueAt: day.toISOString() }
     }
-    await tasksStore.create({
+    const created = await tasksStore.create({
       title, ...payload,
       description: quickAdd.description,
       priority: quickAdd.priority,
       listId: quickAdd.listId || tasksStore.inbox?.publicId || '',
       tagIds: [...quickAdd.tagIds],
+      rrule: quickAdd.rrule || '',
       checklist: quickAdd.checklist.filter(item => item.title.trim()).map(item => ({ title: item.title.trim(), completed: item.completed }))
     })
+    // 提醒是独立资源，且要等任务同步到服务端才有 publicId 可用
+    const createdId = created?.publicId || created?.id
+    const reminderMinutes = quickAdd.reminderMinutes
+    if (createdId && payload.dueAt && reminderMinutes !== null && reminderMinutes !== undefined) {
+      void (async () => {
+        try {
+          await tasksStore.syncNow()
+          await apiCreateTaskReminder(createdId, {
+            kind: 'RELATIVE', offsetMinutes: Number(reminderMinutes), remindAt: null, channel: 'IN_APP', dailyUntilDone: false
+          })
+        } catch { /* 提醒失败不阻塞任务创建 */ }
+      })()
+    }
     quickAdd.open = false
     message.success('任务已创建')
   } catch (cause) {
@@ -1623,13 +1653,7 @@ onBeforeUnmount(() => {
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
 }
-/* 快速添加卡片的定位留在页面这一层，窄屏与打印的媒体查询才能覆盖它 */
-.cal-quick {
-  position: absolute;
-  z-index: 50;
-  top: 52px;
-  right: 132px;
-}
+/* 快速添加卡片由 TaskQuickAdd 自己 Teleport 到 body，定位由 quickStyle 计算 */
 .cal-day-popover {
   position: fixed;
   z-index: 55;
