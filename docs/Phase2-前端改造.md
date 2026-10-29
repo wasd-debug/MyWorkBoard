@@ -1531,3 +1531,16 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 改为使用 DOMPurify 默认配置（默认就已经过滤 `javascript:` / `data:` 链接、剥掉 `on*` 事件），并把复选框识别放宽到 `item.querySelector(':scope > input')`。
 
 - 门禁：336/336 单测（更新 3 条与编辑器调度相关的断言）、typecheck、build 通过；浏览器逐字符实测 `abc end` 不再丢 `n`；详情栏 Milkdown 里也能正常输入 `n`；空白处按 `n` 仍会触发新建任务（`task-new-request` 事件计数 1）。证据 `qa-keyboard.png`。
+
+### P2-QD9 去掉富文本编辑器，描述统一改 Markdown 文本（2026-10-29）
+
+**决定**：不再维护 contenteditable 富文本编辑器。原因见 P2-QD8——富文本那条链路上同时存在「全局快捷键吞字」「半成品 Markdown 回写拆结构」「DOMPurify 吃属性」三类问题，且每次都要靠"不在打字时回写 DOM"这类补丁维持。改成纯 Markdown 源文本编辑后，输入即所见（所见即源码），落库与详情栏、预览完全一致。
+
+**改动**
+- 新增 `components/tasks/TaskMarkdownEditor.vue`：`<textarea>` + 自动增高 + 行首 `/` 插入菜单（11 项：标题/加粗/斜体/删除线/无序/有序/检查项/引用/分割线/代码/链接）。对外暴露 `runToolbar(key)` / `insertLink(text, href)` / `focusEditor()`，供详情栏「+ 插入」菜单沿用；块级插入在当前行有内容时会先换行，不会把前缀塞进行中间。
+- 新增 `components/tasks/TaskMarkdownPreview.vue`：只读渲染（marked + DOMPurify 默认策略），用于评论等只读场景。
+- 替换全部编辑器入口：快加卡片描述、收集箱表单描述、摘要报告、任务详情栏描述、评论输入；删除 `TaskRichTextEditor.vue`、`TaskMilkdownEditor.vue`、`TaskMilkdownEditorSurface.vue`。
+- 详情栏描述去掉边框融进详情区，不再有浮动工具栏；`@update:model-value` 仍走原来的 `scheduleInlineDescriptionSave` 防抖保存，`+` 插入菜单照旧可用。
+- 副作用：构建里不再有 Milkdown / ProseMirror 相关 chunk。
+
+- 门禁：336/336 单测（改写了 6 处与旧编辑器相关的断言）、typecheck、build 通过；浏览器实测快加卡片里是 textarea、`# 标题`/`- [ ] 待办`/`> ` 原样输入原样保存、`/` 菜单能插入、详情栏可编辑且 `+` 插入二级标题落到新行，两个页面均无 contenteditable 残留。证据 `qa-md-card.png`、`qa-md-detail.png`。

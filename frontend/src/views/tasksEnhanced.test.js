@@ -7,8 +7,8 @@ const settingsView = await readFile(new URL('./TaskSettingsView.vue', import.met
 const dataPanel = await readFile(new URL('../components/tasks/TaskDataPanel.vue', import.meta.url), 'utf8')
 const inboxView = await readFile(new URL('./TasksInboxView.vue', import.meta.url), 'utf8')
 const workspaceView = await readFile(new URL('./TaskWorkspaceView.vue', import.meta.url), 'utf8')
-const taskRichTextEditor = await readFile(new URL('../components/tasks/TaskRichTextEditor.vue', import.meta.url), 'utf8')
-const taskMilkdownEditor = await readFile(new URL('../components/tasks/TaskMilkdownEditor.vue', import.meta.url), 'utf8')
+const taskMarkdownEditor = await readFile(new URL('../components/tasks/TaskMarkdownEditor.vue', import.meta.url), 'utf8')
+const taskMarkdownPreview = await readFile(new URL('../components/tasks/TaskMarkdownPreview.vue', import.meta.url), 'utf8')
 const taskFilterRuleEditor = await readFile(new URL('../components/tasks/TaskFilterRuleEditor.vue', import.meta.url), 'utf8')
 const taskDateTimePopover = await readFile(new URL('../components/tasks/TaskDateTimePopover.vue', import.meta.url), 'utf8')
 const themeStyles = await readFile(new URL('../styles/theme.css', import.meta.url), 'utf8')
@@ -221,7 +221,7 @@ test('task list routes use the replacement workspace and preserve the task contr
     const routePattern = new RegExp(`path: '${path.replace(/[/:]/g, match => `\\${match}`)}'[\\s\\S]*TaskWorkspaceView`)
     assert.match(router, routePattern)
   }
-  for (const token of ['clone-task-shell', 'TaskRichTextEditor', 'batchTasks', 'sortTask', 'clone-context-menu', 'store.createList']) assert.match(workspaceView, new RegExp(token.replace('.', '\\.' )))
+  for (const token of ['clone-task-shell', 'TaskMarkdownEditor', 'batchTasks', 'sortTask', 'clone-context-menu', 'store.createList']) assert.match(workspaceView, new RegExp(token.replace('.', '\\.' )))
   assert.match(workspaceView, /route\.name === ["']tasks-trash["'][\s\S]*\? task\.deleted/)
   assert.match(workspaceView, /to="\/tasks\/abandoned"/)
   assert.match(workspaceView, /restoreAbandoned\(context\.task\)/)
@@ -240,26 +240,27 @@ test('task detail collaboration and slash insertion stay in the replacement work
   assert.match(workspaceView, /function openExportDialog\(\)/)
   assert.match(workspaceView, /exportFormat = 'text'/)
   assert.match(workspaceView, /function openDetailTaskNote\(\)[\s\S]*window\.open\([\s\S]*popup\.document\.body\.replaceChildren\(main\)/)
-  const editor = await readFile(new URL('../components/tasks/TaskRichTextEditor.vue', import.meta.url), 'utf8')
-  for (const token of ['slashCommands', 'task-slash-menu', 'chooseSlash', 'Escape', '标题', '检查项']) assert.match(editor, new RegExp(token))
+  for (const token of ['SLASH_COMMANDS', 'task-md-slash', 'chooseSlash', 'Escape', '标题', '检查项']) assert.match(taskMarkdownEditor, new RegExp(token))
 })
 
-test('task rich editor keeps the native caret during typing and renders markdown after idle', async () => {
-  // 打字过程中不回写 DOM（只抛 Markdown），回写交给失焦后的延迟归一化
-  assert.match(taskRichTextEditor, /function onInput\(\) \{[\s\S]*?emit\('update:modelValue', markdown\)[\s\S]*?clearTimeout\(normalizeTimer\)/)
-  assert.doesNotMatch(taskRichTextEditor, /setTimeout\(renderEditorMarkdown, 300\)/)
-  assert.match(taskRichTextEditor, /normalizeTimer = setTimeout\(\(\) => \{ if \(!hasEditorFocus\(editor\.value\)\) renderEditorMarkdown\(\) \}, 160\)/)
-  assert.match(taskRichTextEditor, /function insertCaretMarker\(element\)/)
-  assert.match(taskRichTextEditor, /function restoreCaretMarker\(element, marker\)/)
-  assert.match(taskRichTextEditor, /EMPTY_BLOCK_CARET/)
-  // 块级容器按块切分：<div>/<p> 之间补空行，行内按 <br> 走
-  assert.match(taskRichTextEditor, /function containerMarkdown\(node\)/)
-  assert.match(taskRichTextEditor, /parts\.join\('\\n\\n'\)/)
-  // 渲染侧：单个换行保留成 <br>，并压掉块级标签之间的换行（pre-wrap 会把它显示成空行）
-  assert.match(taskRichTextEditor, /breaks: true/)
-  assert.match(taskRichTextEditor, /const compact = html\.replace/)
-  assert.match(taskRichTextEditor, /task-rich-input :deep\(h1\)[\s\S]*font-size: 1\.65em/)
-  assert.match(taskRichTextEditor, /task-rich-input :deep\(h2\)[\s\S]*font-size: 1\.4em/)
+test('描述统一改成 Markdown 文本编辑（不再有富文本编辑器）', async () => {
+  // 纯 textarea，不再有 contenteditable / 工具栏 / 光标还原那套
+  assert.match(taskMarkdownEditor, /<textarea/)
+  assert.doesNotMatch(taskMarkdownEditor, /contenteditable/)
+  assert.match(taskMarkdownEditor, /@input="onInput"/)
+  assert.match(taskMarkdownEditor, /emit\('update:modelValue', el\.value\)/)
+  // 行首输入 / 打开插入菜单，选中后按 Markdown 片段插入
+  assert.match(taskMarkdownEditor, /function syncSlash\(value, caret\)/)
+  assert.match(taskMarkdownEditor, /function chooseSlash\(item\)/)
+  assert.match(taskMarkdownEditor, /- \[ \] /)
+  // 详情栏「+」菜单依赖的三个方法
+  assert.match(taskMarkdownEditor, /defineExpose\(\{ runToolbar, insertLink, focusEditor/)
+  assert.match(taskMarkdownEditor, /function runToolbar\(key\)/)
+  assert.match(taskMarkdownEditor, /function insertLink\(text, href\)/)
+  // 只读预览仍在（评论等），并且只做 Markdown → HTML
+  assert.match(taskMarkdownPreview, /marked\.parse/)
+  assert.match(taskMarkdownPreview, /DOMPurify\.sanitize/)
+  assert.doesNotMatch(taskMarkdownPreview, /contenteditable/)
 })
 
 test('task detail repeat is a passive marker and is configured from the date popover', () => {
@@ -270,30 +271,12 @@ test('task detail repeat is a passive marker and is configured from the date pop
   assert.doesNotMatch(workspaceView.match(/function toggleRepeatPopover\(\) \{[\s\S]*?\n\}/)?.[0] || '', /datePopoverOpen\.value = false/)
 })
 
-test('task detail description uses the isolated Milkdown editor prototype', async () => {
-  assert.match(workspaceView, /<TaskMilkdownEditor ref="detailDescriptionEditor" v-model="inlineDescriptionDraft"/)
-  assert.match(workspaceView, /defineAsyncComponent\(\(\) => import\("\.\.\/components\/tasks\/TaskMilkdownEditor\.vue"\)\)/)
-  assert.match(workspaceView, /TaskRichTextEditor v-model="commentDraft"/)
-  const editor = await readFile(new URL('../components/tasks/TaskMilkdownEditorSurface.vue', import.meta.url), 'utf8')
-  assert.match(editor, /Editor\.make\(\)/)
-  assert.match(editor, /\.use\(commonmark\)/)
-  assert.match(editor, /\.use\(gfm\)/)
-  assert.match(editor, /new SlashProvider\(/)
-  assert.match(editor, /text\.match\(\//)
-  assert.match(editor, /handleKeyDown:[\s\S]*event\.key === 'ArrowDown'[\s\S]*event\.key === 'Enter'[\s\S]*event\.key === 'Escape'/)
-  assert.match(editor, /headingSchema\.type\(crepeInstance\.ctx\)/)
-  assert.match(editor, /extendListItemSchemaForTask\.type\(crepeInstance\.ctx\)/)
-  assert.match(editor, /task-milkdown-slash-menu\[data-show="true"\]/)
-  assert.match(taskMilkdownEditor, /li\[data-item-type="task"\]\[data-checked="true"\]::before/)
-  assert.match(taskMilkdownEditor, /li\[data-item-type="task"\]\[data-checked="true"\] > p/)
-  assert.match(editor, /checkboxHit/)
-  assert.match(editor, /checked: !listItem\.attrs\.checked/)
-  for (const command of ['标题 1', '无序列表', '有序列表', '检查项', '引用', '加粗', '增加时间', '链接']) {
-    assert.ok(editor.includes(command), `slash menu misses ${command}`)
-  }
-  assert.match(editor, /let transaction = view\.state\.tr\.delete\(from, to\)/)
-  assert.match(editor, /markdownUpdated\(/)
-  assert.match(editor, /replaceAll\(markdown, true\)/)
+test('任务详情栏描述改成 Markdown 文本编辑', async () => {
+  assert.match(workspaceView, /<TaskMarkdownEditor ref="detailDescriptionEditor" v-model="inlineDescriptionDraft"/)
+  assert.match(workspaceView, /TaskMarkdownEditor v-model="commentDraft"/)
+  assert.match(workspaceView, /<TaskMarkdownPreview/)
+  assert.doesNotMatch(workspaceView, /TaskMilkdownEditor/)
+  assert.doesNotMatch(workspaceView, /TaskRichTextEditor/)
 })
 
 test('task inbox mirrors ticktick shortcut navigation and mixed efficiency groups', () => {
@@ -309,7 +292,7 @@ test('task inbox mirrors ticktick shortcut navigation and mixed efficiency group
 test('task rows open the persistent detail editor for direct task edits', () => {
   assert.match(inboxView, /async function selectTaskDetail\(task\) \{ await openEdit\(task\) \}/)
   assert.match(inboxView, /task-editor/)
-  assert.match(inboxView, /TaskRichTextEditor v-model="form.description"/)
+  assert.match(inboxView, /TaskMarkdownEditor v-model="form.description"/)
   assert.match(inboxView, /检查项<textarea v-model="form.checklistText"/)
   assert.match(inboxView, /提醒/)
 })
@@ -489,7 +472,8 @@ test('quick add more menu supports native attachments, draft templates, note mod
 })
 
 test('task detail exposes contract-backed Markdown comments and attachments', () => {
-  assert.match(inboxView, /TaskRichTextEditor/)
+  assert.match(inboxView, /TaskMarkdownEditor/)
+  assert.match(inboxView, /TaskMarkdownPreview/)
   for (const token of ['apiListTaskComments', 'apiCreateTaskComment', 'apiUpdateTaskComment', 'apiDeleteTaskComment', 'apiListTaskAttachments', 'apiUploadTaskAttachment', 'apiDeleteTaskAttachment']) assert.match(inboxView, new RegExp(token))
   assert.match(inboxView, /retryAttachment/)
 })
@@ -604,8 +588,8 @@ test('quick add card exposes title, description, priority, date, list and tag in
   const quadrantView = await readFile(new URL('./TasksQuadrantView.vue', import.meta.url), 'utf8')
   // 标题 + 描述 + 检查事项
   assert.match(quickAdd, /class="cal-quick-title"/)
-  // 描述复用任务页详情栏的富文本编辑器（带 / 快捷插入），用紧凑模式塞进卡片
-  assert.match(quickAdd, /<TaskRichTextEditor[\s\S]*compact/)
+  // 描述是 Markdown 文本域（带 / 快捷插入），用紧凑模式塞进卡片
+  assert.match(quickAdd, /<TaskMarkdownEditor[\s\S]*compact/)
   assert.match(quickAdd, /placeholder="\+ 输入内容或使用 \/ 快速插入"/)
   assert.match(quickAdd, /class="cal-quick-checklist"/)
   // 优先级菜单
@@ -654,19 +638,14 @@ test('浮层互斥：打开一个浮层时其它浮层自动收起（P2-QD6）',
   }
 })
 
-test('富文本编辑器：紧凑模式与失焦不再抢焦点（P2-QD6）', async () => {
-  const editor = await readFile(new URL('../components/tasks/TaskRichTextEditor.vue', import.meta.url), 'utf8')
-  // 紧凑模式：无工具栏、随内容增高、斜杠菜单贴在下方
-  assert.match(editor, /compact: \{ type: Boolean, default: false \}/)
-  assert.match(editor, /'is-compact': compact/)
-  assert.match(editor, /function autoGrow\(\)/)
-  assert.match(editor, /is-compact \.task-rich-input/)
-  // 失焦后不再按残留选区还原光标，避免把焦点抢回编辑器
-  assert.match(editor, /function hasEditorFocus\(element\)/)
-  assert.match(editor, /if \(!hasEditorFocus\(element\)\) return null/)
-  assert.match(editor, /if \(!marker \|\| !hasEditorFocus\(element\)\) return false/)
-  // blur 里不再同步重渲染，避免吞掉触发 blur 的那次点击
-  assert.doesNotMatch(editor, /function onBlur\(\) \{\s*clearTimeout\(renderTimer\);\s*renderEditorMarkdown\(\);/)
+test('Markdown 编辑器：紧凑模式与焦点事件（P2-QD6）', async () => {
+  assert.match(taskMarkdownEditor, /compact: \{ type: Boolean, default: false \}/)
+  assert.match(taskMarkdownEditor, /is-compact/)
+  assert.match(taskMarkdownEditor, /function autoGrow\(\)/)
+  assert.match(taskMarkdownEditor, /@focus="emit\('focus'\)"/)
+  assert.match(taskMarkdownEditor, /@blur="emit\('blur'\)"/)
+  // 没有 contenteditable，就不会再有抢焦点/吞点击的问题
+  assert.doesNotMatch(taskMarkdownEditor, /contenteditable/)
 })
 
 test('task sidebar sections reorder independently and task rows open the detail pane', () => {
@@ -761,21 +740,10 @@ test('task detail edits title, description, and checklist in place without an ed
   assert.match(workspaceView, /@click\.stop\.prevent="beginDetailChecklistEdit\(item, index\)"/)
   assert.match(workspaceView, /@keydown\.esc\.prevent="cancelDetailChecklistEdit\(item\)"/)
   assert.match(workspaceView, /@blur="saveDetailChecklistTitle\(selectedTask, index\)"/)
-  assert.match(workspaceView, /\.clone-detail-description-block\.toolbar-open :deep\(\.task-rich-toolbar\)/)
-  assert.match(workspaceView, /\.clone-detail-description-block :deep\(\.task-rich-toolbar\) \{ position: absolute; right: clamp\(88px, calc\(var\(--clone-detail-width\) \* \.2\), 112px\); bottom: 56px;/)
-  assert.match(workspaceView, /max-width: calc\(100% - 112px\); max-height: 0; gap: 3px; overflow-x: auto/)
-  assert.match(workspaceView, /:toolbar-visible="detailRichToolbarOpen"/)
-  assert.match(workspaceView, /aria-label="打开评论"[^>]*if \(commentComposerOpen\) detailRichToolbarOpen = false/)
-  const milkdownEditor = await readFile(new URL('../components/tasks/TaskMilkdownEditor.vue', import.meta.url), 'utf8')
-  assert.match(milkdownEditor, /@focus="emit\('focus'\)"/)
-  assert.match(milkdownEditor, /@blur="emit\('blur'\)"/)
-  assert.match(taskRichTextEditor, /defineEmits\(\['update:modelValue', 'blur'\]\)/)
-  assert.match(taskRichTextEditor, /:aria-hidden="!toolbarVisible" :inert="!toolbarVisible"/)
-  assert.match(taskRichTextEditor, /emit\('blur'\)/)
-  assert.match(taskRichTextEditor, /contenteditable="true"/)
-  assert.match(taskRichTextEditor, /normalizeTimer = setTimeout\(\(\) => \{ if \(!hasEditorFocus\(editor\.value\)\) renderEditorMarkdown\(\) \}, 160\)/)
-  assert.match(taskRichTextEditor, /@compositionend="onInput"/)
-  assert.doesNotMatch(taskRichTextEditor, /<textarea/)
+  assert.match(workspaceView, /<TaskMarkdownEditor ref="detailDescriptionEditor" v-model="inlineDescriptionDraft"/)
+  assert.match(workspaceView, /@update:model-value="scheduleInlineDescriptionSave"/)
+  assert.match(taskMarkdownEditor, /defineEmits\(\['update:modelValue', 'focus', 'blur'\]\)/)
+  assert.match(taskMarkdownEditor, /emit\('blur'\)/)
   assert.match(workspaceView, /clone-detail-properties/)
   assert.match(workspaceView, /clone-detail-edit-fields/)
   assert.match(workspaceView, /@click="toggleDetailFields"/)
@@ -1244,8 +1212,7 @@ test('摘要页筛选对齐滴答交互：范围显示、自定义从/到、多�
   assert.match(summaryView, /class="summary-menu-actions"><button type="button" class="summary-apply" @click="applyListDraft">确定<\/button><button type="button" class="summary-dismiss" @click="dismissPopover">取消/)
   // 报告与编辑器：字段与工具栏齐备
   assert.match(summaryView, /SUMMARY_FIELDS[\s\S]*SUMMARY_GROUPS/)
-  assert.match(taskRichTextEditor, /key: 'heading'[\s\S]*key: 'bold'[\s\S]*key: 'check'[\s\S]*key: 'list'[\s\S]*key: 'ordered'[\s\S]*key: 'italic'[\s\S]*key: 'underline'[\s\S]*key: 'strike'[\s\S]*key: 'divider'[\s\S]*key: 'time'[\s\S]*key: 'link'[\s\S]*key: 'code'[\s\S]*key: 'quote'/)
-  assert.match(taskRichTextEditor, /task-rich-color/)
+  assert.match(summaryView, /<TaskMarkdownEditor v-model="draft"/)
 })
 
 test('摘要页布局：整块编辑器 + 顶部图标（分组/显示内容）+ 底部复制与保存（P2-FE119）', async () => {
@@ -1261,7 +1228,7 @@ test('摘要页布局：整块编辑器 + 顶部图标（分组/显示内容）+
   assert.match(summaryView, /draftTagIds\.includes\(tag\.publicId\)/)
   // 报告自动写入整块编辑器（Markdown 实时渲染），不再是独立报告区 + 补充内容区
   assert.match(summaryView, /watch\(autoMarkdown, value => \{ draft\.value = value \}, \{ immediate: true \}\)/)
-  assert.match(summaryView, /<TaskRichTextEditor v-model="draft" label="摘要报告"/)
+  assert.match(summaryView, /<TaskMarkdownEditor v-model="draft" label="摘要报告"/)
   assert.doesNotMatch(summaryView, /summary-notes/)
   assert.doesNotMatch(summaryView, /class="summary-report"/)
   assert.match(summaryView, /return `# \$\{rangeLabel\}\\n\\n\$\{buildSummaryMarkdown/)
@@ -1282,8 +1249,8 @@ test('摘要页显示内容菜单不超出视口，编辑器保留表格结构�
   // 图标菜单右对齐需用高特异性选择器（否则被 .summary-menu 的 left:0 覆盖而右溢）
   assert.match(summaryView, /\.summary-menu\.summary-icon-panel\{left:auto;right:0/)
   // 编辑器把表格 DOM 还原为 Markdown 表格语法，避免编辑其它段落时表格被拍平丢失
-  assert.match(taskRichTextEditor, /case 'TABLE': \{[\s\S]*querySelectorAll\('tr'\)[\s\S]*\|\s\$\{header\.join/)
-  assert.match(taskRichTextEditor, /const cellsOf = row => \[\.\.\.row\.children\]\.filter\(cell => \['TH', 'TD'\]\.includes\(cell\.tagName\)\)/)
+  // 表格仍由 Markdown 预览渲染，不再依赖富文本编辑器的 DOM 还原
+  assert.match(taskMarkdownPreview, /marked\.parse/)
 })
 
 test('任务详情栏第一批改造：检查项、描述插入菜单、标签、底部清单（P2-FE123）', async () => {

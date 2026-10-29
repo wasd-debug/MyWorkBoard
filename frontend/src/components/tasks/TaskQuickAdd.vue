@@ -28,7 +28,7 @@
     ></textarea>
 
     <div class="cal-quick-desc-row">
-      <TaskRichTextEditor
+      <TaskMarkdownEditor
         :model-value="description"
         compact
         label="任务描述"
@@ -163,7 +163,7 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { Bell, CalendarDays, Check, Clock3, Flag, Inbox, ListChecks, MoreHorizontal, Plus, Repeat2, Search, Tag, X } from 'lucide-vue-next'
 import TaskDateTimePopover from './TaskDateTimePopover.vue'
 import TaskOrganizationIcon from './TaskOrganizationIcon.vue'
-import TaskRichTextEditor from './TaskRichTextEditor.vue'
+import TaskMarkdownEditor from './TaskMarkdownEditor.vue'
 import { useExclusivePanels } from '../../utils/exclusivePanels.js'
 import { broadcastPanel } from '../../utils/panelBus.js'
 
@@ -502,7 +502,8 @@ function confirmDate() {
 .cal-quick-title { width: 100%; min-height: 34px; margin-top: 6px; padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 20px; font-weight: 600; line-height: 1.45; outline: none; box-shadow: none; resize: none; overflow: hidden; }
 .cal-quick-title::placeholder { color: var(--muted); font-weight: 500; }
 .cal-quick-desc-row { display: flex; align-items: flex-start; gap: 8px; }
-.cal-quick-desc-row :deep(.task-rich-editor) { flex: 1; min-width: 0; }
+.cal-quick-desc-row :deep(.task-md-editor) { flex: 1; min-width: 0; }
+.cal-quick-desc-row :deep(.task-md-input) { min-height: 22px; padding: 2px 0; border: 0; background: transparent; font-size: 13.5px; resize: none; overflow: hidden; }
 .cal-quick-icon-btn { display: grid; flex: 0 0 auto; place-items: center; width: 28px; height: 26px; margin-top: 2px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
 .cal-quick-icon-btn:hover, .cal-quick-icon-btn.on { background: var(--paper); color: var(--ink); }
 
