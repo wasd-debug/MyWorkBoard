@@ -1460,3 +1460,35 @@ test('专注页：记录分页滚动 / 日期浮层独立成层 / 点外面关�
   assert.match(recordDialog, /panel-group="focus-record-start" panel-name="start"/)
   assert.match(recordDialog, /panel-group="focus-record-end" panel-name="end"/)
 })
+
+test('专注页：点记录行弹出详情浮层，可改关联任务与想法（P2-FOCUS4）', async () => {
+  const focusView = await readFile(new URL('./TaskFocusView.vue', import.meta.url), 'utf8')
+  const focusStore = await readFile(new URL('../stores/taskFocus.js', import.meta.url), 'utf8')
+  const detail = await readFile(new URL('../components/tasks/FocusRecordDetail.vue', import.meta.url), 'utf8')
+
+  // 记录行可点，锚点就是被点的那一行
+  assert.match(focusView, /@click="openRecordDetail\(\$event, session\)"/)
+  assert.match(focusView, /@keydown\.enter\.prevent="openRecordDetail\(\$event, session\)"/)
+  assert.match(focusView, /recordDetail\.anchorEl = event\?\.currentTarget \|\| null/)
+  assert.match(focusView, /<FocusRecordDetail[\s\S]{0,340}:anchor-el="recordDetail\.anchorEl"/)
+  // 改完/删完不能 reload 列表，否则会跳回前 50 条
+  assert.match(focusView, /function onRecordDetailSaved\(updated\) \{\s*\n\s*if \(updated\)/)
+
+  // 浮层本身：独立一层，贴在记录行左侧，左边放不下就翻到右侧
+  assert.match(detail, /<Teleport to="body">/)
+  assert.match(detail, /\.focus-detail-card \{\s*\n\s*position: fixed/)
+  assert.match(detail, /let left = rect\.left - gap - width[\s\S]{0,120}left = rect\.right \+ gap/)
+  // 点外面 / Esc 关闭
+  assert.match(detail, /document\.addEventListener\('pointerdown', onDocPointerDown, true\)/)
+  assert.match(detail, /event\.key === 'Escape' && props\.open/)
+
+  // 关联任务：复用任务选择器，选中即保存（连当前笔记一起提交）
+  assert.match(detail, /<FocusTargetPicker v-if="pickerOpen"/)
+  assert.match(detail, /focus\.updateRecord\(props\.session, \{ taskId, note: note\.value \}\)/)
+  assert.match(detail, /focus\.updateRecord\(props\.session, \{ note: note\.value \}\)/)
+  assert.match(detail, /focus\.remove\(props\.session\)/)
+
+  // store：null 表示不改，空串才是解除关联（后端约定）
+  assert.match(focusStore, /async updateRecord\(session, \{ taskId, note \} = \{\}\)/)
+  assert.match(focusStore, /payload\.taskId = taskId === null \? '' : taskId/)
+})

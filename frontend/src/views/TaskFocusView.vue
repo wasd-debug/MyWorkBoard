@@ -157,7 +157,16 @@
             <div v-for="group in focus.groupedSessions" :key="group.key" class="focus-group">
               <h3>{{ dateLabel(group.date) }}</h3>
               <ul>
-                <li v-for="session in group.items" :key="session.publicId" :class="{ 'is-aborted': session.status !== 'COMPLETED' }">
+                <li
+                  v-for="session in group.items"
+                  :key="session.publicId"
+                  :class="{ 'is-aborted': session.status !== 'COMPLETED', 'is-active': recordDetail.open && recordDetail.session?.publicId === session.publicId }"
+                  role="button"
+                  tabindex="0"
+                  aria-label="查看专注记录"
+                  @click="openRecordDetail($event, session)"
+                  @keydown.enter.prevent="openRecordDetail($event, session)"
+                >
                   <span class="focus-row-dot" aria-hidden="true"></span>
                   <div class="focus-row-main">
                     <span class="focus-row-time">{{ timeRange(session) }}</span>
@@ -203,6 +212,14 @@
 
     <FocusRecordDialog :open="recordDialogOpen" @close="recordDialogOpen = false" @saved="onRecordSaved" />
     <FocusBatchDialog :open="batchDialogOpen" @close="batchDialogOpen = false" @changed="onBatchChanged" />
+    <FocusRecordDetail
+      :open="recordDetail.open"
+      :session="recordDetail.session"
+      :anchor-el="recordDetail.anchorEl"
+      @close="recordDetail.open = false"
+      @saved="onRecordDetailSaved"
+      @deleted="onRecordDetailSaved"
+    />
 
     <div v-if="settingsOpen" class="focus-dialog-mask" @click.self="settingsOpen = false">
       <section class="focus-dialog is-settings" role="dialog" aria-label="专注设置">
@@ -252,6 +269,7 @@ import { createFocusPreset } from '../utils/focusPresets.js'
 import FocusTargetPicker from '../components/tasks/FocusTargetPicker.vue'
 import FocusRecordDialog from '../components/tasks/FocusRecordDialog.vue'
 import FocusBatchDialog from '../components/tasks/FocusBatchDialog.vue'
+import FocusRecordDetail from '../components/tasks/FocusRecordDetail.vue'
 import {
   CHIME_OPTIONS, NOISE_OPTIONS, playFocusChime, readFocusSound, setFocusNoiseVolume,
   startFocusNoise, stopFocusNoise, writeFocusSound
@@ -272,6 +290,8 @@ function toggleMenu(name) {
 const settingsOpen = ref(false)
 const recordDialogOpen = ref(false)
 const batchDialogOpen = ref(false)
+// 记录详情浮层：贴在被点的那一条旁边
+const recordDetail = reactive({ open: false, session: null, anchorEl: null })
 const savingSettings = ref(false)
 
 // ---- 声音：音量 / 完成提示音 / 专注期白噪音 ----
@@ -666,6 +686,24 @@ function onRecordSaved() {
   void focus.reloadSessions().then(fillRecords)
 }
 
+/** 点记录行：把详情浮层贴在那一行旁边 */
+function openRecordDetail(event, session) {
+  openMenu.value = ''
+  recordDetail.session = session
+  recordDetail.anchorEl = event?.currentTarget || null
+  recordDetail.open = true
+}
+
+/** 改完关联任务/想法、或删掉之后同步本地状态（不要 reload，否则列表会跳回前 50 条） */
+function onRecordDetailSaved(updated) {
+  if (updated) {
+    recordDetail.session = updated
+    return
+  }
+  recordDetail.open = false
+  recordDetail.session = null
+}
+
 function openBatch() {
   openMenu.value = ''
   batchDialogOpen.value = true
@@ -901,8 +939,10 @@ onBeforeUnmount(() => {
 .focus-group h3 { margin: 12px 0 4px; color: var(--muted); font-size: 11.5px; font-weight: 600; }
 .focus-group:first-child h3 { margin-top: 2px; }
 .focus-group ul { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
-.focus-group li { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 6px 4px 6px 0; border-radius: 8px; }
+.focus-group li { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 6px 4px 6px 0; border-radius: 8px; cursor: pointer; outline: none; }
 .focus-group li:hover { background: color-mix(in srgb, var(--paper) 82%, transparent); }
+.focus-group li:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+.focus-group li.is-active { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .focus-group li.is-aborted { opacity: .55; }
 /* 时间轴：实心圆点 + 向下延伸的连线 */
 .focus-group li:not(:last-child)::after { content: ''; position: absolute; top: 21px; bottom: -2px; left: 4px; width: 1px; background: color-mix(in srgb, var(--accent) 24%, transparent); }

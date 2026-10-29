@@ -222,6 +222,19 @@ export const useTaskFocusStore = defineStore('task-focus', {
         this.loading = false
       }
     },
+    /**
+     * 改记录的关联任务 / 想法。
+     * taskId 传 undefined 表示不动；传 null 表示解除关联（后端约定空串才是解除，null 是不改）。
+     */
+    async updateRecord(session, { taskId, note } = {}) {
+      const payload = {}
+      if (taskId !== undefined) payload.taskId = taskId === null ? '' : taskId
+      if (note !== undefined) payload.note = note
+      const updated = await apiUpdateFocusSession(session.publicId, payload, session.revision)
+      const index = this.sessions.findIndex(item => item.publicId === session.publicId)
+      if (index >= 0) this.sessions[index] = updated
+      return updated
+    },
     async updateNote(session, note) {
       const updated = await apiUpdateFocusSession(session.publicId, { note }, session.revision)
       const index = this.sessions.findIndex(item => item.publicId === session.publicId)
