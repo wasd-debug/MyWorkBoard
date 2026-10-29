@@ -118,18 +118,35 @@ public class TaskEfficiencyService {
         Long taskId = taskId(userId, command == null ? null : command.taskId());
         String publicId = UUID.randomUUID().toString();
         ZoneId zone = zone(userId);
+        String note = optional(command == null ? null : command.note(), 1000);
+        // 补记两种写法：给起止时间（精确），或只给日期 + 时长
+        Instant explicitStart = parseInstant(command == null ? null : command.startedAt());
+        Instant explicitEnd = parseInstant(command == null ? null : command.endedAt());
+        boolean explicit = explicitStart != null && explicitEnd != null;
         LocalDate requested = parseDate(command == null ? null : command.requestedDate(), LocalDate.now(zone));
-        boolean manual = !requested.equals(LocalDate.now(zone));
-        if (requested.isAfter(LocalDate.now(zone))) throw new IllegalArgumentException("不能新增未来日期的专注记录");
-        if (manual && planned <= 0) throw new IllegalArgumentException("补录专注记录需要填写时长");
-        Instant started = manual ? requested.atTime(LocalTime.NOON).atZone(zone).toInstant() : dbNow();
-        Instant ended = manual && planned > 0 ? started.plusSeconds(planned * 60L) : null;
+        boolean manual = explicit || !requested.equals(LocalDate.now(zone));
+        Instant started;
+        Instant ended;
+        if (explicit) {
+            if (!explicitEnd.isAfter(explicitStart)) throw new IllegalArgumentException("结束时间需要晚于开始时间");
+            if (explicitStart.isAfter(dbNow())) throw new IllegalArgumentException("不能新增未来时间的专注记录");
+            long minutes = Math.max(1, Math.round(java.time.Duration.between(explicitStart, explicitEnd).toSeconds() / 60.0));
+            planned = (int) Math.min(180, minutes);
+            started = explicitStart;
+            ended = explicitEnd;
+        } else {
+            if (requested.isAfter(LocalDate.now(zone))) throw new IllegalArgumentException("不能新增未来日期的专注记录");
+            if (manual && planned <= 0) throw new IllegalArgumentException("补录专注记录需要填写时长");
+            started = manual ? requested.atTime(LocalTime.NOON).atZone(zone).toInstant() : dbNow();
+            ended = manual && planned > 0 ? started.plusSeconds(planned * 60L) : null;
+        }
         String status = manual ? "COMPLETED" : "RUNNING";
+        int actual = manual ? planned : 0;
         try {
-            jdbc.update("INSERT INTO focus_session(public_id,user_id,task_id,planned_minutes,actual_minutes,started_at,ended_at,status,device_label,client_op_key) " +
-                            "VALUES(?,?,?,?,?,?,?,?,?,?)", publicId, userId, taskId, planned, manual ? planned : 0,
+            jdbc.update("INSERT INTO focus_session(public_id,user_id,task_id,planned_minutes,actual_minutes,started_at,ended_at,status,device_label,note,client_op_key) " +
+                            "VALUES(?,?,?,?,?,?,?,?,?,?,?)", publicId, userId, taskId, planned, actual,
                     Timestamp.from(started), ended == null ? null : Timestamp.from(ended), status,
-                    optional(command == null ? null : command.deviceLabel(), 120), opKey);
+                    optional(command == null ? null : command.deviceLabel(), 120), note, opKey);
         } catch (DuplicateKeyException exception) {
             FocusSession running = currentFocus();
             if (running != null) throw new ConflictException("已有进行中的专注", running.revision());
@@ -208,7 +225,9 @@ public class TaskEfficiencyService {
                         "FROM focus_session WHERE user_id=? AND status='COMPLETED' AND started_at>=? GROUP BY day ORDER BY day",
                 (row, index) -> new FocusDaily(row.getDate(1).toLocalDate().toString(), row.getLong(2), row.getLong(3)),
                 zoneOffset(zone), userId, Timestamp.from(today.minusDays(6).atStartOfDay(zone).toInstant()));
-        return new FocusStats(daily[0], daily[1], weekly[0], weekly[1], monthly[0], monthly[1], recent);
+        long[] total = focusAggregate(userId, Instant.EPOCH);
+        return new FocusStats(daily[0], daily[1], weekly[0], weekly[1], monthly[0], monthly[1],
+                total[0], total[1], recent);
     }
 
     public List<Habit> habits(boolean archived) {
@@ -697,6 +716,15 @@ public class TaskEfficiencyService {
         if (raw == null || raw.isBlank()) return null;
         try { return LocalTime.parse(raw).withSecond(0).withNano(0).toString(); }
         catch (Exception exception) { throw new IllegalArgumentException("提醒时间格式无效"); }
+    }
+
+    private Instant parseInstant(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try { return Instant.parse(raw.trim()); }
+        catch (Exception exception) {
+            try { return java.time.OffsetDateTime.parse(raw.trim()).toInstant(); }
+            catch (Exception ignored) { return null; }
+        }
     }
 
     private LocalDate parseDate(String raw, LocalDate fallback) {

@@ -1572,3 +1572,28 @@ P2-QD9/QD10 试过纯 Markdown 文本域和「换行即渲染」的块级编辑�
 - Milkdown 序列化出来是 `* [ ] 待办`（星号列表），和以前 `- [ ]` 不同，两者都是合法 GFM。
 
 - 门禁：336/336 单测（合并回 Milkdown 断言，改写 4 处）、typecheck、build 通过；浏览器实测——快加卡片里输入 `**粗体**`/`` `code` `` 即时渲染、`# 标题` 变 h1、`- [ ] 待办` 变带勾选框的检查项、输入 `abc end` 不丢字母；详情栏可编辑并保存，落库为 `**粗体** 与 \`code\`\n\n# 标题行\n\n* [ ] 待办一`。证据 `qa-milk-card.png`、`qa-milk-detail.png`。
+
+### P2-FOCUS1 番茄专注页重做 + 专注统计页（2026-10-29）
+
+**后端（本地生效，未部署）**
+- `FocusStartCommand` 增加 `startedAt` / `endedAt` / `note`：补记可以直接给起止时间，时长按时长差算，状态直接 COMPLETED。
+- `FocusStats` 增加 `totalCount` / `totalMinutes`（概览里的「总番茄 / 总专注时长」）。
+- 同步修了 `TaskEfficiencyIntegrationTest` 里 FocusStartCommand 的构造调用。
+
+**专注页（`/tasks/focus` 重写）**
+- 顶部：标题 + `番茄计时/正计时` 切换 + `+`（添加常用专注）+ `⋯`（统计、专注设置）。沉浸模式与 Mini 模式按要求不做。
+- 左列：常用专注选择器（「专注 ▸」弹层，含「添加常用专注」）、圆环计时（番茄=进度弧 + 剩余 `mm:ss`；正计时=60 根刻度环 + 已用 `mm:ss`）、开始/结束/放弃。
+- 右列：概览四卡（今日番茄 / 今日专注时长 / 总番茄 / 总专注时长）+ 专注记录（按日期分组、默认本周、加载更多往前翻）。
+- 记录区：`+` 添加专注记录（任务、开始/结束时间、类型、笔记，时长自动算）；`⋯` 批量管理、导出 Excel、清空所有。
+- 常用专注存本机 `task_focus_presets_v1:<scope>`，字段：图标（emoji）/名称/模式/分钟数。
+- 导出用 Excel 2003 XML（`.xls`），Excel/WPS 直接打开，不引额外依赖；可选起止日期。
+- 专注设置弹窗：番茄时长、短休、长休、长休间隔、自动开始下个番茄、自动休息（多端同步按要求不做）。
+
+**统计页（`/tasks/focus/stats`，左侧栏新增饼图入口）**
+- 三个 tab：总览 / 任务 / 专注（「完成」按钮按要求不做）。
+- 总览：任务/已完成/清单/使用天数条、六个概览数字、最近番茄数趋势、最近专注时长趋势、最近完成数趋势、本周打卡进展。
+- 任务：按日切换、完成数/完成率、完成率分布饼图、已完成分类统计饼图。
+- 专注：概览四数字、本周专注趋势柱状、本周专注记录列表。
+- 图表复用 `LedgerReportChart`（echarts）。
+
+- 门禁：336/336 前端单测、typecheck、build 通过；浏览器实测（暗色主题）——常用专注新增后立即生效、正计时显示 60 刻度环 00:00、开始后出现结束/放弃、补记落库并出现在列表、导出弹窗、设置弹窗 6 项、统计页三个 tab 图表渲染正常。证据 `qa-focus-page.png`、`qa-focus-menu.png`、`qa-focus-stopwatch.png`、`qa-focus-record.png`、`qa-focus-settings.png`、`qa-focus-stats-overview.png`、`qa-focus-stats-task.png`、`qa-focus-stats-focus.png`。

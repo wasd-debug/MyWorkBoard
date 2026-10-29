@@ -25,8 +25,10 @@ public final class TaskEfficiencyModels {
                                String status, String deviceLabel, String note, long revision) {
     }
 
+    /** 补记时可以直接给 startedAt / endedAt（ISO-8601），时长自动按差值算。 */
     @Schema(name = "FocusStartCommand")
-    public record FocusStartCommand(String taskId, Integer plannedMinutes, String deviceLabel, String requestedDate) {
+    public record FocusStartCommand(String taskId, Integer plannedMinutes, String deviceLabel, String requestedDate,
+                                    String startedAt, String endedAt, String note) {
     }
 
     /** 专注记录改「想法」或改「关联任务」。taskId 传空串表示解除关联，传 null 表示不改。 */
@@ -40,7 +42,8 @@ public final class TaskEfficiencyModels {
 
     @Schema(name = "FocusStats")
     public record FocusStats(long todayCount, long todayMinutes, long weekCount, long weekMinutes,
-                             long monthCount, long monthMinutes, List<FocusDaily> recentDays) {
+                             long monthCount, long monthMinutes, long totalCount, long totalMinutes,
+                             List<FocusDaily> recentDays) {
     }
 
     public record FocusDaily(String date, long count, long minutes) {

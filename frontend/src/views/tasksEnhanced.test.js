@@ -1379,7 +1379,7 @@ test('检查项级提醒与正计时（P2-FE126）', async () => {
   // 专注 store：正计时用已用时长，且不会自动完成
   const focusStore = await readFile(new URL('../stores/taskFocus.js', import.meta.url), 'utf8')
   assert.match(focusStore, /isCountUp: state => Boolean\(state\.current && !Number\(state\.current\.plannedMinutes\)\)/)
-  assert.match(focusStore, /elapsedSeconds: state => state\.current \? Math\.max\(0, Math\.floor\(\(state\.now - new Date\(state\.current\.startedAt\)\.getTime\(\)\) \/ 1000\)\) : 0/)
+  assert.match(focusStore, /elapsedSeconds: state => \(state\.current \? Math\.max\(0, Math\.floor\(\(state\.now - new Date\(state\.current\.startedAt\)\.getTime\(\)\) \/ 1000\)\) : 0\)/)
   assert.match(focusStore, /displayLabel\(\) \{ return this\.isCountUp \? this\.elapsedLabel : this\.remainingLabel \}/)
   assert.match(focusStore, /if \(this\.current && !this\.isCountUp && this\.remainingSeconds === 0\) this\.complete\(\)/)
 })

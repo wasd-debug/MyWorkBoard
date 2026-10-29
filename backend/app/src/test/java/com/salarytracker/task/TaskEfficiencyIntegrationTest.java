@@ -31,10 +31,10 @@ class TaskEfficiencyIntegrationTest extends MySqlIntegrationTestSupport {
                 false, "Asia/Shanghai", null), "task-focus").publicId();
         TaskEfficiencyService service = efficiency(userId);
 
-        var started = service.startFocus(new FocusStartCommand(taskId, 25, "test", null), "focus-1");
+        var started = service.startFocus(new FocusStartCommand(taskId, 25, "test", null, null, null, null), "focus-1");
         assertEquals(started.publicId(), service.currentFocus().publicId());
         assertThrows(ConflictException.class,
-                () -> service.startFocus(new FocusStartCommand(null, 25, "test", null), "focus-2"));
+                () -> service.startFocus(new FocusStartCommand(null, 25, "test", null, null, null, null), "focus-2"));
         jdbc.update("UPDATE focus_session SET started_at=DATE_SUB(started_at, INTERVAL 5 MINUTE) WHERE public_id=?",
                 started.publicId());
         var completed = service.finishFocus(started.publicId(), new FocusFinishCommand("COMPLETED"), "1");

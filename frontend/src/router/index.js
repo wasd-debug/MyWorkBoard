@@ -34,6 +34,7 @@ const routes = [
   { path: '/tasks/abandoned', name: 'tasks-abandoned', component: () => import('../views/TaskWorkspaceView.vue'), meta: { title: '已放弃任务' } },
   { path: '/tasks/inbox-notify', name: 'tasks-notifications', component: () => import('../views/TaskNotificationsView.vue'), meta: { title: '任务提醒' } },
   { path: '/tasks/focus', name: 'tasks-focus', component: () => import('../views/TaskFocusView.vue'), meta: { title: '专注' } },
+  { path: '/tasks/focus/stats', name: 'tasks-focus-stats', component: () => import('../views/FocusStatsView.vue'), meta: { title: '专注统计' } },
   { path: '/tasks/habits', name: 'tasks-habits', component: () => import('../views/TaskHabitsView.vue'), meta: { title: '习惯' } },
   { path: '/tasks/countdowns', name: 'tasks-countdowns', component: () => import('../views/TaskCountdownsView.vue'), meta: { title: '倒数日' } },
   { path: '/tasks/trash', name: 'tasks-trash', component: () => import('../views/TaskWorkspaceView.vue'), meta: { title: '任务垃圾桶' } },
