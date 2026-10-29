@@ -2280,29 +2280,69 @@ const sortDirectionLabel = computed(() => {
   return sortDirection.value === "asc" ? "从旧到新" : "从新到旧";
 });
 const viewPreferencesScope = ref("");
+// 分组/排序/顺序/视图选项按「当前集合」独立保存：清单、标签、过滤器、智能集合各存一份
+function currentViewScope() {
+  const name = route.name;
+  if (name === "tasks-list") return `list:${route.params.publicId}`;
+  if (name === "tasks-tag") return `tag:${route.params.publicId}`;
+  if (name === "tasks-filter") return `filter:${route.params.publicId}`;
+  if (name === "tasks-group") return `group:${route.params.publicId}`;
+  if (name === "tasks-shortcut") return `shortcut:${route.params.shortcut}`;
+  return String(name || "tasks");
+}
 function viewPreferencesKey() {
+  return `task_view_preferences_v2:${store.accountScope || "anonymous"}`;
+}
+function legacyViewPreferencesKey() {
   return `task_view_preferences:${store.accountScope || "anonymous"}`;
 }
+function readViewPreferenceMap() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(viewPreferencesKey()) || "{}");
+    return raw && typeof raw === "object" ? raw : {};
+  } catch {
+    return {};
+  }
+}
+function readLegacyViewPreferences() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(legacyViewPreferencesKey()) || "null");
+    return raw && typeof raw === "object" ? raw : null;
+  } catch {
+    return null;
+  }
+}
+let applyingViewPreferences = false;
+function currentViewPreferences() {
+  return {
+    groupBy: groupBy.value,
+    sort: sort.value,
+    sortDirection: sortDirection.value,
+    hideCompleted: hideCompleted.value,
+    showDescription: showDescription.value,
+    showChecklist: showChecklist.value,
+    showTags: showTags.value,
+    showListLink: showListLink.value,
+  };
+}
 function persistViewPreferences() {
+  if (applyingViewPreferences) return;
   if (!viewPreferencesScope.value || viewPreferencesScope.value !== store.accountScope) return;
   try {
-    localStorage.setItem(viewPreferencesKey(), JSON.stringify({
-      groupBy: groupBy.value,
-      sort: sort.value,
-      sortDirection: sortDirection.value,
-      hideCompleted: hideCompleted.value,
-      showDescription: showDescription.value,
-      showChecklist: showChecklist.value,
-      showTags: showTags.value,
-      showListLink: showListLink.value,
-    }));
+    const map = readViewPreferenceMap();
+    map[currentViewScope()] = currentViewPreferences();
+    localStorage.setItem(viewPreferencesKey(), JSON.stringify(map));
   } catch {}
 }
 function loadViewPreferences() {
   const scope = store.accountScope || "anonymous";
   viewPreferencesScope.value = scope;
+  const map = readViewPreferenceMap();
+  const scoped = map[currentViewScope()];
+  // 没单独设置过的集合先沿用旧版全局偏好，避免升级后所有人被重置成默认值
+  const saved = scoped || readLegacyViewPreferences() || {};
+  applyingViewPreferences = true;
   try {
-    const saved = JSON.parse(localStorage.getItem(viewPreferencesKey()) || "{}");
     if (groupOptions.some((item) => item.value === saved.groupBy)) groupBy.value = saved.groupBy;
     if (sortOptions.some((item) => item.value === saved.sort)) sort.value = saved.sort;
     if (["asc", "desc"].includes(saved.sortDirection)) sortDirection.value = saved.sortDirection;
@@ -2312,7 +2352,11 @@ function loadViewPreferences() {
     if (typeof saved.showTags === "boolean") showTags.value = saved.showTags;
     if (typeof saved.showListLink === "boolean") showListLink.value = saved.showListLink;
     quickInputMode.value = localStorage.getItem(`task_quick_input_mode:${scope}`) === "SIMPLE" ? "SIMPLE" : "DETAILED";
-  } catch {}
+  } catch {
+    /* 忽略损坏的偏好 */
+  } finally {
+    applyingViewPreferences = false;
+  }
 }
 watch([groupBy, sort, sortDirection, hideCompleted, showDescription, showChecklist, showTags, showListLink], persistViewPreferences);
 watch(quickInputMode, value => {
@@ -2321,6 +2365,10 @@ watch(quickInputMode, value => {
 });
 watch(() => store.accountScope, (scope) => {
   if (scope !== viewPreferencesScope.value) loadViewPreferences();
+});
+// 切换清单/标签/过滤器时重建各自的设置
+watch(() => currentViewScope(), () => {
+  if (viewPreferencesScope.value === store.accountScope) loadViewPreferences();
 });
 const context = reactive({ open: false, x: 0, y: 0, task: null });
 const contextSubmenu = ref("");

@@ -1423,3 +1423,12 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 - 规则、分组、排序、顺序、折叠状态与「显示已完成」按账号存 `task_quadrant_v1:<uid>`。
 - 后端 `TaskItem` 补 `updatedAt` 字段（`TASK_COLUMNS` 增加 `t.updated_at`），「修改时间」排序才有数据；缺失时前端回退到创建时间。
 - 门禁：332/332 前端单测（新增 14 条）、typecheck、build 通过；后端 `mvn test-compile` 通过并热替换本地 jar；浏览器实测 4 格渲染、悬浮按钮、分组/排序/顺序切换、折叠、按规则新建、"清单=工作" 规则保存后该格由 5 行变 2 行、改名为「不重要但紧急（改）」、恢复默认、显示已完成行数 7→12，控制台 0 报错。证据 `quadrant-page-20261029.png`、`quadrant-menu-20261029.png`、`quadrant-edit-20261029.png`、`quadrant-rule-applied-20261029.png`、`quadrant-add-20261029.png`、`quadrant-show-completed-20261029.png`。
+
+### P2-QD2 视图设置按集合独立持久化（2026-10-29）
+
+- 原来 `task_view_preferences:<scope>` 是所有视图共用的一份全局设置，切换清单后分组/排序会一起变。现在改为 `task_view_preferences_v2:<scope>`，值是一个以「集合」为键的映射：`list:<id>`、`tag:<id>`、`filter:<id>`、`group:<id>`、`shortcut:<x>`，以及智能集合直接用路由名（`tasks-all` / `tasks-today` / `tasks-inbox` / `tasks-completed` 等）。
+- 分组方式、排序方式、顺序，以及「视图」里的隐藏已完成 / 显示详细 / 显示设置（描述、检查项、标签、清单归属）全部按集合独立保存；只影响当前集合，切走再回来保持原样，刷新后也在。
+- 兼容旧数据：某个集合没有自己的记录时，先用旧的全局偏好作为默认值（避免升级后所有人被重置），一旦在该集合里改过就写入自己的记录。
+- 通过 `applyingViewPreferences` 标志避免「切换集合时加载偏好」反过来触发一次写入，把旧集合的值写进新集合。
+- 四象限页（P2-QD1）本来就是每个象限独立并持久化，口径一致。
+- 门禁：浏览器实测「工作」分组设为标签、「生活」设为优先级，互不影响；在「工作」打开「隐藏已完成」后，存储里只有 `list:<工作>` 一条记录，「生活」仍走默认；刷新后「工作」仍是标签；控制台 0 报错。
