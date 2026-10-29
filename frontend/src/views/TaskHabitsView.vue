@@ -1,66 +1,396 @@
 <template>
-  <main class="efficiency-page">
-    <header class="efficiency-head">
-      <div><p class="label">TASKS / HABITS</p><h1>习惯</h1><p>按用户时区计算周期，跳过不会记为完成。</p></div>
-      <Button @click="openForm()"><Plus :size="16" />新建习惯</Button>
-    </header>
-    <p v-if="error" class="efficiency-error">{{ error }}</p>
-    <section v-if="!habits.length" class="empty-copy">还没有习惯，先创建一个每日目标。</section>
-    <section v-for="habit in habits" :key="habit.publicId" class="habit-card">
-      <div class="habit-card-head">
-        <span class="habit-mark" :style="{ background: habit.color }">{{ habit.icon }}</span>
-        <div><h2>{{ habit.name }}</h2><p>{{ frequencyLabel(habit) }} · 开始于 {{ habit.startDate }}</p></div>
-        <div class="card-actions"><Button size="small" variant="ghost" @click="openForm(habit)"><Pencil :size="15" />编辑</Button><Button size="small" variant="danger" @click="remove(habit)"><Trash2 :size="15" /></Button></div>
-      </div>
-      <div class="habit-stats"><span>30 天完成率 {{ stats[habit.publicId]?.completionRate30Days || 0 }}%</span><span>本月 {{ stats[habit.publicId]?.monthCompleted || 0 }}/{{ stats[habit.publicId]?.monthTarget || 0 }}</span></div>
-      <div class="habit-week" aria-label="最近 7 天打卡"><span v-for="day in recentDays" :key="day.date" class="habit-day"><small>{{ day.label }}</small><button type="button" :class="{ checked: isChecked(habit, day.date) }" :aria-label="`${habit.name} ${day.date}`" @click="checkin(habit, isChecked(habit, day.date) ? 'SKIP' : 'DONE', day.date)">{{ isChecked(habit, day.date) ? '✓' : '·' }}</button></span></div>
-      <div class="habit-actions"><Button @click="checkin(habit, 'DONE')"><Check :size="16" />今日打卡</Button><Button variant="ghost" @click="checkin(habit, 'SKIP')">跳过今日</Button><Button variant="ghost" @click="openBackfill(habit)">补卡</Button></div>
-    </section>
-    <Dialog v-model:open="formOpen" :title="editing ? '编辑习惯' : '新建习惯'">
-      <form id="habit-form" class="form-grid" @submit.prevent="save">
-        <label>名称<input v-model="form.name" required maxlength="120"></label><label>图标<input v-model="form.icon" maxlength="32"></label>
-        <label>颜色<input v-model="form.color" type="color"></label><label>频率<select v-model="form.frequency"><option value="DAILY">每天</option><option value="WEEKLY_N">每周 N 次</option><option value="MONTHLY_N">每月 N 次</option><option value="CUSTOM">自定义星期</option></select></label>
-        <label>目标次数<input v-model.number="form.targetCount" type="number" min="1"></label><label>开始日期<input v-model="form.startDate" type="date" required></label>
-        <fieldset v-if="form.frequency === 'CUSTOM'" class="weekday-field"><legend>执行星期</legend><label v-for="day in weekdays" :key="day.v"><input v-model="form.customDays" type="checkbox" :value="day.v">周{{ day.l }}</label></fieldset>
-      </form>
-      <template #footer><Button type="submit" form="habit-form">保存</Button></template>
-    </Dialog>
-    <Dialog v-model:open="backfillOpen" title="补卡"><label class="dialog-field">日期<input v-model="backfillDate" type="date"></label><template #footer><Button @click="submitBackfill">确认补卡</Button></template></Dialog>
+  <main ref="pageEl" class="habits-page" :style="pageStyle">
+    <div class="habits-shell" :class="{ 'is-detail': Boolean(selected) }">
+      <aside class="habits-side">
+        <header class="habits-side-head">
+          <div class="habits-title-wrap">
+            <button type="button" class="habits-title" :aria-expanded="titleMenuOpen" @click="toggleTitleMenu">
+              {{ archivedMode ? '已归档习惯' : '习惯' }}
+              <ChevronDown :size="14" />
+            </button>
+            <div v-if="titleMenuOpen" class="habits-menu is-title" @click.stop>
+              <button type="button" :class="{ on: !archivedMode }" @click="setMode(false)">所有习惯</button>
+              <button type="button" :class="{ on: archivedMode }" @click="setMode(true)">已归档习惯</button>
+            </div>
+          </div>
+          <div class="habits-side-actions">
+            <button type="button" class="habits-icon-btn" aria-label="新建习惯" title="新建习惯" @click="openCreate"><Plus :size="17" /></button>
+            <div class="habits-more-wrap">
+              <button type="button" class="habits-icon-btn" aria-label="更多" title="更多" :aria-expanded="moreMenuOpen" @click.stop="moreMenuOpen = !moreMenuOpen"><MoreHorizontal :size="17" /></button>
+              <div v-if="moreMenuOpen" class="habits-menu is-more" @click.stop>
+                <button type="button" @click="startBatch"><ListChecks :size="14" />批量管理</button>
+                <button type="button" @click="setMode(true)"><Archive :size="14" />已归档习惯</button>
+                <button type="button" class="is-danger" @click="clearAll"><Trash2 :size="14" />清空所有</button>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <HabitWeekStrip v-if="!archivedMode" :week="week" :progress="weekProgressMap" />
+
+        <div class="habits-scroll">
+          <template v-if="archivedMode">
+            <ul v-if="archivedHabits.length" class="habits-archive-grid">
+              <li v-for="habit in archivedHabits" :key="habit.publicId" :class="{ 'is-active': selectedId === habit.publicId }" @click="select(habit)">
+                <span class="habits-archive-icon" :style="iconStyle(habit)">{{ habit.icon || '✓' }}</span>
+                <div>
+                  <b>{{ habit.name }}</b>
+                  <small><Flame :size="11" />{{ totalDone(habit, checkins) }} 天 · <Zap :size="11" />{{ currentStreak(habit, checkins, today) }} 天</small>
+                </div>
+              </li>
+            </ul>
+            <p v-else class="habits-empty">还没有归档的习惯</p>
+          </template>
+
+          <template v-else>
+            <section v-for="group in groups" :key="group.key" class="habits-group">
+              <button type="button" class="habits-group-head" :aria-expanded="!collapsed[group.key]" @click="toggleGroup(group.key)">
+                <ChevronDown :size="13" :class="{ 'is-collapsed': collapsed[group.key] }" />
+                <b>{{ group.label }}</b>
+                <em>{{ group.items.length }}</em>
+              </button>
+              <ul v-show="!collapsed[group.key]">
+                <HabitRow
+                  v-for="habit in group.items"
+                  :key="habit.publicId"
+                  :habit="habit"
+                  :checkins="checkins"
+                  :week="week"
+                  :today="today"
+                  :active="selectedId === habit.publicId"
+                  :selectable="batch"
+                  :selected="batchPicked.includes(habit.publicId)"
+                  @open="batch ? togglePick(habit) : select(habit)"
+                  @select="togglePick(habit)"
+                  @toggle="key => toggleDay(habit, key)"
+                />
+              </ul>
+            </section>
+            <p v-if="!groups.length" class="habits-empty">还没有习惯，点右上角 + 新建一个</p>
+          </template>
+        </div>
+
+        <footer v-if="batch" class="habits-batch-bar">
+          <span>已选 {{ batchPicked.length }} 个</span>
+          <div>
+            <button type="button" @click="archivePicked">归档</button>
+            <button type="button" class="is-danger" @click="removePicked">删除</button>
+            <button type="button" @click="batch = false; batchPicked = []">取消</button>
+          </div>
+        </footer>
+      </aside>
+
+      <aside class="habits-detail-pane">
+        <HabitDetailPanel
+          v-if="selected"
+          :habit="selected"
+          :checkins="checkins"
+          :today="today"
+          :closable="narrow"
+          @close="selectedId = ''"
+          @toggle="key => toggleDay(selected, key)"
+          @edit="openEdit(selected)"
+          @style="value => setStyle(selected, value)"
+          @archive="toggleArchive(selected)"
+          @remove="removeHabit(selected)"
+        />
+        <div v-else class="habits-detail-empty">
+          <p>选一个习惯看详情</p>
+        </div>
+      </aside>
+    </div>
+
+    <HabitFormDialog
+      :open="formOpen"
+      :habit="editing"
+      :saving="saving"
+      @close="formOpen = false"
+      @submit="submitForm"
+    />
   </main>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { Check, Pencil, Plus, Trash2 } from 'lucide-vue-next'
-import Button from '../components/ui/Button.vue'
-import Dialog from '../components/ui/Dialog.vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { Archive, ChevronDown, Flame, ListChecks, MoreHorizontal, Plus, Trash2, Zap } from 'lucide-vue-next'
+import HabitWeekStrip from '../components/habits/HabitWeekStrip.vue'
+import HabitRow from '../components/habits/HabitRow.vue'
+import HabitDetailPanel from '../components/habits/HabitDetailPanel.vue'
+import HabitFormDialog from '../components/habits/HabitFormDialog.vue'
+import {
+  currentStreak, dayState, doneTarget, findCheckin, groupHabits, recentWeek, todayKey, totalDone, weekProgress
+} from '../components/habits/habitUtils.js'
 import { useTasksStore } from '../stores/tasks.js'
 
 const store = useTasksStore()
-const habits = computed(() => store.habits)
-const error = computed(() => store.error)
-const formOpen = ref(false)
-const backfillOpen = ref(false)
-const editing = ref(null)
-const backfillHabit = ref(null)
-const backfillDate = ref(new Date().toISOString().slice(0, 10))
-const form = reactive({ name: '', icon: '✓', color: '#2f746f', frequency: 'DAILY', targetCount: 1, customDays: [], startDate: new Date().toISOString().slice(0, 10), archived: false, sortOrder: 0 })
-const weekdays = [{ v: 1, l: '一' }, { v: 2, l: '二' }, { v: 3, l: '三' }, { v: 4, l: '四' }, { v: 5, l: '五' }, { v: 6, l: '六' }, { v: 7, l: '日' }]
-const stats = computed(() => Object.fromEntries(habits.value.map(habit => [habit.publicId, localStats(habit)])))
-const recentDays = computed(() => Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setDate(date.getDate() - 6 + index); return { date: date.toISOString().slice(0, 10), label: new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(date).replace('周', '') } }))
+const pageEl = ref(null)
+const pageHeight = ref(0)
+const pageStyle = computed(() => (pageHeight.value ? { height: `${pageHeight.value}px` } : {}))
 
-function frequencyLabel(item) { return { DAILY: '每天', WEEKLY_N: `每周 ${item.targetCount} 次`, MONTHLY_N: `每月 ${item.targetCount} 次`, CUSTOM: '自定义星期' }[item.frequency] || item.frequency }
-function openForm(item = null) { editing.value = item; Object.assign(form, item ? { ...item, customDays: [...(item.customDays || [])] } : { name: '', icon: '✓', color: '#2f746f', frequency: 'DAILY', targetCount: 1, customDays: [], startDate: new Date().toISOString().slice(0, 10), archived: false, sortOrder: habits.value.length }); formOpen.value = true }
-async function save() { const payload = { name: form.name, icon: form.icon, color: form.color, frequency: form.frequency, targetCount: form.targetCount, customDays: form.frequency === 'CUSTOM' ? form.customDays : [], startDate: form.startDate, archived: false, sortOrder: form.sortOrder }; if (editing.value) await store.updateHabit(editing.value, payload); else await store.createHabit(payload); formOpen.value = false }
-async function checkin(item, status, date = new Date().toISOString().slice(0, 10)) { await store.checkinHabit(item, { date, count: status === 'SKIP' ? 0 : 1, status }) }
-function openBackfill(item) { backfillHabit.value = item; backfillDate.value = new Date().toISOString().slice(0, 10); backfillOpen.value = true }
-async function submitBackfill() { backfillOpen.value = false; if (backfillHabit.value) await checkin(backfillHabit.value, 'DONE', backfillDate.value) }
-async function remove(item) { if (window.confirm(`删除习惯“${item.name}”？`)) await store.deleteHabit(item) }
-function localStats(habit) { const rows = store.habitCheckins.filter(item => item.habitId === habit.publicId && item.status === 'DONE'); const today = new Date().toISOString().slice(0, 10); const month = today.slice(0, 7); const completed = rows.filter(item => item.date.startsWith(month)).reduce((sum, item) => sum + item.count, 0); const last30 = new Date(); last30.setDate(last30.getDate() - 29); const recent = rows.filter(item => item.date >= last30.toISOString().slice(0, 10)).reduce((sum, item) => sum + item.count, 0); const target = habit.frequency === 'MONTHLY_N' ? habit.targetCount : habit.frequency === 'WEEKLY_N' ? habit.targetCount * 5 : habit.targetCount * 30; return { completionRate30Days: Math.min(100, Math.round(recent * 100 / Math.max(1, target))), monthCompleted: completed, monthTarget: habit.frequency === 'MONTHLY_N' ? habit.targetCount : habit.targetCount * new Date().getDate() } }
-function isChecked(habit, date) { return store.habitCheckins.some(item => item.habitId === habit.publicId && item.date === date && item.status === 'DONE') }
-onMounted(() => store.init({ waitForRemote: false }))
+const today = ref(todayKey())
+const week = computed(() => recentWeek(today.value))
+const archivedMode = ref(false)
+const collapsed = reactive({})
+const titleMenuOpen = ref(false)
+const moreMenuOpen = ref(false)
+const batch = ref(false)
+const batchPicked = ref([])
+const selectedId = ref('')
+const formOpen = ref(false)
+const editing = ref(null)
+const saving = ref(false)
+const narrow = ref(false)
+
+const allHabits = computed(() => store.habits || [])
+const checkins = computed(() => store.habitCheckins || [])
+const habits = computed(() => allHabits.value.filter(habit => !habit.archived))
+const archivedHabits = computed(() => allHabits.value.filter(habit => habit.archived))
+const groups = computed(() => groupHabits(habits.value))
+const selected = computed(() => allHabits.value.find(habit => habit.publicId === selectedId.value) || null)
+
+const weekProgressMap = computed(() => Object.fromEntries(
+  week.value.map(day => [day.key, weekProgress(habits.value, checkins.value, [day], today.value)])
+))
+
+function iconStyle(habit) {
+  return {
+    background: `color-mix(in srgb, ${habit.color || 'var(--accent)'} 18%, transparent)`,
+    color: habit.color || 'var(--accent)'
+  }
+}
+
+function syncPageHeight() {
+  const el = pageEl.value
+  if (!el) return
+  const offset = el.getBoundingClientRect().top + window.scrollY
+  const parent = el.parentElement
+  const padBottom = parent ? Number.parseFloat(getComputedStyle(parent).paddingBottom) || 0 : 0
+  pageHeight.value = Math.max(320, Math.round(window.innerHeight - offset - padBottom))
+}
+
+function syncNarrow() {
+  narrow.value = window.matchMedia('(max-width: 1080px)').matches
+}
+
+function toggleGroup(key) {
+  collapsed[key] = !collapsed[key]
+}
+
+function toggleTitleMenu() {
+  titleMenuOpen.value = !titleMenuOpen.value
+  moreMenuOpen.value = false
+}
+
+function setMode(archived) {
+  archivedMode.value = archived
+  titleMenuOpen.value = false
+  moreMenuOpen.value = false
+  batch.value = false
+  batchPicked.value = []
+  selectedId.value = ''
+}
+
+function select(habit) {
+  selectedId.value = habit.publicId
+  if (window.matchMedia('(max-width: 1080px)').matches) narrow.value = true
+}
+
+function startBatch() {
+  moreMenuOpen.value = false
+  batch.value = true
+  batchPicked.value = []
+  selectedId.value = ''
+}
+
+function togglePick(habit) {
+  const index = batchPicked.value.indexOf(habit.publicId)
+  if (index >= 0) batchPicked.value.splice(index, 1)
+  else batchPicked.value.push(habit.publicId)
+}
+
+async function toggleDay(habit, key) {
+  if (!habit) return
+  const state = dayState(habit, checkins.value, key, today.value)
+  if (state === 'future' || state === 'none') return
+  const existing = findCheckin(checkins.value, habit.publicId, key)
+  const status = state === 'done' ? 'SKIP' : 'DONE'
+  // 直接写 checkin：一次点击要么「打满当天目标」，要么退回未完成，不做累加
+  await store.saveEfficiency('habit-checkin', {
+    ...(existing || {}),
+    habitId: habit.publicId,
+    date: key,
+    status,
+    count: status === 'DONE' ? doneTarget(habit) : 0,
+    publicId: existing?.publicId || crypto.randomUUID(),
+    revision: existing?.revision || 0
+  })
+}
+
+function openCreate() {
+  editing.value = null
+  formOpen.value = true
+  moreMenuOpen.value = false
+}
+
+function openEdit(habit) {
+  editing.value = habit
+  formOpen.value = true
+}
+
+async function submitForm(payload) {
+  saving.value = true
+  try {
+    if (editing.value) {
+      await store.updateHabit(editing.value, payload)
+      selectedId.value = editing.value.publicId
+    } else {
+      const sortOrder = allHabits.value.length
+      const id = await store.createHabit({ ...payload, archived: false, remindAt: payload.remindAt || null, sortOrder })
+      if (id) selectedId.value = id
+    }
+    formOpen.value = false
+  } finally {
+    saving.value = false
+  }
+}
+
+async function setStyle(habit, value) {
+  await store.updateHabit(habit, { checkStyle: value })
+}
+
+async function toggleArchive(habit) {
+  await store.updateHabit(habit, { archived: !habit.archived })
+  if (habit.archived) selectedId.value = ''
+}
+
+async function removeHabit(habit) {
+  if (!window.confirm(`删除习惯「${habit.name}」？打卡记录会一起消失。`)) return
+  await store.deleteHabit(habit)
+  selectedId.value = ''
+}
+
+async function archivePicked() {
+  for (const id of batchPicked.value) {
+    const habit = allHabits.value.find(item => item.publicId === id)
+    if (habit) await store.updateHabit(habit, { archived: true })
+  }
+  batch.value = false
+  batchPicked.value = []
+}
+
+async function removePicked() {
+  if (!window.confirm(`删除选中的 ${batchPicked.value.length} 个习惯？`)) return
+  for (const id of batchPicked.value) {
+    const habit = allHabits.value.find(item => item.publicId === id)
+    if (habit) await store.deleteHabit(habit)
+  }
+  batch.value = false
+  batchPicked.value = []
+}
+
+async function clearAll() {
+  moreMenuOpen.value = false
+  const list = habits.value
+  if (!list.length) return
+  if (!window.confirm(`清空全部 ${list.length} 个习惯？此操作不可撤销。`)) return
+  for (const habit of list) await store.deleteHabit(habit)
+  selectedId.value = ''
+}
+
+function onDocPointerDown(event) {
+  if (event.target.closest?.('.habits-title-wrap') || event.target.closest?.('.habits-more-wrap')) return
+  titleMenuOpen.value = false
+  moreMenuOpen.value = false
+}
+
+let onResize = null
+
+onMounted(async () => {
+  await store.init({ waitForRemote: false })
+  onResize = () => {
+    syncPageHeight()
+    syncNarrow()
+  }
+  window.addEventListener('resize', onResize)
+  document.addEventListener('pointerdown', onDocPointerDown, true)
+  syncNarrow()
+  await nextTick()
+  syncPageHeight()
+  window.setTimeout(syncPageHeight, 260)
+  if (habits.value.length) selectedId.value = habits.value[0].publicId
+})
+
+onBeforeUnmount(() => {
+  if (onResize) window.removeEventListener('resize', onResize)
+  document.removeEventListener('pointerdown', onDocPointerDown, true)
+})
 </script>
 
 <style scoped>
-.efficiency-page{max-width:980px;margin:0 auto;padding:34px 28px 100px}.efficiency-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px}.efficiency-head h1{margin:5px 0;font-size:2rem}.efficiency-head p:last-child{margin:0;color:var(--muted)}.efficiency-error{padding:10px;border-left:3px solid var(--down);background:color-mix(in srgb,var(--down) 8%,transparent)}.empty-copy{padding:46px 0;color:var(--muted)}.habit-card{margin-top:16px;padding:18px;border:1px solid var(--line);background:var(--panel)}.habit-card-head{display:flex;align-items:center;gap:12px}.habit-mark{display:grid;width:40px;height:40px;place-items:center;border-radius:50%;color:#fff;font-weight:700}.habit-card h2{margin:0;font-size:1.05rem}.habit-card p{margin:4px 0 0;color:var(--muted);font-size:.78rem}.card-actions{display:flex;gap:5px;margin-left:auto}.habit-stats{display:flex;flex-wrap:wrap;gap:18px;margin:18px 0;color:var(--muted);font-size:.8rem}.habit-actions{display:flex;flex-wrap:wrap;gap:8px}.form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.form-grid label,.dialog-field{display:grid;gap:6px;color:var(--muted);font-size:.78rem}.form-grid input,.form-grid select,.dialog-field input{min-height:38px;padding:7px 9px;border:1px solid var(--line2);background:var(--card);color:var(--ink)}.weekday-field{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:10px;border:1px solid var(--line)}.weekday-field label{display:flex;align-items:center;gap:4px}.weekday-field input{min-height:auto}@media(max-width:640px){.efficiency-page{padding:22px 14px 100px}.efficiency-head{align-items:flex-start;flex-direction:column}.habit-card-head{align-items:flex-start}.card-actions{flex-wrap:wrap}.form-grid{grid-template-columns:1fr}}
+.habits-page { display: flex; height: 100vh; min-height: 0; overflow: hidden; padding: 22px 26px 0; --habit-done: var(--priority-low, #4d78db); }
+.habits-shell { display: grid; grid-template-columns: minmax(320px, 470px) minmax(340px, 1fr); gap: 18px; width: 100%; max-width: 1060px; margin: 0 auto; min-height: 0; }
+
+.habits-side { display: flex; min-height: 0; flex-direction: column; }
+.habits-side-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 6px 6px; }
+.habits-title-wrap { position: relative; }
+.habits-title {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 6px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--ink);
+  font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.habits-title:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.habits-side-actions { display: flex; align-items: center; gap: 2px; }
+.habits-icon-btn { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer; }
+.habits-icon-btn:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+.habits-more-wrap { position: relative; }
+
+.habits-menu {
+  position: absolute; z-index: 40; top: 34px; left: 0;
+  display: grid; min-width: 150px; padding: 6px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--card); box-shadow: var(--module-shadow, 0 18px 44px rgb(15 23 42 / 18%));
+}
+.habits-menu.is-more { left: auto; right: 0; }
+.habits-menu button { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 0; border-radius: 8px; background: transparent; color: var(--ink2); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.habits-menu button:hover { background: var(--paper); color: var(--ink); }
+.habits-menu button.on { color: var(--accent); font-weight: 600; }
+.habits-menu button.is-danger { color: var(--down, #e34d59); }
+
+.habits-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 2px 16px; scrollbar-gutter: stable; }
+
+.habits-group { padding: 6px 0 2px; }
+.habits-group-head { display: flex; align-items: center; gap: 5px; width: 100%; padding: 4px 6px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer; }
+.habits-group-head:hover { color: var(--ink2); }
+.habits-group-head b { font-weight: 600; }
+.habits-group-head em { color: var(--dim, var(--muted)); font-style: normal; }
+.habits-group-head svg { transition: transform .16s ease; }
+.habits-group-head svg.is-collapsed { transform: rotate(-90deg); }
+.habits-group ul { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
+
+.habits-archive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 4px 2px; list-style: none; }
+.habits-archive-grid li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); cursor: pointer; }
+.habits-archive-grid li.is-active { border-color: color-mix(in srgb, var(--accent) 46%, transparent); }
+.habits-archive-grid b { display: block; font-size: 12.5px; }
+.habits-archive-grid small { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-size: 10.5px; }
+.habits-archive-icon { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border-radius: 9px; }
+
+.habits-empty { padding: 40px 10px; color: var(--muted); font-size: 12.5px; text-align: center; }
+
+.habits-batch-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); font-size: 12px; color: var(--muted); }
+.habits-batch-bar div { display: flex; gap: 6px; }
+.habits-batch-bar button { padding: 4px 10px; border: 1px solid var(--line); border-radius: 7px; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
+.habits-batch-bar button.is-danger { color: var(--down, #e34d59); }
+
+.habits-detail-pane { min-height: 0; overflow-y: auto; padding-bottom: 18px; scrollbar-gutter: stable; }
+.habits-detail-empty { display: grid; height: 100%; place-items: center; color: var(--muted); font-size: 12.5px; }
+
+/* 窄屏：详情变覆盖层，列表占满 */
+@media (max-width: 1080px) {
+  .habits-page { padding: 16px 14px 0; }
+  .habits-shell { grid-template-columns: 1fr; }
+  .habits-detail-pane { position: fixed; z-index: 120; inset: 0; display: none; padding: 16px; background: var(--card); overflow-y: auto; }
+  .habits-shell.is-detail .habits-detail-pane { display: block; }
+  .habits-archive-grid { grid-template-columns: 1fr; }
+}
 </style>

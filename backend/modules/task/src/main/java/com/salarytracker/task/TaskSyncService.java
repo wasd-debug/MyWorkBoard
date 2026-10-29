@@ -220,7 +220,10 @@ public class TaskSyncService {
         if (extra == null) throw new IllegalArgumentException("payload.extra 必填");
         HabitCommand command = new HabitCommand(string(extra, "name"), string(extra, "icon"), string(extra, "color"),
                 string(extra, "frequency"), integer(extra, "targetCount"), integers(extra, "customDays"),
-                string(extra, "remindAt"), string(extra, "startDate"), bool(extra, "archived"), integer(extra, "sortOrder"));
+                string(extra, "remindAt"), string(extra, "startDate"), bool(extra, "archived"), integer(extra, "sortOrder"),
+                string(extra, "groupKey"), integer(extra, "goalDays"), string(extra, "checkStyle"),
+                string(extra, "targetType"), integer(extra, "dailyTimes"), bool(extra, "autoPopupLog"),
+                string(extra, "amountUnit"));
         Habit saved = current == null
                 ? efficiency.createHabitForSync(command, entityId, operation.opId())
                 : efficiency.updateHabitForSync(entityId, command, base, operation.opId());
@@ -235,7 +238,7 @@ public class TaskSyncService {
         HabitCheckin current = currentCheckin(entityId);
         long base = operation.baseRevision() == null ? 0 : operation.baseRevision();
         HabitCheckin saved = efficiency.checkinForSync(string(extra, "habitId"),
-                new HabitCheckinCommand(string(extra, "date"), integer(extra, "count"), string(extra, "status")),
+                new HabitCheckinCommand(string(extra, "date"), integer(extra, "count"), string(extra, "status"), integer(extra, "amount")),
                 entityId, base, operation.opId());
         return result(operation.opId(), "habit-checkin", entityId, SyncStatus.APPLIED,
                 TaskEfficiencyService.syncEntity(saved, false), null, null);

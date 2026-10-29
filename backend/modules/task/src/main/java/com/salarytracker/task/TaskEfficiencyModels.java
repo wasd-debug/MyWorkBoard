@@ -53,27 +53,32 @@ public final class TaskEfficiencyModels {
     @Schema(name = "Habit")
     public record Habit(String publicId, String name, String icon, String color, String frequency,
                         int targetCount, List<Integer> customDays, String remindAt, String startDate,
-                        boolean archived, int sortOrder, long revision) {
+                        boolean archived, int sortOrder, long revision,
+                        String groupKey, Integer goalDays, String checkStyle, String targetType,
+                        int dailyTimes, boolean autoPopupLog, String amountUnit) {
     }
 
     @Schema(name = "HabitCommand")
     public record HabitCommand(String name, String icon, String color, String frequency, Integer targetCount,
                                List<Integer> customDays, String remindAt, String startDate, Boolean archived,
-                               Integer sortOrder) {
+                               Integer sortOrder, String groupKey, Integer goalDays, String checkStyle,
+                               String targetType, Integer dailyTimes, Boolean autoPopupLog, String amountUnit) {
     }
 
     @Schema(name = "HabitCheckin")
     public record HabitCheckin(String publicId, String habitId, String date, int count, String status,
-                               long revision) {
+                               long revision, int amount) {
     }
 
     @Schema(name = "HabitCheckinCommand")
-    public record HabitCheckinCommand(String date, Integer count, String status) {
+    public record HabitCheckinCommand(String date, Integer count, String status, Integer amount) {
     }
 
+    /** 习惯详情面板要的聚合数字：月打卡/总打卡/月完成率/当前连续/月完成量/总完成量 */
     @Schema(name = "HabitStats")
     public record HabitStats(int currentStreak, int longestStreak, int completionRate30Days,
-                             int monthCompleted, int monthTarget, List<HabitCheckin> checkins) {
+                             int monthCompleted, int monthTarget, List<HabitCheckin> checkins,
+                             int totalCompleted, int monthAmount, int totalAmount, int goalDays) {
     }
 
     @Schema(name = "HabitCalendarDay")
