@@ -55,7 +55,7 @@ public class TaskService {
     private static final String TASK_COLUMNS = "t.public_id,t.user_id, l.public_id list_public_id, t.title, t.description, " +
             "t.status, t.priority, t.start_at, t.due_at, t.all_day, t.timezone, t.duration_minutes, " +
             "t.source, t.completed_at, t.abandoned_at, t.revision, t.deleted, t.deleted_at, " +
-            "t.sort_order,t.focus_minutes,t.created_at, " +
+            "t.sort_order,t.focus_minutes,t.created_at,t.updated_at, " +
             "(SELECT COUNT(*) FROM task_attachment a WHERE a.task_id=t.id AND a.deleted=FALSE) attachment_count, " +
             "(SELECT p.public_id FROM task p WHERE p.id = t.parent_id) parent_public_id, " +
             "t.rrule,t.recurrence_anchor,t.series_id,t.series_sequence,t.planned_due_at,t.item_kind";
@@ -1537,7 +1537,8 @@ public class TaskService {
                 result.getString("recurrence_anchor"), result.getString("series_id"),
                 (Integer) result.getObject("series_sequence"), instant(result.getTimestamp("planned_due_at")),
                 result.getInt("sort_order"), result.getInt("focus_minutes"), instant(result.getTimestamp("created_at")),
-                result.getInt("attachment_count"), instant(result.getTimestamp("abandoned_at")), result.getString("item_kind"));
+                result.getInt("attachment_count"), instant(result.getTimestamp("abandoned_at")), result.getString("item_kind"),
+                instant(result.getTimestamp("updated_at")));
     }
 
     private ValidatedTask validate(TaskCommand command, TaskItem before) {

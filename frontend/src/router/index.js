@@ -18,7 +18,7 @@ const routes = [
   { path: '/tasks/calendar', name: 'tasks-calendar', component: () => import('../views/TasksCalendarView.vue'), meta: { title: '任务日历' } },
   { path: '/tasks/board', redirect: { path: '/tasks/today', query: { workspaceView: 'KANBAN' } } },
   { path: '/tasks/timeline', redirect: { path: '/tasks/today', query: { workspaceView: 'TIMELINE' } } },
-  { path: '/tasks/quadrant', name: 'tasks-quadrant', component: () => import('../views/TasksEnhancedView.vue'), meta: { title: '四象限' } },
+  { path: '/tasks/quadrant', name: 'tasks-quadrant', component: () => import('../views/TasksQuadrantView.vue'), meta: { title: '四象限' } },
   { path: '/tasks/search', name: 'tasks-search', component: () => import('../views/TasksEnhancedView.vue'), meta: { title: '任务搜索' } },
   { path: '/tasks/stats', name: 'tasks-stats', component: () => import('../views/TasksEnhancedView.vue'), meta: { title: '任务统计' } },
   { path: '/tasks/data', redirect: { path: '/tasks/settings', hash: '#data' } },

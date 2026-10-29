@@ -155,7 +155,7 @@ public final class TaskModels {
                            String rrule, String recurrenceAnchor, String seriesId, Integer seriesSequence,
                            String plannedDueAt, int sortOrder, int focusMinutes, String createdAt, int attachmentCount,
                            @Schema(type = "string", format = "date-time") String abandonedAt,
-                           String itemKind) {
+                           String itemKind, String updatedAt) {
         public TaskItem(String publicId, String listId, String title, String description, String status,
                         String priority, String startAt, String dueAt, boolean allDay, String timezone,
                         Integer durationMinutes, String source, String completedAt, long revision,
@@ -166,7 +166,7 @@ public final class TaskModels {
             this(publicId, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
                     durationMinutes, source, completedAt, revision, parentId, tagIds, checklist,
                     completedSubtasks, totalSubtasks, deleted, deletedAt, rrule, recurrenceAnchor, seriesId,
-                    seriesSequence, plannedDueAt, sortOrder, focusMinutes, createdAt, attachmentCount, null, null);
+                    seriesSequence, plannedDueAt, sortOrder, focusMinutes, createdAt, attachmentCount, null, null, null);
         }
 
         public TaskItem(String publicId, String listId, String title, String description, String status,
@@ -174,7 +174,7 @@ public final class TaskModels {
                         Integer durationMinutes, String source, String completedAt, long revision) {
             this(publicId, listId, title, description, status, priority, startAt, dueAt, allDay, timezone,
                     durationMinutes, source, completedAt, revision, null, List.of(), List.of(), 0, 0, false, null,
-                    null, null, null, null, null, 0, 0, null, 0, null, null);
+                    null, null, null, null, null, 0, 0, null, 0, null, null, null);
         }
     }
 

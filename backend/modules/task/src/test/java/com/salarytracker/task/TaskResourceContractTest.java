@@ -174,6 +174,6 @@ class TaskResourceContractTest {
     private TaskItem itemWithAbandonedAt(String abandonedAt) {
         return new TaskItem(TASK_ID, "11111111-1111-1111-1111-111111111111", "整理收件箱", "", "ABANDONED",
                 "NONE", null, null, false, "Asia/Shanghai", null, "WEB", null, 1,
-                null, List.of(), List.of(), 0, 0, false, null, null, null, null, null, null, 0, 0, null, 0, abandonedAt, null);
+                null, List.of(), List.of(), 0, 0, false, null, null, null, null, null, null, 0, 0, null, 0, abandonedAt, null, null);
     }
 }
