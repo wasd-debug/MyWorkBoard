@@ -17,14 +17,16 @@ export const ledgerNavigation = [
   { key: 'audit', to: { path: '/ledger/manage', query: { view: 'audit' } }, label: '操作日志' }
 ]
 
+// 顺序与左侧图标栏保持一致：任务 日历 四象限 专注 习惯 倒数纪念日 AI 搜索
 export const taskNavigation = [
   { key: 'task', to: '/tasks/today', label: '任务', activePrefix: '/tasks', activeExclude: ['/tasks/habits', '/tasks/calendar', '/tasks/focus', '/tasks/countdowns', '/tasks/board', '/tasks/quadrant', '/tasks/search', '/tasks/stats', '/tasks/settings'] },
+  { key: 'calendar', to: '/tasks/calendar', label: '日历' },
+  { key: 'quadrant', to: '/tasks/quadrant', label: '四象限' },
   { key: 'focus', to: '/tasks/focus', label: '专注' },
   { key: 'habits', to: '/tasks/habits', label: '习惯' },
-  { key: 'calendar', to: '/tasks/calendar', label: '日历' },
-  { key: 'countdowns', to: '/tasks/countdowns', label: '倒数日' },
+  { key: 'countdowns', to: '/tasks/countdowns', label: '倒数纪念日' },
   { key: 'board', to: '/tasks/today', view: 'KANBAN', label: '看板' },
-  { key: 'quadrant', to: '/tasks/quadrant', label: '四象限' },
+  { key: 'agent', to: '/', label: 'AI' },
   { key: 'search', to: '/tasks/search', label: '搜索与智能清单' },
   { key: 'stats', to: '/tasks/stats', label: '统计与回顾' },
   { key: 'settings', to: '/tasks/settings', label: '设置' }

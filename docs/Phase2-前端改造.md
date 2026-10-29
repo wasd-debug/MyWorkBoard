@@ -1432,3 +1432,12 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 - 通过 `applyingViewPreferences` 标志避免「切换集合时加载偏好」反过来触发一次写入，把旧集合的值写进新集合。
 - 四象限页（P2-QD1）本来就是每个象限独立并持久化，口径一致。
 - 门禁：浏览器实测「工作」分组设为标签、「生活」设为优先级，互不影响；在「工作」打开「隐藏已完成」后，存储里只有 `list:<工作>` 一条记录，「生活」仍走默认；刷新后「工作」仍是标签；控制台 0 报错。
+
+### P2-QD3 左侧图标栏补齐四象限入口并统一顺序（2026-10-29）
+
+- 之前四象限只能借道「搜索」进入（`/tasks/quadrant` 被塞在搜索项的 matches 里），左侧图标栏没有独立入口。
+- 现在 `TaskModuleRail.vue` 的入口固定为 8 个，顺序与滴答一致：**任务 → 日历 → 四象限 → 专注 → 习惯 → 倒数纪念日 → AI → 搜索**；四象限用 `LayoutGrid` 图标，倒数纪念日换成 `CalendarHeart`，`Sparkles` 让给 AI 入口（指向 AI 工作台 `/`）。
+- 搜索项不再吞掉 `/tasks/quadrant`，但仍覆盖 `/tasks/search`、`/tasks/board`、`/tasks/stats`。
+- 顶部模块导航 `taskNavigation` 同步成同一顺序；「看板」作为任务视图入口保留，排在倒数纪念日之后（左侧图标栏不出现）。
+- 顺手修了一个高亮 bug：`active()` 原来用 `path.endsWith('/') ? startsWith : ===`，导致 `/` 这个 AI 入口在**所有**页面都亮着；改为 `/` 精确匹配。
+- 门禁：332/332 单测、build 通过；浏览器实测图标栏 8 项顺序正确、进入 `/tasks/quadrant` 时只有四象限高亮、AI 不再误亮，控制台 0 报错。证据 `task-rail-quadrant-20261029.png`。

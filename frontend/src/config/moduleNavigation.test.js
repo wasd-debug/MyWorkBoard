@@ -4,8 +4,9 @@ import test from 'node:test'
 import { navigationItemIsActive, taskNavigation } from './moduleNavigation.js'
 
 test('task top navigation exposes all planned sections in product order', () => {
-  assert.deepEqual(taskNavigation.map(item => item.label), ['任务', '专注', '习惯', '日历', '倒数日', '看板', '四象限', '搜索与智能清单', '统计与回顾', '设置'])
-  assert.deepEqual(taskNavigation.map(item => item.to), ['/tasks/today', '/tasks/focus', '/tasks/habits', '/tasks/calendar', '/tasks/countdowns', '/tasks/today', '/tasks/quadrant', '/tasks/search', '/tasks/stats', '/tasks/settings'])
+  // 左侧图标栏的 8 个入口保持这个相对顺序；看板仍是任务视图入口，排在倒数纪念日之后
+  assert.deepEqual(taskNavigation.map(item => item.label), ['任务', '日历', '四象限', '专注', '习惯', '倒数纪念日', '看板', 'AI', '搜索与智能清单', '统计与回顾', '设置'])
+  assert.deepEqual(taskNavigation.map(item => item.to), ['/tasks/today', '/tasks/calendar', '/tasks/quadrant', '/tasks/focus', '/tasks/habits', '/tasks/countdowns', '/tasks/today', '/', '/tasks/search', '/tasks/stats', '/tasks/settings'])
   assert.equal(taskNavigation.find(item => item.key === 'board').view, 'KANBAN')
 })
 

@@ -21,7 +21,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { Bell, CalendarDays, CheckSquare2, CircleDot, RefreshCw, Search, Settings, Sparkles, Target } from 'lucide-vue-next'
+import { Bell, CalendarDays, CalendarHeart, CheckSquare2, CircleDot, LayoutGrid, RefreshCw, Search, Settings, Sparkles, Target } from 'lucide-vue-next'
 import { useAppStore } from '../../stores/app.js'
 import { useTaskInboxStore } from '../../stores/taskInbox.js'
 import { useTasksStore } from '../../stores/tasks.js'
@@ -45,15 +45,24 @@ function requestSync() {
   window.dispatchEvent(event)
   if (!event.defaultPrevented) void tasks.syncNow()
 }
+// 顺序与滴答一致：任务 → 日历 → 四象限 → 专注 → 习惯 → 倒数纪念日 → AI → 搜索
 const items = [
   { to: '/tasks/today', label: '任务', icon: CheckSquare2, matches: ['/tasks/inbox', '/tasks/today', '/tasks/tomorrow', '/tasks/next7', '/tasks/all', '/tasks/completed', '/tasks/abandoned', '/tasks/trash', '/tasks/list/', '/tasks/tag/', '/tasks/filter/', '/tasks/timeline'] },
   { to: '/tasks/calendar', label: '日历', icon: CalendarDays },
+  { to: '/tasks/quadrant', label: '四象限', icon: LayoutGrid },
   { to: '/tasks/focus', label: '专注', icon: CircleDot },
   { to: '/tasks/habits', label: '习惯', icon: Target },
-  { to: '/tasks/countdowns', label: '倒数日', icon: Sparkles },
-  { to: '/tasks/search', label: '搜索', icon: Search, matches: ['/tasks/search', '/tasks/board', '/tasks/quadrant', '/tasks/stats'] }
+  { to: '/tasks/countdowns', label: '倒数纪念日', icon: CalendarHeart },
+  { to: '/', label: 'AI', icon: Sparkles },
+  { to: '/tasks/search', label: '搜索', icon: Search, matches: ['/tasks/search', '/tasks/board', '/tasks/stats'] }
 ]
-function active(item) { return (item.matches || [item.to]).some(path => path.endsWith('/') ? route.path.startsWith(path) : route.path === path) }
+function active(item) {
+  return (item.matches || [item.to]).some(path => {
+    // '/' 必须精确匹配，否则 startsWith('/') 会让 AI 入口在任何页面都高亮
+    if (path === '/') return route.path === '/'
+    return path.endsWith('/') ? route.path.startsWith(path) : route.path === path
+  })
+}
 </script>
 
 <style scoped>
