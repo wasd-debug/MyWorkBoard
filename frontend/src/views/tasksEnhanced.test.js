@@ -1387,14 +1387,15 @@ test('检查项级提醒与正计时（P2-FE126）', async () => {
 test('专注页：专注对象选择器 / 可拖动分栏 / 声音浮层（P2-FOCUS2）', async () => {
   const focusView = await readFile(new URL('./TaskFocusView.vue', import.meta.url), 'utf8')
   const focusSound = await readFile(new URL('../utils/focusSound.js', import.meta.url), 'utf8')
+  const picker = await readFile(new URL('../components/tasks/FocusTargetPicker.vue', import.meta.url), 'utf8')
 
-  // 选择器：三个页签，页签状态单一来源
-  assert.match(focusView, /\{ id: 'recent', label: '最近' \},\s*\{ id: 'task', label: '任务' \},\s*\{ id: 'habit', label: '习惯' \}/)
-  assert.match(focusView, /class="focus-picker-tabs"[\s\S]{0,200}:aria-selected="pickerTab === tab\.id"/)
+  // 选择器：三个页签，页签状态单一来源（组件化，专注页与补记弹窗共用）
+  assert.match(picker, /\{ id: 'recent', label: '最近' \},\s*\{ id: 'task', label: '任务' \},\s*\{ id: 'habit', label: '习惯' \}/)
+  assert.match(picker, /class="focus-picker-tabs"[\s\S]{0,200}:aria-selected="tabId === tab\.id"/)
   // 分组只对根任务分桶，子任务跟随父任务缩进
-  assert.match(focusView, /function buildTree\(items\)[\s\S]{0,420}item\.parentId && byId\.has\(item\.parentId\) \? item\.parentId : ''/)
-  assert.match(focusView, /function flattenTree\(roots, childrenOf, groupKey\)[\s\S]{0,520}isChild: depth > 0/)
-  assert.match(focusView, /const \{ roots, childrenOf \} = buildTree\(pickerTasks\.value\.filter\(task => match\(task\.title\)\)\)/)
+  assert.match(picker, /function buildTree\(items\)[\s\S]{0,420}item\.parentId && byId\.has\(item\.parentId\) \? item\.parentId : ''/)
+  assert.match(picker, /function flattenTree\(roots, childrenOf, groupKey\)[\s\S]{0,520}isChild: depth > 0/)
+  assert.match(picker, /const \{ roots, childrenOf \} = buildTree\(pickerTasks\.value\.filter\(task => match\(task\.title\)\)\)/)
   // 选中任务后开始专注要把 taskId 带进创建请求
   assert.match(focusView, /const target = focusTarget\.value && focusTarget\.value\.kind !== 'preset' \? focusTarget\.value\.id : undefined/)
   assert.match(focusView, /\.\.\.\(target \? \{ taskId: target \} : \{\}\)/)

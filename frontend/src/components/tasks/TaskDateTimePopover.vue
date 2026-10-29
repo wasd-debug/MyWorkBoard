@@ -1,6 +1,6 @@
 <template>
   <section class="task-date-time-popover" :class="{ 'is-range': mode === 'RANGE' }" @click.stop>
-    <div class="task-date-time-tabs" role="tablist" aria-label="日期类型">
+    <div v-if="showTabs" class="task-date-time-tabs" role="tablist" aria-label="日期类型">
       <button type="button" role="tab" :aria-selected="mode === 'DATE'" :class="{ active: mode === 'DATE' }" @click="$emit('update:mode', 'DATE')">日期</button>
       <button type="button" role="tab" :aria-selected="mode === 'RANGE'" :class="{ active: mode === 'RANGE' }" @click="$emit('update:mode', 'RANGE')">时间段</button>
     </div>
@@ -64,7 +64,7 @@
     <slot v-if="mode === 'DATE' || mode === 'RANGE'" name="rows" :mode="mode" />
 
     <footer class="task-date-time-footer">
-      <button type="button" class="task-date-time-clear-date" @click="$emit('clear-date')">清除</button>
+      <button type="button" class="task-date-time-clear-date" @click="$emit('clear-date')">{{ clearLabel }}</button>
       <button type="button" class="task-date-time-apply" @click="$emit('apply')">{{ applyLabel }}</button>
     </footer>
   </section>
@@ -76,6 +76,8 @@ import { CalendarPlus, ChevronLeft, ChevronRight, Circle, Moon, Sun, Sunrise } f
 
 const props = defineProps({
   mode: { type: String, default: 'DATE' },
+  /** 单一日期场景（如补记专注开始/结束时间）不显示「日期/时间段」页签 */
+  showTabs: { type: Boolean, default: true },
   month: { type: Date, required: true },
   calendarDays: { type: Array, required: true },
   selectedKey: { type: String, default: '' },
@@ -83,6 +85,7 @@ const props = defineProps({
   allDay: { type: Boolean, default: false },
   monthLabel: { type: String, required: true },
   applyLabel: { type: String, default: '确定' },
+  clearLabel: { type: String, default: '清除' },
   rangeStart: { type: String, default: '' },
   rangeEnd: { type: String, default: '' },
   rangeStartTime: { type: String, default: '' },

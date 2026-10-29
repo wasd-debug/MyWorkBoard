@@ -65,50 +65,7 @@
               <span>{{ targetLabel }}</span>
               <ChevronRight :size="14" />
             </button>
-            <div v-if="openMenu === 'target'" class="focus-picker" @click.stop>
-              <div class="focus-picker-tabs" role="tablist" aria-label="选择专注对象">
-                <button v-for="tab in PICKER_TABS" :key="tab.id" type="button" role="tab" :class="{ on: pickerTab === tab.id }" :aria-selected="pickerTab === tab.id" @click="pickerTab = tab.id">{{ tab.label }}</button>
-              </div>
-              <label class="focus-picker-search">
-                <Search :size="15" />
-                <input v-model.trim="pickerQuery" type="search" placeholder="搜索" />
-              </label>
-              <div class="focus-picker-body">
-                <template v-if="pickerTab === 'habit'">
-                  <h4 class="focus-picker-group"><Repeat :size="13" />习惯</h4>
-                  <ul class="focus-picker-list">
-                    <li v-for="habit in pickerHabits" :key="habit.publicId">
-                      <button type="button" @click="pickTarget(habit, 'habit')">
-                        <span class="focus-picker-icon">{{ habit.icon || '🔁' }}</span>
-                        <span class="focus-picker-title">{{ habit.title }}</span>
-                      </button>
-                    </li>
-                  </ul>
-                  <p v-if="!pickerHabits.length" class="focus-picker-empty">没有匹配的习惯</p>
-                </template>
-
-                <template v-else>
-                  <section v-for="group in pickerGroups" :key="group.key">
-                    <h4 class="focus-picker-group">
-                      <component :is="group.icon" :size="13" />
-                      {{ group.label }}
-                      <button type="button" class="focus-picker-toggle" :aria-expanded="!isCollapsed(group.key)" @click="toggleGroup(group.key)"><ChevronRight :size="13" :class="{ 'is-open': !isCollapsed(group.key) }" /></button>
-                    </h4>
-                    <ul v-if="!isCollapsed(group.key)" class="focus-picker-list">
-                      <li v-for="item in group.items" :key="item.key" :class="{ 'is-child': item.isChild }">
-                        <button type="button" @click="pickTarget(item, item.kind)">
-                          <span v-if="item.icon" class="focus-picker-icon">{{ item.icon }}</span>
-                          <span v-else class="focus-picker-dot" :style="{ borderColor: item.color }"></span>
-                          <span class="focus-picker-title">{{ item.title }}</span>
-                          <span class="focus-picker-when">{{ item.whenLabel }}</span>
-                        </button>
-                      </li>
-                    </ul>
-                  </section>
-                  <p v-if="!pickerGroups.length" class="focus-picker-empty">{{ pickerQuery ? '没有匹配的结果' : '还没有可专注的任务' }}</p>
-                </template>
-              </div>
-            </div>
+            <FocusTargetPicker v-if="openMenu === 'target'" @pick="pickTarget" />
           </div>
 
           <div class="focus-ring" :class="{ 'is-running': focus.current }">
@@ -127,7 +84,17 @@
                 <line v-for="tick in ticks" :key="tick.index" :x1="tick.x1" :y1="tick.y1" :x2="tick.x2" :y2="tick.y2" :class="{ on: tick.on }" />
               </g>
             </svg>
-            <strong>{{ clockLabel }}</strong>
+            <strong class="focus-clock" :class="{ 'is-editable': canEditDuration }" :title="canEditDuration ? '点击修改番茄钟时长' : ''" @click="openDurationEditor">{{ clockLabel }}</strong>
+            <div v-if="durationEditor.open" class="focus-duration-popover" @click.stop>
+              <label class="focus-duration-field">
+                <input v-model.number="durationEditor.minutes" type="number" min="1" max="180" aria-label="番茄钟时长" @keydown.enter="applyDuration" />
+                <span>分钟</span>
+              </label>
+              <footer>
+                <button type="button" class="focus-duration-ghost" @click="durationEditor.open = false">取消</button>
+                <button type="button" class="focus-duration-primary" @click="applyDuration">确定</button>
+              </footer>
+            </div>
           </div>
 
           <p class="focus-stage-hint">{{ stageHint }}</p>
@@ -176,20 +143,13 @@
               <div class="focus-menu-wrap">
                 <button type="button" class="focus-icon-btn" aria-label="记录选项" title="记录选项" :aria-expanded="openMenu === 'record'" @click.stop="toggleMenu('record')"><MoreHorizontal :size="16" /></button>
                 <div v-if="openMenu === 'record'" class="focus-menu is-record" @click.stop>
-                  <button type="button" @click="toggleBatch"><ListChecks :size="15" />批量管理</button>
+                  <button type="button" @click="openBatch"><ListChecks :size="15" />批量管理</button>
                   <button type="button" @click="openExport"><Download :size="15" />导出 Excel</button>
                   <button type="button" class="is-danger" @click="clearAll"><Trash2 :size="15" />清空所有</button>
                 </div>
               </div>
             </div>
           </header>
-
-          <div v-if="batchMode" class="focus-batch">
-            <label><input type="checkbox" :checked="allSelected" @change="toggleSelectAll" />全选</label>
-            <span>已选 {{ selectedIds.length }} 条</span>
-            <button type="button" class="is-danger" :disabled="!selectedIds.length" @click="deleteSelected">删除</button>
-            <button type="button" @click="exitBatch">退出</button>
-          </div>
 
           <div class="focus-records-scroll">
             <div v-if="!focus.groupedSessions.length && !focus.loadingSessions" class="focus-empty">本周还没有专注记录</div>
@@ -198,7 +158,6 @@
               <h3>{{ dateLabel(group.date) }}</h3>
               <ul>
                 <li v-for="session in group.items" :key="session.publicId" :class="{ 'is-aborted': session.status !== 'COMPLETED' }">
-                  <label v-if="batchMode" class="focus-row-check"><input v-model="selectedIds" type="checkbox" :value="session.publicId" /></label>
                   <span class="focus-row-dot" aria-hidden="true"></span>
                   <div class="focus-row-main">
                     <span class="focus-row-time">{{ timeRange(session) }}</span>
@@ -240,26 +199,8 @@
       </section>
     </div>
 
-    <div v-if="recordDialog.open" class="focus-dialog-mask" @click.self="recordDialog.open = false">
-      <section class="focus-dialog" role="dialog" aria-label="添加专注记录">
-        <h2>添加专注记录</h2>
-        <label class="focus-field"><span>专注任务</span>
-          <select v-model="recordForm.taskId">
-            <option value="">选择任务</option>
-            <option v-for="task in openTasks" :key="task.publicId" :value="task.publicId">{{ task.title }}</option>
-          </select>
-        </label>
-        <label class="focus-field"><span>开始时间</span><input v-model="recordForm.startLocal" type="datetime-local" /></label>
-        <label class="focus-field"><span>结束时间</span><input v-model="recordForm.endLocal" type="datetime-local" /></label>
-        <div class="focus-field"><span>类型</span><p class="focus-field-value">正计时：{{ recordMinutes }} 分钟</p></div>
-        <label class="focus-field is-textarea"><span>专注笔记</span><textarea v-model="recordForm.note" maxlength="500" placeholder="记录你的想法…"></textarea></label>
-        <p v-if="recordDialog.error" class="focus-dialog-error" role="alert">{{ recordDialog.error }}</p>
-        <footer>
-          <button type="button" class="focus-primary" :disabled="!canSaveRecord" @click="saveRecord">保存</button>
-          <button type="button" class="focus-ghost" @click="recordDialog.open = false">取消</button>
-        </footer>
-      </section>
-    </div>
+    <FocusRecordDialog :open="recordDialogOpen" @close="recordDialogOpen = false" @saved="onRecordSaved" />
+    <FocusBatchDialog :open="batchDialogOpen" @close="batchDialogOpen = false" @changed="onBatchChanged" />
 
     <div v-if="settingsOpen" class="focus-dialog-mask" @click.self="settingsOpen = false">
       <section class="focus-dialog is-settings" role="dialog" aria-label="专注设置">
@@ -301,12 +242,14 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ChartPie, CalendarDays, Check, ChevronRight, Download, History, ListChecks, ListTodo, MoreHorizontal, PanelRightOpen, Play, Plus, Repeat, Search, Settings2, Sparkles, Square, Trash2, Volume2, VolumeX, X } from 'lucide-vue-next'
+import { ChartPie, Check, ChevronRight, Download, ListChecks, MoreHorizontal, PanelRightOpen, Play, Plus, Settings2, Square, Trash2, Volume2, VolumeX, X } from 'lucide-vue-next'
 import { apiListFocusSessions } from '../../packages/api-client/src/index.js'
 import { useTaskFocusStore } from '../stores/taskFocus.js'
 import { useTasksStore } from '../stores/tasks.js'
 import { createFocusPreset } from '../utils/focusPresets.js'
-import { PRIORITY_COLORS } from './calendar/calendarColors.js'
+import FocusTargetPicker from '../components/tasks/FocusTargetPicker.vue'
+import FocusRecordDialog from '../components/tasks/FocusRecordDialog.vue'
+import FocusBatchDialog from '../components/tasks/FocusBatchDialog.vue'
 import {
   CHIME_OPTIONS, NOISE_OPTIONS, playFocusChime, readFocusSound, setFocusNoiseVolume,
   startFocusNoise, stopFocusNoise, writeFocusSound
@@ -325,9 +268,9 @@ function toggleMenu(name) {
   openMenu.value = openMenu.value === name ? '' : name
 }
 const settingsOpen = ref(false)
+const recordDialogOpen = ref(false)
+const batchDialogOpen = ref(false)
 const savingSettings = ref(false)
-const batchMode = ref(false)
-const selectedIds = ref([])
 
 // ---- 声音：音量 / 完成提示音 / 专注期白噪音 ----
 const sound = reactive(readFocusSound())
@@ -459,201 +402,45 @@ function syncNarrow(matches) {
 const emojiChoices = ['🍅', '☕️', '📚', '💻', '🏃', '🎯', '🎨', '🎧', '🧠', '🌙']
 const presetDialog = reactive({ open: false })
 const presetForm = reactive({ name: '', icon: '🍅', mode: 'POMODORO', minutes: 120 })
-const recordDialog = reactive({ open: false, error: '' })
-const recordForm = reactive({ taskId: '', startLocal: '', endLocal: '', note: '' })
 const settingForm = reactive({ focusMinutes: 120, shortBreakMinutes: 10, longBreakMinutes: 30, longBreakInterval: 4, autoStartNext: true, autoStartBreak: true })
 const exportDialog = reactive({ open: false, from: '', to: '', busy: false, error: '' })
 
-const openTasks = computed(() => tasksStore.tasks.filter(task => task.status === 'OPEN' && !task.deleted).slice(0, 200))
 const activePreset = computed(() => focus.presets.find(item => item.id === activePresetId.value) || null)
 
-// ---- 专注对象选择器：最近 / 任务 / 习惯 ----
-const PICKER_TABS = [
-  { id: 'recent', label: '最近' },
-  { id: 'task', label: '任务' },
-  { id: 'habit', label: '习惯' }
-]
-const DATE_GROUPS = [
-  { key: 'today', label: '今天', icon: CalendarDays },
-  { key: 'tomorrow', label: '明天', icon: CalendarDays },
-  { key: 'week', label: '未来 7 天', icon: CalendarDays },
-  { key: 'later', label: '以后', icon: CalendarDays },
-  { key: 'none', label: '无日期', icon: ListTodo }
-]
-const pickerTab = ref('task')
-const pickerQuery = ref('')
-const collapsedGroups = ref([])
+// ---- 专注对象（任务/习惯/常用专注）----
 const focusTarget = ref(null)
+const durationEditor = reactive({ open: false, minutes: 25 })
 
 const targetLabel = computed(() => focus.current?.taskTitle || focusTarget.value?.title || '专注')
+const canEditDuration = computed(() => !focus.current && mode.value !== 'STOPWATCH')
 
-function priorityColor(task) {
-  return PRIORITY_COLORS[task?.priority] || PRIORITY_COLORS.NONE
+function openDurationEditor() {
+  if (!canEditDuration.value) return
+  openMenu.value = ''
+  durationEditor.minutes = plannedMinutes.value || 25
+  durationEditor.open = true
 }
 
-function startOfDay(date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
-}
-
-function dueBucket(task) {
-  if (!task.dueAt) return 'none'
-  const days = Math.round((startOfDay(new Date(task.dueAt)) - startOfDay(new Date())) / 86400000)
-  if (days <= 0) return 'today'
-  if (days === 1) return 'tomorrow'
-  if (days <= 7) return 'week'
-  return 'later'
-}
-
-function whenLabel(task) {
-  if (!task.dueAt) return ''
-  const due = new Date(task.dueAt)
-  // 只有带具体时间的任务才显示 HH:mm，全天任务显示日期短语
-  if (!task.allDay && (due.getHours() || due.getMinutes())) {
-    return `${String(due.getHours()).padStart(2, '0')}:${String(due.getMinutes()).padStart(2, '0')}`
+/** 点大数字改番茄钟时长：有常用专注就改那一条，否则写回专注设置 */
+async function applyDuration() {
+  const value = Math.min(180, Math.max(1, Math.round(Number(durationEditor.minutes) || 0)))
+  if (!value) return
+  durationEditor.open = false
+  if (activePreset.value) {
+    focus.savePresetList(focus.presets.map(item => (item.id === activePreset.value.id ? { ...item, minutes: value } : item)))
+    message.success(`已改为 ${value} 分钟`)
+    return
   }
-  const days = Math.round((startOfDay(due) - startOfDay(new Date())) / 86400000)
-  if (days <= 0) return '今天'
-  if (days === 1) return '明天'
-  return `${due.getMonth() + 1}月${due.getDate()}日`
+  try {
+    await focus.saveSettings({ ...(focus.settings || {}), focusMinutes: value })
+    message.success(`番茄钟改为 ${value} 分钟`)
+  } catch (error) {
+    message.error(error?.response?.data?.detail || '保存失败')
+  }
 }
 
-/** 按 parentId 建树：父任务不在集合里的（父任务已完成等）当根处理，避免子任务丢失 */
-function buildTree(items) {
-  const byId = new Map(items.map(item => [item.publicId, item]))
-  const childrenOf = new Map()
-  for (const item of items) {
-    const key = item.parentId && byId.has(item.parentId) ? item.parentId : ''
-    if (!childrenOf.has(key)) childrenOf.set(key, [])
-    childrenOf.get(key).push(item)
-  }
-  return { roots: childrenOf.get('') || [], childrenOf }
-}
-
-/** 深度优先摊平：只对根任务分日期桶，子任务永远跟在父任务下面 */
-function flattenTree(roots, childrenOf, groupKey) {
-  const rows = []
-  const walk = (task, depth) => {
-    rows.push({
-      key: `${groupKey}-${task.publicId}`,
-      kind: 'task',
-      id: task.publicId,
-      title: task.title,
-      whenLabel: whenLabel(task),
-      color: priorityColor(task),
-      isChild: depth > 0
-    })
-    for (const child of childrenOf.get(task.publicId) || []) walk(child, depth + 1)
-  }
-  for (const root of roots) walk(root, 0)
-  return rows
-}
-
-const pickerTasks = computed(() => tasksStore.tasks.filter(task => task.status === 'OPEN' && !task.deleted))
-
-const pickerHabits = computed(() => {
-  const query = pickerQuery.value.toLowerCase()
-  return tasksStore.habits
-    .filter(habit => !habit.deleted && (!query || String(habit.title || '').toLowerCase().includes(query)))
-    .slice(0, 80)
-})
-
-const pickerGroups = computed(() => {
-  const query = pickerQuery.value.toLowerCase()
-  const match = value => !query || String(value || '').toLowerCase().includes(query)
-
-  if (pickerTab.value === 'recent') {
-    const groups = []
-    const presets = focus.presets.filter(preset => match(preset.name))
-    if (presets.length) {
-      groups.push({
-        key: 'presets',
-        label: '常用专注',
-        icon: Sparkles,
-        items: presets.map(preset => ({
-          key: `preset-${preset.id}`,
-          kind: 'preset',
-          id: preset.id,
-          title: preset.name,
-          whenLabel: preset.mode === 'STOPWATCH' ? '正计时' : `${preset.minutes} 分钟`,
-          color: 'var(--muted)',
-          isChild: false
-        }))
-      })
-    }
-    const seen = new Set()
-    const rows = []
-    for (const session of focus.sessions) {
-      if (!session.taskId || seen.has(session.taskId)) continue
-      seen.add(session.taskId)
-      const task = pickerTasks.value.find(item => item.publicId === session.taskId)
-      const title = task?.title || session.taskTitle
-      if (!title || !match(title)) continue
-      rows.push({
-        key: `recent-${session.taskId}`,
-        kind: 'task',
-        id: session.taskId,
-        title,
-        whenLabel: '最近',
-        color: priorityColor(task),
-        isChild: false
-      })
-      if (rows.length >= 8) break
-    }
-    if (rows.length) groups.push({ key: 'recent', label: '最近专注', icon: History, items: rows })
-    return groups
-  }
-
-  const { roots, childrenOf } = buildTree(pickerTasks.value.filter(task => match(task.title)))
-  const buckets = new Map()
-  for (const task of roots) {
-    const key = dueBucket(task)
-    if (!buckets.has(key)) buckets.set(key, [])
-    buckets.get(key).push(task)
-  }
-  const groups = DATE_GROUPS
-    .filter(group => buckets.get(group.key)?.length)
-    .map(group => {
-      const sorted = [...buckets.get(group.key)].sort((a, b) => {
-        const left = a.dueAt ? new Date(a.dueAt).getTime() : Number.MAX_SAFE_INTEGER
-        const right = b.dueAt ? new Date(b.dueAt).getTime() : Number.MAX_SAFE_INTEGER
-        return left - right || Number(a.sortOrder || 0) - Number(b.sortOrder || 0)
-      })
-      return { key: group.key, label: group.label, icon: group.icon, items: flattenTree(sorted, childrenOf, group.key) }
-    })
-  // 参考图里「任务」页签末尾还挂一个习惯分组，习惯也能作为专注目标
-  const habits = pickerHabits.value
-  if (habits.length) {
-    groups.push({
-      key: 'habits',
-      label: '习惯',
-      icon: Repeat,
-      items: habits.map(habit => ({
-        key: `habit-${habit.publicId}`,
-        kind: 'habit',
-        id: habit.publicId,
-        title: habit.title,
-        icon: habit.icon || '🔁',
-        whenLabel: '',
-        color: 'transparent',
-        isChild: false
-      }))
-    })
-  }
-  return groups
-})
-
-function isCollapsed(key) {
-  return collapsedGroups.value.includes(key)
-}
-
-function toggleGroup(key) {
-  collapsedGroups.value = isCollapsed(key)
-    ? collapsedGroups.value.filter(item => item !== key)
-    : [...collapsedGroups.value, key]
-}
-
-function pickTarget(item, kind) {
-  if (kind === 'preset') {
+function pickTarget(item) {
+  if (item.kind === 'preset') {
     const preset = focus.presets.find(entry => entry.id === item.id)
     if (preset) {
       activePresetId.value = preset.id
@@ -662,7 +449,7 @@ function pickTarget(item, kind) {
   } else {
     activePresetId.value = ''
   }
-  focusTarget.value = { kind, id: item.id, title: item.title }
+  focusTarget.value = { kind: item.kind, id: item.id, title: item.title }
   openMenu.value = ''
 }
 
@@ -820,67 +607,22 @@ async function saveSettings() {
   }
 }
 
-const recordMinutes = computed(() => {
-  if (!recordForm.startLocal || !recordForm.endLocal) return 0
-  const diff = (new Date(recordForm.endLocal).getTime() - new Date(recordForm.startLocal).getTime()) / 60000
-  return diff > 0 ? Math.round(diff) : 0
-})
-const canSaveRecord = computed(() => recordMinutes.value > 0 && !focus.loading)
-
-function toLocalInput(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-}
-
 function openRecordDialog() {
   openMenu.value = ''
-  recordDialog.error = ''
-  recordForm.taskId = ''
-  recordForm.note = ''
-  const now = new Date()
-  recordForm.startLocal = toLocalInput(new Date(now.getTime() - 30 * 60000))
-  recordForm.endLocal = toLocalInput(now)
-  recordDialog.open = true
+  recordDialogOpen.value = true
 }
 
-async function saveRecord() {
-  recordDialog.error = ''
-  try {
-    await focus.createRecord({
-      taskId: recordForm.taskId || undefined,
-      startedAt: new Date(recordForm.startLocal).toISOString(),
-      endedAt: new Date(recordForm.endLocal).toISOString(),
-      note: recordForm.note
-    })
-    recordDialog.open = false
-    message.success('已添加专注记录')
-  } catch (error) {
-    recordDialog.error = error?.response?.data?.detail || error?.message || '保存失败'
-  }
+function onRecordSaved() {
+  void focus.reloadSessions()
 }
 
-function toggleBatch() {
+function openBatch() {
   openMenu.value = ''
-  batchMode.value = !batchMode.value
-  selectedIds.value = []
+  batchDialogOpen.value = true
 }
 
-function exitBatch() {
-  batchMode.value = false
-  selectedIds.value = []
-}
-
-const allSelected = computed(() => focus.sessions.length > 0 && selectedIds.value.length === focus.sessions.length)
-
-function toggleSelectAll(event) {
-  selectedIds.value = event.target.checked ? focus.sessions.map(item => item.publicId) : []
-}
-
-async function deleteSelected() {
-  const list = focus.sessions.filter(item => selectedIds.value.includes(item.publicId))
-  if (!list.length || !window.confirm(`删除选中的 ${list.length} 条专注记录？`)) return
-  await focus.removeMany(list)
-  exitBatch()
-  message.success('已删除')
+function onBatchChanged() {
+  void focus.refresh()
 }
 
 async function clearAll() {
@@ -1045,39 +787,26 @@ onBeforeUnmount(() => {
 .focus-target-chip:hover:not(:disabled) { background: var(--paper); color: var(--ink); }
 .focus-target-chip:disabled { cursor: default; color: var(--ink); }
 
-/* 任务选择器：参考图的浮层形态（页签 + 搜索 + 按日期分组的任务树） */
-.focus-picker { position: absolute; z-index: 45; top: 34px; left: 50%; display: flex; width: min(380px, 84vw); max-height: min(560px, 72vh); flex-direction: column; padding: 14px 0 6px; border: 1px solid var(--line2); border-radius: 18px; background: var(--card); box-shadow: 0 26px 60px rgb(15 23 42 / 22%); transform: translateX(-50%); }
-.focus-picker-tabs { display: flex; justify-content: center; gap: 6px; padding: 0 14px 12px; }
-.focus-picker-tabs button { min-height: 28px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; transition: background .15s ease, color .15s ease; }
-.focus-picker-tabs button:hover { color: var(--ink); }
-.focus-picker-tabs button.on { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--ink); font-weight: 700; }
-.focus-picker-search { display: flex; align-items: center; gap: 8px; margin: 0 14px 8px; padding: 0 10px; min-height: 36px; border-radius: 10px; background: var(--paper); color: var(--muted); }
-.focus-picker-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; outline: none; }
-.focus-picker-search input::placeholder { color: var(--muted); }
-.focus-picker-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 8px 6px; scrollbar-width: thin; }
-.focus-picker-group { display: flex; align-items: center; gap: 6px; margin: 10px 0 4px; padding: 0 6px; color: var(--ink); font-size: 12.5px; font-weight: 700; }
-.focus-picker-group > svg { box-sizing: content-box; padding: 2px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); }
-.focus-picker-toggle { display: grid; width: 18px; height: 18px; margin-left: 2px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
-.focus-picker-toggle svg { transition: transform .15s ease; }
-.focus-picker-toggle svg.is-open { transform: rotate(90deg); }
-.focus-picker-list { display: grid; margin: 0; padding: 0; list-style: none; }
-.focus-picker-list li button { display: flex; width: 100%; align-items: center; gap: 10px; min-height: 38px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: var(--ink); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; }
-.focus-picker-list li button:hover { background: var(--paper); }
-.focus-picker-list li.is-child { padding-left: 26px; }
-.focus-picker-dot { flex: 0 0 auto; width: 15px; height: 15px; border: 1.5px solid var(--line2); border-radius: 50%; }
-.focus-picker-icon { flex: 0 0 auto; width: 16px; font-size: 14px; text-align: center; }
-.focus-picker-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.focus-picker-when { flex: 0 0 auto; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
-.focus-picker-empty { margin: 22px 0; color: var(--muted); font-size: 12.5px; text-align: center; }
 
 .focus-ring { position: relative; display: grid; width: min(360px, 42vh); aspect-ratio: 1; place-items: center; margin: 2px 0; }
-.focus-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+/* 圆环只是装饰，必须让点击穿透到大数字上 */
+.focus-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); pointer-events: none; }
 .ring-track { fill: none; stroke: color-mix(in srgb, var(--ink) 8%, transparent); stroke-width: 2; }
 .ring-progress { fill: none; stroke: color-mix(in srgb, var(--accent) 72%, transparent); stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset .4s linear; }
 .focus-ring.is-running .ring-progress { stroke: var(--accent); }
 .ring-ticks line { stroke: color-mix(in srgb, var(--ink) 16%, transparent); stroke-width: 2; stroke-linecap: round; }
 .ring-ticks line.on { stroke: var(--accent); }
-.focus-ring strong { font-size: clamp(2.6rem, 5.2vw, 3.6rem); font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+.focus-clock { position: relative; z-index: 1; padding: 4px 12px; border-radius: 14px; font-size: clamp(2.6rem, 5.2vw, 3.6rem); font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: .01em; transition: background .15s ease, color .15s ease; }
+.focus-clock.is-editable { cursor: pointer; }
+.focus-clock.is-editable:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.focus-duration-popover { position: absolute; z-index: 30; top: 50%; left: 50%; display: grid; gap: 10px; width: 250px; box-sizing: border-box; padding: 12px; border: 1px solid var(--line2); border-radius: 14px; background: var(--card); box-shadow: 0 22px 50px rgb(15 23 42 / 24%); transform: translate(-50%, 42px); }
+.focus-duration-field { display: flex; align-items: center; gap: 8px; }
+.focus-duration-field input { flex: 1; min-width: 0; min-height: 36px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 9px; background: var(--paper); color: var(--ink); font: inherit; font-size: 15px; text-align: center; font-variant-numeric: tabular-nums; }
+.focus-duration-field span { color: var(--muted); font-size: 12.5px; }
+.focus-duration-popover footer { display: flex; gap: 8px; }
+.focus-duration-ghost, .focus-duration-primary { flex: 1; min-height: 32px; border-radius: 9px; font: inherit; font-size: 12.5px; cursor: pointer; }
+.focus-duration-ghost { border: 1px solid var(--line2); background: transparent; color: var(--ink2); }
+.focus-duration-primary { border: 1px solid var(--accent); background: var(--accent); color: var(--accent-contrast, #fff); }
 
 .focus-stage-hint { margin: 0; color: var(--muted); font-size: 12.5px; }
 .focus-actions { display: flex; gap: 10px; margin-top: 16px; }
