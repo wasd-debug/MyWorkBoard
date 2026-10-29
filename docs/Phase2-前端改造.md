@@ -1560,3 +1560,15 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 - 样式：列表补回 `list-style: disc/decimal`（全局 reset 把项目符号干掉了）；去掉全局 `:where(...):focus-visible` 的 4px 光晕，详情栏描述保持无边框。
 
 - 门禁：336/336 单测（更新 4 处与编辑器结构相关的断言）、typecheck、build 通过；浏览器实测——输入 `# 一级标题` 回车即渲染成 h1、`- [ ] 待办一` 回车渲染成复选框、行内 `**加粗**`/`` `code` `` 正常；点已渲染的标题行回到源码 `# 一级标题`；失焦后 textarea 归零全部渲染；详情栏点行可编辑、回车新增行渲染成列表、`+ → 二级标题` 落到新行 `## `。证据 `qa-md-block.png`、`qa-md-detail-block.png`。
+
+### P2-QD11 描述统一回退到详情页那套 Milkdown 编辑器（2026-10-29）
+
+P2-QD9/QD10 试过纯 Markdown 文本域和「换行即渲染」的块级编辑，实际用起来都不如详情页原来的 Milkdown 顺手（要自己写 `**`、行间结构靠手打）。决定：**所有描述入口统一用 `TaskMilkdownEditor`**（就是任务详情栏原来那个 ProseMirror 编辑器）。
+
+- 从 `e3ba68c` 恢复 `TaskMilkdownEditor.vue` / `TaskMilkdownEditorSurface.vue`，并给它加 `compact` 模式：不显示工具栏、`min-height` 22px、`[data-milkdown-root]` 去内边距、字号 13.5px，用于快速添加卡片这种小容器。
+- 替换范围：快加卡片描述（`compact`）、收集箱表单描述、摘要报告、任务详情栏描述（带回浮动工具栏与 `+ 插入` 菜单）、评论输入。
+- 快加卡片和任务页都用 `defineAsyncComponent` 按需加载，Milkdown 单独成 chunk（~497 kB / gzip 154 kB），不进日历与四象限的首屏包。
+- 删除 `TaskMarkdownEditor.vue`（块级编辑器）；保留 `TaskMarkdownPreview.vue` 作为评论等只读场景的轻量渲染（走 `utils/markdown.js`）。
+- Milkdown 序列化出来是 `* [ ] 待办`（星号列表），和以前 `- [ ]` 不同，两者都是合法 GFM。
+
+- 门禁：336/336 单测（合并回 Milkdown 断言，改写 4 处）、typecheck、build 通过；浏览器实测——快加卡片里输入 `**粗体**`/`` `code` `` 即时渲染、`# 标题` 变 h1、`- [ ] 待办` 变带勾选框的检查项、输入 `abc end` 不丢字母；详情栏可编辑并保存，落库为 `**粗体** 与 \`code\`\n\n# 标题行\n\n* [ ] 待办一`。证据 `qa-milk-card.png`、`qa-milk-detail.png`。

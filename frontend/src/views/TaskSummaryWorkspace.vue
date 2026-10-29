@@ -49,7 +49,7 @@
       </div>
     </header>
     <div ref="editorArea" class="summary-editor-area">
-      <TaskMarkdownEditor v-model="draft" label="摘要报告" placeholder="筛选后自动生成报告，可直接编辑" />
+      <TaskMilkdownEditor v-model="draft" label="摘要报告" placeholder="筛选后自动生成报告，可直接编辑" />
     </div>
     <footer class="summary-foot">
       <small v-if="feedback" class="summary-feedback" role="status">{{ feedback }}</small>
@@ -76,7 +76,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { CalendarDays, Check, ChevronDown, CircleCheck, FileText, ListFilter, ListTodo, SlidersHorizontal, Tag } from 'lucide-vue-next'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import TaskMarkdownEditor from '../components/tasks/TaskMarkdownEditor.vue'
+import TaskMilkdownEditor from '../components/tasks/TaskMilkdownEditor.vue'
 import { useTasksStore } from '../stores/tasks.js'
 import { SUMMARY_FIELDS, SUMMARY_GROUPS, buildSummaryMarkdown, filterSummaryItems, groupSummaryItems, summaryDateRange, summaryRangeLabel } from './taskSummary.js'
 
