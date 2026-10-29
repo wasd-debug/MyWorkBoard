@@ -112,6 +112,16 @@
 
 生产环境通过 Docker Compose 运行 MySQL、Spring Boot 后端和 Nginx 前端；本地开发/验收使用 MySQL、后端容器加 Vite 开发服务器。生产 Nginx 对外提供 80 端口，并将 `/api`、MCP Streamable HTTP `/mcp`、`/.well-known/*` 和 OAuth 协议端点转发到后端。
 
+## 2026-10-29 部署记录（0aebac3）
+
+- 应用提交 `0aebac3` 已推送至远程 `main`。提交内容：日历任务浮层的日期弹层补齐「提醒 / 重复」两行、侧栏迷你月历农历并发竞态修复、年视图改为完成量热力图、任务页颜色选择器的「更多颜色」统一为日历 `COLOR_GROUPS` 色板。
+- 因本机无法直连 Docker Hub（`auth.docker.io` 超时），基础镜像改从 `docker.m.daocloud.io` 拉取 `--platform linux/amd64` 变体后重打标签，再本地构建 `salary-backend:0aebac3`（368 MB，arch=amd64）与 `salary-frontend:0aebac3`（67 MB，arch=amd64）。后端镜像使用 `Dockerfile.backend.runtime` + 本地 `mvn -o package` 产物。
+- 镜像包 `salary-0aebac3-amd64.tar.gz`（202 MB，SHA-256 `8f77ed83451d39b838f6ebe82a74990be615964f4a93ae5d3f513ed4324ceae8`）上传后校验一致并 `docker load` 成功；加载完成后已删除该包。
+- 发布前数据库逻辑备份 `/home/ubuntu/salary-tracker/backups/salary-before-0aebac3-20261029-082506.sql.gz`（5,014,514 字节，`gzip -t` 通过）。
+- 生产 Compose 备份为 `docker-compose.prod.yml.bak.0aebac3`，镜像标签由 `3803ac3` 更新为 `0aebac3`，仅重建 backend/frontend（`--no-deps`），MySQL 容器与数据卷未动。
+- 后端启动 18.3 秒，Flyway 一次性补齐 v46~v51 六个迁移（含本轮新增的 `51 - focus session note`），schema 现为 v51；`GET /api/health` 返回 `{"ok":true}`，`/`、`/tasks/all`、`/tasks/calendar` 均 200，新接口 `PUT /api/v1/tasks/focus/sessions/{publicId}` 返回 401（路由已生效、需要鉴权）而非 404。
+- 服务器根分区部署后剩余 6.7G（86%），下次部署前建议先清理历史镜像。
+
 ## 已配置服务器
 
 - 主机：`212.64.29.21`
