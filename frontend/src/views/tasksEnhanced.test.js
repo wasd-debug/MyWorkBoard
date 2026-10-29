@@ -1383,3 +1383,39 @@ test('检查项级提醒与正计时（P2-FE126）', async () => {
   assert.match(focusStore, /displayLabel\(\) \{ return this\.isCountUp \? this\.elapsedLabel : this\.remainingLabel \}/)
   assert.match(focusStore, /if \(this\.current && !this\.isCountUp && this\.remainingSeconds === 0\) this\.complete\(\)/)
 })
+
+test('专注页：专注对象选择器 / 可拖动分栏 / 声音浮层（P2-FOCUS2）', async () => {
+  const focusView = await readFile(new URL('./TaskFocusView.vue', import.meta.url), 'utf8')
+  const focusSound = await readFile(new URL('../utils/focusSound.js', import.meta.url), 'utf8')
+
+  // 选择器：三个页签，页签状态单一来源
+  assert.match(focusView, /\{ id: 'recent', label: '最近' \},\s*\{ id: 'task', label: '任务' \},\s*\{ id: 'habit', label: '习惯' \}/)
+  assert.match(focusView, /class="focus-picker-tabs"[\s\S]{0,200}:aria-selected="pickerTab === tab\.id"/)
+  // 分组只对根任务分桶，子任务跟随父任务缩进
+  assert.match(focusView, /function buildTree\(items\)[\s\S]{0,420}item\.parentId && byId\.has\(item\.parentId\) \? item\.parentId : ''/)
+  assert.match(focusView, /function flattenTree\(roots, childrenOf, groupKey\)[\s\S]{0,520}isChild: depth > 0/)
+  assert.match(focusView, /const \{ roots, childrenOf \} = buildTree\(pickerTasks\.value\.filter\(task => match\(task\.title\)\)\)/)
+  // 选中任务后开始专注要把 taskId 带进创建请求
+  assert.match(focusView, /const target = focusTarget\.value && focusTarget\.value\.kind !== 'preset' \? focusTarget\.value\.id : undefined/)
+  assert.match(focusView, /\.\.\.\(target \? \{ taskId: target \} : \{\}\)/)
+  // 运行中不允许换目标
+  assert.match(focusView, /:disabled="Boolean\(focus\.current\)"/)
+
+  // 分栏宽度可拖动并落盘
+  assert.match(focusView, /grid-template-columns: var\(--focus-split, 56fr 8px 44fr\)/)
+  assert.match(focusView, /function startSplitDrag\(event\)[\s\S]{0,320}window\.addEventListener\('pointermove', onSplitMove\)/)
+  assert.match(focusView, /localStorage\.setItem\(SPLIT_KEY, String\(splitRatio\.value\)\)/)
+  // 窄屏降级为抽屉而不是重排
+  assert.match(focusView, /matchMedia\('\(max-width: 1080px\)'\)/)
+  assert.match(focusView, /\.focus-side\.is-drawer \{[\s\S]{0,320}transform: translateX\(102%\)/)
+  // 四个浮层共用一个状态，天然互斥
+  assert.match(focusView, /const openMenu = ref\(''\)/)
+  assert.doesNotMatch(focusView, /const (moreOpen|presetMenuOpen|recordMenuOpen) = ref/)
+
+  // 声音：总开关 + 三档提示音 + 四种白噪音，全部现场合成
+  assert.match(focusSound, /export const CHIME_OPTIONS = \[[\s\S]{0,200}'none'/)
+  assert.match(focusSound, /export const NOISE_OPTIONS = \[[\s\S]{0,200}'wave'/)
+  assert.match(focusSound, /function noiseBuffer\(ctx, kind\)[\s\S]{0,420}last = \(last \+ 0\.02 \* \(Math\.random\(\) \* 2 - 1\)\) \/ 1\.02/)
+  assert.match(focusSound, /gain\.gain\.setTargetAtTime\(gainFor\(volume\) \* playing\.factor/)
+  assert.match(focusView, /if \(kind === 'COMPLETED' && !focus\.current && !focus\.error && sound\.enabled\)/)
+})
