@@ -112,6 +112,15 @@
 
 生产环境通过 Docker Compose 运行 MySQL、Spring Boot 后端和 Nginx 前端；本地开发/验收使用 MySQL、后端容器加 Vite 开发服务器。生产 Nginx 对外提供 80 端口，并将 `/api`、MCP Streamable HTTP `/mcp`、`/.well-known/*` 和 OAuth 协议端点转发到后端。
 
+## 2026-10-29 服务器镜像清理
+
+- 清理前：镜像 105 个（13.09 GB）、构建缓存 25.9 GB，根分区 `/dev/vda2` 已用 41 G（86%，剩余 6.7 G）。
+- 删除内容：`salary-backend:*` / `salary-frontend:*` 的历史标签 78 对（`pre-*`、`backup-*`、`rollback-*`、`deploy`、`latest` 以及各提交号）、旧命名 `salary-tracker-backend/frontend`、`deploy-backend/frontend`、`salary-preview-backend/frontend`，并先移除了两个两周前已退出的预览容器；随后 `docker image prune -f` 清悬空镜像（回收 1.08 GB）、`docker builder prune -a -f` 清构建缓存。
+- 保留内容：运行中的 `salary-backend:0aebac3` / `salary-frontend:0aebac3`、上一个版本 `salary-backend:3803ac3` / `salary-frontend:3803ac3`（回滚用）、`mysql:8.0`（运行中）、基础镜像 `maven:3.9-eclipse-temurin-17` 与 `ubuntu:24.04`。
+- 清理后：镜像 7 个（3.5 GB）、构建缓存 830 MB，根分区已用 13 G（27%，剩余 35 G），共释放约 28 GB。
+- 复核：`salary-backend` / `salary-frontend` / `salary-mysql` 三个容器均正常运行，`GET /api/health` 返回 `{"ok":true}`，`/` 与 `/tasks/calendar` 均 200。
+- 未处理：数据卷 `salary-tracker_mysql-data`、`salary-tracker_salary-data` 为旧编排遗留（约 203 MB），可能含历史数据，需确认后再删；`docker volume prune` 会一并清理，故未执行。
+
 ## 2026-10-29 部署记录（0aebac3）
 
 - 应用提交 `0aebac3` 已推送至远程 `main`。提交内容：日历任务浮层的日期弹层补齐「提醒 / 重复」两行、侧栏迷你月历农历并发竞态修复、年视图改为完成量热力图、任务页颜色选择器的「更多颜色」统一为日历 `COLOR_GROUPS` 色板。
