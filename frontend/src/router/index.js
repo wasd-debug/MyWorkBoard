@@ -23,6 +23,7 @@ const routes = [
   { path: '/tasks/stats', name: 'tasks-stats', component: () => import('../views/TasksEnhancedView.vue'), meta: { title: '任务统计' } },
   { path: '/tasks/data', redirect: { path: '/tasks/settings', hash: '#data' } },
   { path: '/tasks/settings', name: 'tasks-settings', component: () => import('../views/TaskSettingsView.vue'), meta: { title: '任务设置' } },
+  { path: '/tasks/app-settings', name: 'tasks-app-settings', component: () => import('../views/TaskAppSettingsView.vue'), meta: { title: '设置' } },
   { path: '/tasks/filter/:publicId', name: 'tasks-filter', component: () => import('../views/TaskWorkspaceView.vue'), meta: { title: '智能清单' } },
   { path: '/tasks/shortcut/this-week', redirect: '/tasks/all' },
   { path: '/tasks/shortcut/next-week', redirect: '/tasks/all' },

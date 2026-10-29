@@ -13,7 +13,7 @@
         <i v-else-if="tasks.syncError && !tasks.syncing" aria-hidden="true"></i>
       </button>
       <RouterLink to="/tasks/inbox-notify" aria-label="任务提醒" title="任务提醒"><Bell aria-hidden="true" /><b v-if="inbox.unread">{{ inbox.unread > 99 ? '99+' : inbox.unread }}</b></RouterLink>
-      <RouterLink to="/tasks/settings" aria-label="任务设置" title="任务设置"><Settings aria-hidden="true" /></RouterLink>
+      <RouterLink to="/tasks/app-settings" aria-label="设置" title="设置"><Settings aria-hidden="true" /></RouterLink>
     </div>
   </aside>
 </template>
