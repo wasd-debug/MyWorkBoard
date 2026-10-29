@@ -1,5 +1,5 @@
 <template>
-  <div v-if="open" ref="rootEl" class="cal-quick" :style="style" role="dialog" :aria-label="ariaLabel" @click.stop>
+  <div v-if="open" ref="rootEl" class="cal-quick" :style="style" role="dialog" :aria-label="ariaLabel" @click.stop @keydown.esc.prevent="onCardEscape">
     <header class="cal-quick-head">
       <button ref="dateBtn" type="button" class="cal-quick-date" :aria-expanded="dateOpen" @click.stop="dateOpen = !dateOpen">
         <CalendarDays :size="15" />{{ dateLabel }}
@@ -24,21 +24,17 @@
       :placeholder="placeholder"
       @input="onTitleInput"
       @keydown.enter.exact.prevent="$emit('save')"
-      @keydown.esc.prevent="$emit('close')"
     ></textarea>
 
     <div class="cal-quick-desc-row">
-      <input
-        class="cal-quick-desc"
-        :value="description"
-        maxlength="500"
+      <TaskRichTextEditor
+        :model-value="description"
+        compact
+        label="任务描述"
         placeholder="+ 输入内容或使用 / 快速插入"
-        aria-label="任务描述"
-        @input="$emit('update:description', $event.target.value)"
-        @keydown.enter.exact.prevent="$emit('save')"
-        @keydown.esc.prevent="$emit('close')"
+        @update:model-value="$emit('update:description', $event)"
       />
-      <button type="button" class="cal-quick-icon-btn" :class="{ on: checklistOpen || checklist.length }" aria-label="检查事项" title="检查事项" @click.stop="toggleChecklist">
+      <button type="button" class="cal-quick-icon-btn" :class="{ on: checklistOpen || checklist.length }" aria-label="检查事项" title="检查事项" @click.stop="togglePanel('checklist')">
         <ListChecks :size="16" />
       </button>
     </div>
@@ -77,24 +73,31 @@
         <span>{{ list.name }}</span>
         <Check v-if="list.publicId === listId" :size="13" />
       </button>
+      <p v-if="!filteredLists.length" class="cal-quick-empty">没有匹配的清单</p>
     </div>
 
     <!-- 更多：标签 / 检查事项 -->
     <div v-if="moreMenu" class="cal-quick-menu is-more" :class="{ 'is-drop': dropDown }" @click.stop>
       <button type="button" @click.stop="togglePanel('tag')"><Tag :size="14" /><span>标签</span><em>{{ selectedTags.length || '' }}</em></button>
-      <button type="button" @click.stop="toggleChecklist(); moreMenu = false"><ListChecks :size="14" /><span>检查事项</span></button>
+      <button type="button" @click.stop="togglePanel('checklist')"><ListChecks :size="14" /><span>检查事项</span></button>
     </div>
 
-    <!-- 标签选择：搜索 + 多选 + 取消/确定 -->
+    <!-- 标签选择：搜索 + 多选 + 现场新建 + 取消/确定 -->
     <div v-if="tagMenu" class="cal-quick-menu is-tags" :class="{ 'is-drop': dropDown }" @click.stop>
-      <label class="cal-quick-search"><Search :size="13" /><input v-model="tagQuery" placeholder="输入标签" aria-label="搜索标签" /></label>
+      <label class="cal-quick-search">
+        <Search :size="13" />
+        <input v-model="tagQuery" placeholder="输入标签" aria-label="搜索标签" @keydown.enter.prevent="onTagQueryEnter" />
+      </label>
+      <button v-if="canCreateTag" type="button" class="cal-quick-create-tag" :disabled="creatingTag" @click="createTagFromQuery">
+        <Plus :size="13" /><span>{{ creatingTag ? '创建中…' : `创建「${tagQuery.trim()}」` }}</span>
+      </button>
       <div class="cal-quick-tag-list">
         <button v-for="tag in filteredTags" :key="tag.publicId" type="button" :class="{ on: tagDraft.includes(tag.publicId) }" @click="toggleTagDraft(tag.publicId)">
           <Tag :size="14" :style="{ color: tag.color || 'var(--ink2)' }" />
           <span>{{ tag.name }}</span>
           <Check v-if="tagDraft.includes(tag.publicId)" :size="13" />
         </button>
-        <p v-if="!filteredTags.length" class="cal-quick-empty">没有匹配的标签</p>
+        <p v-if="!filteredTags.length && !canCreateTag" class="cal-quick-empty">没有匹配的标签</p>
       </div>
       <div class="cal-quick-panel-actions">
         <button type="button" class="is-ghost" @click="tagMenu = false">取消</button>
@@ -145,6 +148,9 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { CalendarDays, Check, Clock3, Flag, Inbox, ListChecks, MoreHorizontal, Plus, Search, Tag, X } from 'lucide-vue-next'
 import TaskDateTimePopover from './TaskDateTimePopover.vue'
 import TaskOrganizationIcon from './TaskOrganizationIcon.vue'
+import TaskRichTextEditor from './TaskRichTextEditor.vue'
+import { useExclusivePanels } from '../../utils/exclusivePanels.js'
+import { broadcastPanel } from '../../utils/panelBus.js'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -159,6 +165,8 @@ const props = defineProps({
   checklist: { type: Array, default: () => [] },
   lists: { type: Array, default: () => [] },
   tags: { type: Array, default: () => [] },
+  // 传入后可在标签浮层里现场新建，签名 (name) => Promise<tag>
+  createTag: { type: Function, default: null },
   saving: { type: Boolean, default: false },
   placeholder: { type: String, default: '准备做什么？' },
   ariaLabel: { type: String, default: '新增任务' },
@@ -190,6 +198,7 @@ const checklistOpen = ref(false)
 const listQuery = ref('')
 const tagQuery = ref('')
 const tagDraft = ref([])
+const creatingTag = ref(false)
 const dateOpen = ref(false)
 const dateMode = ref('DATE')
 const dateMonth = ref(new Date())
@@ -197,11 +206,26 @@ const allDayModel = ref(props.allDay)
 const timeValue = ref('')
 const dateDraft = reactive({ key: '' })
 
+// 卡片里所有浮层互斥：优先级 / 清单 / 更多 / 标签 / 检查事项 / 日期，同一时间只开一个
+useExclusivePanels('quickadd', [
+  ['priority', () => priorityMenu.value, value => (priorityMenu.value = value)],
+  ['list', () => listMenu.value, value => (listMenu.value = value)],
+  ['more', () => moreMenu.value, value => (moreMenu.value = value)],
+  ['tag', () => tagMenu.value, value => (tagMenu.value = value)],
+  ['checklist', () => checklistOpen.value, value => (checklistOpen.value = value)],
+  ['date', () => dateOpen.value, value => (dateOpen.value = value)]
+], {
+  // 页面上别的浮层打开了，整张卡片收起，避免两套浮层叠在一起
+  onForeign: () => { if (props.open) emit('close') }
+})
+
 watch(() => props.open, async value => {
   if (!value) {
     closePanels()
     return
   }
+  // 卡片本身也算一个浮层：打开时通知页面上其它菜单先收起来
+  broadcastPanel('quickadd:card')
   await nextTick()
   titleEl.value?.focus?.()
 })
@@ -220,6 +244,11 @@ const filteredTags = computed(() => {
   const query = tagQuery.value.trim().toLowerCase()
   return props.tags.filter(tag => !query || String(tag.name || '').toLowerCase().includes(query))
 })
+const exactTagMatch = computed(() => {
+  const query = tagQuery.value.trim().toLowerCase()
+  return Boolean(query) && props.tags.some(tag => String(tag.name || '').toLowerCase() === query)
+})
+const canCreateTag = computed(() => Boolean(props.createTag) && Boolean(tagQuery.value.trim()) && !exactTagMatch.value)
 
 function toTimeValue(value) {
   const date = value ? new Date(value) : null
@@ -244,11 +273,23 @@ function togglePanel(kind) {
   measureDrop()
   if (kind === 'list') listMenu.value = !listMenu.value
   else if (kind === 'more') moreMenu.value = !moreMenu.value
+  else if (kind === 'checklist') toggleChecklist()
   else {
     tagMenu.value = !tagMenu.value
-    moreMenu.value = false
-    if (tagMenu.value) tagDraft.value = [...(props.tagIds || [])]
+    if (tagMenu.value) {
+      tagDraft.value = [...(props.tagIds || [])]
+      tagQuery.value = ''
+    }
   }
+}
+
+/** Esc 先收掉卡里打开的浮层，都没有开着时才关卡片 */
+function onCardEscape() {
+  if (dateOpen.value || priorityMenu.value || listMenu.value || moreMenu.value || tagMenu.value || checklistOpen.value) {
+    closePanels()
+    return
+  }
+  emit('close')
 }
 
 function closePanels() {
@@ -256,6 +297,7 @@ function closePanels() {
   listMenu.value = false
   moreMenu.value = false
   tagMenu.value = false
+  checklistOpen.value = false
   dateOpen.value = false
 }
 
@@ -274,6 +316,26 @@ function toggleTagDraft(id) {
   const next = new Set(tagDraft.value)
   next.has(id) ? next.delete(id) : next.add(id)
   tagDraft.value = [...next]
+}
+
+async function createTagFromQuery() {
+  const name = tagQuery.value.trim()
+  if (!name || !props.createTag || creatingTag.value) return
+  creatingTag.value = true
+  try {
+    const created = await props.createTag(name)
+    const id = created?.publicId || created?.id
+    if (id && !tagDraft.value.includes(id)) tagDraft.value = [...tagDraft.value, id]
+    tagQuery.value = ''
+  } finally {
+    creatingTag.value = false
+  }
+}
+
+/** 标签输入框回车：有同名标签就确定，没有就顺手建一个 */
+function onTagQueryEnter() {
+  if (canCreateTag.value) createTagFromQuery()
+  else confirmTags()
 }
 
 function confirmTags() {
@@ -399,10 +461,9 @@ function confirmDate() {
 
 .cal-quick-title { width: 100%; min-height: 34px; margin-top: 6px; padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 20px; font-weight: 600; line-height: 1.45; outline: none; box-shadow: none; resize: none; overflow: hidden; }
 .cal-quick-title::placeholder { color: var(--muted); font-weight: 500; }
-.cal-quick-desc-row { display: flex; align-items: center; gap: 8px; }
-.cal-quick-desc { flex: 1; min-width: 0; padding: 6px 0; border: 0; background: transparent; color: var(--ink2); font: inherit; font-size: 13.5px; outline: none; box-shadow: none; }
-.cal-quick-desc::placeholder { color: var(--muted); }
-.cal-quick-icon-btn { display: grid; place-items: center; width: 28px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.cal-quick-desc-row { display: flex; align-items: flex-start; gap: 8px; }
+.cal-quick-desc-row :deep(.task-rich-editor) { flex: 1; min-width: 0; }
+.cal-quick-icon-btn { display: grid; flex: 0 0 auto; place-items: center; width: 28px; height: 26px; margin-top: 2px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
 .cal-quick-icon-btn:hover, .cal-quick-icon-btn.on { background: var(--paper); color: var(--ink); }
 
 .cal-quick-checklist { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 2px; }
@@ -446,6 +507,8 @@ function confirmDate() {
 .cal-quick-menu button.is-high svg { color: var(--priority-high, #e34d59); }
 .cal-quick-menu button.is-medium svg { color: var(--priority-medium, #e69b2d); }
 .cal-quick-menu button.is-low svg { color: var(--priority-low, #4d78db); }
+.cal-quick-menu button.cal-quick-create-tag { margin-bottom: 2px; color: var(--accent); }
+.cal-quick-menu button.cal-quick-create-tag:disabled { opacity: .6; cursor: default; }
 .cal-quick-search { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; padding: 6px 8px; border-bottom: 1px solid var(--line); color: var(--muted); }
 .cal-quick-search input { flex: 1; min-width: 0; padding: 2px 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 12.5px; outline: none; }
 .cal-quick-tag-list { display: flex; flex-direction: column; gap: 1px; max-height: 220px; overflow: auto; }

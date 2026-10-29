@@ -1657,6 +1657,7 @@ const TaskMilkdownEditor = defineAsyncComponent(() => import("../components/task
 import TaskSummaryWorkspace from "./TaskSummaryWorkspace.vue";
 import TaskFilterRuleEditor from "../components/tasks/TaskFilterRuleEditor.vue";
 import TaskColorPicker from "../components/TaskColorPicker.vue";
+import { useExclusivePanels } from "../utils/exclusivePanels.js";
 import TaskOrganizationIcon from "../components/tasks/TaskOrganizationIcon.vue";
 import TaskDateTimePopover from "../components/tasks/TaskDateTimePopover.vue";
 import TasksTimelineView from "./TasksTimelineView.vue";
@@ -5409,6 +5410,18 @@ function closeDetail() {
   priorityPopoverOpen.value = false;
   reminderPopoverOpen.value = false;
 }
+// 详情栏/工具栏的浮层互斥：日期、重复、提醒、优先级、插入菜单、父任务选择、页面菜单、清单选项
+useExclusivePanels("workspace", [
+  ["date", () => datePopoverOpen.value, value => (datePopoverOpen.value = value)],
+  ["repeat", () => repeatPopoverOpen.value, value => (repeatPopoverOpen.value = value)],
+  ["reminder", () => reminderPopoverOpen.value, value => (reminderPopoverOpen.value = value)],
+  ["priority", () => priorityPopoverOpen.value, value => (priorityPopoverOpen.value = value)],
+  ["detailBlock", () => detailBlockMenuOpen.value, value => (detailBlockMenuOpen.value = value)],
+  ["detailParent", () => detailParentPickerOpen.value, value => (detailParentPickerOpen.value = value)],
+  ["pageMore", () => moreOpen.value, value => (moreOpen.value = value)],
+  ["listOptions", () => listOptionsOpen.value, value => (listOptionsOpen.value = value)]
+]);
+
 function closeAttributePopovers() {
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;

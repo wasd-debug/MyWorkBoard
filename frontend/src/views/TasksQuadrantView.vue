@@ -115,6 +115,7 @@
         :lists="lists"
         :tags="tags"
         :saving="quick.saving"
+        :create-tag="quickCreateTag"
         @update:title="quick.title = $event"
         @update:description="quick.description = $event"
         @update:priority="quick.priority = $event"
@@ -154,6 +155,7 @@ import {
   defaultQuadrants, loadState, saveState, splitByQuadrant
 } from './taskQuadrant.js'
 import { resolveQuadrantIcon } from './taskQuadrantIcons.js'
+import { useExclusivePanels } from '../utils/exclusivePanels.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -417,6 +419,22 @@ function resetQuadrant(key) {
 }
 
 const cardMenuStyle = computed(() => ({ position: 'fixed', left: `${cardMenu.x}px`, top: `${cardMenu.y}px`, zIndex: 1200 }))
+
+// 页面上的菜单互斥：页面菜单、象限菜单同时只开一个；快速添加卡片里开浮层时这里也会收到通知
+useExclusivePanels('quadrant', [
+  ['page', () => pageMenuOpen.value, value => (pageMenuOpen.value = value)],
+  ['card', () => cardMenu.open, value => (cardMenu.open = value)]
+])
+
+const TAG_COLORS = ['#4d78db', '#e34d59', '#e69b2d', '#2fa36b', '#8a63d2', '#12a4b5']
+
+/** 快速添加卡片里现场新建标签 */
+async function quickCreateTag(name) {
+  const color = TAG_COLORS[tasksStore.tags.length % TAG_COLORS.length]
+  const created = await tasksStore.createTag({ name, color, icon: null, parentId: null, sortOrder: tasksStore.tags.length })
+  const id = created?.publicId || created?.id
+  return { publicId: id, name, color }
+}
 
 function closeMenus(event) {
   if (event?.target?.closest?.('.qn-menu') || event?.target?.closest?.('.qn-icon-btn') || event?.target?.closest?.('.cal-quick') || event?.target?.closest?.('.cal-quick-date-popover')) return

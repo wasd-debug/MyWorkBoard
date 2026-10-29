@@ -1467,3 +1467,27 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
   - 卡片贴近视口顶部时，清单/更多/标签三个浮层 `bottom: 40px` 向上展开会顶出屏幕（实测 y = -65）。改为按卡片 `top` 判断，`top < 340` 时加 `is-drop` 改成向下展开。
   - 日历快加选了日期却把「全天」变成 `00:00 – 00:30`：原来全天状态是从 `startMinutes == null` 反推的，`applyQuickDueAt` 一拿到 ISO 就写了 `startMinutes = 0`。现在 `quickAdd.allDay` 是独立字段并接住浮层的 `update:all-day`，全天时只取日期。
 - 门禁：334/334 前端单测（新增 1 条字段完整性校验）、build 通过；浏览器逐项实测两个入口——优先级菜单 4 项可选且旗子变色、日期浮层「时间输入 1 / 全天开关 1」、关掉全天设 14:30 后标签显示「10月30日，周五，14:30 – 15:00」、清单搜索「考研」命中 8 项、标签搜索「java」命中 2 项并落成胶囊、检查事项可加到 2 行、保存后卡片关闭；落库核对 `priority=HIGH/MEDIUM`、`description`、`due_at`、`task_tag_link`（java / 学习·考研）、`task_checklist_item`（检查项 A/B）全部正确，控制台 0 报错。证据 `qa-quickadd-quadrant.png`、`qa-quickadd-calendar.png`。
+
+### P2-QD6 标签现场新建、描述接 / 快捷插入、全局浮层互斥（2026-10-29）
+
+**1. 标签浮层里现场新建**
+- 标签面板的搜索框下多了一行「创建「xxx」」：输入不存在的名字就出现，点一下直接建标签并勾进待选；输入框回车等价（有同名标签时是「确定」，没有时是「新建」）。
+- 新建走 `tasksStore.createTag`，颜色按现有标签数轮转一套 6 色，建完立刻出现在 `store.tags` 里，卡片上的标签胶囊同步显示。
+- 卡片新增 `createTag` 函数型 prop，由页面侧实现（四象限与日历各有一份 `quickCreateTag`），组件本身不碰 store。
+
+**2. 描述接入 `/` 快捷插入**
+- 描述框由单行 `input` 换成 `TaskRichTextEditor`（任务页详情栏同款 Markdown 编辑器），加了 `compact` 紧凑模式：去掉工具栏与提示行、`min-height` 22px、随内容自动增高（上限 180px）、斜杠菜单贴在输入框下方。
+- 输入 `/` 弹出 13 项插入菜单（标题 / 加粗 / 斜体 / 下划线 / 删除线 / 无序 / 有序 / 检查项 / 引用 / 分割线 / 增加时间 / 代码 / 链接），与详情栏 Milkdown 那套命令一一对应；描述按 Markdown 落库，详情栏用 Milkdown 打开能正常渲染（实测 `# 详细描述 QA` → 一级标题）。
+- 详情栏本身用的是 Milkdown（ProseMirror），整块搬进 420px 卡片太重，所以复用的是同一套「Markdown + `/` 插入」的编辑体验，而不是同一个组件实例。
+
+**3. 浮层互斥（这次的重点）**
+- 新增 `utils/panelBus.js`（`broadcastPanel` / `subscribePanel`）与 `utils/exclusivePanels.js`（`useExclusivePanels(namespace, panels)`）：每组浮层 watch 自己那一堆开关，任一打开就关掉同组其它项并广播；收到「不是自己命名空间」的广播就把自己这组全关。
+- 接进去的四处：`quickadd`（优先级/清单/更多/标签/检查事项/日期）、`quadrant`（页面菜单/象限菜单）、`calendar`（视图菜单/更多/设置/日期浮层/事件卡）、`workspace`（日期/重复/提醒/优先级/插入菜单/父任务选择/页面菜单/清单选项）。
+- 快速添加卡片还额外订阅：别的浮层一打开就整卡收起（`onForeign`），避免卡片和页面菜单叠在一起。`aria-expanded` 与实际状态保持同步。
+- Esc 改成分层关闭：卡片里还有浮层时先收浮层，都收完了才关卡片。
+
+**4. 顺带修掉的两个编辑器老 bug**
+- **失焦后光标被抢回编辑器**：`insertCaretMarker` 只看 `window.getSelection()`，而选区在 contenteditable 失焦后仍残留在里面，于是 `restoreCaretMarker` 里的 `addRange` 会把焦点抢回编辑器——表现为「点标签搜索框打不进字」。现在加 `hasEditorFocus()` 守卫，没有真实焦点就不插标记、不还原选区。
+- **第一次点击按钮没反应**：`onBlur` 里同步 `renderEditorMarkdown()` 会改写编辑器 DOM，触发 blur 的那次点击正处在 mousedown 与 mouseup 之间，mouseup 落到被替换的节点上，click 就丢了。现在 blur 里只关斜杠菜单，重渲染交给原有的 300ms 防抖。
+
+- 门禁：336/336 前端单测（新增 2 条：互斥接线、编辑器紧凑模式与焦点守卫）、typecheck、build 通过；浏览器实测——`/` 菜单 13 项、插入标题并输入内容正常；标签面板新建后自动勾选、搜索框清空、胶囊落到卡片；点优先级后清单/标签/更多浮层数量全为 0；打开日期浮层后优先级浮层消失；Esc 先收浮层、卡片保留；点页面「更多」时快加卡片收起；任务页插入菜单与页面菜单不再并存；日历快加清单浮层被日期浮层顶掉。控制台 0 报错。证据 `qa-quickadd-v2.png`、`qa-workspace-smoke.png`、`qa-smoke.png`、`qa-quadrant-clean.png`。

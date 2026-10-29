@@ -1,8 +1,8 @@
 <template>
-  <section class="task-rich-editor" :class="{ 'preview-only': previewOnly }" :aria-label="label">
+  <section class="task-rich-editor" :class="{ 'preview-only': previewOnly, 'is-compact': compact }" :aria-label="label">
     <div v-if="previewOnly" class="task-rich-preview markdown-body" v-html="rendered"></div>
     <template v-else>
-      <div class="task-rich-toolbar" role="toolbar" :aria-label="`${label}工具栏`" :aria-hidden="!toolbarVisible" :inert="!toolbarVisible">
+      <div v-if="!compact" class="task-rich-toolbar" role="toolbar" :aria-label="`${label}工具栏`" :aria-hidden="!toolbarVisible" :inert="!toolbarVisible">
         <button v-for="item in toolbar" :key="item.key" type="button" :aria-label="item.label" :title="item.label" @mousedown.prevent @click="runToolbar(item)"><component :is="item.icon" :size="14" /></button>
         <label class="task-rich-color" title="文字颜色" aria-label="文字颜色"><Paintbrush :size="14" /><input type="color" aria-label="选择文字颜色" @input="applyColor($event.target.value)" /></label>
       </div>
@@ -27,7 +27,7 @@
           </button>
         </div>
       </div>
-      <small class="task-rich-hint">Markdown · 支持 / 插入基础格式</small>
+      <small v-if="!compact" class="task-rich-hint">Markdown · 支持 / 插入基础格式</small>
     </template>
   </section>
 </template>
@@ -76,7 +76,7 @@ const slashCommands = [
   { key: 'code', label: '代码', hint: '`代码`', value: '`代码`' },
   { key: 'link', label: '链接', hint: '[文本](https://)', value: '[链接文本](https://)' }
 ]
-const props = defineProps({ modelValue: { type: String, default: '' }, label: { type: String, default: '富文本' }, placeholder: { type: String, default: '输入内容…' }, previewOnly: { type: Boolean, default: false }, toolbarVisible: { type: Boolean, default: true } })
+const props = defineProps({ modelValue: { type: String, default: '' }, label: { type: String, default: '富文本' }, placeholder: { type: String, default: '输入内容…' }, previewOnly: { type: Boolean, default: false }, toolbarVisible: { type: Boolean, default: true }, compact: { type: Boolean, default: false } })
 const rendered = computed(() => renderMarkdown(props.modelValue))
 
 function renderMarkdown(value) {
@@ -149,7 +149,15 @@ function markdownFromEditor() {
   return [...(editor.value?.childNodes || [])].map(nodeMarkdown).join('\n\n').replace(/\n{3,}/g, '\n\n').trimEnd()
 }
 
+function hasEditorFocus(element) {
+  const active = document.activeElement
+  return active === element || Boolean(element.contains(active))
+}
+
 function insertCaretMarker(element) {
+  // 选区会残留在 contenteditable 里，即使用户已经把焦点点到别处；
+  // 此时如果按选区插标记再还原，addRange 会把焦点抢回编辑器，导致点别的输入框打不进字。
+  if (!hasEditorFocus(element)) return null
   const selection = window.getSelection()
   if (!selection?.rangeCount || !selection.isCollapsed || !element.contains(selection.anchorNode)) return null
   const marker = `taskeditormarker${++caretMarkerSequence}end`
@@ -159,7 +167,7 @@ function insertCaretMarker(element) {
 }
 
 function restoreCaretMarker(element, marker) {
-  if (!marker) return false
+  if (!marker || !hasEditorFocus(element)) return false
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
   let node
   while ((node = walker.nextNode())) {
@@ -207,9 +215,17 @@ function renderEditorMarkdown() {
   restoreCaretMarker(element, marker)
 }
 
+function autoGrow() {
+  const element = editor.value
+  if (!element || !props.compact) return
+  element.style.height = 'auto'
+  element.style.height = `${Math.min(180, Math.max(22, element.scrollHeight))}px`
+}
+
 function onInput() {
   const markdown = currentMarkdown()
   emit('update:modelValue', markdown)
+  autoGrow()
   clearTimeout(renderTimer)
   if (composing.value) return
   renderTimer = setTimeout(renderEditorMarkdown, 300)
@@ -260,6 +276,7 @@ function onKeydown(event) {
   if (event.key === 'Escape' && slashOpen.value) {
     slashOpen.value = false
     event.preventDefault()
+    event.stopPropagation()
     return
   }
   if (event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -290,12 +307,9 @@ function chooseSlash(command) {
 }
 
 function onBlur() {
-  clearTimeout(renderTimer)
-  renderEditorMarkdown()
-  requestAnimationFrame(() => {
-    if (document.activeElement?.closest('.task-slash-menu')) return
-    slashOpen.value = false
-  })
+  // 不在 blur 里同步重渲染：触发 blur 的那次点击正处在 mousedown 与 mouseup 之间，
+  // 这时改写编辑器 DOM 会把 mouseup 甩到被替换的节点上，表现为「第一次点按钮没反应」。
+  if (!document.activeElement?.closest?.('.task-slash-menu')) slashOpen.value = false
   emit('blur')
 }
 
@@ -305,8 +319,8 @@ function syncEditorValue(value) {
   if (editor.value.innerHTML !== html) editor.value.innerHTML = html
 }
 
-onMounted(() => syncEditorValue(props.modelValue))
-watch(() => props.modelValue, syncEditorValue)
+onMounted(() => { syncEditorValue(props.modelValue); autoGrow() })
+watch(() => props.modelValue, () => { syncEditorValue(props.modelValue); autoGrow() })
 onBeforeUnmount(() => clearTimeout(renderTimer))
 </script>
 
@@ -321,4 +335,20 @@ onBeforeUnmount(() => clearTimeout(renderTimer))
 .task-rich-preview :deep(h2) { font-size: 1.4em; font-weight: 700; line-height: 1.35; }
 .task-rich-input :deep(h3),
 .task-rich-preview :deep(h3) { font-size: 1.2em; font-weight: 700; line-height: 1.4; }
+
+/* 紧凑模式：用在快速添加卡片这类窄容器里，去掉工具栏和提示行，随内容增高 */
+.task-rich-editor.is-compact { border: 0; border-radius: 0; background: transparent; overflow: visible; }
+.task-rich-editor.is-compact .task-rich-input {
+  min-height: 22px;
+  max-height: 180px;
+  padding: 2px 0;
+  overflow-y: auto;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.task-rich-editor.is-compact .task-slash-menu {
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: min(240px, calc(100vw - 60px));
+}
 </style>

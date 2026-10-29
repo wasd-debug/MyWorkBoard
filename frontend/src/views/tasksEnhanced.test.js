@@ -596,23 +596,64 @@ test('quick add card exposes title, description, priority, date, list and tag in
   const quadrantView = await readFile(new URL('./TasksQuadrantView.vue', import.meta.url), 'utf8')
   // 标题 + 描述 + 检查事项
   assert.match(quickAdd, /class="cal-quick-title"/)
-  assert.match(quickAdd, /class="cal-quick-desc"/)
+  // 描述复用任务页详情栏的富文本编辑器（带 / 快捷插入），用紧凑模式塞进卡片
+  assert.match(quickAdd, /<TaskRichTextEditor[\s\S]*compact/)
+  assert.match(quickAdd, /placeholder="\+ 输入内容或使用 \/ 快速插入"/)
   assert.match(quickAdd, /class="cal-quick-checklist"/)
   // 优先级菜单
   assert.match(quickAdd, /class="cal-quick-menu is-priority"/)
   // 清单浮层带搜索
   assert.match(quickAdd, /class="cal-quick-menu is-list"/)
   assert.match(quickAdd, /placeholder="搜索" aria-label="搜索清单"/)
-  // 标签浮层多选 + 取消/确定
+  // 标签浮层多选 + 现场新建 + 取消/确定
   assert.match(quickAdd, /class="cal-quick-menu is-tags"/)
   assert.match(quickAdd, /aria-label="搜索标签"/)
+  assert.match(quickAdd, /cal-quick-create-tag/)
+  assert.match(quickAdd, /createTagFromQuery/)
   // 日期浮层复用任务页那套
   assert.match(quickAdd, /<TaskDateTimePopover/)
   // 贴顶时浮层改向下展开，避免顶出屏幕
   assert.match(quickAdd, /is-drop/)
+  // 卡片内浮层互斥，且别的浮层打开时整卡收起
+  assert.match(quickAdd, /useExclusivePanels\('quickadd'/)
+  assert.match(quickAdd, /onForeign/)
   // 两处入口都传了完整字段
   assert.match(calendarView, /@update:all-day="quickAdd\.allDay = \$event"/)
   assert.match(quadrantView, /@update:checklist="quick\.checklist = \$event"/)
+})
+
+test('浮层互斥：打开一个浮层时其它浮层自动收起（P2-QD6）', async () => {
+  const bus = await readFile(new URL('../utils/panelBus.js', import.meta.url), 'utf8')
+  const exclusive = await readFile(new URL('../utils/exclusivePanels.js', import.meta.url), 'utf8')
+  assert.match(bus, /export function broadcastPanel/)
+  assert.match(bus, /export function subscribePanel/)
+  assert.match(exclusive, /export function useExclusivePanels/)
+  assert.match(exclusive, /broadcastPanel\(`\$\{prefix\}\$\{name\}`\)/)
+  // 卡片、四象限、日历、任务页都接进了同一套互斥
+  const quickAdd = await readFile(new URL('../components/tasks/TaskQuickAdd.vue', import.meta.url), 'utf8')
+  const quadrantView = await readFile(new URL('./TasksQuadrantView.vue', import.meta.url), 'utf8')
+  for (const [name, source] of [['quickadd', quickAdd], ['quadrant', quadrantView], ['calendar', calendarView], ['workspace', workspaceView]]) {
+    assert.match(source, new RegExp(`useExclusivePanels\\(['"]${name}['"]`), `${name} 没有接入浮层互斥`)
+  }
+  // 卡片里的浮层全在同一个互斥组里
+  for (const panel of ['priority', 'list', 'more', 'tag', 'date']) {
+    assert.match(quickAdd, new RegExp(`\\['${panel}',\\s*\\(\\) =>`), `快加卡片缺少 ${panel} 浮层互斥`)
+  }
+})
+
+test('富文本编辑器：紧凑模式与失焦不再抢焦点（P2-QD6）', async () => {
+  const editor = await readFile(new URL('../components/tasks/TaskRichTextEditor.vue', import.meta.url), 'utf8')
+  // 紧凑模式：无工具栏、随内容增高、斜杠菜单贴在下方
+  assert.match(editor, /compact: \{ type: Boolean, default: false \}/)
+  assert.match(editor, /'is-compact': compact/)
+  assert.match(editor, /function autoGrow\(\)/)
+  assert.match(editor, /is-compact \.task-rich-input/)
+  // 失焦后不再按残留选区还原光标，避免把焦点抢回编辑器
+  assert.match(editor, /function hasEditorFocus\(element\)/)
+  assert.match(editor, /if \(!hasEditorFocus\(element\)\) return null/)
+  assert.match(editor, /if \(!marker \|\| !hasEditorFocus\(element\)\) return false/)
+  // blur 里不再同步重渲染，避免吞掉触发 blur 的那次点击
+  assert.doesNotMatch(editor, /function onBlur\(\) \{\s*clearTimeout\(renderTimer\);\s*renderEditorMarkdown\(\);/)
 })
 
 test('task sidebar sections reorder independently and task rows open the detail pane', () => {

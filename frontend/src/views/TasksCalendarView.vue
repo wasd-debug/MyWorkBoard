@@ -264,6 +264,7 @@
       :lists="calendarLists"
       :tags="calendarTags"
       :saving="quickAdd.saving"
+      :create-tag="quickCreateTag"
       @update:title="quickAdd.title = $event"
       @update:description="quickAdd.description = $event"
       @update:priority="quickAdd.priority = $event"
@@ -308,6 +309,7 @@ import CalendarAgendaView from './calendar/CalendarAgendaView.vue'
 import CalendarSettingsDialog from './calendar/CalendarSettingsDialog.vue'
 import CalendarTaskPanel from './calendar/CalendarTaskPanel.vue'
 import { message } from '../services/message.js'
+import { useExclusivePanels } from '../utils/exclusivePanels.js'
 import { useAppStore } from '../stores/app.js'
 import { useTasksStore } from '../stores/tasks.js'
 import { useTaskFocusStore } from '../stores/taskFocus.js'
@@ -362,6 +364,25 @@ const quickAdd = reactive({ open: false, title: '', description: '', priority: '
 const dayPopover = reactive({ open: false, date: startOfDay(new Date()), x: 0, y: 0 })
 const eventCard = reactive({ open: false, event: null, x: 0, y: 0 })
 const focusStore = useTaskFocusStore()
+
+// 日历页各类浮层互斥：视图菜单、更多菜单、设置、日期浮层、事件卡同时只开一个
+useExclusivePanels('calendar', [
+  ['view', () => viewMenu.value, value => (viewMenu.value = value)],
+  ['more', () => moreOpen.value, value => (moreOpen.value = value)],
+  ['settings', () => settings.open, value => (settings.open = value)],
+  ['day', () => dayPopover.open, value => (dayPopover.open = value)],
+  ['event', () => eventCard.open, value => (eventCard.open = value)]
+])
+
+const TAG_COLORS = ['#4d78db', '#e34d59', '#e69b2d', '#2fa36b', '#8a63d2', '#12a4b5']
+
+/** 快速添加卡片里现场新建标签 */
+async function quickCreateTag(name) {
+  const color = TAG_COLORS[tasksStore.tags.length % TAG_COLORS.length]
+  const created = await tasksStore.createTag({ name, color, icon: null, parentId: null, sortOrder: tasksStore.tags.length })
+  const id = created?.publicId || created?.id
+  return { publicId: id, name, color }
+}
 
 const shellEl = ref(null)
 const bodyEl = ref(null)
