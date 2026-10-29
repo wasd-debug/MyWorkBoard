@@ -73,7 +73,11 @@ const moduleLabel = computed(() => route.path === '/calendar' ? '日历' : isLed
 const moduleNav = computed(() => route.path === '/calendar' ? [] : isLedger.value ? ledgerNavigation : isTasks.value ? taskNavigation.map(item => item.view ? { ...item, to: { path: route.path, query: { ...route.query, workspaceView: item.view } } } : item) : route.path === '/settings' || route.path.startsWith('/approvals') || isExternalFlow.value ? [] : worktimeNavigation)
 function isNavActive(item) { if (item.view) return route.path === item.to.path && route.query.workspaceView === item.view; return item.key === 'task' && route.query.workspaceView ? false : navigationItemIsActive(route, item) }
 function onGlobalKeydown(event) {
-  if (!route.path.startsWith('/tasks') || event.defaultPrevented || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target?.tagName)) return
+  if (!route.path.startsWith('/tasks') || event.defaultPrevented) return
+  // 富文本编辑器是 contenteditable 的 div，不是 INPUT/TEXTAREA；
+  // 只按标签名判断会把编辑器里敲的 n / Ctrl+Z / Ctrl+K 当成全局快捷键吞掉。
+  const target = event.target
+  if (target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName)) return
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); tasks.undoLast().catch(() => {}) }
   else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); router.push('/tasks/search') }
   else if (!event.metaKey && !event.ctrlKey && event.key.toLowerCase() === 'n') { event.preventDefault(); window.dispatchEvent(new CustomEvent('task-new-request')) }

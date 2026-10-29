@@ -16,8 +16,7 @@
           :aria-label="label"
           :data-placeholder="placeholder"
           @input="onInput"
-          @compositionstart="composing = true"
-          @compositionend="onCompositionEnd"
+          @compositionend="onInput"
           @keydown="onKeydown"
           @blur="onBlur"
         ></div>
@@ -41,9 +40,8 @@ import { Bold, CheckSquare, Clock3, Code, Heading1, Italic, Link, List, ListOrde
 const emit = defineEmits(['update:modelValue', 'blur'])
 const editor = ref(null)
 const slashOpen = ref(false)
-const composing = ref(false)
 let slashRange = null
-let renderTimer = null
+let normalizeTimer = null
 let caretMarkerSequence = 0
 const EMPTY_BLOCK_CARET = '\u200b'
 const toolbar = [
@@ -85,7 +83,10 @@ function renderMarkdown(value) {
     const html = marked.parse(value || '', { async: false, breaks: true })
     // 块级标签之间的换行/缩进是文本节点，编辑器又用了 pre-wrap，会被当成真实空行显示出来
     const compact = html.replace(/(<pre[\s\S]*?<\/pre>)|>\s*\n\s*</g, (match, pre) => pre || '><')
-    return DOMPurify.sanitize(compact, { ALLOWED_URI_REGEXP: /^(?:https?:|mailto:)/i })
+    // 不要传 ALLOWED_URI_REGEXP：DOMPurify 一旦收到自定义配置，就会把 <input> 的 type 属性丢掉，
+    // 任务清单的复选框会退化成没有类型的输入框，"- [ ] 待办" 回写时也会丢掉方括号。
+    // 默认配置本身就会过滤 javascript: / data: 链接、剥掉 on* 事件，够用。
+    return DOMPurify.sanitize(compact)
   } catch {
     // 极端内容（超长/异常 Markdown）渲染失败时降级为转义纯文本，避免抛错带崩整页
     return `<p>${String(value || '').replace(/[&<>]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[char])).slice(0, 20000)}</p>`
@@ -160,7 +161,7 @@ function nodeMarkdown(node) {
     case 'UL': case 'OL': {
       const ordered = node.tagName === 'OL'
       return [...node.children].filter(child => child.tagName === 'LI').map((item, index) => {
-        const checkbox = item.querySelector(':scope > input[type="checkbox"]')
+        const checkbox = item.querySelector(':scope > input')
         const text = [...item.childNodes].filter(child => child !== checkbox && !(child.nodeType === Node.ELEMENT_NODE && ['UL', 'OL'].includes(child.tagName))).map(nodeMarkdown).join('').trim()
         const prefix = checkbox ? `- [${checkbox.checked ? 'x' : ' '}] ` : ordered ? `${index + 1}. ` : '- '
         const nested = [...item.children].filter(child => ['UL', 'OL'].includes(child.tagName)).map(nodeMarkdown).join('').trimEnd()
@@ -260,14 +261,10 @@ function onInput() {
   const markdown = currentMarkdown()
   emit('update:modelValue', markdown)
   autoGrow()
-  clearTimeout(renderTimer)
-  if (composing.value) return
-  renderTimer = setTimeout(renderEditorMarkdown, 300)
-}
-
-function onCompositionEnd() {
-  composing.value = false
-  onInput()
+  // 打字过程中不回写 DOM：每 300ms 把半成品 Markdown 重新解析一次，
+  // 会把「1. 有序」并进上一个列表项、按残留光标位置还原时吞字，
+  // 这就是"输入 Markdown 文本出现异常"的来源。回写只在失焦和外部赋值时做。
+  clearTimeout(normalizeTimer)
 }
 
 function replaceSelection(text) {
@@ -338,6 +335,8 @@ function chooseSlash(command) {
   slashRange = null
   if (command.key === 'time') replaceSelection(new Date().toLocaleString())
   else replaceSelection(command.value)
+  // 插入的是 Markdown 前缀（# 、- [ ] 等），立刻渲染一次让用户看到结构生效
+  renderEditorMarkdown()
 }
 
 function onBlur() {
@@ -345,6 +344,9 @@ function onBlur() {
   // 这时改写编辑器 DOM 会把 mouseup 甩到被替换的节点上，表现为「第一次点按钮没反应」。
   if (!document.activeElement?.closest?.('.task-slash-menu')) slashOpen.value = false
   emit('blur')
+  // 离开输入框后再把 Markdown 渲染成富文本，给点击留出完成时间
+  clearTimeout(normalizeTimer)
+  normalizeTimer = setTimeout(() => { if (!hasEditorFocus(editor.value)) renderEditorMarkdown() }, 160)
 }
 
 function syncEditorValue(value) {
@@ -355,7 +357,7 @@ function syncEditorValue(value) {
 
 onMounted(() => { syncEditorValue(props.modelValue); autoGrow() })
 watch(() => props.modelValue, () => { syncEditorValue(props.modelValue); autoGrow() })
-onBeforeUnmount(() => clearTimeout(renderTimer))
+onBeforeUnmount(() => clearTimeout(normalizeTimer))
 </script>
 
 <style scoped>

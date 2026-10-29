@@ -245,7 +245,10 @@ test('task detail collaboration and slash insertion stay in the replacement work
 })
 
 test('task rich editor keeps the native caret during typing and renders markdown after idle', async () => {
-  assert.match(taskRichTextEditor, /function onInput\(\) \{[\s\S]*?emit\('update:modelValue', markdown\)[\s\S]*?setTimeout\(renderEditorMarkdown, 300\)/)
+  // 打字过程中不回写 DOM（只抛 Markdown），回写交给失焦后的延迟归一化
+  assert.match(taskRichTextEditor, /function onInput\(\) \{[\s\S]*?emit\('update:modelValue', markdown\)[\s\S]*?clearTimeout\(normalizeTimer\)/)
+  assert.doesNotMatch(taskRichTextEditor, /setTimeout\(renderEditorMarkdown, 300\)/)
+  assert.match(taskRichTextEditor, /normalizeTimer = setTimeout\(\(\) => \{ if \(!hasEditorFocus\(editor\.value\)\) renderEditorMarkdown\(\) \}, 160\)/)
   assert.match(taskRichTextEditor, /function insertCaretMarker\(element\)/)
   assert.match(taskRichTextEditor, /function restoreCaretMarker\(element, marker\)/)
   assert.match(taskRichTextEditor, /EMPTY_BLOCK_CARET/)
@@ -770,9 +773,8 @@ test('task detail edits title, description, and checklist in place without an ed
   assert.match(taskRichTextEditor, /:aria-hidden="!toolbarVisible" :inert="!toolbarVisible"/)
   assert.match(taskRichTextEditor, /emit\('blur'\)/)
   assert.match(taskRichTextEditor, /contenteditable="true"/)
-  assert.match(taskRichTextEditor, /setTimeout\(renderEditorMarkdown, 300\)/)
-  assert.match(taskRichTextEditor, /compositionstart="composing = true"[\s\S]*compositionend="onCompositionEnd"/)
-  assert.match(taskRichTextEditor, /if \(composing\.value\) return/)
+  assert.match(taskRichTextEditor, /normalizeTimer = setTimeout\(\(\) => \{ if \(!hasEditorFocus\(editor\.value\)\) renderEditorMarkdown\(\) \}, 160\)/)
+  assert.match(taskRichTextEditor, /@compositionend="onInput"/)
   assert.doesNotMatch(taskRichTextEditor, /<textarea/)
   assert.match(workspaceView, /clone-detail-properties/)
   assert.match(workspaceView, /clone-detail-edit-fields/)

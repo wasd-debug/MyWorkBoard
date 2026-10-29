@@ -7513,6 +7513,7 @@ function onKeydown(event) {
   }
   if (
     event.key.toLowerCase() === "n" &&
+    !event.target?.isContentEditable &&
     !["INPUT", "TEXTAREA", "SELECT"].includes(event.target?.tagName)
   ) {
     event.preventDefault();

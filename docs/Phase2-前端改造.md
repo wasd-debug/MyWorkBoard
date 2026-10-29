@@ -1512,3 +1512,22 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 - 四象限与日历两个入口都接了同一套 `reminderMinutes` / `rrule` 状态。
 
 - 门禁：336/336 前端单测、typecheck、build 通过；浏览器实测清单浮层 300×300、行高 32、左对齐；日期浮层提醒/重复控件存在，选「提前 30 分钟 + 每周」后落库 `rrule=FREQ=WEEKLY` 且有 `task_reminder` 记录；输入「第一行⏎第二行⏎⏎空行后⇧⏎软换行」的 DOM 与落库一致且回写稳定。证据 `qa-list-fresh.png`、`qa-date-popover.png`、`qa-linebreak.png`、`qa-quadrant-card.png`。
+
+### P2-QD8 Markdown 输入异常：全局快捷键吞字 + 半边渲染（2026-10-29）
+
+**1. 敲 `n` 会丢字（影响所有富文本）**
+`App.vue` 的全局快捷键用「标签名是不是 INPUT/TEXTAREA/SELECT」来判断要不要让位，但富文本编辑器是 `contenteditable` 的 `<div>`——于是编辑器里每敲一个 `n` 都被当成「新建任务」快捷键 `preventDefault()` 掉，字根本没进 DOM；`Cmd/Ctrl+Z`、`Cmd/Ctrl+K` 同样会被抢。同一个坑在 `TaskWorkspaceView`（`n`）和 `TasksInboxView`（`n`）各有一份。
+三处都补上 `isContentEditable` 判断。这个 bug 之前一直存在，只是描述用纯文本 `input` 时看不出来；换成富文本后立刻暴露。
+
+**2. 打字过程中被反复重渲染（结构被拆坏 + 光标处吞字）**
+原来的 300ms 防抖会把**半成品 Markdown** 重新解析并回写 DOM：
+- 在 `- 列表项` 下面回车再打 `1. 有序`，会被解析成「有序列表嵌在上一个列表项里」；
+- `**粗体**` 只打了一半时回写，光标位置靠残留选区还原，随机吃掉后面几个字符。
+
+现在改为**打字过程中只往上抛 Markdown、不回写 DOM**；回写只发生在三处：挂载/外部赋值、失焦后 160ms（避开触发 blur 的那次点击）、`/` 插入后立即一次（因为插入的是 `# `、`- [ ] ` 这类结构性前缀）。实测连打 `**粗体**`、`# 标题`、`- 列表项`、`1. 有序`、`> 引用`、`- [ ] 待办`、`` `code` `` 全程字符不丢、结构不串，失焦后一次性正确渲染成 `<h1>/<ul>/<ol>/<blockquote>/checkbox/<code>`。
+
+**3. 顺带修掉复选框被 DOMPurify 吃掉**
+`DOMPurify.sanitize(html, { ALLOWED_URI_REGEXP: ... })` 只要传了自定义配置，就会把 `<input>` 的 `type` 属性剥掉（实测同一串 HTML，默认配置保留 `type="checkbox"`，传配置后变成 `<input disabled="">`）。结果任务清单的复选框渲染成无类型输入框，回写时 `- [ ] 待办` 退化成 `- 待办`。
+改为使用 DOMPurify 默认配置（默认就已经过滤 `javascript:` / `data:` 链接、剥掉 `on*` 事件），并把复选框识别放宽到 `item.querySelector(':scope > input')`。
+
+- 门禁：336/336 单测（更新 3 条与编辑器调度相关的断言）、typecheck、build 通过；浏览器逐字符实测 `abc end` 不再丢 `n`；详情栏 Milkdown 里也能正常输入 `n`；空白处按 `n` 仍会触发新建任务（`task-new-request` 事件计数 1）。证据 `qa-keyboard.png`。
