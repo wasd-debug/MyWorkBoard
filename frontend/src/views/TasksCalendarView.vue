@@ -250,33 +250,20 @@
       </footer>
     </div>
 
-    <div v-if="quickAdd.open" class="cal-quick" role="dialog" aria-label="新增任务" @click.stop>
-      <header>
-        <span class="cal-quick-date"><CalendarDays :size="14" />{{ quickAddDateLabel }}</span>
-        <button type="button" class="cal-quick-flag" :class="{ on: quickAdd.priority === 'HIGH' }" :aria-pressed="quickAdd.priority === 'HIGH'" aria-label="设为高优先级" title="高优先级" @click="quickAdd.priority = quickAdd.priority === 'HIGH' ? 'NONE' : 'HIGH'"><Flag :size="14" /></button>
-      </header>
-      <textarea
-        ref="quickInputEl"
-        v-model="quickAdd.title"
-        class="cal-quick-input"
-        rows="3"
-        placeholder="准备做什么？"
-        @keydown.enter.exact.prevent="saveQuickAdd"
-        @keydown.esc.prevent="closeQuickAdd"
-      ></textarea>
-      <footer>
-        <div class="cal-quick-list">
-          <FolderClosed :size="14" />
-          <select v-model="quickAdd.listId" aria-label="清单">
-            <option v-for="list in calendarLists" :key="list.publicId" :value="list.publicId">{{ list.name }}</option>
-          </select>
-        </div>
-        <div class="cal-quick-actions">
-          <button type="button" class="cal-quick-cancel" @click="closeQuickAdd">取消</button>
-          <button type="button" class="cal-quick-save" :disabled="!quickAdd.title.trim() || quickAdd.saving" @click="saveQuickAdd">{{ quickAdd.saving ? '保存中…' : '保存' }}</button>
-        </div>
-      </footer>
-    </div>
+    <TaskQuickAdd
+      :open="quickAdd.open"
+      :date-label="quickAddDateLabel"
+      :title="quickAdd.title"
+      :priority="quickAdd.priority"
+      :list-id="quickAdd.listId"
+      :lists="calendarLists"
+      :saving="quickAdd.saving"
+      @update:title="quickAdd.title = $event"
+      @update:priority="quickAdd.priority = $event"
+      @update:list-id="quickAdd.listId = $event"
+      @save="saveQuickAdd"
+      @close="closeQuickAdd"
+    />
 
     <CalendarSettingsDialog
       :open="settings.open"
@@ -304,6 +291,7 @@ import CalendarSidebar from './calendar/CalendarSidebar.vue'
 import CalendarMonthView from './calendar/CalendarMonthView.vue'
 import CalendarTimeGrid from './calendar/CalendarTimeGrid.vue'
 import CalendarEventCard from './calendar/CalendarEventCard.vue'
+import TaskQuickAdd from '../components/tasks/TaskQuickAdd.vue'
 import CalendarYearView from './calendar/CalendarYearView.vue'
 import CalendarAgendaView from './calendar/CalendarAgendaView.vue'
 import CalendarSettingsDialog from './calendar/CalendarSettingsDialog.vue'
@@ -363,7 +351,7 @@ const quickAdd = reactive({ open: false, title: '', priority: 'NONE', listId: ''
 const dayPopover = reactive({ open: false, date: startOfDay(new Date()), x: 0, y: 0 })
 const eventCard = reactive({ open: false, event: null, x: 0, y: 0 })
 const focusStore = useTaskFocusStore()
-const quickInputEl = ref(null)
+
 const shellEl = ref(null)
 const bodyEl = ref(null)
 const widthBucket = value => (value < 768 ? 'phone' : value < 1180 ? 'tablet' : 'wide')
@@ -972,7 +960,7 @@ async function openQuickAdd(day, startMinutes = null, options = {}) {
   quickAdd.listId = tasksStore.inbox?.publicId || calendarLists.value[0]?.publicId || ''
   quickAdd.open = true
   await nextTick()
-  quickInputEl.value?.focus()
+
 }
 
 function closeQuickAdd() {
@@ -1570,101 +1558,12 @@ onBeforeUnmount(() => {
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
 }
+/* 快速添加卡片的定位留在页面这一层，窄屏与打印的媒体查询才能覆盖它 */
 .cal-quick {
   position: absolute;
   z-index: 50;
   top: 52px;
   right: 132px;
-  display: flex;
-  width: min(420px, calc(100vw - 32px));
-  flex-direction: column;
-  padding: 14px 14px 10px;
-  border: 1px solid var(--line2);
-  border-radius: 12px;
-  background: var(--card);
-  box-shadow: 0 22px 52px rgba(15, 23, 42, .22);
-}
-.cal-quick header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.cal-quick-date {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--accent);
-  font-size: 12.5px;
-  font-weight: 600;
-}
-.cal-quick-flag {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-}
-.cal-quick-flag.on {
-  color: var(--priority-high, #e34d59);
-}
-.cal-quick-input {
-  width: 100%;
-  min-height: 74px;
-  margin: 10px 0 12px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  font-size: 17px;
-  line-height: 1.5;
-  outline: none;
-  box-shadow: none;
-  resize: none;
-}
-.cal-quick footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.cal-quick-list {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--ink2);
-  font-size: 12px;
-}
-.cal-quick-list select {
-  max-width: 132px;
-  border: 0;
-  background: transparent;
-  color: var(--ink2);
-  font-size: 12px;
-  outline: none;
-}
-.cal-quick-actions {
-  display: flex;
-  gap: 6px;
-}
-.cal-quick-actions button {
-  height: 28px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--ink2);
-  font-size: 12px;
-}
-.cal-quick-save {
-  border-color: var(--accent) !important;
-  background: var(--accent) !important;
-  color: #fff !important;
-}
-.cal-quick-save:disabled {
-  opacity: .5;
 }
 .cal-day-popover {
   position: fixed;

@@ -573,9 +573,20 @@ test('task workspace keeps reading width and focus states deliberate on wide scr
   assert.match(workspaceView, /\.clone-toolbar-popover button:focus-visible/)
 })
 
-test('task calendar creates tasks in an in-place quick add card instead of a drawer', () => {
-  assert.match(calendarView, /class="cal-quick"/)
-  assert.match(calendarView, /placeholder="准备做什么？"/)
+test('quadrant reuses the shared quick add card', async () => {
+  const quadrantView = await readFile(new URL('../views/TasksQuadrantView.vue', import.meta.url), 'utf8')
+  assert.match(quadrantView, /import TaskQuickAdd from '\.\.\/components\/tasks\/TaskQuickAdd\.vue'/)
+  assert.match(quadrantView, /<TaskQuickAdd[\s\S]*@save="submitQuick"/)
+  assert.doesNotMatch(quadrantView, /class="qn-quick"/)
+})
+
+test('task calendar creates tasks in an in-place quick add card instead of a drawer', async () => {
+  // 快速添加卡片已抽成公共组件，日历与四象限共用
+  const quickAdd = await readFile(new URL('../components/tasks/TaskQuickAdd.vue', import.meta.url), 'utf8')
+  assert.match(calendarView, /<TaskQuickAdd/)
+  assert.match(calendarView, /@save="saveQuickAdd"/)
+  assert.match(quickAdd, /class="cal-quick"/)
+  assert.match(quickAdd, /placeholder: \{ type: String, default: '准备做什么？' \}/)
   assert.match(calendarView, /class="cal-shell"/)
   assert.doesNotMatch(calendarView, /<Drawer|ui\/Drawer/)
 })

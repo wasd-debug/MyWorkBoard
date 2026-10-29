@@ -1441,3 +1441,12 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 - 顶部模块导航 `taskNavigation` 同步成同一顺序；「看板」作为任务视图入口保留，排在倒数纪念日之后（左侧图标栏不出现）。
 - 顺手修了一个高亮 bug：`active()` 原来用 `path.endsWith('/') ? startsWith : ===`，导致 `/` 这个 AI 入口在**所有**页面都亮着；改为 `/` 精确匹配。
 - 门禁：332/332 单测、build 通过；浏览器实测图标栏 8 项顺序正确、进入 `/tasks/quadrant` 时只有四象限高亮、AI 不再误亮，控制台 0 报错。证据 `task-rail-quadrant-20261029.png`。
+
+### P2-QD4 快速添加卡片抽成公共组件 + 菜单显示修复（2026-10-29）
+
+- 四象限原本自己写了一份快速添加卡（`.qn-quick`），与日历里的 `.cal-quick` 重复。现已把日历那份抽成 `components/tasks/TaskQuickAdd.vue`，日历与四象限共用一套：日期标签 + 优先级旗 + 「准备做什么？」多行输入 + 清单下拉 + 取消/保存，打开时自动聚焦、Enter 保存、Esc 关闭。
+- 定位留在各自页面：日历沿用 `.cal-quick` 的绝对定位（窄屏与打印的媒体查询还能覆盖），四象限用 `position: fixed` 贴 `+` 按钮下方并做视口收拢。
+- 顺带修掉 `⋯` 菜单两个显示问题：
+  - 第一行「编辑」的铅笔图标被 `.qn-menu button svg:last-child { margin-left: auto }` 推到最右，整行文字跟着右对齐。改为只给右侧箭头单独类名 `.qn-chevron-right`。
+  - 卡片靠右时子菜单 `left: calc(100% + 4px)` 会整块跑到视口外（实测右边界 1590 > 1440）。现在按可用宽度判断，靠右时给菜单加 `is-flip`，子菜单改为 `right: calc(100% + 4px)` 往左展开。
+- 门禁：333/333 单测（新增 1 条复用校验，改了日历那条断言）、build 通过；浏览器实测四象限点 `+` 出现 420px 卡片并落在对应象限、Esc 关闭、日历快速添加无回归（位置/占位符/日期标签一致）、编辑行图标左对齐、子菜单右边界 1196 < 1440，控制台 0 报错。证据 `quadrant-quickadd-20261029.png`、`quadrant-menu-fixed-20261029.png`、`calendar-quickadd-regression-20261029.png`。

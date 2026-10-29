@@ -23,7 +23,7 @@
           <span class="qn-dot" :style="{ background: quadrant.color }"><component :is="iconOf(quadrant.icon)" :size="12" /></span>
           <h2 :style="{ color: quadrant.color }">{{ quadrant.name }}</h2>
           <div class="qn-card-actions">
-            <button type="button" class="qn-icon-btn" :aria-label="`在${quadrant.name}添加任务`" :title="`在${quadrant.name}添加任务`" @click.stop="startAdd(quadrant)">
+            <button type="button" class="qn-icon-btn" :aria-label="`在${quadrant.name}添加任务`" :title="`在${quadrant.name}添加任务`" @click.stop="openQuick(quadrant, $event)">
               <Plus :size="15" />
             </button>
             <button type="button" class="qn-icon-btn" :aria-label="`${quadrant.name}更多选项`" :title="`${quadrant.name}更多选项`" @click.stop="openCardMenu(quadrant, $event)">
@@ -31,10 +31,6 @@
             </button>
           </div>
         </header>
-
-        <form v-if="adding === quadrant.key" class="qn-add" @submit.prevent="submitAdd(quadrant)">
-          <input ref="addInputRef" v-model="addTitle" maxlength="200" placeholder="添加任务，回车保存" aria-label="新任务标题" @keydown.esc.stop="cancelAdd" />
-        </form>
 
         <div class="quadrant-body">
           <template v-if="groupsOf(quadrant).length">
@@ -83,11 +79,11 @@
     </div>
 
     <Teleport to="body">
-      <div v-if="cardMenu.open" class="qn-menu is-card" :style="cardMenuStyle" @click.stop>
+      <div v-if="cardMenu.open" class="qn-menu is-card" :class="{ 'is-flip': cardMenu.flip }" :style="cardMenuStyle" @click.stop>
         <button type="button" @click="openEdit(cardMenu.quadrant)"><Pencil :size="15" />编辑</button>
-        <button type="button" @click="openSubmenu('group')"><Columns3 :size="15" />分组<em>{{ groupLabel(cardMenu.quadrant) }}</em><ChevronRight :size="13" /></button>
-        <button type="button" @click="openSubmenu('sort')"><ArrowDownWideNarrow :size="15" />排序<em>{{ sortLabel(cardMenu.quadrant) }}</em><ChevronRight :size="13" /></button>
-        <button type="button" @click="openSubmenu('order')"><ArrowUpDown :size="15" />顺序<em>{{ orderLabel(cardMenu.quadrant) }}</em><ChevronRight :size="13" /></button>
+        <button type="button" @click="openSubmenu('group')"><Columns3 :size="15" />分组<em>{{ groupLabel(cardMenu.quadrant) }}</em><ChevronRight :size="13" class="qn-chevron-right" /></button>
+        <button type="button" @click="openSubmenu('sort')"><ArrowDownWideNarrow :size="15" />排序<em>{{ sortLabel(cardMenu.quadrant) }}</em><ChevronRight :size="13" class="qn-chevron-right" /></button>
+        <button type="button" @click="openSubmenu('order')"><ArrowUpDown :size="15" />顺序<em>{{ orderLabel(cardMenu.quadrant) }}</em><ChevronRight :size="13" class="qn-chevron-right" /></button>
 
         <div v-if="submenu" class="qn-submenu">
           <button
@@ -101,6 +97,24 @@
           </button>
         </div>
       </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <TaskQuickAdd
+        :open="quick.open"
+        :style="quickStyle"
+        :date-label="quickDateLabel"
+        :title="quick.title"
+        :priority="quick.priority"
+        :list-id="quick.listId"
+        :lists="lists"
+        :saving="quick.saving"
+        @update:title="quick.title = $event"
+        @update:priority="quick.priority = $event"
+        @update:list-id="quick.listId = $event"
+        @save="submitQuick"
+        @close="closeQuick"
+      />
     </Teleport>
 
     <QuadrantEditDialog
@@ -118,13 +132,14 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowDownWideNarrow, ArrowUpDown, Check, ChevronDown, ChevronRight, Clock3, Columns3, MoreHorizontal, Pencil, Plus } from 'lucide-vue-next'
+import { ArrowDownWideNarrow, ArrowUpDown, CalendarDays, Check, ChevronDown, ChevronRight, Clock3, Columns3, Flag, MoreHorizontal, Pencil, Plus } from 'lucide-vue-next'
 import TaskOrganizationIcon from '../components/tasks/TaskOrganizationIcon.vue'
 import QuadrantEditDialog from '../components/tasks/QuadrantEditDialog.vue'
+import TaskQuickAdd from '../components/tasks/TaskQuickAdd.vue'
 import { useAppStore } from '../stores/app.js'
 import { useTasksStore } from '../stores/tasks.js'
 import {
-  GROUP_OPTIONS, ORDER_OPTIONS, SORT_OPTIONS, buildQuadrantGroups, dateBucket,
+  GROUP_OPTIONS, ORDER_OPTIONS, PRIORITY_OPTIONS, SORT_OPTIONS, buildQuadrantGroups, dateBucket,
   defaultQuadrants, loadState, saveState, splitByQuadrant
 } from './taskQuadrant.js'
 import { resolveQuadrantIcon } from './taskQuadrantIcons.js'
@@ -139,13 +154,12 @@ const state = reactive(loadState(scope.value))
 const now = ref(new Date())
 const error = ref('')
 const pageMenuOpen = ref(false)
-const cardMenu = reactive({ open: false, quadrant: null, x: 0, y: 0 })
+const cardMenu = reactive({ open: false, quadrant: null, x: 0, y: 0, flip: false })
 const submenu = ref('')
 const editOpen = ref(false)
 const editing = ref(null)
-const adding = ref('')
-const addTitle = ref('')
-const addInputRef = ref(null)
+// 复用日历那套快速添加卡片（components/tasks/TaskQuickAdd.vue）
+const quick = reactive({ open: false, quadrant: null, title: '', dateKey: 'TODAY', priority: 'NONE', listId: '', saving: false, x: 0, y: 0 })
 const pageMenuAnchor = ref(null)
 
 const tasks = computed(() => tasksStore.tasks.filter(item => !item.deleted))
@@ -212,16 +226,60 @@ function openTask(task) {
   void router.push({ path: '/tasks/all', query: { task: task.publicId } })
 }
 
-async function startAdd(quadrant) {
-  adding.value = quadrant.key
-  addTitle.value = ''
-  await nextTick()
-  addInputRef.value?.[0]?.focus?.() || addInputRef.value?.focus?.()
+function addDaysTo(base, days) {
+  const date = new Date(base.getFullYear(), base.getMonth(), base.getDate())
+  date.setDate(date.getDate() + days)
+  return date
 }
 
-function cancelAdd() {
-  adding.value = ''
-  addTitle.value = ''
+function dateKeyOf(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function quickDateFor(key) {
+  const today = new Date(now.value)
+  if (key === 'TODAY') return new Date(today.getFullYear(), today.getMonth(), today.getDate(), 18, 0, 0)
+  if (key === 'TOMORROW') return addDaysTo(today, 1).getTime() ? new Date(addDaysTo(today, 1).setHours(9, 0, 0, 0)) : null
+  if (key === 'AFTER_TOMORROW') return new Date(addDaysTo(today, 2).setHours(9, 0, 0, 0))
+  if (key === 'NEXT_WEEK') return new Date(addDaysTo(today, 7).setHours(9, 0, 0, 0))
+  return null
+}
+
+const quickDateLabel = computed(() => {
+  const due = quickDateFor(quick.dateKey)
+  if (!due) return '无日期'
+  const key = dateKeyOf(due)
+  const todayKey = dateKeyOf(new Date(now.value))
+  const tomorrowKey = dateKeyOf(addDaysTo(new Date(now.value), 1))
+  const prefix = key === todayKey ? '今天' : key === tomorrowKey ? '明天' : `周${['日', '一', '二', '三', '四', '五', '六'][due.getDay()]}`
+  return `${prefix}, ${due.getMonth() + 1}月${due.getDate()}日`
+})
+
+const quickStyle = computed(() => {
+  const width = Math.min(420, window.innerWidth - 32)
+  return { position: 'fixed', left: `${quick.x}px`, top: `${quick.y}px`, width: `${width}px`, zIndex: 1300 }
+})
+
+async function openQuick(quadrant, event) {
+  const rect = event?.currentTarget?.getBoundingClientRect?.()
+  const defaults = defaultsFor(quadrant)
+  const width = Math.min(420, window.innerWidth - 32)
+  Object.assign(quick, {
+    open: true,
+    quadrant,
+    title: '',
+    dateKey: defaults.dateKey || 'TODAY',
+    priority: defaults.priority || 'NONE',
+    listId: defaults.listId || tasksStore.inbox?.publicId || '',
+    x: rect ? Math.max(12, Math.min(rect.left - 8, window.innerWidth - width - 12)) : 40,
+    y: rect ? Math.min(rect.bottom + 6, window.innerHeight - 240) : 120
+  })
+  cardMenu.open = false
+  pageMenuOpen.value = false
+}
+
+function closeQuick() {
+  quick.open = false
 }
 
 /** 新任务按象限规则给默认值，保证建完就落在这一格 */
@@ -229,43 +287,47 @@ function defaultsFor(quadrant) {
   const rule = quadrant.rule || {}
   const priority = rule.priorities?.length ? rule.priorities[0] : 'NONE'
   const listId = rule.listIds?.length ? rule.listIds[0] : tasksStore.inbox?.publicId
-  const today = new Date(now.value)
-  let dueAt = null
-  if (rule.dates?.includes('OVERDUE') || rule.dates?.includes('TODAY')) {
-    dueAt = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 18, 0, 0)
-  } else if (rule.dates?.includes('TOMORROW')) {
-    dueAt = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 9, 0, 0)
-  } else if (rule.dates?.includes('THIS_WEEK')) {
-    const offset = 7 - ((today.getDay() + 6) % 7)
-    dueAt = new Date(today.getFullYear(), today.getMonth(), today.getDate() + Math.max(0, offset - 1), 18, 0, 0)
-  }
-  return {
-    listId,
-    priority,
-    allDay: false,
-    startAt: dueAt ? new Date(dueAt.getTime() - 30 * 60000).toISOString() : '',
-    dueAt: dueAt ? dueAt.toISOString() : '',
-    tagIds: (rule.tagIds || []).slice(0, 1)
-  }
+  let dateKey = 'NONE'
+  if (rule.dates?.includes('OVERDUE') || rule.dates?.includes('TODAY')) dateKey = 'TODAY'
+  else if (rule.dates?.includes('TOMORROW')) dateKey = 'TOMORROW'
+  else if (rule.dates?.includes('THIS_WEEK') || rule.dates?.includes('LATER')) dateKey = 'NEXT_WEEK'
+  return { listId, priority, dateKey, tagIds: (rule.tagIds || []).slice(0, 1) }
 }
 
-async function submitAdd(quadrant) {
-  const title = addTitle.value.trim()
-  if (!title) return
+async function submitQuick() {
+  const title = quick.title.trim()
+  if (!title || !quick.quadrant) return
+  const defaults = defaultsFor(quick.quadrant)
+  const due = quickDateFor(quick.dateKey)
+  quick.saving = true
   try {
-    await tasksStore.create({ title, ...defaultsFor(quadrant) })
-    addTitle.value = ''
-    await nextTick()
-    addInputRef.value?.[0]?.focus?.() || addInputRef.value?.focus?.()
+    await tasksStore.create({
+      ...defaults,
+      title,
+      allDay: false,
+      startAt: due ? new Date(due.getTime() - 30 * 60000).toISOString() : '',
+      dueAt: due ? due.toISOString() : '',
+      priority: quick.priority,
+      listId: quick.listId || defaults.listId
+    })
+    quick.open = false
   } catch (cause) {
     error.value = cause?.response?.data?.detail || cause?.message || '创建任务失败'
+  } finally {
+    quick.saving = false
   }
 }
 
 function openCardMenu(quadrant, event) {
   const rect = event?.currentTarget?.getBoundingClientRect?.()
   cardMenu.quadrant = quadrant
-  cardMenu.x = rect ? Math.min(rect.right - 196, window.innerWidth - 208) : 40
+  const menuWidth = 208
+  const submenuWidth = 176
+  const right = rect ? rect.right : window.innerWidth - 40
+  // 没有空间再往右展开子菜单时，整个菜单改成贴右侧、子菜单向左展开
+  const flip = right + submenuWidth + 12 > window.innerWidth
+  cardMenu.flip = flip
+  cardMenu.x = rect ? Math.max(12, Math.min(right - menuWidth, window.innerWidth - menuWidth - 12)) : 40
   cardMenu.y = rect ? Math.min(rect.bottom + 6, window.innerHeight - 260) : 80
   cardMenu.open = true
   submenu.value = ''
@@ -335,9 +397,10 @@ function resetQuadrant(key) {
 const cardMenuStyle = computed(() => ({ position: 'fixed', left: `${cardMenu.x}px`, top: `${cardMenu.y}px`, zIndex: 1200 }))
 
 function closeMenus(event) {
-  if (event?.target?.closest?.('.qn-menu') || event?.target?.closest?.('.qn-icon-btn')) return
+  if (event?.target?.closest?.('.qn-menu') || event?.target?.closest?.('.qn-icon-btn') || event?.target?.closest?.('.cal-quick')) return
   cardMenu.open = false
   pageMenuOpen.value = false
+  closeQuick()
 }
 
 watch(state, value => saveState(scope.value, value), { deep: true })
@@ -384,9 +447,6 @@ onBeforeUnmount(() => {
 .qn-card-actions { display: flex; gap: 2px; margin-left: auto; opacity: 0; transition: opacity .12s ease; }
 .quadrant-card:hover .qn-card-actions, .quadrant-card:focus-within .qn-card-actions { opacity: 1; }
 
-.qn-add { padding: 0 4px 8px; }
-.qn-add input { width: 100%; min-height: 32px; padding: 0 9px; border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--line)); border-radius: 7px; background: var(--card); color: var(--ink); font: inherit; font-size: 13px; box-sizing: border-box; }
-.qn-add input:focus { outline: none; border-color: var(--accent); }
 
 .quadrant-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .qn-group + .qn-group { margin-top: 2px; }
@@ -417,11 +477,13 @@ onBeforeUnmount(() => {
 .qn-menu button { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink2); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
 .qn-menu button:hover { background: var(--paper); color: var(--ink); }
 .qn-menu button em { margin-left: auto; color: var(--muted); font-size: 12px; font-style: normal; }
-.qn-menu button svg:last-child { margin-left: auto; color: var(--muted); }
+.qn-menu button .qn-chevron-right { margin-left: auto; color: var(--muted); }
 .qn-menu-check { gap: 8px; }
 .qn-box { display: grid; place-items: center; width: 15px; height: 15px; border: 1.5px solid color-mix(in srgb, var(--ink) 30%, transparent); border-radius: 4px; color: #fff; }
 .qn-box.on { border-color: var(--accent); background: var(--accent); }
 .qn-submenu { position: absolute; top: 0; left: calc(100% + 4px); display: flex; min-width: 168px; flex-direction: column; gap: 1px; padding: 5px; border: 1px solid var(--line2); border-radius: 9px; background: var(--card); box-shadow: 0 16px 36px rgb(15 23 42 / 20%); }
+/* 靠近右侧边缘时子菜单向左展开，避免整块跑到视口外 */
+.qn-menu.is-flip .qn-submenu { left: auto; right: calc(100% + 4px); }
 .qn-submenu button { justify-content: space-between; }
 .qn-submenu button.on { color: var(--accent); }
 
