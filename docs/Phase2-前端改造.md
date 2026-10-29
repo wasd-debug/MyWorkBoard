@@ -1450,3 +1450,20 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
   - 第一行「编辑」的铅笔图标被 `.qn-menu button svg:last-child { margin-left: auto }` 推到最右，整行文字跟着右对齐。改为只给右侧箭头单独类名 `.qn-chevron-right`。
   - 卡片靠右时子菜单 `left: calc(100% + 4px)` 会整块跑到视口外（实测右边界 1590 > 1440）。现在按可用宽度判断，靠右时给菜单加 `is-flip`，子菜单改为 `right: calc(100% + 4px)` 往左展开。
 - 门禁：333/333 单测（新增 1 条复用校验，改了日历那条断言）、build 通过；浏览器实测四象限点 `+` 出现 420px 卡片并落在对应象限、Esc 关闭、日历快速添加无回归（位置/占位符/日期标签一致）、编辑行图标左对齐、子菜单右边界 1196 < 1440，控制台 0 报错。证据 `quadrant-quickadd-20261029.png`、`quadrant-menu-fixed-20261029.png`、`calendar-quickadd-regression-20261029.png`。
+
+### P2-QD5 快速添加浮层升级为完整卡片（2026-10-29）
+
+- 原来共用的 `TaskQuickAdd.vue` 只有「日期标签 + 优先级旗 + 单行标题 + 清单下拉 + 取消/保存」。现在按滴答的完整表单重做，日历与四象限两个入口拿到的都是同一套能力：
+  - **标题**：大号 `textarea`，随内容自动增高（上限 160px），Enter 保存、Esc 关闭。
+  - **描述**：标题下方一行输入，占位「+ 输入内容或使用 / 快速插入」，落到 `description`。
+  - **检查事项**：描述右侧按钮开启，可逐条增删、勾选；保存时只提交非空条目。
+  - **优先级**：右上旗帜按钮弹出「高/中/低/无」，旗子按级别上色。
+  - **日期与时间**：点日期标签复用任务页那套 `TaskDateTimePopover`（日期/时间段、快捷日期、月历、清除、确定），并在 `#rows` 插槽里补「时间」输入与「全天」开关。`Teleport` 到 body，按按钮实际位置定位并做视口收拢。
+  - **清单**：底部清单按钮打开带搜索的浮层，选中后回填名称与图标。
+  - **标签**：`⋯ 更多 → 标签` 打开带搜索的多选浮层，取消/确定二次确认，选中的标签以胶囊显示在卡片里，可单个移除。
+- 两处入口的落库口径统一：`title / description / priority / listId / tagIds / checklist / dueAt`。四象限按象限规则补默认值（清单、优先级、日期桶）；日历沿用原来的时间段换算。
+- 顺带修掉两个实机踩到的问题：
+  - 四象限的 `pointerdown` 全局关闭把 `Teleport` 出去的日期浮层当成「点在外面」，一选日期整张卡片就没了。`closeMenus` 的放行名单补上 `.cal-quick-date-popover`。
+  - 卡片贴近视口顶部时，清单/更多/标签三个浮层 `bottom: 40px` 向上展开会顶出屏幕（实测 y = -65）。改为按卡片 `top` 判断，`top < 340` 时加 `is-drop` 改成向下展开。
+  - 日历快加选了日期却把「全天」变成 `00:00 – 00:30`：原来全天状态是从 `startMinutes == null` 反推的，`applyQuickDueAt` 一拿到 ISO 就写了 `startMinutes = 0`。现在 `quickAdd.allDay` 是独立字段并接住浮层的 `update:all-day`，全天时只取日期。
+- 门禁：334/334 前端单测（新增 1 条字段完整性校验）、build 通过；浏览器逐项实测两个入口——优先级菜单 4 项可选且旗子变色、日期浮层「时间输入 1 / 全天开关 1」、关掉全天设 14:30 后标签显示「10月30日，周五，14:30 – 15:00」、清单搜索「考研」命中 8 项、标签搜索「java」命中 2 项并落成胶囊、检查事项可加到 2 行、保存后卡片关闭；落库核对 `priority=HIGH/MEDIUM`、`description`、`due_at`、`task_tag_link`（java / 学习·考研）、`task_checklist_item`（检查项 A/B）全部正确，控制台 0 报错。证据 `qa-quickadd-quadrant.png`、`qa-quickadd-calendar.png`。

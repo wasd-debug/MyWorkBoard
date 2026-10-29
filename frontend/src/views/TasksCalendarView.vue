@@ -253,14 +253,25 @@
     <TaskQuickAdd
       :open="quickAdd.open"
       :date-label="quickAddDateLabel"
+      :due-at="quickAddDueIso"
+      :all-day="quickAdd.allDay"
       :title="quickAdd.title"
+      :description="quickAdd.description"
       :priority="quickAdd.priority"
       :list-id="quickAdd.listId"
+      :tag-ids="quickAdd.tagIds"
+      :checklist="quickAdd.checklist"
       :lists="calendarLists"
+      :tags="calendarTags"
       :saving="quickAdd.saving"
       @update:title="quickAdd.title = $event"
+      @update:description="quickAdd.description = $event"
       @update:priority="quickAdd.priority = $event"
       @update:list-id="quickAdd.listId = $event"
+      @update:tag-ids="quickAdd.tagIds = $event"
+      @update:checklist="quickAdd.checklist = $event"
+      @update:all-day="quickAdd.allDay = $event"
+      @update:due-at="applyQuickDueAt"
       @save="saveQuickAdd"
       @close="closeQuickAdd"
     />
@@ -347,7 +358,7 @@ const viewMenu = ref(false)
 const moreOpen = ref(false)
 const printMenuOpen = ref(false)
 const settings = reactive({ open: false })
-const quickAdd = reactive({ open: false, title: '', priority: 'NONE', listId: '', saving: false, date: startOfDay(new Date()), startMinutes: null, endMinutes: null, spanEnd: null })
+const quickAdd = reactive({ open: false, title: '', description: '', priority: 'NONE', listId: '', tagIds: [], checklist: [], saving: false, date: startOfDay(new Date()), allDay: true, startMinutes: null, endMinutes: null, spanEnd: null })
 const dayPopover = reactive({ open: false, date: startOfDay(new Date()), x: 0, y: 0 })
 const eventCard = reactive({ open: false, event: null, x: 0, y: 0 })
 const focusStore = useTaskFocusStore()
@@ -402,15 +413,40 @@ const calendarData = computed(() => buildCalendarEvents({
   taskFilter: scopeFilter.value
 }))
 
+// 快速添加卡片上的日期浮层写回：改日期/时间就重设落点
+const quickAddDueIso = computed(() => {
+  const day = quickAdd.date
+  if (quickAdd.spanEnd) return day.toISOString()
+  if (quickAdd.allDay || quickAdd.startMinutes == null) return day.toISOString()
+  const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(quickAdd.startMinutes / 60), quickAdd.startMinutes % 60, 0)
+  return start.toISOString()
+})
+
+function applyQuickDueAt(iso) {
+  if (!iso) return
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return
+  quickAdd.date = startOfDay(date)
+  quickAdd.spanEnd = null
+  // 全天模式下只取日期，不要凭空造出 00:00–00:30 的时间段
+  if (quickAdd.allDay) {
+    quickAdd.startMinutes = null
+    quickAdd.endMinutes = null
+    return
+  }
+  quickAdd.startMinutes = date.getHours() * 60 + date.getMinutes()
+  quickAdd.endMinutes = quickAdd.startMinutes + 30
+}
+
 const quickAddDateLabel = computed(() => {
   const day = quickAdd.date
   const same = toDateKey(day) === todayKey.value
   const base = `${day.getMonth() + 1}月${day.getDate()}日，${same ? '今天' : formatWeekday(day)}`
   if (quickAdd.spanEnd) return `${day.getMonth() + 1}月${day.getDate()}日 – ${quickAdd.spanEnd.getMonth() + 1}月${quickAdd.spanEnd.getDate()}日，全天`
-  if (quickAdd.startMinutes == null) return base
+  if (quickAdd.allDay || quickAdd.startMinutes == null) return `${base}，全天`
   const from = minutesToLabel(snapMinutes(quickAdd.startMinutes, 15))
   const to = minutesToLabel(snapMinutes(quickAdd.endMinutes ?? quickAdd.startMinutes + 30, 15))
-  return `${base}, ${from} – ${to}`
+  return `${base}，${from} – ${to}`
 })
 
 const dayPopoverTitle = computed(() => `${dayPopover.date.getMonth() + 1}月${dayPopover.date.getDate()}日 ${formatWeekday(dayPopover.date)}`)
@@ -952,9 +988,13 @@ async function openQuickAdd(day, startMinutes = null, options = {}) {
   moreOpen.value = false
   dayPopover.open = false
   quickAdd.date = startOfDay(day || selectedDay.value || anchor.value)
+  quickAdd.description = ''
+  quickAdd.tagIds = []
+  quickAdd.checklist = []
   quickAdd.startMinutes = Number.isFinite(startMinutes) ? startMinutes : null
   quickAdd.endMinutes = Number.isFinite(options.endMinutes) ? options.endMinutes : (quickAdd.startMinutes == null ? null : quickAdd.startMinutes + 30)
   quickAdd.spanEnd = options.spanEnd ? startOfDay(options.spanEnd) : null
+  quickAdd.allDay = quickAdd.startMinutes == null || Boolean(quickAdd.spanEnd)
   quickAdd.title = ''
   quickAdd.priority = 'NONE'
   quickAdd.listId = tasksStore.inbox?.publicId || calendarLists.value[0]?.publicId || ''
@@ -990,7 +1030,11 @@ async function saveQuickAdd() {
     }
     await tasksStore.create({
       title, ...payload,
-      priority: quickAdd.priority, listId: quickAdd.listId || tasksStore.inbox?.publicId || ''
+      description: quickAdd.description,
+      priority: quickAdd.priority,
+      listId: quickAdd.listId || tasksStore.inbox?.publicId || '',
+      tagIds: [...quickAdd.tagIds],
+      checklist: quickAdd.checklist.filter(item => item.title.trim()).map(item => ({ title: item.title.trim(), completed: item.completed }))
     })
     quickAdd.open = false
     message.success('任务已创建')

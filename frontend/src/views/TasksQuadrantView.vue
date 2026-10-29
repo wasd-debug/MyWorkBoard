@@ -104,14 +104,25 @@
         :open="quick.open"
         :style="quickStyle"
         :date-label="quickDateLabel"
+        :due-at="quick.dueAt"
+        :all-day="quick.allDay"
         :title="quick.title"
+        :description="quick.description"
         :priority="quick.priority"
         :list-id="quick.listId"
+        :tag-ids="quick.tagIds"
+        :checklist="quick.checklist"
         :lists="lists"
+        :tags="tags"
         :saving="quick.saving"
         @update:title="quick.title = $event"
+        @update:description="quick.description = $event"
         @update:priority="quick.priority = $event"
         @update:list-id="quick.listId = $event"
+        @update:tag-ids="quick.tagIds = $event"
+        @update:checklist="quick.checklist = $event"
+        @update:due-at="quick.dueAt = $event"
+        @update:all-day="quick.allDay = $event"
         @save="submitQuick"
         @close="closeQuick"
       />
@@ -159,7 +170,7 @@ const submenu = ref('')
 const editOpen = ref(false)
 const editing = ref(null)
 // 复用日历那套快速添加卡片（components/tasks/TaskQuickAdd.vue）
-const quick = reactive({ open: false, quadrant: null, title: '', dateKey: 'TODAY', priority: 'NONE', listId: '', saving: false, x: 0, y: 0 })
+const quick = reactive({ open: false, quadrant: null, title: '', description: '', priority: 'NONE', listId: '', tagIds: [], checklist: [], dueAt: '', allDay: false, saving: false, x: 0, y: 0 })
 const pageMenuAnchor = ref(null)
 
 const tasks = computed(() => tasksStore.tasks.filter(item => !item.deleted))
@@ -246,13 +257,16 @@ function quickDateFor(key) {
 }
 
 const quickDateLabel = computed(() => {
-  const due = quickDateFor(quick.dateKey)
-  if (!due) return '无日期'
-  const key = dateKeyOf(due)
+  if (!quick.dueAt) return '无日期'
+  const due = new Date(quick.dueAt)
+  if (Number.isNaN(due.getTime())) return '无日期'
   const todayKey = dateKeyOf(new Date(now.value))
   const tomorrowKey = dateKeyOf(addDaysTo(new Date(now.value), 1))
+  const key = dateKeyOf(due)
   const prefix = key === todayKey ? '今天' : key === tomorrowKey ? '明天' : `周${['日', '一', '二', '三', '四', '五', '六'][due.getDay()]}`
-  return `${prefix}, ${due.getMonth() + 1}月${due.getDate()}日`
+  const base = `${prefix}，${due.getMonth() + 1}月${due.getDate()}日`
+  if (quick.allDay) return base
+  return `${base}，${String(due.getHours()).padStart(2, '0')}:${String(due.getMinutes()).padStart(2, '0')}`
 })
 
 const quickStyle = computed(() => {
@@ -268,7 +282,11 @@ async function openQuick(quadrant, event) {
     open: true,
     quadrant,
     title: '',
-    dateKey: defaults.dateKey || 'TODAY',
+    description: '',
+    tagIds: [...(defaults.tagIds || [])],
+    checklist: [],
+    dueAt: defaults.dueAt || '',
+    allDay: false,
     priority: defaults.priority || 'NONE',
     listId: defaults.listId || tasksStore.inbox?.publicId || '',
     x: rect ? Math.max(12, Math.min(rect.left - 8, window.innerWidth - width - 12)) : 40,
@@ -291,24 +309,28 @@ function defaultsFor(quadrant) {
   if (rule.dates?.includes('OVERDUE') || rule.dates?.includes('TODAY')) dateKey = 'TODAY'
   else if (rule.dates?.includes('TOMORROW')) dateKey = 'TOMORROW'
   else if (rule.dates?.includes('THIS_WEEK') || rule.dates?.includes('LATER')) dateKey = 'NEXT_WEEK'
-  return { listId, priority, dateKey, tagIds: (rule.tagIds || []).slice(0, 1) }
+  const due = quickDateFor(dateKey)
+  return { listId, priority, dateKey, dueAt: due ? due.toISOString() : '', tagIds: (rule.tagIds || []).slice(0, 1) }
 }
 
 async function submitQuick() {
   const title = quick.title.trim()
   if (!title || !quick.quadrant) return
   const defaults = defaultsFor(quick.quadrant)
-  const due = quickDateFor(quick.dateKey)
+  const due = quick.dueAt ? new Date(quick.dueAt) : null
   quick.saving = true
   try {
     await tasksStore.create({
       ...defaults,
       title,
-      allDay: false,
+      description: quick.description,
+      allDay: quick.allDay,
       startAt: due ? new Date(due.getTime() - 30 * 60000).toISOString() : '',
       dueAt: due ? due.toISOString() : '',
       priority: quick.priority,
-      listId: quick.listId || defaults.listId
+      listId: quick.listId || defaults.listId,
+      tagIds: [...quick.tagIds],
+      checklist: quick.checklist.filter(item => item.title.trim()).map(item => ({ title: item.title.trim(), completed: item.completed }))
     })
     quick.open = false
   } catch (cause) {
@@ -397,7 +419,7 @@ function resetQuadrant(key) {
 const cardMenuStyle = computed(() => ({ position: 'fixed', left: `${cardMenu.x}px`, top: `${cardMenu.y}px`, zIndex: 1200 }))
 
 function closeMenus(event) {
-  if (event?.target?.closest?.('.qn-menu') || event?.target?.closest?.('.qn-icon-btn') || event?.target?.closest?.('.cal-quick')) return
+  if (event?.target?.closest?.('.qn-menu') || event?.target?.closest?.('.qn-icon-btn') || event?.target?.closest?.('.cal-quick') || event?.target?.closest?.('.cal-quick-date-popover')) return
   cardMenu.open = false
   pageMenuOpen.value = false
   closeQuick()

@@ -591,6 +591,30 @@ test('task calendar creates tasks in an in-place quick add card instead of a dra
   assert.doesNotMatch(calendarView, /<Drawer|ui\/Drawer/)
 })
 
+test('quick add card exposes title, description, priority, date, list and tag in one panel', async () => {
+  const quickAdd = await readFile(new URL('../components/tasks/TaskQuickAdd.vue', import.meta.url), 'utf8')
+  const quadrantView = await readFile(new URL('./TasksQuadrantView.vue', import.meta.url), 'utf8')
+  // 标题 + 描述 + 检查事项
+  assert.match(quickAdd, /class="cal-quick-title"/)
+  assert.match(quickAdd, /class="cal-quick-desc"/)
+  assert.match(quickAdd, /class="cal-quick-checklist"/)
+  // 优先级菜单
+  assert.match(quickAdd, /class="cal-quick-menu is-priority"/)
+  // 清单浮层带搜索
+  assert.match(quickAdd, /class="cal-quick-menu is-list"/)
+  assert.match(quickAdd, /placeholder="搜索" aria-label="搜索清单"/)
+  // 标签浮层多选 + 取消/确定
+  assert.match(quickAdd, /class="cal-quick-menu is-tags"/)
+  assert.match(quickAdd, /aria-label="搜索标签"/)
+  // 日期浮层复用任务页那套
+  assert.match(quickAdd, /<TaskDateTimePopover/)
+  // 贴顶时浮层改向下展开，避免顶出屏幕
+  assert.match(quickAdd, /is-drop/)
+  // 两处入口都传了完整字段
+  assert.match(calendarView, /@update:all-day="quickAdd\.allDay = \$event"/)
+  assert.match(quadrantView, /@update:checklist="quick\.checklist = \$event"/)
+})
+
 test('task sidebar sections reorder independently and task rows open the detail pane', () => {
   assert.match(inboxView, /collapsedSections\.lists/)
   assert.match(inboxView, /collapsedSections\.tags/)
