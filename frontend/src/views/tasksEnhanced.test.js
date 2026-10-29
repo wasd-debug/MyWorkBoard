@@ -1455,7 +1455,8 @@ test('专注页：记录分页滚动 / 日期浮层独立成层 / 点外面关�
   assert.match(recordDialog, /if \(target\?\.closest\?\.\('\.focus-record-control'\)\) return/)
 
   // 浮层互斥：日期浮层与任务选择器、类型浮层不能同时挂
-  assert.match(dateField, /useExclusivePanels\(props\.panelGroup \|\|/)
+  // 每个实例的命名空间必须唯一（组名-字段名），否则兄弟实例会把广播当自己人跳过
+  assert.match(dateField, /useExclusivePanels\(props\.panelGroup \? `\$\{props\.panelGroup\}-\$\{props\.panelName\}` : `focus-dt-\$\{props\.panelName\}`/)
   assert.match(recordDialog, /useExclusivePanels\('focus-record-select'/)
   assert.match(recordDialog, /panel-group="focus-record-start" panel-name="start"/)
   assert.match(recordDialog, /panel-group="focus-record-end" panel-name="end"/)
@@ -1482,13 +1483,52 @@ test('专注页：点记录行弹出详情浮层，可改关联任务与想法�
   assert.match(detail, /document\.addEventListener\('pointerdown', onDocPointerDown, true\)/)
   assert.match(detail, /event\.key === 'Escape' && props\.open/)
 
-  // 关联任务：复用任务选择器，选中即保存（连当前笔记一起提交）
+  // 关联任务：复用任务选择器，选中即保存（连当前笔记、起止时间一起提交）
   assert.match(detail, /<FocusTargetPicker v-if="pickerOpen"/)
-  assert.match(detail, /focus\.updateRecord\(props\.session, \{ taskId, note: note\.value \}\)/)
-  assert.match(detail, /focus\.updateRecord\(props\.session, \{ note: note\.value \}\)/)
+  assert.match(detail, /focus\.updateRecord\(props\.session, \{ taskId, \.\.\.currentPayload\(\) \}\)/)
+  assert.match(detail, /focus\.updateRecord\(props\.session, currentPayload\(\)\)/)
   assert.match(detail, /focus\.remove\(props\.session\)/)
 
   // store：null 表示不改，空串才是解除关联（后端约定）
-  assert.match(focusStore, /async updateRecord\(session, \{ taskId, note \} = \{\}\)/)
+  assert.match(focusStore, /async updateRecord\(session, \{ taskId, note, startedAt, endedAt \} = \{\}\)/)
   assert.match(focusStore, /payload\.taskId = taskId === null \? '' : taskId/)
+  assert.match(focusStore, /payload\.startedAt = startedAt/)
+  assert.match(focusStore, /payload\.endedAt = endedAt/)
+})
+
+test('专注记录详情浮层与批量管理弹窗共用同一组件，可改起止时间（P2-FOCUS5）', async () => {
+  const batch = await readFile(new URL('../components/tasks/FocusBatchDialog.vue', import.meta.url), 'utf8')
+  const detail = await readFile(new URL('../components/tasks/FocusRecordDetail.vue', import.meta.url), 'utf8')
+  const field = await readFile(new URL('../components/tasks/FocusDateTimeField.vue', import.meta.url), 'utf8')
+
+  // 批量管理不再自带一套详情，改为复用共享组件（modal 形态）
+  assert.match(batch, /<FocusRecordDetail[\s\S]{0,200}variant="modal"/)
+  assert.match(batch, /<FocusRecordDetail[\s\S]{0,300}@saved="onDetailSaved"/)
+  assert.match(batch, /import FocusRecordDetail from/)
+  // 旧的重复实现必须清干净，避免两份样式互相污染
+  assert.ok(!batch.includes('.focus-detail-mask'), 'FocusBatchDialog 仍残留旧详情遮罩样式')
+  assert.ok(!batch.includes('relinkTask'), 'FocusBatchDialog 仍残留旧关联逻辑')
+
+  // 双形态：popover 贴行、modal 居中
+  assert.match(detail, /const isModal = computed\(\(\) => props\.variant === 'modal'\)/)
+  assert.match(detail, /class="focus-detail-layer"[\s\S]{0,80}:class="\{ 'is-modal': isModal \}"/)
+  assert.match(detail, /\.focus-detail-card\.is-modal \{ position: relative/)
+
+  // 起止时间可编辑，两个日期浮层同一命名空间内互斥（各自名字不同）
+  assert.match(detail, /v-model="startAt"/)
+  assert.match(detail, /v-model="endAt"/)
+  assert.match(detail, /panel-group="focus-detail-time" panel-name="start"/)
+  assert.match(detail, /panel-group="focus-detail-time" panel-name="end"/)
+  // 时间非法时禁止保存，并且不再把非法时间提交给后端
+  assert.match(detail, /if \(end <= start\) return '结束时间需要晚于开始时间'/)
+  assert.match(detail, /:disabled="busy \|\| Boolean\(timeError\)"/)
+  assert.match(detail, /if \(!timeError\.value\) \{\s*\n\s*payload\.startedAt = startAt\.value/)
+  // 时长随编辑实时重算
+  assert.match(detail, /const minutes = Math\.round\(\(new Date\(endAt\.value\)\.getTime\(\) - new Date\(startAt\.value\)\.getTime\(\)\) \/ 60000\)/)
+
+  // 浮层必须是一层独立定位（Teleport + fixed），不能被卡片 overflow 裁剪
+  assert.match(field, /<Teleport to="body">/)
+  assert.match(field, /position: 'fixed'/)
+  // 量尺寸要量内层面板，外层定位壳宽度恒等于视口
+  assert.match(field, /const box = pop\.firstElementChild \|\| pop/)
 })

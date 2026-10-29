@@ -65,7 +65,9 @@ const draftTime = ref('')
 const lunarMap = ref({})
 let lunarEpoch = 0
 
-useExclusivePanels(props.panelGroup || `focus-dt-${props.panelName}`, [
+// 命名空间必须「每个实例各不相同」，否则同组的另一个实例会把广播当自己人跳过；
+// 但又要能收到同组兄弟的广播，所以用「组名-字段名」拼出实例级命名空间。
+useExclusivePanels(props.panelGroup ? `${props.panelGroup}-${props.panelName}` : `focus-dt-${props.panelName}`, [
   [props.panelName, () => open.value, value => { if (!value) open.value = false }]
 ])
 

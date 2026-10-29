@@ -31,9 +31,10 @@ public final class TaskEfficiencyModels {
                                     String startedAt, String endedAt, String note) {
     }
 
-    /** 专注记录改「想法」或改「关联任务」。taskId 传空串表示解除关联，传 null 表示不改。 */
+    /** 专注记录改「想法」「关联任务」或「起止时间」。
+     *  taskId 传空串表示解除关联，传 null 表示不改；startedAt / endedAt 同理，null 表示不改。 */
     @Schema(name = "FocusSessionUpdateCommand")
-    public record FocusSessionUpdateCommand(String taskId, String note) {
+    public record FocusSessionUpdateCommand(String taskId, String note, String startedAt, String endedAt) {
     }
 
     @Schema(name = "FocusFinishCommand")

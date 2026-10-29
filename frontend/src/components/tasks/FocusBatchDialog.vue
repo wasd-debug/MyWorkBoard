@@ -81,24 +81,15 @@
           <button type="button" class="focus-batch-delete" :disabled="!selected.length || busy" @click="removeSelected">{{ busy ? '删除中…' : `删除${selected.length ? ` (${selected.length})` : ''}` }}</button>
         </footer>
 
-        <div v-if="detail" class="focus-detail-mask" @click.self="detail = null">
-          <section class="focus-detail" role="dialog" aria-label="专注记录详情">
-            <div class="focus-detail-head">
-              <span class="focus-detail-icon" aria-hidden="true"><Timer :size="15" /></span>
-              <button type="button" class="focus-detail-task" @click.stop="detailPicker = !detailPicker">{{ detail.taskTitle || '未关联任务' }}</button>
-              <button type="button" class="focus-detail-link" :class="{ on: detailPicker }" aria-label="关联任务" @click.stop="detailPicker = !detailPicker"><Link2 :size="16" /></button>
-            </div>
-            <FocusTargetPicker v-if="detailPicker" inline default-tab="task" @pick="relinkTask" />
-            <p class="focus-detail-line"><CircleDot :size="14" />{{ fullRange(detail) }}</p>
-            <p class="focus-detail-line"><Clock3 :size="14" />{{ detailMinutes(detail) }} 分钟</p>
-            <textarea v-model="detailNote" class="focus-detail-note" maxlength="500" placeholder="记录你的想法..."></textarea>
-            <p v-if="detailError" class="focus-detail-error" role="alert">{{ detailError }}</p>
-            <footer>
-              <button type="button" class="focus-detail-save" :disabled="detailBusy" @click="saveDetail">{{ detailBusy ? '保存中…' : '保存' }}</button>
-              <button type="button" class="focus-detail-remove" :disabled="detailBusy" @click="removeDetail">删除这条</button>
-            </footer>
-          </section>
-        </div>
+        <FocusRecordDetail
+          variant="modal"
+          :open="Boolean(detail)"
+          :session="detail"
+          @close="detail = null"
+          @saved="onDetailSaved"
+          @deleted="onDetailDeleted"
+        />
+
       </section>
     </div>
   </Teleport>
@@ -106,9 +97,9 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { Check, ChevronDown, CircleDot, Clock3, Link2, Timer, X } from 'lucide-vue-next'
-import FocusTargetPicker from './FocusTargetPicker.vue'
-import { apiListFocusSessions, apiUpdateFocusSession } from '../../../packages/api-client/src/index.js'
+import { Check, ChevronDown, Timer, X } from 'lucide-vue-next'
+import FocusRecordDetail from './FocusRecordDetail.vue'
+import { apiListFocusSessions } from '../../../packages/api-client/src/index.js'
 import { useTaskFocusStore } from '../../stores/taskFocus.js'
 import { message } from '../../services/message.js'
 
@@ -157,11 +148,8 @@ const loading = ref(false)
 const selected = ref([])
 const busy = ref(false)
 
+// 详情交给共用的 FocusRecordDetail（模态形态），这里只记住正在看哪一条
 const detail = ref(null)
-const detailNote = ref('')
-const detailPicker = ref(false)
-const detailBusy = ref(false)
-const detailError = ref('')
 
 function pad(value) {
   return String(value).padStart(2, '0')
@@ -280,18 +268,6 @@ function timeRange(session) {
   return `${fmt(start)} - ${fmt(new Date(session.endedAt))}`
 }
 
-function fullRange(session) {
-  const fmt = date => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
-  const start = fmt(new Date(session.startedAt))
-  if (!session.endedAt) return `${start} - 进行中`
-  return `${start} - ${fmt(new Date(session.endedAt))}`
-}
-
-function detailMinutes(session) {
-  const value = Number(session.actualMinutes) || 0
-  return value
-}
-
 function shortMinutes(minutes) {
   const value = Number(minutes || 0)
   const hours = Math.floor(value / 60)
@@ -326,54 +302,21 @@ function close() {
 
 function openDetail(session) {
   detail.value = session
-  detailNote.value = session.note || ''
-  detailPicker.value = false
-  detailError.value = ''
 }
 
-async function relinkTask(item) {
-  if (!detail.value) return
-  detail.value = { ...detail.value, taskId: item.kind === 'preset' ? null : item.id, taskTitle: item.title }
-  detailPicker.value = false
+/** 改完就地替换列表里的那条，再把变化告诉外面 */
+function onDetailSaved(updated) {
+  if (!updated) return
+  detail.value = updated
+  const index = sessions.value.findIndex(item => item.publicId === updated.publicId)
+  if (index >= 0) sessions.value[index] = updated
+  emit('changed')
 }
 
-async function saveDetail() {
-  if (!detail.value || detailBusy.value) return
-  detailBusy.value = true
-  detailError.value = ''
-  try {
-    const updated = await apiUpdateFocusSession(
-      detail.value.publicId,
-      { taskId: detail.value.taskId || null, note: detailNote.value },
-      detail.value.revision
-    )
-    const index = sessions.value.findIndex(item => item.publicId === updated.publicId)
-    if (index >= 0) sessions.value[index] = updated
-    detail.value = null
-    message.success('已保存')
-    emit('changed')
-  } catch (error) {
-    detailError.value = error?.response?.data?.detail || '保存失败'
-  } finally {
-    detailBusy.value = false
-  }
-}
-
-async function removeDetail() {
-  if (!detail.value || detailBusy.value) return
-  if (!window.confirm('删除这条专注记录？')) return
-  detailBusy.value = true
-  try {
-    await focus.remove(detail.value)
-    sessions.value = sessions.value.filter(item => item.publicId !== detail.value.publicId)
-    detail.value = null
-    message.success('已删除')
-    emit('changed')
-  } catch (error) {
-    detailError.value = error?.response?.data?.detail || '删除失败'
-  } finally {
-    detailBusy.value = false
-  }
+function onDetailDeleted() {
+  if (detail.value) sessions.value = sessions.value.filter(item => item.publicId !== detail.value.publicId)
+  detail.value = null
+  emit('changed')
 }
 
 async function removeSelected() {
@@ -432,19 +375,4 @@ async function removeSelected() {
 .focus-batch-select-all { border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 13px; cursor: pointer; }
 .focus-batch-delete { min-height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: var(--down, #e34d59); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 .focus-batch-delete:disabled { color: var(--muted); cursor: default; }
-
-.focus-detail-mask { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(15 23 42 / 38%); }
-.focus-detail { display: grid; width: min(460px, 100%); gap: 12px; padding: 18px; border-radius: 16px; background: var(--card); box-shadow: 0 26px 60px rgb(15 23 42 / 28%); }
-.focus-detail-head { display: flex; align-items: center; gap: 8px; }
-.focus-detail-icon { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 50%; background: var(--paper); color: var(--muted); }
-.focus-detail-task { flex: 1; min-width: 0; overflow: hidden; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13.5px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.focus-detail-link { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
-.focus-detail-link.on, .focus-detail-link:hover { background: var(--paper); color: var(--ink); }
-.focus-detail-line { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--ink2); font-size: 13px; font-variant-numeric: tabular-nums; }
-.focus-detail-line svg { color: var(--muted); }
-.focus-detail-note { min-height: 110px; padding: 10px 12px; border: 0; border-radius: 10px; background: var(--paper); color: var(--ink); font: inherit; font-size: 13.5px; resize: vertical; }
-.focus-detail-error { margin: 0; color: var(--down, #e34d59); font-size: 12px; }
-.focus-detail footer { display: flex; justify-content: space-between; gap: 10px; }
-.focus-detail-save { min-width: 88px; min-height: 34px; border: 1px solid var(--accent); border-radius: 9px; background: var(--accent); color: var(--accent-contrast, #fff); font: inherit; font-size: 13px; cursor: pointer; }
-.focus-detail-remove { min-height: 34px; padding: 0 12px; border: 0; border-radius: 9px; background: transparent; color: var(--down, #e34d59); font: inherit; font-size: 13px; cursor: pointer; }
 </style>

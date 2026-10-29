@@ -180,8 +180,9 @@ public class TaskEfficiencyService {
         return focusById(userId, publicId);
     }
 
-    /** 修改专注记录的「想法」或「关联任务」。改关联任务只动 focus_session.task_id，
-     *  已计入旧任务的 focus_minutes 不回溯（与滴答一致：历史专注量不回滚）。 */
+    /** 修改专注记录的「想法」「关联任务」或「起止时间」。
+     *  改关联任务只动 focus_session.task_id，已计入旧任务的 focus_minutes 不回溯（与滴答一致）；
+     *  改起止时间会按新的差值重算 actual_minutes，并把差额补到当前关联任务上。 */
     @Transactional
     public FocusSession updateFocus(String publicId, FocusSessionUpdateCommand command, String ifMatch) {
         long userId = currentUser.id();
@@ -196,10 +197,51 @@ public class TaskEfficiencyService {
         } else {
             taskId = requestTask.isBlank() ? null : taskId(userId, requestTask);
         }
-        int changed = jdbc.update("UPDATE focus_session SET note=?,task_id=?,revision=revision+1 " +
-                "WHERE public_id=? AND user_id=? AND revision=?", note, taskId, publicId, userId, expected);
+        // 起止时间：没传就不动；传了就必须两个都合法，时长一律按差值重算
+        boolean timeChanged = command != null && (command.startedAt() != null || command.endedAt() != null);
+        Instant started = parseInstant(before.startedAt());
+        Instant ended = before.endedAt() == null || before.endedAt().isBlank() ? null : parseInstant(before.endedAt());
+        int planned = before.plannedMinutes();
+        int actual = before.actualMinutes();
+        String status = before.status();
+        if (timeChanged) {
+            Instant requestStart = command.startedAt() == null ? started : parseInstant(command.startedAt());
+            Instant requestEnd = command.endedAt() == null ? ended : parseInstant(command.endedAt());
+            if (requestStart == null) throw new IllegalArgumentException("开始时间格式不正确");
+            if (requestEnd == null) throw new IllegalArgumentException("请同时填写结束时间");
+            if (!requestEnd.isAfter(requestStart)) throw new IllegalArgumentException("结束时间需要晚于开始时间");
+            if (requestStart.isAfter(dbNow())) throw new IllegalArgumentException("开始时间不能晚于当前时间");
+            long minutes = Math.max(1, Math.round(java.time.Duration.between(requestStart, requestEnd).toSeconds() / 60.0));
+            started = requestStart;
+            ended = requestEnd;
+            actual = (int) Math.min(24 * 60, minutes);
+            planned = Math.min(180, actual);
+            status = "COMPLETED";
+        }
+        int changed = jdbc.update("UPDATE focus_session SET note=?,task_id=?,started_at=?,ended_at=?,actual_minutes=?,planned_minutes=?,status=?,revision=revision+1 " +
+                        "WHERE public_id=? AND user_id=? AND revision=?", note, taskId,
+                Timestamp.from(started), ended == null ? null : Timestamp.from(ended), actual, planned, status, publicId, userId, expected);
         if (changed == 0) throw new ConflictException("专注记录版本已变化", before.revision());
+        // 任务上的累计专注时长要跟着差额走，否则任务详情里的「专注时长」会和记录对不上
+        if ("COMPLETED".equals(status) && actual != before.actualMinutes() && taskId != null) {
+            int diff = actual - ("COMPLETED".equals(before.status()) ? before.actualMinutes() : 0);
+            if (diff != 0) adjustTaskFocus(userId, taskId, diff);
+        }
         return focusById(userId, publicId);
+    }
+
+    /** 把一条记录时长变化带来的差额补到任务上，最低补到 0 */
+    private void adjustTaskFocus(long userId, Long taskId, int diff) {
+        jdbc.update("UPDATE task SET focus_minutes=GREATEST(focus_minutes+?,0),revision=revision+1 WHERE id=? AND user_id=?", diff, taskId, userId);
+        try {
+            String taskPublicId = jdbc.queryForObject("SELECT public_id FROM task WHERE id=? AND user_id=?", String.class, taskId, userId);
+            if (taskPublicId != null) {
+                changeLog.append(userId, UUID.randomUUID().toString(), taskPublicId, "UPSERT",
+                        TaskService.syncEntity(tasks.currentForSync(taskPublicId), false));
+            }
+        } catch (Exception ignored) {
+            // 任务已被删掉时只调整不到任何东西，不影响记录本身更新
+        }
     }
 
     @Transactional
