@@ -38,6 +38,8 @@ let activeRefreshPromise
 const syncHoldTokens = new Set()
 let syncHoldSequence = 0
 let syncDeferredByEditor = false
+let pendingInit = null
+let pendingInitWaitRemote = false
 
 function clearState(store) {
   Object.assign(store, { ready: false, loading: false, syncing: false, listGroups: [], lists: [], deletedLists: [], tags: [], tasks: [], total: 0, undoStack: [],
@@ -167,32 +169,56 @@ export const useTasksStore = defineStore('tasks', {
     async init({ waitForRemote = true } = {}) {
       this.installListeners()
       if (this.ready) return
-      this.loading = true
-      try {
-        await this.hydrate()
-        if (this.online && this.accountScope) {
-          const refresh = this.refreshServer()
-          if (waitForRemote) await refresh
-        }
-      } finally {
-        this.loading = false
-        this.ready = true
+      // 并发 init（例如登录后 App 与页面同时触发）必须复用同一个 hydrate，
+      // 否则第二次会关掉 sync-engine 的连接，第一次的 readAll 直接报
+      // IDBDatabase「connection is closing」。
+      if (pendingInit) {
+        if (waitForRemote) pendingInitWaitRemote = true
+        return pendingInit
       }
+      pendingInitWaitRemote = waitForRemote
+      this.loading = true
+      pendingInit = (async () => {
+        try {
+          await this.hydrate()
+          if (this.online && this.accountScope) {
+            const refresh = this.refreshServer()
+            if (pendingInitWaitRemote) await refresh
+          }
+        } finally {
+          this.loading = false
+          this.ready = true
+          pendingInit = null
+          pendingInitWaitRemote = false
+        }
+      })()
+      return pendingInit
     },
     async fetch() { return this.init() },
     async hydrate() {
       const epoch = sessionEpoch
       const scoped = engine
-      const [lists, tags, tasks, habits, habitCheckins, countdowns, conflicts, rejected, pending, cachedListGroups] = await Promise.all([
-        scoped.list('task-list', { bookId: SCOPE, includeDeleted: true }), scoped.list('task-tag', { bookId: SCOPE }),
-        scoped.list('task', { bookId: SCOPE, includeDeleted: true }),
-        scoped.list('habit', { bookId: SCOPE, includeDeleted: true }),
-        scoped.list('habit-checkin', { bookId: SCOPE, includeDeleted: true }),
-        scoped.list('countdown', { bookId: SCOPE, includeDeleted: true }),
-        scoped.conflicts(SCOPE), scoped.rejected(SCOPE), scoped.pendingOperations(SCOPE),
-        scoped.meta(LIST_GROUPS_CACHE_META_KEY)
-      ])
-      if (epoch !== sessionEpoch || scoped !== engine) return
+      // 账号作用域切换会重建 engine（旧连接随之关闭），在途事务会抛
+      // IDBDatabase「connection is closing」。这种竞态不是真故障：epoch 已变，
+      // 数据由后一次 hydrate 负责，这里安静退出即可。
+      const stale = () => epoch !== sessionEpoch || scoped !== engine
+      let payload
+      try {
+        payload = await Promise.all([
+          scoped.list('task-list', { bookId: SCOPE, includeDeleted: true }), scoped.list('task-tag', { bookId: SCOPE }),
+          scoped.list('task', { bookId: SCOPE, includeDeleted: true }),
+          scoped.list('habit', { bookId: SCOPE, includeDeleted: true }),
+          scoped.list('habit-checkin', { bookId: SCOPE, includeDeleted: true }),
+          scoped.list('countdown', { bookId: SCOPE, includeDeleted: true }),
+          scoped.conflicts(SCOPE), scoped.rejected(SCOPE), scoped.pendingOperations(SCOPE),
+          scoped.meta(LIST_GROUPS_CACHE_META_KEY)
+        ])
+      } catch (error) {
+        if (stale()) return
+        throw error
+      }
+      if (stale()) return
+      const [lists, tags, tasks, habits, habitCheckins, countdowns, conflicts, rejected, pending, cachedListGroups] = payload
       this.lists = lists.filter(item => !item.deleted).map(item => ({ ...item, publicId: item.id })).sort((a, b) => a.sortOrder - b.sortOrder)
       this.deletedLists = lists.filter(item => item.deleted).map(item => ({ ...item, publicId: item.id }))
       this.tags = tags.map(item => ({ ...item, publicId: item.id })).sort((a, b) => a.sortOrder - b.sortOrder)

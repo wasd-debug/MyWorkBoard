@@ -1,84 +1,84 @@
 <template>
   <main class="focus-page">
-    <header class="focus-head">
-      <h1>番茄专注</h1>
-      <div class="focus-modes" role="tablist" aria-label="计时模式">
-        <button type="button" role="tab" :class="{ on: mode === 'POMODORO' }" :aria-selected="mode === 'POMODORO'" @click="switchMode('POMODORO')">番茄计时</button>
-        <button type="button" role="tab" :class="{ on: mode === 'STOPWATCH' }" :aria-selected="mode === 'STOPWATCH'" @click="switchMode('STOPWATCH')">正计时</button>
-      </div>
-      <div class="focus-head-actions">
-        <button type="button" class="focus-icon-btn" aria-label="添加常用专注" title="添加常用专注" @click="openPresetDialog()"><Plus :size="18" /></button>
-        <div class="focus-menu-wrap">
-          <button type="button" class="focus-icon-btn" aria-label="更多" title="更多" :aria-expanded="moreOpen" @click.stop="moreOpen = !moreOpen"><MoreHorizontal :size="18" /></button>
-          <div v-if="moreOpen" class="focus-menu is-page" @click.stop>
-            <button type="button" @click="goStats"><ChartPie :size="15" />统计</button>
-            <button type="button" @click="openSettings"><Settings2 :size="15" />专注设置</button>
+    <div class="focus-shell">
+      <section class="focus-pane">
+        <header class="focus-pane-head">
+          <h1>番茄专注</h1>
+          <div class="focus-modes" role="tablist" aria-label="计时模式">
+            <button type="button" role="tab" :class="{ on: mode === 'POMODORO' }" :aria-selected="mode === 'POMODORO'" @click="switchMode('POMODORO')">番茄计时</button>
+            <button type="button" role="tab" :class="{ on: mode === 'STOPWATCH' }" :aria-selected="mode === 'STOPWATCH'" @click="switchMode('STOPWATCH')">正计时</button>
           </div>
-        </div>
-      </div>
-    </header>
+          <div class="focus-head-actions">
+            <button type="button" class="focus-icon-btn" aria-label="添加常用专注" title="添加常用专注" @click="openPresetDialog()"><Plus :size="18" /></button>
+            <div class="focus-menu-wrap">
+              <button type="button" class="focus-icon-btn" aria-label="更多" title="更多" :aria-expanded="moreOpen" @click.stop="moreOpen = !moreOpen"><MoreHorizontal :size="18" /></button>
+              <div v-if="moreOpen" class="focus-menu is-page" @click.stop>
+                <button type="button" @click="goStats"><ChartPie :size="15" />统计</button>
+                <button type="button" @click="openSettings"><Settings2 :size="15" />专注设置</button>
+              </div>
+            </div>
+          </div>
+        </header>
 
-    <p v-if="focus.error" class="focus-error" role="alert">{{ focus.error }}</p>
+        <p v-if="focus.error" class="focus-error" role="alert">{{ focus.error }}</p>
 
-    <div class="focus-body">
-      <section class="focus-stage">
-        <div class="focus-target">
-          <button type="button" :aria-expanded="presetMenuOpen" @click.stop="presetMenuOpen = !presetMenuOpen">
-            <span class="focus-target-icon">{{ activePreset?.icon || '🍅' }}</span>
-            <span>{{ activePreset?.name || '专注' }}</span>
-            <ChevronRight :size="14" />
-          </button>
-          <div v-if="presetMenuOpen" class="focus-menu is-presets" @click.stop>
-            <p v-if="!focus.presets.length" class="focus-menu-empty">还没有常用专注</p>
-            <button v-for="preset in focus.presets" :key="preset.id" type="button" :class="{ on: preset.id === activePresetId }" @click="pickPreset(preset)">
-              <span class="focus-menu-icon">{{ preset.icon }}</span>
-              <span>{{ preset.name }}</span>
-              <em>{{ preset.mode === 'STOPWATCH' ? '正计时' : `${preset.minutes} 分钟` }}</em>
+        <div class="focus-stage">
+          <div class="focus-target">
+            <button type="button" :aria-expanded="presetMenuOpen" @click.stop="presetMenuOpen = !presetMenuOpen">
+              <span class="focus-target-icon">{{ activePreset?.icon || '🍅' }}</span>
+              <span>{{ activePreset?.name || '专注' }}</span>
+              <ChevronRight :size="14" />
             </button>
-            <button type="button" class="focus-menu-add" @click="openPresetDialog()"><Plus :size="14" />添加常用专注</button>
+            <div v-if="presetMenuOpen" class="focus-menu is-presets" @click.stop>
+              <p v-if="!focus.presets.length" class="focus-menu-empty">还没有常用专注</p>
+              <button v-for="preset in focus.presets" :key="preset.id" type="button" :class="{ on: preset.id === activePresetId }" @click="pickPreset(preset)">
+                <span class="focus-menu-icon">{{ preset.icon }}</span>
+                <span>{{ preset.name }}</span>
+                <em>{{ preset.mode === 'STOPWATCH' ? '正计时' : `${preset.minutes} 分钟` }}</em>
+              </button>
+              <button type="button" class="focus-menu-add" @click="openPresetDialog()"><Plus :size="14" />添加常用专注</button>
+            </div>
           </div>
-        </div>
 
-        <div class="focus-ring" :class="{ 'is-running': focus.current }">
-          <svg viewBox="0 0 360 360" aria-hidden="true">
-            <circle class="ring-track" cx="180" cy="180" r="158" />
-            <circle
-              v-if="mode !== 'STOPWATCH'"
-              class="ring-progress"
-              cx="180"
-              cy="180"
-              r="158"
-              :stroke-dasharray="ringCircumference"
-              :stroke-dashoffset="ringOffset"
-            />
-            <g v-else class="ring-ticks">
-              <line v-for="tick in ticks" :key="tick.index" :x1="tick.x1" :y1="tick.y1" :x2="tick.x2" :y2="tick.y2" :class="{ on: tick.on }" />
-            </g>
-          </svg>
-          <strong>{{ clockLabel }}</strong>
-        </div>
+          <div class="focus-ring" :class="{ 'is-running': focus.current }">
+            <svg viewBox="0 0 360 360" aria-hidden="true">
+              <circle class="ring-track" cx="180" cy="180" r="158" />
+              <circle
+                v-if="mode !== 'STOPWATCH'"
+                class="ring-progress"
+                cx="180"
+                cy="180"
+                r="158"
+                :stroke-dasharray="ringCircumference"
+                :stroke-dashoffset="ringOffset"
+              />
+              <g v-else class="ring-ticks">
+                <line v-for="tick in ticks" :key="tick.index" :x1="tick.x1" :y1="tick.y1" :x2="tick.x2" :y2="tick.y2" :class="{ on: tick.on }" />
+              </g>
+            </svg>
+            <strong>{{ clockLabel }}</strong>
+          </div>
 
-        <p class="focus-stage-hint">{{ stageHint }}</p>
+          <p class="focus-stage-hint">{{ stageHint }}</p>
 
-        <div class="focus-actions">
-          <button v-if="!focus.current" type="button" class="focus-primary" :disabled="focus.loading" @click="startFocus">开始</button>
-          <template v-else>
-            <button type="button" class="focus-primary" :disabled="focus.loading" @click="focus.complete()">结束</button>
-            <button type="button" class="focus-ghost" :disabled="focus.loading" @click="focus.abort()">放弃</button>
-          </template>
+          <div class="focus-actions">
+            <button v-if="!focus.current" type="button" class="focus-primary" :disabled="focus.loading" @click="startFocus">开始</button>
+            <template v-else>
+              <button type="button" class="focus-primary" :disabled="focus.loading" @click="focus.complete()">结束</button>
+              <button type="button" class="focus-ghost" :disabled="focus.loading" @click="focus.abort()">放弃</button>
+            </template>
+          </div>
         </div>
       </section>
 
       <aside class="focus-side">
-        <section class="focus-overview" aria-label="概览">
-          <h2>概览</h2>
-          <div class="focus-cards">
-            <div class="focus-card"><span>今日番茄</span><b>{{ focus.stats?.todayCount ?? 0 }}</b></div>
-            <div class="focus-card"><span>今日专注时长</span><b>{{ durationLabel(focus.stats?.todayMinutes) }}</b></div>
-            <div class="focus-card"><span>总番茄</span><b>{{ focus.stats?.totalCount ?? 0 }}</b></div>
-            <div class="focus-card"><span>总专注时长</span><b>{{ durationLabel(focus.stats?.totalMinutes) }}</b></div>
-          </div>
-        </section>
+        <h2 class="focus-side-title">概览</h2>
+        <div class="focus-cards">
+          <div class="focus-card"><span>今日番茄</span><b>{{ focus.stats?.todayCount ?? 0 }}</b></div>
+          <div class="focus-card"><span>今日专注时长</span><b>{{ durationLabel(focus.stats?.todayMinutes) }}</b></div>
+          <div class="focus-card"><span>总番茄</span><b>{{ focus.stats?.totalCount ?? 0 }}</b></div>
+          <div class="focus-card"><span>总专注时长</span><b>{{ durationLabel(focus.stats?.totalMinutes) }}</b></div>
+        </div>
 
         <section class="focus-records" aria-label="专注记录">
           <header>
@@ -103,26 +103,28 @@
             <button type="button" @click="exitBatch">退出</button>
           </div>
 
-          <div v-if="!focus.groupedSessions.length && !focus.loadingSessions" class="focus-empty">本周还没有专注记录</div>
+          <div class="focus-records-scroll">
+            <div v-if="!focus.groupedSessions.length && !focus.loadingSessions" class="focus-empty">本周还没有专注记录</div>
 
-          <div v-for="group in focus.groupedSessions" :key="group.key" class="focus-group">
-            <h3>{{ dateLabel(group.date) }}</h3>
-            <ul>
-              <li v-for="session in group.items" :key="session.publicId" :class="{ 'is-aborted': session.status !== 'COMPLETED' }">
-                <label v-if="batchMode" class="focus-row-check"><input v-model="selectedIds" type="checkbox" :value="session.publicId" /></label>
-                <span class="focus-row-dot" aria-hidden="true"></span>
-                <div class="focus-row-main">
-                  <span class="focus-row-time">{{ timeRange(session) }}</span>
-                  <span class="focus-row-task">{{ session.taskTitle || '未关联任务' }}<em v-if="session.note"> · {{ session.note }}</em></span>
-                </div>
-                <span class="focus-row-duration">{{ shortMinutes(session.actualMinutes) }}</span>
-              </li>
-            </ul>
+            <div v-for="group in focus.groupedSessions" :key="group.key" class="focus-group">
+              <h3>{{ dateLabel(group.date) }}</h3>
+              <ul>
+                <li v-for="session in group.items" :key="session.publicId" :class="{ 'is-aborted': session.status !== 'COMPLETED' }">
+                  <label v-if="batchMode" class="focus-row-check"><input v-model="selectedIds" type="checkbox" :value="session.publicId" /></label>
+                  <span class="focus-row-dot" aria-hidden="true"></span>
+                  <div class="focus-row-main">
+                    <span class="focus-row-time">{{ timeRange(session) }}</span>
+                    <span class="focus-row-task">{{ session.taskTitle || '未关联任务' }}<em v-if="session.note"> · {{ session.note }}</em></span>
+                  </div>
+                  <span class="focus-row-duration">{{ shortMinutes(session.actualMinutes) }}</span>
+                </li>
+              </ul>
+            </div>
+
+            <button v-if="focus.hasMore && focus.sessions.length" type="button" class="focus-more" :disabled="focus.loadingSessions" @click="focus.loadMore()">
+              {{ focus.loadingSessions ? '加载中…' : '加载更多' }}
+            </button>
           </div>
-
-          <button v-if="focus.hasMore && focus.sessions.length" type="button" class="focus-more" :disabled="focus.loadingSessions" @click="focus.loadMore()">
-            {{ focus.loadingSessions ? '加载中…' : '加载更多' }}
-          </button>
         </section>
       </aside>
     </div>
@@ -309,7 +311,7 @@ function shortMinutes(minutes) {
 function timeRange(session) {
   const start = new Date(session.startedAt)
   const end = session.endedAt ? new Date(session.endedAt) : null
-  const fmt = date => `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`
+  const fmt = date => `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
   return end ? `${fmt(start)}-${fmt(end)}` : `${fmt(start)}-进行中`
 }
 
@@ -561,66 +563,84 @@ onBeforeUnmount(() => window.removeEventListener('pointerdown', closeMenus))
 </script>
 
 <style scoped>
-.focus-page { display: flex; flex-direction: column; min-height: 100%; padding: 18px 22px 40px; color: var(--ink); }
-.focus-head { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
-.focus-head h1 { margin: 0; font-size: 1.16rem; font-weight: 700; }
-.focus-modes { display: flex; gap: 2px; padding: 3px; border-radius: 9px; background: var(--paper); }
+.focus-page { display: flex; flex-direction: column; min-height: 100%; color: var(--ink); }
+
+/* 左栏：计时区，右侧一条竖分隔线；顶部是「标题 / 模式居中 / 操作」三段 */
+.focus-pane {
+  display: flex; min-width: 0; flex-direction: column; padding: 18px 26px 24px;
+  border-right: 1px solid var(--line);
+  background:
+    radial-gradient(118% 74% at 50% 112%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 64%),
+    linear-gradient(color-mix(in srgb, var(--paper) 46%, transparent), transparent 44%);
+}
+.focus-pane-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; }
+.focus-pane-head h1 { justify-self: start; margin: 0; font-size: 1.16rem; font-weight: 700; }
+.focus-modes { justify-self: center; display: flex; gap: 2px; padding: 3px; border-radius: 9px; background: var(--paper); }
 .focus-modes button { min-height: 26px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; }
 .focus-modes button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgb(15 23 42 / 12%); }
-.focus-head-actions { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.focus-head-actions { justify-self: end; display: flex; align-items: center; gap: 2px; }
 .focus-icon-btn { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--ink2); cursor: pointer; }
 .focus-icon-btn:hover { background: var(--paper); color: var(--ink); }
 .focus-menu-wrap { position: relative; }
 
-.focus-body { display: grid; grid-template-columns: minmax(340px, 1fr) minmax(360px, 1fr); gap: 26px; align-items: start; }
+.focus-shell { display: grid; flex: 1; grid-template-columns: minmax(0, 56fr) minmax(0, 44fr); min-height: calc(100vh - 1px); }
 
-.focus-stage { display: grid; justify-items: center; gap: 10px; padding: 8px 0 20px; }
+.focus-stage { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 10px 0 8px; }
 .focus-target { position: relative; }
-.focus-target > button { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
-.focus-target > button:hover { background: var(--paper); color: var(--ink); }
+.focus-target > button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px 5px 8px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--ink2); font: inherit; font-size: 13px; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+.focus-target > button:hover { border-color: var(--line2); background: var(--paper); color: var(--ink); }
 .focus-target-icon { font-size: 14px; }
 
-.focus-ring { position: relative; display: grid; width: min(340px, 44vh); aspect-ratio: 1; place-items: center; margin: 4px 0 2px; }
+.focus-ring { position: relative; display: grid; width: min(360px, 42vh); aspect-ratio: 1; place-items: center; margin: 2px 0; }
 .focus-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
-.ring-track { fill: none; stroke: color-mix(in srgb, var(--ink) 9%, transparent); stroke-width: 1.5; }
-.ring-progress { fill: none; stroke: color-mix(in srgb, var(--ink) 26%, transparent); stroke-width: 2; stroke-linecap: round; transition: stroke-dashoffset .4s linear; }
+.ring-track { fill: none; stroke: color-mix(in srgb, var(--ink) 8%, transparent); stroke-width: 2; }
+.ring-progress { fill: none; stroke: color-mix(in srgb, var(--accent) 72%, transparent); stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset .4s linear; }
 .focus-ring.is-running .ring-progress { stroke: var(--accent); }
 .ring-ticks line { stroke: color-mix(in srgb, var(--ink) 16%, transparent); stroke-width: 2; stroke-linecap: round; }
-.ring-ticks line.on { stroke: color-mix(in srgb, var(--ink) 42%, transparent); }
-.focus-ring strong { font-size: clamp(2.4rem, 5.6vw, 3.4rem); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.ring-ticks line.on { stroke: var(--accent); }
+.focus-ring strong { font-size: clamp(2.6rem, 5.2vw, 3.6rem); font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
 
 .focus-stage-hint { margin: 0; color: var(--muted); font-size: 12.5px; }
-.focus-actions { display: flex; gap: 10px; margin-top: 14px; }
+.focus-actions { display: flex; gap: 10px; margin-top: 16px; }
+.focus-actions .focus-primary { min-width: 116px; min-height: 40px; padding: 0 28px; border-radius: 999px; }
+.focus-actions .focus-ghost { min-height: 40px; border-radius: 999px; }
 .focus-primary { min-width: 128px; min-height: 38px; padding: 0 22px; border: 1px solid var(--accent); border-radius: 10px; background: var(--accent); color: var(--accent-contrast, #fff); font: inherit; font-size: 13.5px; cursor: pointer; }
 .focus-primary:disabled { opacity: .55; cursor: default; }
 .focus-ghost { min-height: 38px; padding: 0 18px; border: 1px solid var(--line2); border-radius: 10px; background: transparent; color: var(--ink2); font: inherit; font-size: 13.5px; cursor: pointer; }
 .focus-ghost:hover { background: var(--paper); }
 
-.focus-side { display: grid; gap: 22px; }
-.focus-overview h2, .focus-records h2 { margin: 0 0 10px; font-size: 13px; font-weight: 700; }
+.focus-side { display: flex; min-width: 0; flex-direction: column; gap: 12px; padding: 18px 26px 16px; }
+.focus-side-title { margin: 0; font-size: 1.06rem; font-weight: 700; }
 .focus-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.focus-card { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+.focus-card { display: grid; gap: 8px; padding: 12px 14px; border-radius: 12px; background: var(--paper); }
 .focus-card span { color: var(--muted); font-size: 11.5px; }
-.focus-card b { font-size: 1.16rem; font-weight: 700; }
+.focus-card b { font-size: 1.16rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 
-.focus-records { display: grid; gap: 8px; }
-.focus-records > header { display: flex; align-items: center; justify-content: space-between; }
-.focus-records > header h2 { margin: 0; }
+.focus-records { display: flex; flex: 1; flex-direction: column; gap: 8px; min-height: 0; margin-top: 4px; }
+.focus-records > header { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; }
+.focus-records > header h2 { margin: 0; font-size: 1.06rem; font-weight: 700; }
 .focus-record-actions { display: flex; gap: 2px; }
-.focus-group h3 { margin: 10px 0 6px; color: var(--muted); font-size: 11.5px; font-weight: 600; }
-.focus-group ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
-.focus-group li { display: flex; align-items: center; gap: 9px; padding: 7px 6px; border-radius: 8px; }
-.focus-group li:hover { background: var(--paper); }
+.focus-records-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.focus-group h3 { margin: 12px 0 4px; color: var(--muted); font-size: 11.5px; font-weight: 600; }
+.focus-group:first-child h3 { margin-top: 2px; }
+.focus-group ul { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.focus-group li { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 6px 4px 6px 0; border-radius: 8px; }
+.focus-group li:hover { background: color-mix(in srgb, var(--paper) 82%, transparent); }
 .focus-group li.is-aborted { opacity: .55; }
+/* 时间轴：实心圆点 + 向下延伸的连线 */
+.focus-group li:not(:last-child)::after { content: ''; position: absolute; top: 21px; bottom: -2px; left: 4px; width: 1px; background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.focus-row-check { margin-top: 2px; }
 .focus-row-check input { width: 13px; height: 13px; }
-.focus-row-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 70%, transparent); }
-.focus-row-main { display: grid; flex: 1; gap: 2px; min-width: 0; }
-.focus-row-time { color: var(--ink2); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.focus-row-dot { position: relative; z-index: 1; flex: 0 0 auto; width: 9px; height: 9px; margin-top: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--card); }
+.focus-group li.is-aborted .focus-row-dot { background: var(--line2); }
+.focus-row-main { display: grid; flex: 1; gap: 3px; min-width: 0; }
+.focus-row-time { color: var(--ink); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .focus-row-task { overflow: hidden; color: var(--muted); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
 .focus-row-task em { font-style: normal; }
-.focus-row-duration { flex: 0 0 auto; color: var(--ink2); font-size: 12px; }
-.focus-more { grid-column: 1 / -1; justify-self: center; margin-top: 8px; padding: 6px 16px; border: 1px solid var(--line2); border-radius: 8px; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
-.focus-empty { padding: 18px 0; color: var(--muted); font-size: 12.5px; }
+.focus-row-duration { flex: 0 0 auto; margin-top: 1px; color: var(--ink2); font-size: 12px; font-variant-numeric: tabular-nums; }
+.focus-more { display: block; width: 100%; margin: 10px 0 2px; padding: 7px 16px; border: 1px solid var(--line2); border-radius: 9px; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
+.focus-more:hover { background: var(--paper); color: var(--ink); }
+.focus-empty { padding: 22px 0; color: var(--muted); font-size: 12.5px; text-align: center; }
 
 .focus-batch { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink2); font-size: 12px; }
 .focus-batch label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
@@ -677,7 +697,9 @@ onBeforeUnmount(() => window.removeEventListener('pointerdown', closeMenus))
 .focus-error { margin: 0 0 12px; padding: 8px 10px; border-left: 3px solid var(--down, #e34d59); background: color-mix(in srgb, var(--down, #e34d59) 10%, transparent); font-size: 12.5px; }
 
 @media (max-width: 1080px) {
-  .focus-body { grid-template-columns: 1fr; gap: 18px; }
-  .focus-page { padding: 16px 14px 90px; }
+  .focus-shell { grid-template-columns: 1fr; min-height: 0; }
+  .focus-pane { border-right: 0; border-bottom: 1px solid var(--line); padding: 14px 16px 18px; }
+  .focus-side { padding: 14px 16px calc(88px + env(safe-area-inset-bottom)); }
+  .focus-records-scroll { overflow: visible; }
 }
 </style>
