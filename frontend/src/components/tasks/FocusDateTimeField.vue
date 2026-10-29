@@ -1,56 +1,73 @@
 <template>
-  <div class="focus-dt">
-    <button type="button" class="focus-dt-trigger" :class="{ 'is-empty': !modelValue }" :aria-expanded="open" @click.stop="toggle">
+  <div ref="rootEl" class="focus-dt">
+    <button ref="triggerEl" type="button" class="focus-dt-trigger" :class="{ 'is-empty': !modelValue }" :aria-expanded="open" @click.stop="toggle">
       <span>{{ display || placeholder }}</span>
       <ChevronDown :size="15" />
     </button>
-    <div v-if="open" class="focus-dt-popover" @click.stop>
-      <TaskDateTimePopover
-        mode="DATE"
-        :show-tabs="false"
-        :month="month"
-        :calendar-days="cells"
-        :month-label="monthLabel"
-        :selected-key="draftKey"
-        apply-label="确定"
-        clear-label="取消"
-        @quick-date="applyQuickDate"
-        @move-month="moveMonth"
-        @select-date="draftKey = $event"
-        @clear-date="close"
-        @apply="commit"
-      >
-        <template #rows>
-          <label class="focus-dt-time">
-            <Clock3 :size="15" />
-            <input v-model="draftTime" type="time" aria-label="时间" />
-          </label>
-        </template>
-      </TaskDateTimePopover>
-    </div>
+
+    <!-- 浮层挂到 body 上，不受对话框 overflow 裁剪，永远单独盖在最上层 -->
+    <Teleport to="body">
+      <div v-if="open" ref="popoverEl" class="focus-dt-popover" :style="popoverStyle" @click.stop>
+        <TaskDateTimePopover
+          mode="DATE"
+          :show-tabs="false"
+          :month="month"
+          :calendar-days="cells"
+          :month-label="monthLabel"
+          :selected-key="draftKey"
+          apply-label="确定"
+          clear-label="取消"
+          @quick-date="applyQuickDate"
+          @move-month="moveMonth"
+          @select-date="draftKey = $event"
+          @clear-date="close"
+          @apply="commit"
+        >
+          <template #rows>
+            <label class="focus-dt-time">
+              <Clock3 :size="15" />
+              <input v-model="draftTime" type="time" aria-label="时间" />
+            </label>
+          </template>
+        </TaskDateTimePopover>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ChevronDown, Clock3 } from 'lucide-vue-next'
 import TaskDateTimePopover from './TaskDateTimePopover.vue'
 import { apiGetTaskCalendar } from '../../../packages/api-client/src/index.js'
 import { formatLunarLabel } from '../../views/calendar/calendarLunar.js'
+import { useExclusivePanels } from '../../utils/exclusivePanels.js'
 
 const props = defineProps({
   /** ISO 字符串，空串表示未选 */
   modelValue: { type: String, default: '' },
-  placeholder: { type: String, default: '选择时间' }
+  placeholder: { type: String, default: '选择时间' },
+  /** 与同一命名空间内的其它浮层互斥（如补记弹窗里的任务选择器、类型浮层） */
+  panelGroup: { type: String, default: '' },
+  /** 本浮层在组里的名字，同组内唯一 */
+  panelName: { type: String, default: 'date' }
 })
 const emit = defineEmits(['update:modelValue'])
 
+const rootEl = ref(null)
+const triggerEl = ref(null)
+const popoverEl = ref(null)
+const popoverStyle = ref({})
 const open = ref(false)
 const month = ref(new Date())
 const draftKey = ref('')
 const draftTime = ref('')
 const lunarMap = ref({})
 let lunarEpoch = 0
+
+useExclusivePanels(props.panelGroup || `focus-dt-${props.panelName}`, [
+  [props.panelName, () => open.value, value => { if (!value) open.value = false }]
+])
 
 function pad(value) {
   return String(value).padStart(2, '0')
@@ -116,6 +133,27 @@ function syncDraft() {
   month.value = new Date((valid ? date : new Date()).getFullYear(), (valid ? date : new Date()).getMonth(), 1)
 }
 
+/** 定位到触发按钮下方；下方放不下就翻到上方，再不行就贴住视口底部 */
+function placePopover() {
+  const trigger = triggerEl.value
+  const pop = popoverEl.value
+  if (!trigger || !pop) return
+  const rect = trigger.getBoundingClientRect()
+  // 外层只是定位壳（块级、占满宽度），真实尺寸要量里面的日历面板
+  const box = pop.firstElementChild || pop
+  const width = box.offsetWidth
+  const height = box.offsetHeight
+  const margin = 10
+  const gap = 6
+  let top = rect.bottom + gap
+  if (top + height > window.innerHeight - margin) {
+    const above = rect.top - gap - height
+    top = above >= margin ? above : Math.max(margin, window.innerHeight - margin - height)
+  }
+  const left = Math.min(Math.max(margin, rect.left), Math.max(margin, window.innerWidth - margin - width))
+  popoverStyle.value = { position: 'fixed', top: `${Math.round(top)}px`, left: `${Math.round(left)}px` }
+}
+
 function toggle() {
   if (open.value) {
     close()
@@ -123,12 +161,45 @@ function toggle() {
   }
   syncDraft()
   open.value = true
+  void nextTick(placePopover)
   loadLunar(month.value)
 }
 
 function close() {
   open.value = false
 }
+
+function onDocPointerDown(event) {
+  if (!open.value) return
+  const target = event.target
+  if (rootEl.value?.contains(target) || popoverEl.value?.contains(target)) return
+  close()
+}
+
+function onViewportChange() {
+  if (open.value) placePopover()
+}
+
+function onKeydown(event) {
+  if (event.key === 'Escape' && open.value) {
+    event.stopPropagation()
+    close()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', onDocPointerDown, true)
+  window.addEventListener('resize', onViewportChange)
+  window.addEventListener('scroll', onViewportChange, true)
+  window.addEventListener('keydown', onKeydown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onDocPointerDown, true)
+  window.removeEventListener('resize', onViewportChange)
+  window.removeEventListener('scroll', onViewportChange, true)
+  window.removeEventListener('keydown', onKeydown)
+})
 
 function moveMonth(delta) {
   month.value = new Date(month.value.getFullYear(), month.value.getMonth() + delta, 1)
@@ -166,7 +237,8 @@ watch(() => props.modelValue, () => {
 .focus-dt-trigger { display: flex; width: 100%; min-height: 40px; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px; border: 1px solid var(--line2); border-radius: 10px; background: var(--card); color: var(--ink); font: inherit; font-size: 13.5px; cursor: pointer; }
 .focus-dt-trigger.is-empty { color: var(--muted); }
 .focus-dt-trigger:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--line2)); }
-.focus-dt-popover { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; }
+/* 浮层自身的位置由内联 style（fixed）决定，这里只管层级和外观 */
+.focus-dt-popover { z-index: 220; }
 .focus-dt-time { display: flex; align-items: center; gap: 8px; padding: 6px 2px 0; color: var(--muted); }
 .focus-dt-time input { flex: 1; min-height: 32px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 8px; background: var(--paper); color: var(--ink); font: inherit; font-size: 13px; }
 </style>

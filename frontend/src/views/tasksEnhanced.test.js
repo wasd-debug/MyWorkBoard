@@ -1420,3 +1420,43 @@ test('专注页：专注对象选择器 / 可拖动分栏 / 声音浮层（P2-FO
   assert.match(focusSound, /gain\.gain\.setTargetAtTime\(gainFor\(volume\) \* playing\.factor/)
   assert.match(focusView, /if \(kind === 'COMPLETED' && !focus\.current && !focus\.error && sound\.enabled\)/)
 })
+
+test('专注页：记录分页滚动 / 日期浮层独立成层 / 点外面关闭（P2-FOCUS3）', async () => {
+  const focusView = await readFile(new URL('./TaskFocusView.vue', import.meta.url), 'utf8')
+  const focusStore = await readFile(new URL('../stores/taskFocus.js', import.meta.url), 'utf8')
+  const dateField = await readFile(new URL('../components/tasks/FocusDateTimeField.vue', import.meta.url), 'utf8')
+  const recordDialog = await readFile(new URL('../components/tasks/FocusRecordDialog.vue', import.meta.url), 'utf8')
+
+  // 列表分页：默认 50 条，只渲染已展开的部分
+  assert.match(focusStore, /pageSize: 50,\s*\n\s*visibleCount: 50/)
+  assert.match(focusStore, /visibleSessions: state => state\.sessions\.slice\(0, state\.visibleCount\)/)
+  assert.match(focusStore, /for \(const session of state\.sessions\.slice\(0, state\.visibleCount\)\)/)
+  assert.match(focusStore, /async loadMoreVisible\(\) \{[\s\S]{0,420}this\.visibleCount \+= this\.pageSize/)
+  assert.match(focusStore, /this\.visibleCount = this\.pageSize/)
+
+  // 列表内部滚动 + 滚到底自动加载，页面本身不滚
+  assert.match(focusView, /@scroll\.passive="onRecordsScroll"/)
+  assert.match(focusView, /el\.scrollTop \+ el\.clientHeight >= el\.scrollHeight - 160[\s\S]{0,120}focus\.loadMoreVisible\(\)/)
+  assert.doesNotMatch(focusView, /class="focus-more"/)
+  assert.match(focusView, /\.focus-records-scroll \{[^}]*overflow-y: auto/)
+  assert.match(focusView, /\.focus-page \{[^}]*overflow: hidden/)
+  assert.match(focusView, /:style="pageStyle"/)
+  assert.match(focusView, /function syncPageHeight\(\)[\s\S]{0,320}window\.innerHeight - offset - padBottom/)
+
+  // 日期浮层：挂到 body 上、fixed 定位，才不会被弹窗的 overflow 裁掉
+  assert.match(dateField, /<Teleport to="body">[\s\S]{0,400}class="focus-dt-popover"/)
+  assert.match(dateField, /position: 'fixed'/)
+  // 下方放不下就翻到上方
+  assert.match(dateField, /if \(top \+ height > window\.innerHeight - margin\)[\s\S]{0,160}rect\.top - gap - height/)
+
+  // 点浮层以外的位置自动关闭（捕获阶段，先于触发按钮的 click）
+  assert.match(dateField, /document\.addEventListener\('pointerdown', onDocPointerDown, true\)/)
+  assert.match(recordDialog, /document\.addEventListener\('pointerdown', onDocPointerDown, true\)/)
+  assert.match(recordDialog, /if \(target\?\.closest\?\.\('\.focus-record-control'\)\) return/)
+
+  // 浮层互斥：日期浮层与任务选择器、类型浮层不能同时挂
+  assert.match(dateField, /useExclusivePanels\(props\.panelGroup \|\|/)
+  assert.match(recordDialog, /useExclusivePanels\('focus-record-select'/)
+  assert.match(recordDialog, /panel-group="focus-record-start" panel-name="start"/)
+  assert.match(recordDialog, /panel-group="focus-record-end" panel-name="end"/)
+})

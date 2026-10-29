@@ -31,6 +31,9 @@ export const useTaskFocusStore = defineStore('task-focus', {
     rangeEnd: '',
     hasMore: true,
     loadingSessions: false,
+    // 列表分页：默认渲染 50 条，滚动到底部再放下一批（取数窗口不够时才去请求更早的周）
+    pageSize: 50,
+    visibleCount: 50,
     now: Date.now(),
     loading: false,
     error: ''
@@ -53,11 +56,15 @@ export const useTaskFocusStore = defineStore('task-focus', {
       return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
     },
     displayLabel() { return this.isCountUp ? this.elapsedLabel : this.remainingLabel },
+    // 只渲染已展开的条数，滚动到底再追加
+    visibleSessions: state => state.sessions.slice(0, state.visibleCount),
+    /** 还有没展开的已取回记录，或者还能往前取更早的周 */
+    canLoadMore: state => state.visibleCount < state.sessions.length || state.hasMore,
     // 记录按日期分组（本地时区）
     groupedSessions: state => {
       const groups = []
       let currentKey = ''
-      for (const session of state.sessions) {
+      for (const session of state.sessions.slice(0, state.visibleCount)) {
         const date = new Date(session.startedAt)
         const key = dateKey(date)
         if (key !== currentKey) {
@@ -118,6 +125,7 @@ export const useTaskFocusStore = defineStore('task-focus', {
       const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
       this.rangeEnd = dateKey(tomorrow)
       this.hasMore = true
+      this.visibleCount = this.pageSize
       await this.loadSessions({ from: this.rangeStart, to: this.rangeEnd })
     },
     async loadSessions({ from, to, append = false }) {
@@ -128,6 +136,21 @@ export const useTaskFocusStore = defineStore('task-focus', {
       } finally {
         this.loadingSessions = false
       }
+    },
+    /**
+     * 列表滚动到底部时调用：先放出一批已取回的记录；
+     * 已经全部展开就再去取更早的周，取到新数据才继续放出。
+     */
+    async loadMoreVisible() {
+      if (this.loadingSessions) return
+      if (this.visibleCount < this.sessions.length) {
+        this.visibleCount += this.pageSize
+        return
+      }
+      if (!this.hasMore) return
+      const before = this.sessions.length
+      await this.loadMore()
+      if (this.sessions.length > before) this.visibleCount += this.pageSize
     },
     /** 往前再取 7 天；这一周没数据就继续往前，最多回溯 8 周 */
     async loadMore(days = 7) {

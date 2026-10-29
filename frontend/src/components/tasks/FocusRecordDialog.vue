@@ -20,12 +20,12 @@
 
         <div class="focus-record-row">
           <span class="focus-record-label">开始时间</span>
-          <FocusDateTimeField v-model="startAt" placeholder="选择时间" />
+          <FocusDateTimeField v-model="startAt" placeholder="选择时间" panel-group="focus-record-start" panel-name="start" />
         </div>
 
         <div class="focus-record-row">
           <span class="focus-record-label">结束时间</span>
-          <FocusDateTimeField v-model="endAt" placeholder="选择时间" />
+          <FocusDateTimeField v-model="endAt" placeholder="选择时间" panel-group="focus-record-end" panel-name="end" />
         </div>
 
         <div class="focus-record-row">
@@ -71,11 +71,12 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ChevronDown, X } from 'lucide-vue-next'
 import FocusTargetPicker from './FocusTargetPicker.vue'
 import FocusDateTimeField from './FocusDateTimeField.vue'
 import { useTaskFocusStore } from '../../stores/taskFocus.js'
+import { useExclusivePanels } from '../../utils/exclusivePanels.js'
 import { message } from '../../services/message.js'
 
 const props = defineProps({
@@ -95,6 +96,24 @@ const taskPickerOpen = ref(false)
 const typeOpen = ref(false)
 const busy = ref(false)
 const error = ref('')
+
+// 任务选择器与类型浮层互斥；日期浮层各自一个命名空间，互相以及与本组都能顶掉对方
+useExclusivePanels('focus-record-select', [
+  ['target', () => taskPickerOpen.value, value => { taskPickerOpen.value = value }],
+  ['type', () => typeOpen.value, value => { typeOpen.value = value }]
+])
+
+/** 点弹窗里除触发按钮/浮层以外的任何地方，都把浮层收起来 */
+function onDocPointerDown(event) {
+  if (!props.open) return
+  const target = event.target
+  if (target?.closest?.('.focus-record-control')) return
+  taskPickerOpen.value = false
+  typeOpen.value = false
+}
+
+onMounted(() => document.addEventListener('pointerdown', onDocPointerDown, true))
+onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDown, true))
 
 // 类型浮层里的草稿，点「确定」才写回 durationMinutes
 const draftHours = ref(0)

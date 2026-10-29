@@ -1,5 +1,5 @@
 <template>
-  <main class="focus-page">
+  <main ref="pageEl" class="focus-page" :style="pageStyle">
     <div ref="shellEl" class="focus-shell" :style="{ '--focus-split': splitColumns }">
       <section class="focus-pane">
         <header class="focus-pane-head">
@@ -9,7 +9,7 @@
             <button type="button" role="tab" :class="{ on: mode === 'STOPWATCH' }" :aria-selected="mode === 'STOPWATCH'" @click="switchMode('STOPWATCH')">正计时</button>
           </div>
           <div class="focus-head-actions">
-            <button v-if="narrow" type="button" class="focus-icon-btn" aria-label="展开概览" title="展开概览" @click="drawerOpen = true"><PanelRightOpen :size="18" /></button>
+            <button v-if="narrow" type="button" class="focus-icon-btn focus-drawer-toggle" aria-label="展开概览" title="展开概览" @click="drawerOpen = true"><PanelRightOpen :size="18" /></button>
             <button type="button" class="focus-icon-btn" aria-label="添加常用专注" title="添加常用专注" @click="openPresetDialog()"><Plus :size="18" /></button>
             <div class="focus-menu-wrap">
               <button type="button" class="focus-icon-btn" aria-label="提示音与白噪音" title="提示音与白噪音" :aria-expanded="openMenu === 'sound'" @click.stop="toggleMenu('sound')">
@@ -151,7 +151,7 @@
             </div>
           </header>
 
-          <div class="focus-records-scroll">
+          <div ref="recordsScrollEl" class="focus-records-scroll" @scroll.passive="onRecordsScroll">
             <div v-if="!focus.groupedSessions.length && !focus.loadingSessions" class="focus-empty">本周还没有专注记录</div>
 
             <div v-for="group in focus.groupedSessions" :key="group.key" class="focus-group">
@@ -168,9 +168,11 @@
               </ul>
             </div>
 
-            <button v-if="focus.hasMore && focus.sessions.length" type="button" class="focus-more" :disabled="focus.loadingSessions" @click="focus.loadMore()">
-              {{ focus.loadingSessions ? '加载中…' : '加载更多' }}
-            </button>
+            <!-- 滚动到这里自动追加下一批；列表本身在 div 内滚动，页面不滚 -->
+            <div ref="recordsSentinelEl" class="focus-records-sentinel" aria-hidden="true">
+              <span v-if="focus.loadingSessions">加载中…</span>
+              <span v-else-if="!focus.canLoadMore && focus.sessions.length">没有更多了</span>
+            </div>
           </div>
         </section>
       </aside>
@@ -240,7 +242,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ChartPie, Check, ChevronRight, Download, ListChecks, MoreHorizontal, PanelRightOpen, Play, Plus, Settings2, Square, Trash2, Volume2, VolumeX, X } from 'lucide-vue-next'
 import { apiListFocusSessions } from '../../packages/api-client/src/index.js'
@@ -332,6 +334,50 @@ const narrow = ref(false)
 const drawerOpen = ref(false)
 let narrowQuery = null
 
+// ---- 页面高度：按视口实际可用高度算，保证浏览器不出现竖向滚动 ----
+// 顶部栏（移动端）、.page-content 为底部导航预留的 padding 都会吃掉高度，纯 CSS 的 100dvh 算不准
+const pageEl = ref(null)
+const pageHeight = ref(0)
+const pageStyle = computed(() => (pageHeight.value ? { height: `${pageHeight.value}px` } : {}))
+
+function syncPageHeight() {
+  const el = pageEl.value
+  if (!el) return
+  const offset = el.getBoundingClientRect().top + window.scrollY
+  const parent = el.parentElement
+  const padBottom = parent ? Number.parseFloat(getComputedStyle(parent).paddingBottom) || 0 : 0
+  pageHeight.value = Math.max(320, Math.round(window.innerHeight - offset - padBottom))
+}
+
+// ---- 专注记录列表：内部滚动，滚到底自动追加下一批（默认 50 条） ----
+const recordsScrollEl = ref(null)
+let scrollFrame = 0
+
+function onRecordsScroll() {
+  if (scrollFrame) return
+  scrollFrame = window.requestAnimationFrame(() => {
+    scrollFrame = 0
+    const el = recordsScrollEl.value
+    if (!el || focus.loadingSessions || !focus.canLoadMore) return
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 160) {
+      void focus.loadMoreVisible().then(fillRecords)
+    }
+  })
+}
+
+/** 列表还没撑满可视区（记录太少）时继续往后放，直到能滚动或没有更多 */
+async function fillRecords() {
+  await nextTick()
+  const el = recordsScrollEl.value
+  if (!el) return
+  while (!focus.loadingSessions && focus.canLoadMore && el.scrollHeight <= el.clientHeight + 40) {
+    const before = focus.visibleCount
+    await focus.loadMoreVisible()
+    await nextTick()
+    if (focus.visibleCount === before) return
+  }
+}
+
 // ---- 两栏宽度：可拖动，宽度存本地 ----
 const SPLIT_KEY = 'task_focus_split_v1'
 function readSplit() {
@@ -417,6 +463,10 @@ const canEditDuration = computed(() => !focus.current && mode.value !== 'STOPWAT
 function openDurationEditor() {
   if (!canEditDuration.value) return
   openMenu.value = ''
+  if (durationEditor.open) {
+    durationEditor.open = false
+    return
+  }
   durationEditor.minutes = plannedMinutes.value || 25
   durationEditor.open = true
 }
@@ -613,7 +663,7 @@ function openRecordDialog() {
 }
 
 function onRecordSaved() {
-  void focus.reloadSessions()
+  void focus.reloadSessions().then(fillRecords)
 }
 
 function openBatch() {
@@ -622,7 +672,7 @@ function openBatch() {
 }
 
 function onBatchChanged() {
-  void focus.refresh()
+  void focus.refresh().then(fillRecords)
 }
 
 async function clearAll() {
@@ -710,8 +760,16 @@ function goStats() {
 }
 
 function closeMenus(event) {
-  if (event?.target?.closest?.('.focus-menu-wrap') || event?.target?.closest?.('.focus-target')) return
+  const target = event?.target
+  // 点浮层内部、或点它自己的触发按钮时不关（触发按钮的 click 会自己 toggle）
+  if (target?.closest?.('.focus-menu-wrap') || target?.closest?.('.focus-target')) return
   openMenu.value = ''
+  if (durationEditor.open && !target?.closest?.('.focus-duration-popover') && !target?.closest?.('.focus-clock')) {
+    durationEditor.open = false
+  }
+  if (drawerOpen.value && narrow.value && !target?.closest?.('.focus-side') && !target?.closest?.('.focus-drawer-toggle')) {
+    drawerOpen.value = false
+  }
 }
 
 watch(() => focus.settings, value => {
@@ -734,6 +792,11 @@ const onNarrowChange = event => syncNarrow(event.matches)
 
 onMounted(async () => {
   window.addEventListener('pointerdown', closeMenus)
+  window.addEventListener('resize', syncPageHeight)
+  await nextTick()
+  syncPageHeight()
+  // 路由切换的进场动画带 translateY，等它结束再量一次，避免页面矮 8px 留下一条缝
+  window.setTimeout(syncPageHeight, 260)
   narrowQuery = window.matchMedia('(max-width: 1080px)')
   syncNarrow(narrowQuery.matches)
   narrowQuery.addEventListener('change', onNarrowChange)
@@ -742,22 +805,26 @@ onMounted(async () => {
   // 已有进行中的会话时，模式要跟它一致（正计时/番茄）
   if (focus.current) mode.value = Number(focus.current.plannedMinutes) ? 'POMODORO' : 'STOPWATCH'
   if (focus.presets.length) activePresetId.value = focus.presets[0].id
+  await fillRecords()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', closeMenus)
+  window.removeEventListener('resize', syncPageHeight)
   narrowQuery?.removeEventListener('change', onNarrowChange)
+  if (scrollFrame) window.cancelAnimationFrame(scrollFrame)
   stopSplitDrag()
   stopFocusNoise()
 })
 </script>
 
 <style scoped>
-.focus-page { display: flex; flex-direction: column; min-height: 100%; color: var(--ink); }
+/* 整页锁在视口内：浏览器不出现竖向滚动条，滚动只发生在记录列表里 */
+.focus-page { display: flex; height: 100vh; height: 100dvh; flex-direction: column; overflow: hidden; color: var(--ink); }
 
 /* 左栏：计时区；顶部是「标题 / 模式居中 / 操作」三段 */
 .focus-pane {
-  display: flex; min-width: 0; flex-direction: column; padding: 18px 26px 24px;
+  display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; padding: 18px 26px 24px;
   background:
     radial-gradient(118% 74% at 50% 112%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 64%),
     linear-gradient(color-mix(in srgb, var(--paper) 46%, transparent), transparent 44%);
@@ -772,7 +839,7 @@ onBeforeUnmount(() => {
 .focus-icon-btn:hover { background: var(--paper); color: var(--ink); }
 .focus-menu-wrap { position: relative; }
 
-.focus-shell { display: grid; flex: 1; grid-template-columns: var(--focus-split, 56fr 8px 44fr); min-height: calc(100vh - 1px); }
+.focus-shell { display: grid; flex: 1; grid-template-columns: var(--focus-split, 56fr 8px 44fr); min-height: 0; overflow: hidden; }
 
 /* 中间分界线：可拖动改宽度，命中区域 8px 但视觉只有 1px */
 .focus-splitter { position: relative; cursor: col-resize; touch-action: none; outline: none; }
@@ -817,7 +884,7 @@ onBeforeUnmount(() => {
 .focus-ghost { min-height: 38px; padding: 0 18px; border: 1px solid var(--line2); border-radius: 10px; background: transparent; color: var(--ink2); font: inherit; font-size: 13.5px; cursor: pointer; }
 .focus-ghost:hover { background: var(--paper); }
 
-.focus-side { display: flex; min-width: 0; flex-direction: column; gap: 12px; padding: 18px 26px 16px; }
+.focus-side { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: 12px; overflow: hidden; padding: 18px 26px 16px; }
 .focus-side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .focus-side-title { margin: 0; font-size: 1.06rem; font-weight: 700; }
 .focus-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -829,7 +896,8 @@ onBeforeUnmount(() => {
 .focus-records > header { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; }
 .focus-records > header h2 { margin: 0; font-size: 1.06rem; font-weight: 700; }
 .focus-record-actions { display: flex; gap: 2px; }
-.focus-records-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.focus-records-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-gutter: stable; }
+.focus-records-sentinel { display: grid; min-height: 28px; place-items: center; padding: 6px 0 10px; color: var(--muted); font-size: 11.5px; }
 .focus-group h3 { margin: 12px 0 4px; color: var(--muted); font-size: 11.5px; font-weight: 600; }
 .focus-group:first-child h3 { margin-top: 2px; }
 .focus-group ul { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
@@ -847,8 +915,6 @@ onBeforeUnmount(() => {
 .focus-row-task { overflow: hidden; color: var(--muted); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
 .focus-row-task em { font-style: normal; }
 .focus-row-duration { flex: 0 0 auto; margin-top: 1px; color: var(--ink2); font-size: 12px; font-variant-numeric: tabular-nums; }
-.focus-more { display: block; width: 100%; margin: 10px 0 2px; padding: 7px 16px; border: 1px solid var(--line2); border-radius: 9px; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
-.focus-more:hover { background: var(--paper); color: var(--ink); }
 .focus-empty { padding: 22px 0; color: var(--muted); font-size: 12.5px; text-align: center; }
 
 .focus-batch { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink2); font-size: 12px; }
@@ -924,7 +990,7 @@ onBeforeUnmount(() => {
 
 @media (max-width: 1080px) {
   /* 容不下两栏时：只留左栏，右栏收成从右侧滑出的抽屉 */
-  .focus-shell { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr); min-height: calc(100dvh - 1px); }
+  .focus-shell { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr); min-height: 0; }
   .focus-splitter { display: none; }
   .focus-pane { justify-content: stretch; border-bottom: 1px solid var(--line); padding: 14px 16px calc(86px + env(safe-area-inset-bottom)); }
   .focus-side.is-drawer {
@@ -939,5 +1005,13 @@ onBeforeUnmount(() => {
 }
 @media (prefers-reduced-motion: reduce) {
   .focus-side.is-drawer { transition: none; }
+}
+@media (max-width: 767px) {
+  /* 底部导航的留白由 .page-content 提供，这里不再重复 */
+  .focus-pane { padding-bottom: 16px; }
+  /* 窄屏头部三段挤不下会换行成竖排文字，收紧一下 */
+  .focus-pane-head { gap: 6px; }
+  .focus-pane-head h1 { font-size: 1rem; white-space: nowrap; }
+  .focus-modes button { padding: 0 8px; white-space: nowrap; }
 }
 </style>
