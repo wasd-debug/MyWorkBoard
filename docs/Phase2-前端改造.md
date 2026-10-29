@@ -1544,3 +1544,19 @@ V41 新增清单视图类型（LIST/KANBAN/TIMELINE）、对象类型（TASK/NOT
 - 副作用：构建里不再有 Milkdown / ProseMirror 相关 chunk。
 
 - 门禁：336/336 单测（改写了 6 处与旧编辑器相关的断言）、typecheck、build 通过；浏览器实测快加卡片里是 textarea、`# 标题`/`- [ ] 待办`/`> ` 原样输入原样保存、`/` 菜单能插入、详情栏可编辑且 `+` 插入二级标题落到新行，两个页面均无 contenteditable 残留。证据 `qa-md-card.png`、`qa-md-detail.png`。
+
+### P2-QD10 Markdown 改为「换行即渲染」的块级编辑（2026-10-29）
+
+在 P2-QD9 的纯文本基础上补上渲染：**一行一个块，正在编辑的那行是 textarea，其余行渲染成 Markdown**。打完一行按回车，上一行立刻变成渲染结果——就是 Typora 那种手感，但不用 contenteditable。
+
+- `TaskMarkdownEditor` 重写为块结构：`blocks: string[]`（按 `\n` 切分），`activeIndex` 指向正在编辑的块。
+  - 回车：提交当前块、在下面插入空块并聚焦 → 上一行即时渲染；输入法组合中的回车不拆块。
+  - 空块按 Backspace：并回上一块（光标落在末尾）。
+  - ↑/↓ 在行首/行尾可在块之间移动。
+  - 点任意已渲染行：切成 textarea 编辑，点左侧 24px 内光标落行首，否则落行尾。
+  - 焦点离开整个组件 120ms 后退出编辑态，所有行都渲染。
+  - 行首 `/` 仍是插入菜单；详情栏「+ 插入」走的 `runToolbar/insertLink/focusEditor` 保留，插入块级前缀时另起一行。
+- 渲染统一到 `utils/markdown.js`：`renderMarkdown(line)` 单行、`renderMarkdownDocument(text)` 逐行拼接（整段丢给 marked 时，`- 列表项` 的下一行会被当成列表项续行吞掉，逐行才和编辑器一致）。
+- 样式：列表补回 `list-style: disc/decimal`（全局 reset 把项目符号干掉了）；去掉全局 `:where(...):focus-visible` 的 4px 光晕，详情栏描述保持无边框。
+
+- 门禁：336/336 单测（更新 4 处与编辑器结构相关的断言）、typecheck、build 通过；浏览器实测——输入 `# 一级标题` 回车即渲染成 h1、`- [ ] 待办一` 回车渲染成复选框、行内 `**加粗**`/`` `code` `` 正常；点已渲染的标题行回到源码 `# 一级标题`；失焦后 textarea 归零全部渲染；详情栏点行可编辑、回车新增行渲染成列表、`+ → 二级标题` 落到新行 `## `。证据 `qa-md-block.png`、`qa-md-detail-block.png`。

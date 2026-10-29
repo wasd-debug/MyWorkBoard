@@ -9,6 +9,7 @@ const inboxView = await readFile(new URL('./TasksInboxView.vue', import.meta.url
 const workspaceView = await readFile(new URL('./TaskWorkspaceView.vue', import.meta.url), 'utf8')
 const taskMarkdownEditor = await readFile(new URL('../components/tasks/TaskMarkdownEditor.vue', import.meta.url), 'utf8')
 const taskMarkdownPreview = await readFile(new URL('../components/tasks/TaskMarkdownPreview.vue', import.meta.url), 'utf8')
+const markdownUtil = await readFile(new URL('../utils/markdown.js', import.meta.url), 'utf8')
 const taskFilterRuleEditor = await readFile(new URL('../components/tasks/TaskFilterRuleEditor.vue', import.meta.url), 'utf8')
 const taskDateTimePopover = await readFile(new URL('../components/tasks/TaskDateTimePopover.vue', import.meta.url), 'utf8')
 const themeStyles = await readFile(new URL('../styles/theme.css', import.meta.url), 'utf8')
@@ -247,8 +248,12 @@ test('描述统一改成 Markdown 文本编辑（不再有富文本编辑器）'
   // 纯 textarea，不再有 contenteditable / 工具栏 / 光标还原那套
   assert.match(taskMarkdownEditor, /<textarea/)
   assert.doesNotMatch(taskMarkdownEditor, /contenteditable/)
-  assert.match(taskMarkdownEditor, /@input="onInput"/)
-  assert.match(taskMarkdownEditor, /emit\('update:modelValue', el\.value\)/)
+  // 一行一块：正在编辑的块是 textarea，其余渲染成 Markdown
+  assert.match(taskMarkdownEditor, /@input="onDraftInput"/)
+  assert.match(taskMarkdownEditor, /function splitBlock\(\)/)
+  assert.match(taskMarkdownEditor, /blocks\.value\.splice\(index \+ 1, 0, ''\)/)
+  assert.match(taskMarkdownEditor, /function render\(block\)/)
+  assert.match(taskMarkdownEditor, /class="task-md-block is-rendered"/)
   // 行首输入 / 打开插入菜单，选中后按 Markdown 片段插入
   assert.match(taskMarkdownEditor, /function syncSlash\(value, caret\)/)
   assert.match(taskMarkdownEditor, /function chooseSlash\(item\)/)
@@ -258,8 +263,9 @@ test('描述统一改成 Markdown 文本编辑（不再有富文本编辑器）'
   assert.match(taskMarkdownEditor, /function runToolbar\(key\)/)
   assert.match(taskMarkdownEditor, /function insertLink\(text, href\)/)
   // 只读预览仍在（评论等），并且只做 Markdown → HTML
-  assert.match(taskMarkdownPreview, /marked\.parse/)
-  assert.match(taskMarkdownPreview, /DOMPurify\.sanitize/)
+  assert.match(markdownUtil, /marked\.parse/)
+  assert.match(markdownUtil, /DOMPurify\.sanitize/)
+  assert.match(taskMarkdownPreview, /renderMarkdownDocument/)
   assert.doesNotMatch(taskMarkdownPreview, /contenteditable/)
 })
 
@@ -642,8 +648,8 @@ test('Markdown 编辑器：紧凑模式与焦点事件（P2-QD6）', async () =>
   assert.match(taskMarkdownEditor, /compact: \{ type: Boolean, default: false \}/)
   assert.match(taskMarkdownEditor, /is-compact/)
   assert.match(taskMarkdownEditor, /function autoGrow\(\)/)
-  assert.match(taskMarkdownEditor, /@focus="emit\('focus'\)"/)
-  assert.match(taskMarkdownEditor, /@blur="emit\('blur'\)"/)
+  assert.match(taskMarkdownEditor, /emit\('focus'\)/)
+  assert.match(taskMarkdownEditor, /emit\('blur'\)/)
   // 没有 contenteditable，就不会再有抢焦点/吞点击的问题
   assert.doesNotMatch(taskMarkdownEditor, /contenteditable/)
 })
@@ -1250,7 +1256,8 @@ test('摘要页显示内容菜单不超出视口，编辑器保留表格结构�
   assert.match(summaryView, /\.summary-menu\.summary-icon-panel\{left:auto;right:0/)
   // 编辑器把表格 DOM 还原为 Markdown 表格语法，避免编辑其它段落时表格被拍平丢失
   // 表格仍由 Markdown 预览渲染，不再依赖富文本编辑器的 DOM 还原
-  assert.match(taskMarkdownPreview, /marked\.parse/)
+  assert.match(markdownUtil, /marked\.parse/)
+  assert.match(markdownUtil, /DOMPurify\.sanitize/)
 })
 
 test('任务详情栏第一批改造：检查项、描述插入菜单、标签、底部清单（P2-FE123）', async () => {
