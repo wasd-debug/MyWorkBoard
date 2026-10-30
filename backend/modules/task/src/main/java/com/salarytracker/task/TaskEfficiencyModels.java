@@ -55,23 +55,26 @@ public final class TaskEfficiencyModels {
                         int targetCount, List<Integer> customDays, String remindAt, String startDate,
                         boolean archived, int sortOrder, long revision,
                         String groupKey, Integer goalDays, String checkStyle, String targetType,
-                        int dailyTimes, boolean autoPopupLog, String amountUnit) {
+                        int dailyTimes, boolean autoPopupLog, String amountUnit,
+                        int intervalDays, String checkMode, int perAmount, boolean showInToday) {
     }
 
     @Schema(name = "HabitCommand")
     public record HabitCommand(String name, String icon, String color, String frequency, Integer targetCount,
                                List<Integer> customDays, String remindAt, String startDate, Boolean archived,
                                Integer sortOrder, String groupKey, Integer goalDays, String checkStyle,
-                               String targetType, Integer dailyTimes, Boolean autoPopupLog, String amountUnit) {
+                               String targetType, Integer dailyTimes, Boolean autoPopupLog, String amountUnit,
+                               Integer intervalDays, String checkMode, Integer perAmount, Boolean showInToday) {
     }
 
     @Schema(name = "HabitCheckin")
     public record HabitCheckin(String publicId, String habitId, String date, int count, String status,
-                               long revision, int amount) {
+                               long revision, int amount, String mood, String note) {
     }
 
     @Schema(name = "HabitCheckinCommand")
-    public record HabitCheckinCommand(String date, Integer count, String status, Integer amount) {
+    public record HabitCheckinCommand(String date, Integer count, String status, Integer amount,
+                                      String mood, String note) {
     }
 
     /** 习惯详情面板要的聚合数字：月打卡/总打卡/月完成率/当前连续/月完成量/总完成量 */

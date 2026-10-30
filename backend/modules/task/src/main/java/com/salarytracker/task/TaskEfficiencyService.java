@@ -35,6 +35,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -287,11 +288,12 @@ public class TaskEfficiencyService {
         long userId = currentUser.id();
         HabitValues values = habitValues(command, null, zone(userId));
         jdbc.update("INSERT INTO habit(public_id,user_id,name,icon,color,frequency,target_count,custom_days,remind_at,start_date,is_archived,sort_order," +
-                        "group_key,goal_days,check_style,target_type,daily_times,auto_popup_log,amount_unit) " +
-                        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", publicId, userId, values.name(), values.icon(), values.color(),
+                        "group_key,goal_days,check_style,target_type,daily_times,auto_popup_log,amount_unit,interval_days,check_mode,per_amount,show_in_today) " +
+                        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", publicId, userId, values.name(), values.icon(), values.color(),
                 values.frequency(), values.targetCount(), joinDays(values.customDays()), values.remindAt(), Date.valueOf(values.startDate()),
                 values.archived(), values.sortOrder(), values.groupKey(), values.goalDays(), values.checkStyle(),
-                values.targetType(), values.dailyTimes(), values.autoPopupLog(), values.amountUnit());
+                values.targetType(), values.dailyTimes(), values.autoPopupLog(), values.amountUnit(),
+                values.intervalDays(), values.checkMode(), values.perAmount(), values.showInToday());
         Habit saved = habitById(userId, publicId);
         changeLog.append(userId, opId, "habit", publicId, "UPSERT", syncEntity(saved, false));
         return saved;
@@ -310,11 +312,13 @@ public class TaskEfficiencyService {
         HabitValues values = habitValues(command, before, zone(userId));
         int changed = jdbc.update("UPDATE habit SET name=?,icon=?,color=?,frequency=?,target_count=?,custom_days=?,remind_at=?," +
                         "start_date=?,is_archived=?,sort_order=?,group_key=?,goal_days=?,check_style=?,target_type=?,daily_times=?," +
-                        "auto_popup_log=?,amount_unit=?,revision=revision+1 WHERE public_id=? AND user_id=? AND revision=? AND deleted_at IS NULL",
+                        "auto_popup_log=?,amount_unit=?,interval_days=?,check_mode=?,per_amount=?,show_in_today=?," +
+                        "revision=revision+1 WHERE public_id=? AND user_id=? AND revision=? AND deleted_at IS NULL",
                 values.name(), values.icon(), values.color(), values.frequency(), values.targetCount(), joinDays(values.customDays()),
                 values.remindAt(), Date.valueOf(values.startDate()), values.archived(), values.sortOrder(), values.groupKey(),
                 values.goalDays(), values.checkStyle(), values.targetType(), values.dailyTimes(), values.autoPopupLog(),
-                values.amountUnit(), publicId, userId, expected);
+                values.amountUnit(), values.intervalDays(), values.checkMode(), values.perAmount(), values.showInToday(),
+                publicId, userId, expected);
         if (changed == 0) throw new ConflictException("习惯版本已变化", before.revision());
         Habit saved = habitById(userId, publicId);
         changeLog.append(userId, opId, "habit", publicId, "UPSERT", syncEntity(saved, false));
@@ -354,24 +358,26 @@ public class TaskEfficiencyService {
         if (date.isBefore(LocalDate.parse(habit.startDate()))) throw new IllegalArgumentException("补卡日期不能早于习惯开始日期");
         if (date.isAfter(LocalDate.now(zone(userId)))) throw new IllegalArgumentException("不能打卡未来日期");
         String status = enumValue(command == null ? null : command.status(), "DONE", List.of("DONE", "SKIP"), "status");
-        int times = Math.min(999, Math.max(1, habit.dailyTimes()));
         int count = "SKIP".equals(status) ? 0 : bounded(command == null ? null : command.count(), 1, 1, 999, "打卡次数");
-        int amount = "SKIP".equals(status) ? 0 : Math.max(0, command == null || command.amount() == null ? 0 : command.amount());
+        int amount = "SKIP".equals(status) ? 0 : bounded(command == null ? null : command.amount(), 0, 0, 999999, "完成量");
+        String mood = "SKIP".equals(status) ? "" : optional(command == null ? null : command.mood(), 16);
+        String note = "SKIP".equals(status) ? "" : optional(command == null ? null : command.note(), 500);
         HabitCheckin existing = optionalCheckinForDay(userId, publicId, date);
         if (existing == null) {
             if (baseRevision > 0) throw new NotFoundException("习惯打卡不存在");
-            jdbc.update("INSERT INTO habit_checkin(public_id,habit_id,user_id,checkin_date,count,status,amount) " +
-                            "SELECT ?,id,?,?,?,?,? FROM habit WHERE public_id=? AND user_id=?",
-                    checkinId, userId, Date.valueOf(date), count, status, amount, publicId, userId);
+            jdbc.update("INSERT INTO habit_checkin(public_id,habit_id,user_id,checkin_date,count,status,amount,mood,note) " +
+                            "SELECT ?,id,?,?,?,?,?,?,? FROM habit WHERE public_id=? AND user_id=?",
+                    checkinId, userId, Date.valueOf(date), count, status, amount, mood, note, publicId, userId);
         } else {
             if (!existing.publicId().equals(checkinId) || existing.revision() != baseRevision) {
                 throw new ConflictException("习惯打卡版本已变化", existing.revision());
             }
-            jdbc.update("UPDATE habit_checkin SET count=?,status=?,amount=?,revision=revision+1 WHERE public_id=? AND user_id=? AND revision=?",
-                    count, status, amount, checkinId, userId, baseRevision);
+            jdbc.update("UPDATE habit_checkin SET count=?,status=?,amount=?,mood=?,note=?,revision=revision+1 " +
+                            "WHERE public_id=? AND user_id=? AND revision=?",
+                    count, status, amount, mood, note, checkinId, userId, baseRevision);
         }
-        // 一天要打够 N 次才算完成，这里顺手把「本次是否达标」算出来，前端拿不到 dailyTimes 也能判断
-        boolean completed = "DONE".equals(status) && count >= (times <= 1 ? 1 : times);
+        // 是否达标：完成量习惯看累计量，普通习惯看是否至少打过一次
+        boolean completed = habitDone(habit, status, count, amount);
         HabitCheckin saved = checkinForDay(userId, publicId, date);
         changeLog.append(userId, opId, "habit-checkin", saved.publicId(), "UPSERT", syncEntity(saved, false));
         jdbc.update("INSERT INTO domain_event(event_id,event_type,aggregate_id,user_id,payload_json) VALUES(?,?,?,?,JSON_OBJECT('date',?,'status',?,'completed',?))",
@@ -399,7 +405,7 @@ public class TaskEfficiencyService {
             if (!scheduled(habit, day)) continue;
             target30++;
             HabitCheckin item = byDate.get(day);
-            if (item != null && !"SKIP".equals(item.status()) && item.count() >= habit.targetCount()) completed30++;
+            if (item != null && habitDone(habit, item.status(), item.count(), item.amount())) completed30++;
         }
         int monthCompleted = 0;
         int monthTarget = 0;
@@ -407,12 +413,19 @@ public class TaskEfficiencyService {
             if (!scheduled(habit, day)) continue;
             monthTarget++;
             HabitCheckin item = byDate.get(day);
-            if (item != null && item.count() >= habit.targetCount()) monthCompleted++;
+            if (item != null && habitDone(habit, item.status(), item.count(), item.amount())) monthCompleted++;
         }
         Totals summary = habitTotals(habit, rows, today);
         return new HabitStats(streak.current(), streak.longest(), target30 == 0 ? 0 : completed30 * 100 / target30,
                 monthCompleted, monthTarget, rows, summary.totalCompleted(), summary.monthAmount(), summary.totalAmount(),
                 habit.goalDays() == null ? 0 : habit.goalDays());
+    }
+
+    /** 单条打卡是否达标：完成量习惯看累计量是否到每天目标，其他看是否打过一次 */
+    static boolean habitDone(Habit habit, String status, int count, int amount) {
+        if (!"DONE".equals(status)) return false;
+        if ("QUANTITY".equals(habit.targetType())) return amount >= Math.max(1, habit.dailyTimes());
+        return count >= 1;
     }
 
     /** 汇总数字：总打卡天数、本月完成量、总完成量（量的口径是 amount，没有 amount 时退回次数） */
@@ -421,11 +434,10 @@ public class TaskEfficiencyService {
         int totalCompleted = 0;
         int monthAmount = 0;
         int totalAmount = 0;
-        int dailyTimes = Math.max(1, habit.dailyTimes());
         for (HabitCheckin row : rows) {
             if (!"DONE".equals(row.status())) continue;
             LocalDate day = LocalDate.parse(row.date());
-            boolean done = row.count() >= dailyTimes;
+            boolean done = habitDone(habit, row.status(), row.count(), row.amount());
             if (done) totalCompleted++;
             int amount = row.amount() > 0 ? row.amount() : 0;
             totalAmount += amount;
@@ -563,39 +575,40 @@ public class TaskEfficiencyService {
                 row.getString("remind_at"), row.getDate("start_date").toLocalDate().toString(), row.getBoolean("is_archived"),
                 row.getInt("sort_order"), row.getLong("revision"), row.getString("group_key"),
                 (Integer) row.getObject("goal_days"), row.getString("check_style"), row.getString("target_type"),
-                row.getInt("daily_times"), row.getBoolean("auto_popup_log"), row.getString("amount_unit"));
+                row.getInt("daily_times"), row.getBoolean("auto_popup_log"), row.getString("amount_unit"),
+                row.getInt("interval_days"), row.getString("check_mode"), row.getInt("per_amount"), row.getBoolean("show_in_today"));
     }
 
     private HabitCheckin checkinForDay(long userId, String publicId, LocalDate date) {
-        return jdbc.queryForObject("SELECT c.public_id,h.public_id habit_public_id,c.checkin_date,c.count,c.status,c.revision,c.amount " +
+        return jdbc.queryForObject("SELECT c.public_id,h.public_id habit_public_id,c.checkin_date,c.count,c.status,c.revision,c.amount,c.mood,c.note " +
                         "FROM habit_checkin c JOIN habit h ON h.id=c.habit_id WHERE c.user_id=? AND h.public_id=? AND c.checkin_date=?",
                 (row, index) -> new HabitCheckin(row.getString(1), row.getString(2), row.getDate(3).toLocalDate().toString(),
-                        row.getInt(4), row.getString(5), row.getLong(6), row.getInt(7)), userId, publicId, Date.valueOf(date));
+                        row.getInt(4), row.getString(5), row.getLong(6), row.getInt(7), row.getString(8), row.getString(9)), userId, publicId, Date.valueOf(date));
     }
 
     HabitCheckin checkinForSync(String publicId) {
-        List<HabitCheckin> rows = jdbc.query("SELECT c.public_id,h.public_id habit_public_id,c.checkin_date,c.count,c.status,c.revision,c.amount " +
+        List<HabitCheckin> rows = jdbc.query("SELECT c.public_id,h.public_id habit_public_id,c.checkin_date,c.count,c.status,c.revision,c.amount,c.mood,c.note " +
                         "FROM habit_checkin c JOIN habit h ON h.id=c.habit_id WHERE c.user_id=? AND c.public_id=?",
                 (row, index) -> new HabitCheckin(row.getString(1), row.getString(2), row.getDate(3).toLocalDate().toString(),
-                        row.getInt(4), row.getString(5), row.getLong(6), row.getInt(7)), currentUser.id(), publicId);
+                        row.getInt(4), row.getString(5), row.getLong(6), row.getInt(7), row.getString(8), row.getString(9)), currentUser.id(), publicId);
         if (rows.isEmpty()) throw new NotFoundException("习惯打卡不存在");
         return rows.get(0);
     }
 
     private HabitCheckin optionalCheckinForDay(long userId, String publicId, LocalDate date) {
-        List<HabitCheckin> rows = jdbc.query("SELECT c.public_id,h.public_id habit_public_id,c.checkin_date,c.count,c.status,c.revision,c.amount " +
+        List<HabitCheckin> rows = jdbc.query("SELECT c.public_id,h.public_id habit_public_id,c.checkin_date,c.count,c.status,c.revision,c.amount,c.mood,c.note " +
                         "FROM habit_checkin c JOIN habit h ON h.id=c.habit_id WHERE c.user_id=? AND h.public_id=? AND c.checkin_date=?",
                 (row, index) -> new HabitCheckin(row.getString(1), row.getString(2), row.getDate(3).toLocalDate().toString(),
-                        row.getInt(4), row.getString(5), row.getLong(6), row.getInt(7)), userId, publicId, Date.valueOf(date));
+                        row.getInt(4), row.getString(5), row.getLong(6), row.getInt(7), row.getString(8), row.getString(9)), userId, publicId, Date.valueOf(date));
         return rows.isEmpty() ? null : rows.get(0);
     }
 
     private List<HabitCheckin> checkins(long userId, String publicId, LocalDate from, LocalDate to) {
-        return jdbc.query("SELECT c.public_id,h.public_id habit_public_id,c.checkin_date,c.count,c.status,c.revision,c.amount " +
+        return jdbc.query("SELECT c.public_id,h.public_id habit_public_id,c.checkin_date,c.count,c.status,c.revision,c.amount,c.mood,c.note " +
                         "FROM habit_checkin c JOIN habit h ON h.id=c.habit_id WHERE c.user_id=? AND h.public_id=? " +
                         "AND c.checkin_date>=? AND c.checkin_date<? ORDER BY c.checkin_date",
                 (row, index) -> new HabitCheckin(row.getString(1), row.getString(2), row.getDate(3).toLocalDate().toString(),
-                        row.getInt(4), row.getString(5), row.getLong(6), row.getInt(7)), userId, publicId, Date.valueOf(from), Date.valueOf(to));
+                        row.getInt(4), row.getString(5), row.getLong(6), row.getInt(7), row.getString(8), row.getString(9)), userId, publicId, Date.valueOf(from), Date.valueOf(to));
     }
 
     private Streak streak(Habit habit, Map<LocalDate, HabitCheckin> rows, LocalDate today) {
@@ -607,7 +620,7 @@ public class TaskEfficiencyService {
             if (!scheduled(habit, day)) continue;
             HabitCheckin item = rows.get(day);
             if (item != null && "SKIP".equals(item.status())) continue;
-            boolean done = item != null && item.count() >= habit.targetCount();
+            boolean done = item != null && habitDone(habit, item.status(), item.count(), item.amount());
             run = done ? run + 1 : 0;
             longest = Math.max(longest, run);
         }
@@ -615,7 +628,7 @@ public class TaskEfficiencyService {
             if (!scheduled(habit, day)) continue;
             HabitCheckin item = rows.get(day);
             if (item != null && "SKIP".equals(item.status())) continue;
-            if (item != null && item.count() >= habit.targetCount()) current++; else break;
+            if (item != null && habitDone(habit, item.status(), item.count(), item.amount())) current++; else break;
         }
         return new Streak(current, longest);
     }
@@ -658,8 +671,13 @@ public class TaskEfficiencyService {
     }
 
     private boolean scheduled(Habit habit, LocalDate day) {
-        if (day.isBefore(LocalDate.parse(habit.startDate()))) return false;
+        LocalDate start = LocalDate.parse(habit.startDate());
+        if (day.isBefore(start)) return false;
         if ("CUSTOM".equals(habit.frequency())) return habit.customDays().contains(day.getDayOfWeek().getValue());
+        if ("INTERVAL".equals(habit.frequency())) {
+            long gap = ChronoUnit.DAYS.between(start, day);
+            return gap % Math.max(1, habit.intervalDays()) == 0;
+        }
         return true;
     }
 
@@ -672,14 +690,18 @@ public class TaskEfficiencyService {
         extra.put("groupKey", item.groupKey()); extra.put("goalDays", item.goalDays());
         extra.put("checkStyle", item.checkStyle()); extra.put("targetType", item.targetType());
         extra.put("dailyTimes", item.dailyTimes()); extra.put("autoPopupLog", item.autoPopupLog());
-        extra.put("amountUnit", item.amountUnit());
+        extra.put("amountUnit", item.amountUnit()); extra.put("intervalDays", item.intervalDays());
+        extra.put("checkMode", item.checkMode()); extra.put("perAmount", item.perAmount());
+        extra.put("showInToday", item.showInToday());
         return efficiencyEntity(item.publicId(), item.revision() + (deleted ? 1 : 0), deleted, extra);
     }
 
     static TaskModels.SyncEntity syncEntity(HabitCheckin item, boolean deleted) {
-        return efficiencyEntity(item.publicId(), item.revision() + (deleted ? 1 : 0), deleted,
-                Map.of("habitId", item.habitId(), "date", item.date(), "count", item.count(), "status", item.status(),
-                        "amount", item.amount()));
+        Map<String, Object> extra = new LinkedHashMap<>();
+        extra.put("habitId", item.habitId()); extra.put("date", item.date()); extra.put("count", item.count());
+        extra.put("status", item.status()); extra.put("amount", item.amount());
+        extra.put("mood", item.mood()); extra.put("note", item.note());
+        return efficiencyEntity(item.publicId(), item.revision() + (deleted ? 1 : 0), deleted, extra);
     }
 
     static TaskModels.SyncEntity syncEntity(Countdown item, boolean deleted) {
@@ -713,19 +735,18 @@ public class TaskEfficiencyService {
         if (command == null) throw new IllegalArgumentException("习惯内容不能为空");
         String name = command.name() == null && before != null ? before.name() : text(command.name(), "习惯名称", 120);
         String frequency = enumValue(command.frequency(), before == null ? "DAILY" : before.frequency(),
-                List.of("DAILY", "WEEKLY_N", "MONTHLY_N", "CUSTOM"), "frequency");
+                List.of("DAILY", "WEEKLY_N", "MONTHLY_N", "CUSTOM", "INTERVAL"), "frequency");
         List<Integer> days = command.customDays() == null ? before == null ? List.of() : before.customDays() : command.customDays();
         if (days.stream().anyMatch(day -> day < 1 || day > 7)) throw new IllegalArgumentException("自定义星期必须在 1 到 7 之间");
         if ("CUSTOM".equals(frequency) && days.isEmpty()) throw new IllegalArgumentException("自定义频率至少选择一天");
         String start = command.startDate() == null && before != null ? before.startDate()
                 : parseDate(command.startDate(), LocalDate.now(zone)).toString();
-        String remind = command.remindAt() == null ? before == null ? null : before.remindAt() : time(command.remindAt());
-        String group = lowerEnumValue(command.groupKey(), before == null ? "other" : before.groupKey(),
-                List.of("morning", "afternoon", "evening", "other"), "groupKey");
+        String remind = command.remindAt() == null ? before == null ? null : before.remindAt() : remindTimes(command.remindAt());
+        String group = groupKey(command.groupKey(), before == null ? "other" : before.groupKey());
         // goalDays 三态：null=不改、0=改成「永远」、>0=具体天数
         Integer goal = command.goalDays() == null ? before == null ? null : before.goalDays() : command.goalDays();
         if (goal != null && goal == 0) goal = null;
-        else if (goal != null && (goal < 1 || goal > 3650)) throw new IllegalArgumentException("坚持天数必须在 1 到 3650 天之间");
+        else if (goal != null && (goal < 1 || goal > 999)) throw new IllegalArgumentException("坚持天数必须在 1 到 999 天之间");
         return new HabitValues(name, optional(command.icon() == null && before != null ? before.icon() : command.icon(), 32, "check"),
                 color(command.color() == null && before != null ? before.color() : command.color()), frequency,
                 bounded(command.targetCount(), before == null ? 1 : before.targetCount(), 1, 999, "目标次数"), days, remind,
@@ -736,9 +757,35 @@ public class TaskEfficiencyService {
                         List.of("CHECK", "ICON"), "checkStyle"),
                 enumValue(command.targetType(), before == null ? "CHECK" : before.targetType(),
                         List.of("CHECK", "QUANTITY"), "targetType"),
-                bounded(command.dailyTimes(), before == null ? 1 : before.dailyTimes(), 1, 99, "每天次数"),
+                bounded(command.dailyTimes(), before == null ? 1 : before.dailyTimes(), 1, 999, "每天目标量"),
                 value(command.autoPopupLog(), before != null && before.autoPopupLog()),
-                optional(command.amountUnit() == null ? before == null ? "" : before.amountUnit() : command.amountUnit(), 16));
+                optional(command.amountUnit() == null ? before == null ? "" : before.amountUnit() : command.amountUnit(), 16),
+                bounded(command.intervalDays(), before == null ? 2 : before.intervalDays(), 1, 999, "间隔天数"),
+                enumValue(command.checkMode(), before == null ? "AUTO" : before.checkMode(),
+                        List.of("AUTO", "MANUAL", "ALL"), "checkMode"),
+                bounded(command.perAmount(), before == null ? 1 : before.perAmount(), 1, 99999, "每次记录量"),
+                value(command.showInToday(), before == null || before.showInToday()));
+    }
+
+    /** 分组 key：四个内置分组用小写英文，自定义分组允许中文/字母/数字，最长 16 */
+    private String groupKey(String raw, String fallback) {
+        String value = raw == null || raw.isBlank() ? fallback : raw.trim();
+        if (value.length() > 16) throw new IllegalArgumentException("分组名称不能超过 16 个字符");
+        if (!value.matches("[\\p{L}\\p{N}_-]{1,16}")) throw new IllegalArgumentException("分组名称只能包含文字、数字、下划线和短横线");
+        return value;
+    }
+
+    /** 提醒时间支持多个，用逗号分隔（如 07:00,20:30） */
+    private String remindTimes(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        String[] parts = raw.split(",");
+        if (parts.length > 8) throw new IllegalArgumentException("提醒时间最多 8 个");
+        List<String> result = new ArrayList<>();
+        for (String part : parts) {
+            if (part.isBlank()) continue;
+            result.add(time(part.trim()));
+        }
+        return result.isEmpty() ? null : String.join(",", result);
     }
 
     private CountdownValues countdownValues(CountdownCommand command, Countdown before) {
@@ -854,7 +901,8 @@ public class TaskEfficiencyService {
     private record HabitValues(String name, String icon, String color, String frequency, int targetCount,
                                List<Integer> customDays, String remindAt, LocalDate startDate, boolean archived,
                                int sortOrder, String groupKey, Integer goalDays, String checkStyle, String targetType,
-                               int dailyTimes, boolean autoPopupLog, String amountUnit) { }
+                               int dailyTimes, boolean autoPopupLog, String amountUnit,
+                               int intervalDays, String checkMode, int perAmount, boolean showInToday) { }
     private record CountdownValues(String title, LocalDate targetDate, String kind, boolean repeatYearly,
                                    boolean pinned, String color, String note) { }
     private record Streak(int current, int longest) { }

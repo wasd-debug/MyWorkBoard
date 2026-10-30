@@ -34,8 +34,9 @@ defineProps({
 <style scoped>
 .habit-week {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(7, 46px);
   gap: 4px;
+  justify-content: start;
   padding: 2px 0 6px;
 }
 .habit-week-day {

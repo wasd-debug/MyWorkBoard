@@ -1,25 +1,40 @@
 <template>
-  <main ref="pageEl" class="habits-page" :style="pageStyle">
-    <div class="habits-shell" :class="{ 'is-detail': Boolean(selected) }">
-      <aside class="habits-side">
-        <header class="habits-side-head">
-          <div class="habits-title-wrap">
-            <button type="button" class="habits-title" :aria-expanded="titleMenuOpen" @click="toggleTitleMenu">
-              {{ archivedMode ? '已归档习惯' : '习惯' }}
-              <ChevronDown :size="14" />
+  <main ref="pageEl" class="hp" :style="pageStyle">
+    <div
+      class="hp-shell"
+      :class="{ 'is-detail': showDetail, 'is-overlay': overlayMode, 'is-collapsed': !overlayMode && !drawer, 'is-resizing': resizing }"
+      :style="shellStyle"
+    >
+      <aside class="hp-side">
+        <header class="hp-head">
+          <div class="hp-title-wrap">
+            <button type="button" class="hp-title" :aria-expanded="titleMenu" @click="toggleTitleMenu">
+              {{ archivedMode ? '已归档习惯' : '习惯' }}<ChevronDown :size="14" />
             </button>
-            <div v-if="titleMenuOpen" class="habits-menu is-title" @click.stop>
+            <div v-if="titleMenu" class="hp-menu" @click.stop>
               <button type="button" :class="{ on: !archivedMode }" @click="setMode(false)">所有习惯</button>
               <button type="button" :class="{ on: archivedMode }" @click="setMode(true)">已归档习惯</button>
             </div>
           </div>
-          <div class="habits-side-actions">
-            <button type="button" class="habits-icon-btn" aria-label="新建习惯" title="新建习惯" @click="openCreate"><Plus :size="17" /></button>
-            <div class="habits-more-wrap">
-              <button type="button" class="habits-icon-btn" aria-label="更多" title="更多" :aria-expanded="moreMenuOpen" @click.stop="moreMenuOpen = !moreMenuOpen"><MoreHorizontal :size="17" /></button>
-              <div v-if="moreMenuOpen" class="habits-menu is-more" @click.stop>
+          <div class="hp-actions">
+            <button
+              type="button"
+              class="hp-icon-btn"
+              :aria-label="layout === 'list' ? '切换为卡片样式' : '切换为列表样式'"
+              :title="layout === 'list' ? '卡片样式' : '列表样式'"
+              @click="toggleLayout"
+            >
+              <LayoutGrid v-if="layout === 'list'" :size="16" />
+              <List v-else :size="16" />
+            </button>
+            <button type="button" class="hp-icon-btn" aria-label="新建习惯" title="新建习惯" @click="openCreate"><Plus :size="17" /></button>
+            <div class="hp-more-wrap">
+              <button type="button" class="hp-icon-btn" aria-label="更多" title="更多" :aria-expanded="moreMenu" @click.stop="moreMenu = !moreMenu"><MoreHorizontal :size="17" /></button>
+              <div v-if="moreMenu" class="hp-menu is-more" @click.stop>
                 <button type="button" @click="startBatch"><ListChecks :size="14" />批量管理</button>
+                <button type="button" @click="openCheckSetting"><Settings2 :size="14" />打卡设置</button>
                 <button type="button" @click="setMode(true)"><Archive :size="14" />已归档习惯</button>
+                <button type="button" @click="toggleDrawer"><PanelRight :size="14" />{{ drawer ? '收起详情' : '展开详情' }}</button>
                 <button type="button" class="is-danger" @click="clearAll"><Trash2 :size="14" />清空所有</button>
               </div>
             </div>
@@ -28,28 +43,33 @@
 
         <HabitWeekStrip v-if="!archivedMode" :week="week" :progress="weekProgressMap" />
 
-        <div class="habits-scroll">
+        <div class="hp-scroll">
           <template v-if="archivedMode">
-            <ul v-if="archivedHabits.length" class="habits-archive-grid">
-              <li v-for="habit in archivedHabits" :key="habit.publicId" :class="{ 'is-active': selectedId === habit.publicId }" @click="select(habit)">
-                <span class="habits-archive-icon" :style="iconStyle(habit)">{{ habit.icon || '✓' }}</span>
-                <div>
-                  <b>{{ habit.name }}</b>
-                  <small><Flame :size="11" />{{ totalDone(habit, checkins) }} 天 · <Zap :size="11" />{{ currentStreak(habit, checkins, today) }} 天</small>
-                </div>
-              </li>
+            <ul v-if="archivedHabits.length" class="hp-grid" :class="{ 'is-cards': layout === 'grid' }">
+              <HabitRow
+                v-for="habit in archivedHabits"
+                :key="habit.publicId"
+                :habit="habit"
+                :checkins="checkins"
+                :week="week"
+                :today="today"
+                layout="grid"
+                :active="selectedId === habit.publicId"
+                @open="select(habit)"
+                @menu="openContext($event, habit)"
+              />
             </ul>
-            <p v-else class="habits-empty">还没有归档的习惯</p>
+            <p v-else class="hp-empty">还没有归档的习惯</p>
           </template>
 
           <template v-else>
-            <section v-for="group in groups" :key="group.key" class="habits-group">
-              <button type="button" class="habits-group-head" :aria-expanded="!collapsed[group.key]" @click="toggleGroup(group.key)">
+            <section v-for="group in groups" :key="group.key" class="hp-group">
+              <button type="button" class="hp-group-head" :aria-expanded="!collapsed[group.key]" @click="toggleGroup(group.key)">
                 <ChevronDown :size="13" :class="{ 'is-collapsed': collapsed[group.key] }" />
                 <b>{{ group.label }}</b>
                 <em>{{ group.items.length }}</em>
               </button>
-              <ul v-show="!collapsed[group.key]">
+              <ul v-show="!collapsed[group.key]" class="hp-grid" :class="{ 'is-cards': layout === 'grid' }">
                 <HabitRow
                   v-for="habit in group.items"
                   :key="habit.publicId"
@@ -57,20 +77,22 @@
                   :checkins="checkins"
                   :week="week"
                   :today="today"
+                  :layout="layout"
                   :active="selectedId === habit.publicId"
                   :selectable="batch"
                   :selected="batchPicked.includes(habit.publicId)"
                   @open="batch ? togglePick(habit) : select(habit)"
                   @select="togglePick(habit)"
+                  @menu="openContext($event, habit)"
                   @toggle="key => toggleDay(habit, key)"
                 />
               </ul>
             </section>
-            <p v-if="!groups.length" class="habits-empty">还没有习惯，点右上角 + 新建一个</p>
+            <p v-if="!groups.length" class="hp-empty">还没有习惯，点右上角 + 新建一个</p>
           </template>
         </div>
 
-        <footer v-if="batch" class="habits-batch-bar">
+        <footer v-if="batch" class="hp-batch">
           <span>已选 {{ batchPicked.length }} 个</span>
           <div>
             <button type="button" @click="archivePicked">归档</button>
@@ -80,59 +102,121 @@
         </footer>
       </aside>
 
-      <aside class="habits-detail-pane">
+      <div v-if="!overlayMode && drawer" class="hp-split" role="separator" aria-orientation="vertical" aria-label="拖动调整宽度" @pointerdown="startResize" />
+
+      <aside v-show="overlayMode || drawer" class="hp-detail">
         <HabitDetailPanel
           v-if="selected"
           :habit="selected"
           :checkins="checkins"
           :today="today"
-          :closable="narrow"
-          @close="selectedId = ''"
+          :closable="overlayMode"
+          @close="closeDetail"
           @toggle="key => toggleDay(selected, key)"
           @edit="openEdit(selected)"
           @style="value => setStyle(selected, value)"
           @archive="toggleArchive(selected)"
           @remove="removeHabit(selected)"
+          @focus="mode => startFocus(selected, mode)"
+          @log="log => openLog(selected, log)"
+          @delete-log="log => deleteLog(selected, log)"
         />
-        <div v-else class="habits-detail-empty">
+        <div v-else class="hp-detail-empty">
           <p>选一个习惯看详情</p>
         </div>
       </aside>
     </div>
 
-    <HabitFormDialog
-      :open="formOpen"
-      :habit="editing"
-      :saving="saving"
-      @close="formOpen = false"
-      @submit="submitForm"
+    <button v-if="!overlayMode && !drawer" type="button" class="hp-reopen" aria-label="展开详情" @click="openDrawer"><PanelRight :size="16" /></button>
+
+    <ul v-if="context" class="hp-context" :style="{ left: `${context.x}px`, top: `${context.y}px` }" @click.stop>
+      <template v-if="context.habit.archived">
+        <li><button type="button" @click="runContext('restore')"><ArchiveRestore :size="14" />恢复习惯</button></li>
+        <li><button type="button" class="is-danger" @click="runContext('remove')"><Trash2 :size="14" />删除</button></li>
+      </template>
+      <template v-else>
+        <li><button type="button" @click="runContext('edit')"><Pencil :size="14" />编辑</button></li>
+        <li class="has-sub" @mouseenter="contextSub = 'focus'" @mouseleave="contextSub = ''">
+          <button type="button"><CircleDot :size="14" />开始专注<ChevronRight :size="12" class="hp-ctx-arrow" /></button>
+          <ul v-if="contextSub === 'focus'" class="hp-context-sub">
+            <li><button type="button" @click="runContext('focus', 'POMODORO')">开始番茄专注</button></li>
+            <li><button type="button" @click="runContext('focus', 'TIMER')">开始正计时</button></li>
+          </ul>
+        </li>
+        <li><button type="button" @click="runContext('archive')"><FolderInput :size="14" />归档</button></li>
+        <li><button type="button" class="is-danger" @click="runContext('remove')"><Trash2 :size="14" />删除</button></li>
+      </template>
+    </ul>
+
+    <HabitFormDialog :open="formOpen" :habit="editing" :saving="saving" @close="formOpen = false" @submit="submitForm" />
+
+    <HabitCheckDialog
+      :open="Boolean(checkPrompt)"
+      :habit="checkPrompt?.habit || null"
+      :date="checkPrompt?.date || ''"
+      :current="checkPrompt?.current || 0"
+      :target="checkPrompt?.target || 1"
+      @close="checkPrompt = null"
+      @confirm="confirmManualCheck"
+    />
+
+    <HabitLogDialog
+      :open="Boolean(logTarget)"
+      :habit="logTarget?.habit || null"
+      :date="logTarget?.date || ''"
+      :mood="logTarget?.checkin?.mood || ''"
+      :note="logTarget?.checkin?.note || ''"
+      @close="logTarget = null"
+      @mute="muteLog"
+      @save="saveLog"
+    />
+
+    <HabitCheckSettingDialog
+      :open="checkSettingOpen"
+      :show="checkSettingValue"
+      @close="checkSettingOpen = false"
+      @save="applyCheckSetting"
     />
   </main>
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { Archive, ChevronDown, Flame, ListChecks, MoreHorizontal, Plus, Trash2, Zap } from 'lucide-vue-next'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import {
+  Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleDot, FolderInput, LayoutGrid, List, ListChecks,
+  MoreHorizontal, PanelRight, Pencil, Plus, Settings2, Trash2
+} from 'lucide-vue-next'
 import HabitWeekStrip from '../components/habits/HabitWeekStrip.vue'
 import HabitRow from '../components/habits/HabitRow.vue'
 import HabitDetailPanel from '../components/habits/HabitDetailPanel.vue'
 import HabitFormDialog from '../components/habits/HabitFormDialog.vue'
+import HabitCheckDialog from '../components/habits/HabitCheckDialog.vue'
+import HabitLogDialog from '../components/habits/HabitLogDialog.vue'
+import HabitCheckSettingDialog from '../components/habits/HabitCheckSettingDialog.vue'
 import {
-  currentStreak, dayState, doneTarget, findCheckin, groupHabits, recentWeek, todayKey, totalDone, weekProgress
+  dayState, findCheckin, groupHabits, recentWeek, targetAmount, todayKey, weekProgress
 } from '../components/habits/habitUtils.js'
+import { loadCustomGroups } from '../components/habits/habitGroups.js'
 import { useTasksStore } from '../stores/tasks.js'
 
+const router = useRouter()
 const store = useTasksStore()
 const pageEl = ref(null)
 const pageHeight = ref(0)
 const pageStyle = computed(() => (pageHeight.value ? { height: `${pageHeight.value}px` } : {}))
 
+const SIDE_KEY = 'habit_side_width_v1'
+const LAYOUT_KEY = 'habit_layout_v1'
+const LOG_MUTED_KEY = 'habit_log_muted_v1'
+const CHECK_SETTING_KEY = 'habit_check_setting_v1'
+
 const today = ref(todayKey())
 const week = computed(() => recentWeek(today.value))
 const archivedMode = ref(false)
 const collapsed = reactive({})
-const titleMenuOpen = ref(false)
-const moreMenuOpen = ref(false)
+const titleMenu = ref(false)
+const moreMenu = ref(false)
 const batch = ref(false)
 const batchPicked = ref([])
 const selectedId = ref('')
@@ -140,24 +224,35 @@ const formOpen = ref(false)
 const editing = ref(null)
 const saving = ref(false)
 const narrow = ref(false)
+const drawer = ref(true)
+const detailOpen = ref(false)
+const containerWidth = ref(0)
+const sideWidth = ref(Number(localStorage.getItem(SIDE_KEY)) || 470)
+const resizing = ref(false)
+const layout = ref(localStorage.getItem(LAYOUT_KEY) === 'grid' ? 'grid' : 'list')
+const customGroups = ref(loadCustomGroups())
+const checkSettingOpen = ref(false)
+const checkSettingValue = ref(localStorage.getItem(CHECK_SETTING_KEY) !== 'false')
+const logMuted = ref(localStorage.getItem(LOG_MUTED_KEY) === 'true')
+const checkPrompt = ref(null)
+const logTarget = ref(null)
+const context = ref(null)
+const contextSub = ref('')
 
 const allHabits = computed(() => store.habits || [])
 const checkins = computed(() => store.habitCheckins || [])
 const habits = computed(() => allHabits.value.filter(habit => !habit.archived))
 const archivedHabits = computed(() => allHabits.value.filter(habit => habit.archived))
-const groups = computed(() => groupHabits(habits.value))
+const groups = computed(() => groupHabits(habits.value, customGroups.value))
 const selected = computed(() => allHabits.value.find(habit => habit.publicId === selectedId.value) || null)
-
+// 容器太窄时右侧详情改成覆盖层（抽屉），列表占满
+const autoCollapsed = computed(() => !narrow.value && containerWidth.value > 0 && containerWidth.value - sideWidth.value < 340)
+const overlayMode = computed(() => narrow.value || autoCollapsed.value)
+const showDetail = computed(() => Boolean(selected.value) && (overlayMode.value ? detailOpen.value : drawer.value))
+const shellStyle = computed(() => (overlayMode.value ? {} : { gridTemplateColumns: `${sideWidth.value}px 6px minmax(320px, 1fr)` }))
 const weekProgressMap = computed(() => Object.fromEntries(
   week.value.map(day => [day.key, weekProgress(habits.value, checkins.value, [day], today.value)])
 ))
-
-function iconStyle(habit) {
-  return {
-    background: `color-mix(in srgb, ${habit.color || 'var(--accent)'} 18%, transparent)`,
-    color: habit.color || 'var(--accent)'
-  }
-}
 
 function syncPageHeight() {
   const el = pageEl.value
@@ -177,14 +272,14 @@ function toggleGroup(key) {
 }
 
 function toggleTitleMenu() {
-  titleMenuOpen.value = !titleMenuOpen.value
-  moreMenuOpen.value = false
+  titleMenu.value = !titleMenu.value
+  moreMenu.value = false
 }
 
 function setMode(archived) {
   archivedMode.value = archived
-  titleMenuOpen.value = false
-  moreMenuOpen.value = false
+  titleMenu.value = false
+  moreMenu.value = false
   batch.value = false
   batchPicked.value = []
   selectedId.value = ''
@@ -192,11 +287,36 @@ function setMode(archived) {
 
 function select(habit) {
   selectedId.value = habit.publicId
-  if (window.matchMedia('(max-width: 1080px)').matches) narrow.value = true
+  if (overlayMode.value) {
+    detailOpen.value = true
+  } else {
+    drawer.value = true
+  }
+}
+
+function closeDetail() {
+  detailOpen.value = false
+  if (narrow.value || autoCollapsed.value) selectedId.value = ''
+}
+
+function toggleLayout() {
+  layout.value = layout.value === 'list' ? 'grid' : 'list'
+  localStorage.setItem(LAYOUT_KEY, layout.value)
+}
+
+function toggleDrawer() {
+  moreMenu.value = false
+  if (drawer.value) drawer.value = false
+  else openDrawer()
+}
+
+function openDrawer() {
+  drawer.value = true
+  if (!selectedId.value && habits.value.length) selectedId.value = habits.value[0].publicId
 }
 
 function startBatch() {
-  moreMenuOpen.value = false
+  moreMenu.value = false
   batch.value = true
   batchPicked.value = []
   selectedId.value = ''
@@ -208,28 +328,80 @@ function togglePick(habit) {
   else batchPicked.value.push(habit.publicId)
 }
 
+/** 写一条打卡（DONE/SKIP），返回写入后的记录 */
+async function writeCheckin(habit, key, existing, patch) {
+  await store.saveEfficiency('habit-checkin', {
+    ...(existing || {}),
+    habitId: habit.publicId,
+    date: key,
+    publicId: existing?.publicId || crypto.randomUUID(),
+    revision: existing?.revision || 0,
+    amount: 0,
+    mood: existing?.mood || '',
+    note: existing?.note || '',
+    ...patch
+  })
+  // 连续打卡时如果不等这一轮推送落库，下一条会拿着旧 revision 打到服务端冲突
+  await store.syncNow().catch(() => {})
+  return findCheckin(store.habitCheckins || [], habit.publicId, key)
+}
+
 async function toggleDay(habit, key) {
   if (!habit) return
   const state = dayState(habit, checkins.value, key, today.value)
   if (state === 'future' || state === 'none') return
   const existing = findCheckin(checkins.value, habit.publicId, key)
-  const status = state === 'done' ? 'SKIP' : 'DONE'
-  // 直接写 checkin：一次点击要么「打满当天目标」，要么退回未完成，不做累加
-  await store.saveEfficiency('habit-checkin', {
-    ...(existing || {}),
-    habitId: habit.publicId,
-    date: key,
-    status,
-    count: status === 'DONE' ? doneTarget(habit) : 0,
-    publicId: existing?.publicId || crypto.randomUUID(),
-    revision: existing?.revision || 0
+
+  // 已完成 → 取消打卡
+  if (state === 'done') {
+    await writeCheckin(habit, key, existing, { status: 'SKIP', count: 0, amount: 0 })
+    return
+  }
+
+  // 普通习惯：一次点击即完成
+  if (habit.targetType !== 'QUANTITY') {
+    const saved = await writeCheckin(habit, key, existing, { status: 'DONE', count: 1, amount: 0 })
+    if (habit.autoPopupLog) openLog(habit, saved || { ...(existing || {}), date: key })
+    return
+  }
+
+  const target = targetAmount(habit)
+  const current = Number(existing?.amount || 0)
+  const mode = habit.checkMode || 'AUTO'
+
+  // 手动：弹层让用户填数字，不填就当作没打卡
+  if (mode === 'MANUAL') {
+    checkPrompt.value = { habit, date: key, existing, current, target }
+    return
+  }
+
+  const next = mode === 'ALL' ? target : Math.min(target, current + Math.max(1, Number(habit.perAmount) || 1))
+  const saved = await writeCheckin(habit, key, existing, {
+    status: 'DONE',
+    count: Number(existing?.count || 0) + 1,
+    amount: next
   })
+  if (next >= target && habit.autoPopupLog) openLog(habit, saved || { ...(existing || {}), date: key })
+}
+
+async function confirmManualCheck(amount) {
+  const prompt = checkPrompt.value
+  checkPrompt.value = null
+  if (!prompt) return
+  const target = prompt.target
+  const next = Math.min(target, prompt.current + Number(amount || 0))
+  const saved = await writeCheckin(prompt.habit, prompt.date, prompt.existing, {
+    status: 'DONE',
+    count: Number(prompt.existing?.count || 0) + 1,
+    amount: next
+  })
+  if (next >= target && prompt.habit.autoPopupLog) openLog(prompt.habit, saved || { ...(prompt.existing || {}), date: prompt.date })
 }
 
 function openCreate() {
   editing.value = null
   formOpen.value = true
-  moreMenuOpen.value = false
+  moreMenu.value = false
 }
 
 function openEdit(habit) {
@@ -245,7 +417,7 @@ async function submitForm(payload) {
       selectedId.value = editing.value.publicId
     } else {
       const sortOrder = allHabits.value.length
-      const id = await store.createHabit({ ...payload, archived: false, remindAt: payload.remindAt || null, sortOrder })
+      const id = await store.createHabit({ ...payload, archived: false, sortOrder })
       if (id) selectedId.value = id
     }
     formOpen.value = false
@@ -260,7 +432,7 @@ async function setStyle(habit, value) {
 
 async function toggleArchive(habit) {
   await store.updateHabit(habit, { archived: !habit.archived })
-  if (habit.archived) selectedId.value = ''
+  if (!habit.archived) selectedId.value = ''
 }
 
 async function removeHabit(habit) {
@@ -289,7 +461,7 @@ async function removePicked() {
 }
 
 async function clearAll() {
-  moreMenuOpen.value = false
+  moreMenu.value = false
   const list = habits.value
   if (!list.length) return
   if (!window.confirm(`清空全部 ${list.length} 个习惯？此操作不可撤销。`)) return
@@ -297,100 +469,240 @@ async function clearAll() {
   selectedId.value = ''
 }
 
-function onDocPointerDown(event) {
-  if (event.target.closest?.('.habits-title-wrap') || event.target.closest?.('.habits-more-wrap')) return
-  titleMenuOpen.value = false
-  moreMenuOpen.value = false
+function openCheckSetting() {
+  moreMenu.value = false
+  checkSettingValue.value = localStorage.getItem(CHECK_SETTING_KEY) !== 'false'
+  checkSettingOpen.value = true
 }
 
-let onResize = null
+async function applyCheckSetting(value) {
+  checkSettingOpen.value = false
+  checkSettingValue.value = value
+  localStorage.setItem(CHECK_SETTING_KEY, String(value))
+  for (const habit of allHabits.value) {
+    if (Boolean(habit.showInToday) !== value) await store.updateHabit(habit, { showInToday: value })
+  }
+}
+
+/** 打开打卡日志弹窗；checkin 传 null 时按日期现取 */
+function openLog(habit, checkin) {
+  if (!habit || !checkin?.date) return
+  logTarget.value = { habit, date: String(checkin.date).slice(0, 10), checkin }
+}
+
+async function saveLog({ mood, note }) {
+  const target = logTarget.value
+  logTarget.value = null
+  if (!target) return
+  // 弹窗开着的这段时间里记录可能已变（revision 变了），保存前重新取一次最新值
+  const current = findCheckin(store.habitCheckins || [], target.habit.publicId, target.date) || target.checkin
+  if (!current) return
+  await store.saveEfficiency('habit-checkin', { ...current, mood, note })
+  await store.syncNow().catch(() => {})
+}
+
+async function deleteLog(habit, log) {
+  if (!window.confirm('删除这条打卡记录？当天会变成未完成。')) return
+  const current = findCheckin(store.habitCheckins || [], habit.publicId, String(log.date).slice(0, 10)) || log
+  await store.saveEfficiency('habit-checkin', current, 'DELETE')
+}
+
+function muteLog() {
+  logMuted.value = true
+  localStorage.setItem(LOG_MUTED_KEY, 'true')
+}
+
+function startFocus(habit, mode) {
+  router.push({ path: '/tasks/focus', query: { title: habit.name, mode } })
+}
+
+function openContext(event, habit) {
+  if (batch.value) return
+  context.value = { habit, x: event.clientX, y: event.clientY }
+  contextSub.value = ''
+}
+
+async function runContext(action, value) {
+  const habit = context.value?.habit
+  context.value = null
+  if (!habit) return
+  if (action === 'edit') openEdit(habit)
+  else if (action === 'focus') startFocus(habit, value)
+  else if (action === 'archive') await toggleArchive(habit)
+  else if (action === 'restore') await store.updateHabit(habit, { archived: false })
+  else if (action === 'remove') await removeHabit(habit)
+}
+
+function startResize(event) {
+  if (overlayMode.value) return
+  resizing.value = true
+  const startX = event.clientX
+  const startWidth = sideWidth.value
+  const move = moveEvent => {
+    const next = Math.min(680, Math.max(300, startWidth + (moveEvent.clientX - startX)))
+    sideWidth.value = Math.round(next)
+  }
+  const up = () => {
+    resizing.value = false
+    localStorage.setItem(SIDE_KEY, String(sideWidth.value))
+    window.removeEventListener('pointermove', move)
+    window.removeEventListener('pointerup', up)
+  }
+  window.addEventListener('pointermove', move)
+  window.addEventListener('pointerup', up)
+}
+
+function onDocPointerDown(event) {
+  if (context.value && !event.target.closest?.('.hp-context')) context.value = null
+  if (!event.target.closest?.('.hp-title-wrap') && !event.target.closest?.('.hp-more-wrap')) {
+    titleMenu.value = false
+    moreMenu.value = false
+  }
+}
+
+function onResize() {
+  syncPageHeight()
+  syncNarrow()
+}
+
+let heightTimer = 0
+let widthObserver = null
 
 onMounted(async () => {
   await store.init({ waitForRemote: false })
-  onResize = () => {
-    syncPageHeight()
-    syncNarrow()
-  }
   window.addEventListener('resize', onResize)
   document.addEventListener('pointerdown', onDocPointerDown, true)
   syncNarrow()
+  if (pageEl.value) {
+    containerWidth.value = pageEl.value.clientWidth
+    widthObserver = new ResizeObserver(entries => {
+      containerWidth.value = Math.round(entries[0].contentRect.width)
+    })
+    widthObserver.observe(pageEl.value)
+  }
   await nextTick()
   syncPageHeight()
-  window.setTimeout(syncPageHeight, 260)
+  heightTimer = window.setTimeout(syncPageHeight, 260)
   if (habits.value.length) selectedId.value = habits.value[0].publicId
 })
 
 onBeforeUnmount(() => {
-  if (onResize) window.removeEventListener('resize', onResize)
+  widthObserver?.disconnect()
+  window.removeEventListener('resize', onResize)
   document.removeEventListener('pointerdown', onDocPointerDown, true)
+  window.clearTimeout(heightTimer)
+})
+
+watch(() => allHabits.value.length, () => {
+  if (!selectedId.value && habits.value.length) selectedId.value = habits.value[0].publicId
 })
 </script>
 
 <style scoped>
-.habits-page { display: flex; height: 100vh; min-height: 0; overflow: hidden; padding: 22px 26px 0; --habit-done: var(--priority-low, #4d78db); }
-.habits-shell { display: grid; grid-template-columns: minmax(320px, 470px) minmax(340px, 1fr); gap: 18px; width: 100%; max-width: 1060px; margin: 0 auto; min-height: 0; }
+.hp {
+  display: flex;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  padding: 22px 26px 0;
+  --habit-done: var(--priority-low, #4d78db);
+}
+.hp-shell {
+  display: grid;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  min-height: 0;
+}
+.hp-shell.is-collapsed { grid-template-columns: minmax(0, 1fr) !important; }
+.hp-shell.is-collapsed .hp-split { display: none; }
+.hp-shell.is-resizing { cursor: col-resize; user-select: none; }
+.hp-shell.is-overlay { grid-template-columns: minmax(0, 1fr) !important; }
+.hp-shell.is-overlay .hp-split { display: none; }
+.hp-shell.is-overlay .hp-side { padding-right: 0; }
+.hp-shell.is-overlay .hp-detail {
+  position: fixed; z-index: 120; inset: 0;
+  display: none; padding: 16px;
+  background: var(--card); overflow-y: auto;
+}
+.hp-shell.is-overlay.is-detail .hp-detail { display: block; }
 
-.habits-side { display: flex; min-height: 0; flex-direction: column; }
-.habits-side-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 6px 6px; }
-.habits-title-wrap { position: relative; }
-.habits-title {
+.hp-side { display: flex; min-height: 0; min-width: 0; flex-direction: column; padding-right: 4px; }
+.hp-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 4px 6px; }
+.hp-title-wrap { position: relative; }
+.hp-title {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 4px 6px; border: 0; border-radius: 8px;
   background: transparent; color: var(--ink);
   font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
 }
-.habits-title:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
-.habits-side-actions { display: flex; align-items: center; gap: 2px; }
-.habits-icon-btn { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer; }
-.habits-icon-btn:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
-.habits-more-wrap { position: relative; }
+.hp-title:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.hp-actions { display: flex; align-items: center; gap: 2px; }
+.hp-icon-btn { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer; }
+.hp-icon-btn:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+.hp-more-wrap { position: relative; }
 
-.habits-menu {
+.hp-menu {
   position: absolute; z-index: 40; top: 34px; left: 0;
-  display: grid; min-width: 150px; padding: 6px;
-  border: 1px solid var(--line); border-radius: 12px;
-  background: var(--card); box-shadow: var(--module-shadow, 0 18px 44px rgb(15 23 42 / 18%));
+  display: grid; min-width: 152px; padding: 6px;
+  border-radius: 12px; background: var(--card);
+  box-shadow: 0 18px 44px rgb(15 23 42 / 18%), 0 0 0 1px var(--line);
 }
-.habits-menu.is-more { left: auto; right: 0; }
-.habits-menu button { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 0; border-radius: 8px; background: transparent; color: var(--ink2); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
-.habits-menu button:hover { background: var(--paper); color: var(--ink); }
-.habits-menu button.on { color: var(--accent); font-weight: 600; }
-.habits-menu button.is-danger { color: var(--down, #e34d59); }
+.hp-menu.is-more { left: auto; right: 0; }
+.hp-menu button { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 0; border-radius: 8px; background: transparent; color: var(--ink2); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.hp-menu button:hover { background: var(--paper); color: var(--ink); }
+.hp-menu button.on { color: var(--priority-low, #4d78db); font-weight: 600; }
+.hp-menu button.is-danger { color: var(--down, #e34d59); }
 
-.habits-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 2px 16px; scrollbar-gutter: stable; }
+.hp-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 2px 16px; scrollbar-gutter: stable; }
+.hp-grid { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.hp-group ul.hp-grid { gap: 1px; }
+.hp-grid.is-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 2px; }
 
-.habits-group { padding: 6px 0 2px; }
-.habits-group-head { display: flex; align-items: center; gap: 5px; width: 100%; padding: 4px 6px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer; }
-.habits-group-head:hover { color: var(--ink2); }
-.habits-group-head b { font-weight: 600; }
-.habits-group-head em { color: var(--dim, var(--muted)); font-style: normal; }
-.habits-group-head svg { transition: transform .16s ease; }
-.habits-group-head svg.is-collapsed { transform: rotate(-90deg); }
-.habits-group ul { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
+.hp-group { padding: 6px 0 2px; }
+.hp-group-head { display: flex; align-items: center; gap: 5px; width: 100%; padding: 4px 6px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer; }
+.hp-group-head:hover { color: var(--ink2); }
+.hp-group-head b { font-weight: 600; }
+.hp-group-head em { color: var(--dim, var(--muted)); font-style: normal; }
+.hp-group-head svg { transition: transform .16s ease; }
+.hp-group-head svg.is-collapsed { transform: rotate(-90deg); }
 
-.habits-archive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 4px 2px; list-style: none; }
-.habits-archive-grid li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); cursor: pointer; }
-.habits-archive-grid li.is-active { border-color: color-mix(in srgb, var(--accent) 46%, transparent); }
-.habits-archive-grid b { display: block; font-size: 12.5px; }
-.habits-archive-grid small { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-size: 10.5px; }
-.habits-archive-icon { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border-radius: 9px; }
+.hp-empty { padding: 40px 10px; color: var(--muted); font-size: 12.5px; text-align: center; }
 
-.habits-empty { padding: 40px 10px; color: var(--muted); font-size: 12.5px; text-align: center; }
+.hp-batch { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 12px; background: var(--card); box-shadow: 0 0 0 1px var(--line); color: var(--muted); font-size: 12px; }
+.hp-batch div { display: flex; gap: 6px; }
+.hp-batch button { padding: 4px 10px; border: 1px solid var(--line); border-radius: 7px; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
+.hp-batch button.is-danger { color: var(--down, #e34d59); }
 
-.habits-batch-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); font-size: 12px; color: var(--muted); }
-.habits-batch-bar div { display: flex; gap: 6px; }
-.habits-batch-bar button { padding: 4px 10px; border: 1px solid var(--line); border-radius: 7px; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
-.habits-batch-bar button.is-danger { color: var(--down, #e34d59); }
+.hp-split { position: relative; cursor: col-resize; }
+.hp-split::after { content: ''; position: absolute; top: 8px; bottom: 8px; left: 50%; width: 1px; background: var(--line); }
+.hp-split:hover::after { background: var(--line2); }
 
-.habits-detail-pane { min-height: 0; overflow-y: auto; padding-bottom: 18px; scrollbar-gutter: stable; }
-.habits-detail-empty { display: grid; height: 100%; place-items: center; color: var(--muted); font-size: 12.5px; }
+.hp-detail { min-height: 0; min-width: 0; overflow-y: auto; padding: 2px 2px 18px 8px; scrollbar-gutter: stable; }
+.hp-detail-empty { display: grid; height: 100%; place-items: center; color: var(--muted); font-size: 12.5px; }
 
-/* 窄屏：详情变覆盖层，列表占满 */
+.hp-reopen { position: fixed; z-index: 60; top: 50%; right: 0; transform: translateY(-50%); display: grid; width: 26px; height: 52px; place-items: center; border: 0; border-radius: 10px 0 0 10px; background: var(--card); color: var(--muted); box-shadow: -2px 0 12px rgb(15 23 42 / 12%); cursor: pointer; }
+
+.hp-context {
+  position: fixed; z-index: 200;
+  display: grid; min-width: 152px; margin: 0; padding: 6px;
+  border-radius: 12px; background: var(--card); list-style: none;
+  box-shadow: 0 18px 44px rgb(15 23 42 / 20%), 0 0 0 1px var(--line);
+}
+.hp-context li { position: relative; }
+.hp-context button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; border: 0; border-radius: 8px; background: transparent; color: var(--ink2); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.hp-context button:hover { background: var(--paper); color: var(--ink); }
+.hp-context button.is-danger, .hp-context li.is-danger button { color: var(--down, #e34d59); }
+.hp-ctx-arrow { margin-left: auto; color: var(--dim, var(--muted)); }
+.hp-context-sub {
+  position: absolute; top: 0; left: calc(100% + 4px);
+  display: grid; min-width: 140px; margin: 0; padding: 6px;
+  border-radius: 12px; background: var(--card); list-style: none;
+  box-shadow: 0 18px 44px rgb(15 23 42 / 18%), 0 0 0 1px var(--line);
+}
+
 @media (max-width: 1080px) {
-  .habits-page { padding: 16px 14px 0; }
-  .habits-shell { grid-template-columns: 1fr; }
-  .habits-detail-pane { position: fixed; z-index: 120; inset: 0; display: none; padding: 16px; background: var(--card); overflow-y: auto; }
-  .habits-shell.is-detail .habits-detail-pane { display: block; }
-  .habits-archive-grid { grid-template-columns: 1fr; }
+  .hp { padding: 16px 14px 0; }
+  .hp-grid.is-cards { grid-template-columns: 1fr; }
 }
 </style>

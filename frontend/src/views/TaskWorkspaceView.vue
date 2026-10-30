@@ -1672,6 +1672,7 @@ import { buildQuickRepeatRule, createQuickRepeatState, DAY_CODES, parseLunarLabe
 import { formatAttachmentSize, uploadQuickAttachments, validateQuickAttachmentFiles } from "./taskQuickAddAttachments.js";
 import { quickAddTokenAtCaret, replaceQuickAddToken } from "./taskQuickAddSuggestions.js";
 import { useTasksStore } from "../stores/tasks.js";
+import { todayKey } from "../components/habits/habitUtils.js";
 import { useTaskFocusStore } from "../stores/taskFocus.js";
 import { message } from "../services/message.js";
 import {
@@ -2786,7 +2787,9 @@ const groups = computed(() => {
 });
 const listGroups = computed(() => buildTaskListGroups(groups.value, openTasks.value, collapsedSubtaskIds.value));
 const todayCountdowns = computed(() => route.name === "tasks-today" && !route.query.date ? store.countdowns.filter((item) => !item.archived && !item.deleted) : []);
-const todayHabits = computed(() => route.name === "tasks-today" && !route.query.date ? store.habits.filter((item) => !item.archived && !item.deleted) : []);
+const todayHabits = computed(() => route.name === "tasks-today" && !route.query.date
+  ? store.habits.filter((item) => !item.archived && !item.deleted && item.showInToday !== false)
+  : []);
 const completedLimit = ref(5);
 function showMoreCompleted() { completedLimit.value = Math.min(completedTasks.value.length, completedLimit.value + 5); }
 function loadMoreCompletedOnScroll(event) {
@@ -6518,12 +6521,18 @@ function handleTaskCheckClick(task, event) {
   toggleComplete(task);
 }
 function habitDone(habit) {
-  const today = new Date().toISOString().slice(0, 10);
-  return store.habitCheckins.some((item) => item.habitId === habit.publicId && item.date === today && item.status === "DONE");
+  const today = todayKey();
+  const item = store.habitCheckins.find((row) => row.habitId === habit.publicId
+    && String(row.date).slice(0, 10) === today && row.status === "DONE");
+  if (!item) return false;
+  if (habit.targetType === "QUANTITY") return Number(item.amount || 0) >= Math.max(1, Number(habit.dailyTimes) || 1);
+  return Number(item.count || 0) >= 1;
 }
 async function toggleHabitToday(habit) {
   const done = habitDone(habit);
-  await store.checkinHabit(habit, { date: new Date().toISOString().slice(0, 10), count: done ? 0 : 1, status: done ? "SKIP" : "DONE" });
+  const isQuantity = habit.targetType === "QUANTITY";
+  await store.checkinHabit(habit, { date: todayKey(), count: done ? 0 : 1, status: done ? "SKIP" : "DONE",
+    amount: done ? 0 : (isQuantity ? Math.max(1, Number(habit.dailyTimes) || 1) : 0) });
 }
 async function batchComplete() {
   await applyBatch("COMPLETE");

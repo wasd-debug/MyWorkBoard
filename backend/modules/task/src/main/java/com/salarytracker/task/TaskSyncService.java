@@ -223,7 +223,8 @@ public class TaskSyncService {
                 string(extra, "remindAt"), string(extra, "startDate"), bool(extra, "archived"), integer(extra, "sortOrder"),
                 string(extra, "groupKey"), integer(extra, "goalDays"), string(extra, "checkStyle"),
                 string(extra, "targetType"), integer(extra, "dailyTimes"), bool(extra, "autoPopupLog"),
-                string(extra, "amountUnit"));
+                string(extra, "amountUnit"), integer(extra, "intervalDays"), string(extra, "checkMode"),
+                integer(extra, "perAmount"), bool(extra, "showInToday"));
         Habit saved = current == null
                 ? efficiency.createHabitForSync(command, entityId, operation.opId())
                 : efficiency.updateHabitForSync(entityId, command, base, operation.opId());
@@ -238,7 +239,8 @@ public class TaskSyncService {
         HabitCheckin current = currentCheckin(entityId);
         long base = operation.baseRevision() == null ? 0 : operation.baseRevision();
         HabitCheckin saved = efficiency.checkinForSync(string(extra, "habitId"),
-                new HabitCheckinCommand(string(extra, "date"), integer(extra, "count"), string(extra, "status"), integer(extra, "amount")),
+                new HabitCheckinCommand(string(extra, "date"), integer(extra, "count"), string(extra, "status"), integer(extra, "amount"),
+                        string(extra, "mood"), string(extra, "note")),
                 entityId, base, operation.opId());
         return result(operation.opId(), "habit-checkin", entityId, SyncStatus.APPLIED,
                 TaskEfficiencyService.syncEntity(saved, false), null, null);

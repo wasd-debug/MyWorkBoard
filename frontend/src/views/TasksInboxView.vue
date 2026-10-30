@@ -68,6 +68,7 @@ import Button from '../components/ui/Button.vue'; import Dialog from '../compone
 import TaskMilkdownEditor from '../components/tasks/TaskMilkdownEditor.vue'
 import TaskMarkdownPreview from '../components/tasks/TaskMarkdownPreview.vue'
 import { useAppStore } from '../stores/app.js'; import { useTasksStore } from '../stores/tasks.js'
+import { todayKey } from '../components/habits/habitUtils.js'
 import { apiCreateTaskComment, apiCreateTaskReminder, apiDeleteTaskAttachment, apiDeleteTaskComment, apiDeleteTaskReminder, apiDownloadTaskAttachment, apiListTaskActivity, apiListTaskAttachments, apiListTaskComments, apiListTaskFilters, apiListTaskFilterTasks, apiListTaskReminders, apiUpdateTaskComment, apiUpdateTaskFilter, apiUpdateTaskReminder, apiUploadTaskAttachment } from '../../packages/api-client/src/index.js'
 
 const route = useRoute(); const store = useTasksStore(); const appStore = useAppStore(); const editorOpen = ref(false); const editing = ref(null); const editorError = ref(''); const sortBy = ref('default'); const sortMenuOpen = ref(false); const moreMenuOpen = ref(false); const showDetails = ref(true); const showChecklist = ref(true); const navigationOpen = ref(false); const sidebarCollapsed = ref(false); const expandedGroups = ref(new Set()); const activities = ref([]); const activityLoading = ref(false)
@@ -138,7 +139,7 @@ const parentOptions = computed(() => store.openTasks.filter(item => {
 }))
 const emptyLabel = computed(() => viewKey.value === 'today' ? '今天没有安排' : viewKey.value === 'completed' ? '还没有已完成任务' : '这里还没有任务')
 const todayCountdowns = computed(() => viewKey.value === 'today' && !route.query.date ? store.countdowns.filter(item => !item.archived) : [])
-const todayHabits = computed(() => viewKey.value === 'today' && !route.query.date ? store.habits.filter(item => !item.archived) : [])
+const todayHabits = computed(() => viewKey.value === 'today' && !route.query.date ? store.habits.filter(item => !item.archived && item.showInToday !== false) : [])
 const weekDates = computed(() => { const anchor = selectedDate.value; const monday = new Date(anchor); const day = monday.getDay() || 7; monday.setDate(monday.getDate() - day + 1); return Array.from({ length: 7 }, (_, index) => addDays(monday, index)) })
 const weekDayLabels = ['一', '二', '三', '四', '五', '六', '日']
 const ungroupedLists = computed(() => store.lists.filter(item => !item.groupId))
@@ -218,8 +219,20 @@ async function deleteContextTask() { const task = contextMenu.task; closeTaskCon
 async function setTaskDue(task, days) { taskMenuId.value = ''; const due = addDays(startOfToday(), days); due.setHours(18, 0, 0, 0); try { await store.update(task, { dueAt: due.toISOString() }) } catch (error) { store.error = detail(error, '安排日期失败') } }
 async function setTaskPriority(task, priority) { taskMenuId.value = ''; try { await store.update(task, { priority }) } catch (error) { store.error = detail(error, '设置优先级失败') } }
 function startFocus(task) { taskMenuId.value = ''; window.dispatchEvent(new CustomEvent('task-focus-request', { detail: { taskId: task.publicId } })) }
-function habitDone(habit) { const today = new Date().toISOString().slice(0, 10); return store.habitCheckins.some(item => item.habitId === habit.publicId && item.date === today && item.status === 'DONE') }
-async function toggleHabit(habit) { try { const done = habitDone(habit); await store.checkinHabit(habit, { date: new Date().toISOString().slice(0, 10), count: done ? 0 : 1, status: done ? 'SKIP' : 'DONE' }) } catch (error) { store.error = detail(error, '习惯打卡失败') } }
+function habitDone(habit) {
+  const key = todayKey()
+  const item = store.habitCheckins.find(row => row.habitId === habit.publicId && String(row.date).slice(0, 10) === key && row.status === 'DONE')
+  if (!item) return false
+  if (habit.targetType === 'QUANTITY') return Number(item.amount || 0) >= Math.max(1, Number(habit.dailyTimes) || 1)
+  return Number(item.count || 0) >= 1
+}
+async function toggleHabit(habit) {
+  try {
+    const done = habitDone(habit)
+    const amount = done ? 0 : (habit.targetType === 'QUANTITY' ? Math.max(1, Number(habit.dailyTimes) || 1) : 0)
+    await store.checkinHabit(habit, { date: todayKey(), count: done ? 0 : 1, status: done ? 'SKIP' : 'DONE', amount })
+  } catch (error) { store.error = detail(error, '习惯打卡失败') }
+}
 async function clearTaskDue(task) { taskMenuId.value = ''; try { await store.update(task, { startAt: '', dueAt: '' }) } catch (error) { store.error = detail(error, '清除日期失败') } }
 function openSubtask(task) { taskMenuId.value = ''; selectedTask.value = null; editing.value = null; resetForm(); form.parentId = task.publicId; form.listId = task.listId; editorOpen.value = true }
 async function moveTask(task, listId) { taskMenuId.value = ''; if (!listId || listId === task.listId) return; try { await store.update(task, { listId }) } catch (error) { store.error = detail(error, '移动任务失败') } }
