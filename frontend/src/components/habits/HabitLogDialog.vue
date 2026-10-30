@@ -46,7 +46,7 @@
 
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
-import { MOODS, logDateLabel } from './habitUtils.js'
+import { MOODS, logDateLabel, weekdayLabel } from './habitUtils.js'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -61,7 +61,7 @@ const currentMood = ref('')
 const currentNote = ref('')
 const noteEl = ref(null)
 
-const dateLabel = computed(() => (props.date ? logDateLabel(props.date) : ''))
+const dateLabel = computed(() => (props.date ? `${logDateLabel(props.date)} ${weekdayLabel(props.date)}` : ''))
 const placeholder = computed(() => (props.mood === 'SKIP' ? '这次先跳过，记一下原因吧' : '打卡成功！记录一下心得吧'))
 const iconStyle = computed(() => ({
   background: `color-mix(in srgb, ${props.habit?.color || 'var(--accent)'} 22%, transparent)`,
@@ -86,31 +86,39 @@ function dontShowAgain() {
 </script>
 
 <style scoped>
-.hl-mask { position: fixed; z-index: 176; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(15 23 42 / 38%); }
-.hl-sheet { position: relative; display: grid; width: min(420px, calc(100vw - 28px)); gap: 10px; padding: 18px 20px 16px; border-radius: 18px; background: var(--card); box-shadow: 0 30px 66px rgb(15 23 42 / 28%); }
-.hl-dot { position: absolute; top: 12px; left: 12px; width: 9px; height: 9px; border-radius: 50%; background: #f26d63; }
-.hl-head { display: flex; align-items: center; justify-content: center; gap: 8px; }
-.hl-icon { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 9px; font-size: 16px; }
-.hl-head b { font-size: 15px; font-weight: 600; }
-.hl-date { margin: 0; color: var(--muted); font-size: 12.5px; text-align: center; }
+.hl-mask { position: fixed; z-index: 176; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(24 30 40 / 32%); }
+.hl-sheet { position: relative; display: grid; width: min(462px, calc(100vw - 24px)); gap: 12px; padding: 22px 24px 18px; border-radius: 18px; background: var(--card); box-shadow: 0 26px 62px rgb(15 23 42 / 26%); }
+.hl-dot { position: absolute; top: 14px; left: 14px; width: 10px; height: 10px; border-radius: 50%; background: #f2706a; }
+.hl-head { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.hl-icon { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 50%; font-size: 21px; line-height: 1; }
+.hl-head b { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.hl-date { margin: 0; color: var(--muted); font-size: 14.5px; text-align: center; }
 
-.hl-moods { display: flex; justify-content: center; gap: 12px; padding: 4px 0 2px; }
-.hl-mood { display: grid; width: 38px; height: 38px; place-items: center; border: 0; border-radius: 50%; background: var(--paper); font-size: 20px; line-height: 1; cursor: pointer; filter: grayscale(1); opacity: .55; transition: transform .12s ease, filter .12s ease, opacity .12s ease; }
-.hl-mood:hover { transform: translateY(-2px); }
-.hl-mood.on { filter: none; opacity: 1; box-shadow: 0 0 0 2px var(--priority-low, #4d78db); }
+.hl-moods { display: flex; justify-content: center; gap: 14px; padding: 8px 0 4px; }
+.hl-mood {
+  display: grid; width: 52px; height: 52px; place-items: center;
+  border: 0; border-radius: 50%; background: transparent;
+  font-size: 30px; line-height: 1; cursor: pointer;
+  filter: grayscale(1); opacity: .5;
+  transition: transform .12s ease, filter .12s ease, opacity .12s ease;
+}
+.hl-mood:hover { transform: translateY(-3px); opacity: .7; }
+.hl-mood.on { filter: none; opacity: 1; transform: translateY(-3px); }
 
 .hl-note {
-  min-height: 132px; padding: 12px;
+  min-height: 158px; padding: 16px;
   border: 0; border-radius: 12px;
-  background: var(--paper); color: var(--ink);
-  font: inherit; font-size: 13px; line-height: 1.6;
-  resize: vertical;
+  background: color-mix(in srgb, var(--ink) 5%, transparent); color: var(--ink);
+  font: inherit; font-size: 14.5px; line-height: 1.6;
+  resize: none;
 }
-.hl-note:focus { outline: 2px solid color-mix(in srgb, var(--priority-low, #4d78db) 26%, transparent); outline-offset: -1px; }
+.hl-note::placeholder { color: var(--dim, var(--muted)); }
+.hl-note:focus { outline: 2px solid rgb(61 143 206 / 26%); outline-offset: -1px; }
 
-.hl-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.hl-foot > div { display: flex; gap: 8px; }
-.hl-mute { padding: 4px 2px; border: 0; background: transparent; color: var(--priority-low, #4d78db); font: inherit; font-size: 12.5px; cursor: pointer; }
-.hl-btn { min-width: 76px; height: 34px; border: 1px solid var(--line2); border-radius: 9px; background: transparent; color: var(--ink2); font: inherit; font-size: 13px; cursor: pointer; }
-.hl-btn.is-primary { border-color: var(--priority-low, #4d78db); background: var(--priority-low, #4d78db); color: #fff; font-weight: 600; }
+.hl-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 2px; }
+.hl-foot > div { display: flex; gap: 12px; }
+.hl-mute { padding: 6px 2px; border: 0; background: transparent; color: #3d8fce; font: inherit; font-size: 14px; cursor: pointer; }
+.hl-btn { min-width: 104px; height: 44px; border: 1px solid var(--line2); border-radius: 10px; background: var(--card); color: var(--ink); font: inherit; font-size: 14.5px; cursor: pointer; }
+.hl-btn.is-primary { border-color: #3d8fce; background: #3d8fce; color: #fff; font-weight: 600; }
+.hl-btn.is-primary:hover { background: #3480ba; }
 </style>

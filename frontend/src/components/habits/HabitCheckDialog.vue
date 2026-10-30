@@ -83,20 +83,21 @@ function confirm() {
 </script>
 
 <style scoped>
-.hc-mask { position: fixed; z-index: 175; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(15 23 42 / 38%); }
-.hc-sheet { width: min(340px, calc(100vw - 28px)); border-radius: 16px; background: var(--card); box-shadow: 0 26px 60px rgb(15 23 42 / 26%); }
-.hc-head { display: flex; align-items: center; gap: 10px; padding: 16px 18px 6px; }
-.hc-icon { display: grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; border-radius: 11px; font-size: 18px; }
-.hc-head b { display: block; font-size: 14px; }
-.hc-head small { color: var(--muted); font-size: 11.5px; }
-.hc-body { display: grid; gap: 8px; padding: 8px 18px 4px; }
-.hc-line { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; }
-.hc-input { flex: 1; min-width: 0; height: 38px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel, var(--paper)); color: var(--ink); font: inherit; font-size: 14px; text-align: center; }
-.hc-input:focus { outline: 2px solid color-mix(in srgb, var(--priority-low, #4d78db) 26%, transparent); outline-offset: -1px; }
+.hc-mask { position: fixed; z-index: 175; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(24 30 40 / 32%); }
+.hc-sheet { width: min(400px, calc(100vw - 24px)); border-radius: 18px; background: var(--card); box-shadow: 0 26px 60px rgb(15 23 42 / 26%); }
+.hc-head { display: flex; align-items: center; gap: 12px; padding: 20px 22px 8px; }
+.hc-icon { display: grid; width: 44px; height: 44px; flex: 0 0 auto; place-items: center; border-radius: 50%; font-size: 22px; line-height: 1; }
+.hc-head b { display: block; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.hc-head small { color: var(--muted); font-size: 12.5px; }
+.hc-body { display: grid; gap: 10px; padding: 10px 22px 4px; }
+.hc-line { display: flex; align-items: center; gap: 10px; color: var(--ink2); font-size: 13.5px; }
+.hc-input { flex: 1; min-width: 0; height: 46px; padding: 0 14px; border: 1.5px solid #3d8fce; border-radius: 10px; background: var(--card); color: var(--ink); font: inherit; font-size: 17px; font-weight: 600; text-align: center; }
+.hc-input:focus { outline: none; box-shadow: 0 0 0 3px rgb(61 143 206 / 14%); }
 .hc-line em { color: var(--ink2); font-style: normal; }
-.hc-hint { margin: 0; color: var(--dim, var(--muted)); font-size: 11.5px; }
-.hc-foot { display: flex; gap: 10px; padding: 12px 18px 16px; }
-.hc-btn { flex: 1; height: 36px; border: 1px solid var(--line2); border-radius: 9px; background: transparent; color: var(--ink2); font: inherit; font-size: 13.5px; cursor: pointer; }
-.hc-btn.is-primary { border-color: var(--priority-low, #4d78db); background: var(--priority-low, #4d78db); color: #fff; font-weight: 600; }
+.hc-hint { margin: 0; color: var(--dim, var(--muted)); font-size: 12px; }
+.hc-foot { display: flex; gap: 12px; padding: 16px 22px 20px; }
+.hc-btn { flex: 1; height: 44px; border: 1px solid var(--line2); border-radius: 10px; background: var(--card); color: var(--ink); font: inherit; font-size: 14.5px; cursor: pointer; }
+.hc-btn.is-primary { border-color: #3d8fce; background: #3d8fce; color: #fff; font-weight: 600; }
+.hc-btn.is-primary:hover:not(:disabled) { background: #3480ba; }
 .hc-btn:disabled { opacity: .45; cursor: default; }
 </style>

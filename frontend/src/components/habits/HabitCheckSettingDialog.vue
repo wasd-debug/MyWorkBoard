@@ -33,16 +33,17 @@ watch(() => props.open, open => {
 </script>
 
 <style scoped>
-.hs-mask { position: fixed; z-index: 176; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(15 23 42 / 38%); }
-.hs-sheet { position: relative; display: grid; gap: 14px; width: min(420px, calc(100vw - 28px)); padding: 18px 20px 16px; border-radius: 18px; background: var(--card); box-shadow: 0 30px 66px rgb(15 23 42 / 28%); }
-.hs-dot { position: absolute; top: 12px; left: 12px; width: 9px; height: 9px; border-radius: 50%; background: #f26d63; }
-.hs-sheet h2 { margin: 0; font-size: 15px; font-weight: 600; text-align: center; }
-.hs-row { display: flex; align-items: center; gap: 10px; color: var(--ink2); font-size: 13.5px; }
-.hs-switch { position: relative; width: 38px; height: 22px; flex: 0 0 auto; padding: 0; border: 0; border-radius: 999px; background: var(--line2); cursor: pointer; transition: background .16s ease; }
-.hs-switch i { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(15 23 42 / 22%); transition: transform .16s ease; }
-.hs-switch.on { background: var(--priority-low, #4d78db); }
-.hs-switch.on i { transform: translateX(16px); }
-.hs-foot { display: flex; justify-content: flex-end; gap: 10px; }
-.hs-btn { min-width: 88px; height: 36px; border: 1px solid var(--line2); border-radius: 9px; background: transparent; color: var(--ink2); font: inherit; font-size: 13.5px; cursor: pointer; }
-.hs-btn.is-primary { border-color: var(--priority-low, #4d78db); background: var(--priority-low, #4d78db); color: #fff; font-weight: 600; }
+.hs-mask { position: fixed; z-index: 176; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(24 30 40 / 32%); }
+.hs-sheet { position: relative; display: grid; gap: 20px; width: min(430px, calc(100vw - 24px)); padding: 22px 24px 18px; border-radius: 18px; background: var(--card); box-shadow: 0 26px 62px rgb(15 23 42 / 26%); }
+.hs-dot { position: absolute; top: 14px; left: 14px; width: 10px; height: 10px; border-radius: 50%; background: #f2706a; }
+.hs-sheet h2 { margin: 6px 0 8px; font-size: 17px; font-weight: 600; letter-spacing: -.01em; text-align: center; }
+.hs-row { display: flex; align-items: center; gap: 14px; color: var(--ink); font-size: 15px; cursor: pointer; }
+.hs-switch { position: relative; width: 46px; height: 26px; flex: 0 0 auto; padding: 0; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--ink) 16%, transparent); cursor: pointer; transition: background .16s ease; }
+.hs-switch i { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(15 23 42 / 22%); transition: transform .16s ease; }
+.hs-switch.on { background: #3d8fce; }
+.hs-switch.on i { transform: translateX(20px); }
+.hs-foot { display: flex; justify-content: flex-end; gap: 14px; padding-top: 4px; }
+.hs-btn { min-width: 132px; height: 44px; border: 1px solid var(--line2); border-radius: 10px; background: var(--card); color: var(--ink); font: inherit; font-size: 14.5px; cursor: pointer; }
+.hs-btn.is-primary { border-color: #3d8fce; background: #3d8fce; color: #fff; font-weight: 600; }
+.hs-btn.is-primary:hover { background: #3480ba; }
 </style>
