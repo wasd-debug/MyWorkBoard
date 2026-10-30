@@ -67,14 +67,15 @@ public final class TaskEfficiencyModels {
                                Integer intervalDays, String checkMode, Integer perAmount, Boolean showInToday) {
     }
 
+    /** status: DONE 已完成 / SKIP 主动跳过（不算中断）/ MISS 明确标记未完成（算中断） */
     @Schema(name = "HabitCheckin")
     public record HabitCheckin(String publicId, String habitId, String date, int count, String status,
-                               long revision, int amount, String mood, String note) {
+                               long revision, int amount, String mood, String note, String skipReason) {
     }
 
     @Schema(name = "HabitCheckinCommand")
     public record HabitCheckinCommand(String date, Integer count, String status, Integer amount,
-                                      String mood, String note) {
+                                      String mood, String note, String skipReason) {
     }
 
     /** 习惯详情面板要的聚合数字：月打卡/总打卡/月完成率/当前连续/月完成量/总完成量 */

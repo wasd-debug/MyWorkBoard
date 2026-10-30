@@ -357,24 +357,29 @@ public class TaskEfficiencyService {
         LocalDate date = parseDate(command == null ? null : command.date(), LocalDate.now(zone(userId)));
         if (date.isBefore(LocalDate.parse(habit.startDate()))) throw new IllegalArgumentException("补卡日期不能早于习惯开始日期");
         if (date.isAfter(LocalDate.now(zone(userId)))) throw new IllegalArgumentException("不能打卡未来日期");
-        String status = enumValue(command == null ? null : command.status(), "DONE", List.of("DONE", "SKIP"), "status");
-        int count = "SKIP".equals(status) ? 0 : bounded(command == null ? null : command.count(), 1, 1, 999, "打卡次数");
-        int amount = "SKIP".equals(status) ? 0 : bounded(command == null ? null : command.amount(), 0, 0, 999999, "完成量");
-        String mood = "SKIP".equals(status) ? "" : optional(command == null ? null : command.mood(), 16);
-        String note = "SKIP".equals(status) ? "" : optional(command == null ? null : command.note(), 500);
+        // status：DONE 完成 / SKIP 主动跳过（不断连击） / MISS 未完成（断连击） / CLEAR 取消打卡（等价于没记录）
+        String status = enumValue(command == null ? null : command.status(), "DONE",
+                List.of("DONE", "SKIP", "MISS", "CLEAR"), "status");
+        boolean idle = !"DONE".equals(status);
+        int count = idle ? 0 : bounded(command == null ? null : command.count(), 1, 1, 999, "打卡次数");
+        int amount = idle ? 0 : bounded(command == null ? null : command.amount(), 0, 0, 999999, "完成量");
+        // 心情和心得任何状态都保留（跳过/未完成也能写），只有跳过原因限定给 SKIP
+        String mood = optional(command == null ? null : command.mood(), 16);
+        String note = optional(command == null ? null : command.note(), 500);
+        String skipReason = "SKIP".equals(status) ? optional(command == null ? null : command.skipReason(), 200) : "";
         HabitCheckin existing = optionalCheckinForDay(userId, publicId, date);
         if (existing == null) {
             if (baseRevision > 0) throw new NotFoundException("习惯打卡不存在");
-            jdbc.update("INSERT INTO habit_checkin(public_id,habit_id,user_id,checkin_date,count,status,amount,mood,note) " +
-                            "SELECT ?,id,?,?,?,?,?,?,? FROM habit WHERE public_id=? AND user_id=?",
-                    checkinId, userId, Date.valueOf(date), count, status, amount, mood, note, publicId, userId);
+            jdbc.update("INSERT INTO habit_checkin(public_id,habit_id,user_id,checkin_date,count,status,amount,mood,note,skip_reason) " +
+                            "SELECT ?,id,?,?,?,?,?,?,?,? FROM habit WHERE public_id=? AND user_id=?",
+                    checkinId, userId, Date.valueOf(date), count, status, amount, mood, note, skipReason, publicId, userId);
         } else {
             if (!existing.publicId().equals(checkinId) || existing.revision() != baseRevision) {
                 throw new ConflictException("习惯打卡版本已变化", existing.revision());
             }
-            jdbc.update("UPDATE habit_checkin SET count=?,status=?,amount=?,mood=?,note=?,revision=revision+1 " +
+            jdbc.update("UPDATE habit_checkin SET count=?,status=?,amount=?,mood=?,note=?,skip_reason=?,revision=revision+1 " +
                             "WHERE public_id=? AND user_id=? AND revision=?",
-                    count, status, amount, mood, note, checkinId, userId, baseRevision);
+                    count, status, amount, mood, note, skipReason, checkinId, userId, baseRevision);
         }
         // 是否达标：完成量习惯看累计量，普通习惯看是否至少打过一次
         boolean completed = habitDone(habit, status, count, amount);
@@ -403,16 +408,19 @@ public class TaskEfficiencyService {
         int target30 = 0;
         for (LocalDate day = today.minusDays(29); !day.isAfter(today); day = day.plusDays(1)) {
             if (!scheduled(habit, day)) continue;
-            target30++;
             HabitCheckin item = byDate.get(day);
+            // 主动跳过的日子不计入应完成天数，否则完成率会被拉低
+            if (item != null && "SKIP".equals(item.status())) continue;
+            target30++;
             if (item != null && habitDone(habit, item.status(), item.count(), item.amount())) completed30++;
         }
         int monthCompleted = 0;
         int monthTarget = 0;
         for (LocalDate day = today.withDayOfMonth(1); !day.isAfter(today); day = day.plusDays(1)) {
             if (!scheduled(habit, day)) continue;
-            monthTarget++;
             HabitCheckin item = byDate.get(day);
+            if (item != null && "SKIP".equals(item.status())) continue;
+            monthTarget++;
             if (item != null && habitDone(habit, item.status(), item.count(), item.amount())) monthCompleted++;
         }
         Totals summary = habitTotals(habit, rows, today);
@@ -580,35 +588,35 @@ public class TaskEfficiencyService {
     }
 
     private HabitCheckin checkinForDay(long userId, String publicId, LocalDate date) {
-        return jdbc.queryForObject("SELECT c.public_id,h.public_id habit_public_id,c.checkin_date,c.count,c.status,c.revision,c.amount,c.mood,c.note " +
+        return jdbc.queryForObject("SELECT c.public_id,h.public_id habit_public_id,c.checkin_date,c.count,c.status,c.revision,c.amount,c.mood,c.note,c.skip_reason " +
                         "FROM habit_checkin c JOIN habit h ON h.id=c.habit_id WHERE c.user_id=? AND h.public_id=? AND c.checkin_date=?",
                 (row, index) -> new HabitCheckin(row.getString(1), row.getString(2), row.getDate(3).toLocalDate().toString(),
-                        row.getInt(4), row.getString(5), row.getLong(6), row.getInt(7), row.getString(8), row.getString(9)), userId, publicId, Date.valueOf(date));
+                        row.getInt(4), row.getString(5), row.getLong(6), row.getInt(7), row.getString(8), row.getString(9), row.getString(10)), userId, publicId, Date.valueOf(date));
     }
 
     HabitCheckin checkinForSync(String publicId) {
-        List<HabitCheckin> rows = jdbc.query("SELECT c.public_id,h.public_id habit_public_id,c.checkin_date,c.count,c.status,c.revision,c.amount,c.mood,c.note " +
+        List<HabitCheckin> rows = jdbc.query("SELECT c.public_id,h.public_id habit_public_id,c.checkin_date,c.count,c.status,c.revision,c.amount,c.mood,c.note,c.skip_reason " +
                         "FROM habit_checkin c JOIN habit h ON h.id=c.habit_id WHERE c.user_id=? AND c.public_id=?",
                 (row, index) -> new HabitCheckin(row.getString(1), row.getString(2), row.getDate(3).toLocalDate().toString(),
-                        row.getInt(4), row.getString(5), row.getLong(6), row.getInt(7), row.getString(8), row.getString(9)), currentUser.id(), publicId);
+                        row.getInt(4), row.getString(5), row.getLong(6), row.getInt(7), row.getString(8), row.getString(9), row.getString(10)), currentUser.id(), publicId);
         if (rows.isEmpty()) throw new NotFoundException("习惯打卡不存在");
         return rows.get(0);
     }
 
     private HabitCheckin optionalCheckinForDay(long userId, String publicId, LocalDate date) {
-        List<HabitCheckin> rows = jdbc.query("SELECT c.public_id,h.public_id habit_public_id,c.checkin_date,c.count,c.status,c.revision,c.amount,c.mood,c.note " +
+        List<HabitCheckin> rows = jdbc.query("SELECT c.public_id,h.public_id habit_public_id,c.checkin_date,c.count,c.status,c.revision,c.amount,c.mood,c.note,c.skip_reason " +
                         "FROM habit_checkin c JOIN habit h ON h.id=c.habit_id WHERE c.user_id=? AND h.public_id=? AND c.checkin_date=?",
                 (row, index) -> new HabitCheckin(row.getString(1), row.getString(2), row.getDate(3).toLocalDate().toString(),
-                        row.getInt(4), row.getString(5), row.getLong(6), row.getInt(7), row.getString(8), row.getString(9)), userId, publicId, Date.valueOf(date));
+                        row.getInt(4), row.getString(5), row.getLong(6), row.getInt(7), row.getString(8), row.getString(9), row.getString(10)), userId, publicId, Date.valueOf(date));
         return rows.isEmpty() ? null : rows.get(0);
     }
 
     private List<HabitCheckin> checkins(long userId, String publicId, LocalDate from, LocalDate to) {
-        return jdbc.query("SELECT c.public_id,h.public_id habit_public_id,c.checkin_date,c.count,c.status,c.revision,c.amount,c.mood,c.note " +
+        return jdbc.query("SELECT c.public_id,h.public_id habit_public_id,c.checkin_date,c.count,c.status,c.revision,c.amount,c.mood,c.note,c.skip_reason " +
                         "FROM habit_checkin c JOIN habit h ON h.id=c.habit_id WHERE c.user_id=? AND h.public_id=? " +
                         "AND c.checkin_date>=? AND c.checkin_date<? ORDER BY c.checkin_date",
                 (row, index) -> new HabitCheckin(row.getString(1), row.getString(2), row.getDate(3).toLocalDate().toString(),
-                        row.getInt(4), row.getString(5), row.getLong(6), row.getInt(7), row.getString(8), row.getString(9)), userId, publicId, Date.valueOf(from), Date.valueOf(to));
+                        row.getInt(4), row.getString(5), row.getLong(6), row.getInt(7), row.getString(8), row.getString(9), row.getString(10)), userId, publicId, Date.valueOf(from), Date.valueOf(to));
     }
 
     private Streak streak(Habit habit, Map<LocalDate, HabitCheckin> rows, LocalDate today) {
@@ -701,6 +709,7 @@ public class TaskEfficiencyService {
         extra.put("habitId", item.habitId()); extra.put("date", item.date()); extra.put("count", item.count());
         extra.put("status", item.status()); extra.put("amount", item.amount());
         extra.put("mood", item.mood()); extra.put("note", item.note());
+        extra.put("skipReason", item.skipReason());
         return efficiencyEntity(item.publicId(), item.revision() + (deleted ? 1 : 0), deleted, extra);
     }
 

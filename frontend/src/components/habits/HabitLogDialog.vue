@@ -53,7 +53,8 @@ const props = defineProps({
   habit: { type: Object, default: null },
   date: { type: String, default: '' },
   mood: { type: String, default: '' },
-  note: { type: String, default: '' }
+  note: { type: String, default: '' },
+  status: { type: String, default: '' }
 })
 const emit = defineEmits(['close', 'save', 'mute'])
 
@@ -62,7 +63,11 @@ const currentNote = ref('')
 const noteEl = ref(null)
 
 const dateLabel = computed(() => (props.date ? `${logDateLabel(props.date)} ${weekdayLabel(props.date)}` : ''))
-const placeholder = computed(() => (props.mood === 'SKIP' ? '这次先跳过，记一下原因吧' : '打卡成功！记录一下心得吧'))
+const placeholder = computed(() => {
+  if (props.status === 'SKIP') return '这次先跳过了，可以补充一点说明'
+  if (props.status === 'MISS') return '记录一下这天为什么没完成吧'
+  return '打卡成功！记录一下心得吧'
+})
 const iconStyle = computed(() => ({
   background: `color-mix(in srgb, ${props.habit?.color || 'var(--accent)'} 22%, transparent)`,
   color: props.habit?.color || 'var(--accent)'

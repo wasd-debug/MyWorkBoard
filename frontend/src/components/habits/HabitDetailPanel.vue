@@ -1,12 +1,12 @@
 <template>
   <section class="hd" aria-label="习惯详情">
     <header class="hd-head">
+      <button v-if="closable" type="button" class="hd-iconbtn is-back" aria-label="返回习惯列表" title="返回习惯列表" @click="emit('close')"><ArrowLeft :size="18" /></button>
       <span class="hd-icon" :style="iconStyle">{{ habit.icon || '✓' }}</span>
       <div class="hd-title">
         <b :title="`${frequencyLabel(habit)} · 开始于 ${startLabel}`">{{ habit.name }}</b>
         <small v-if="habit.archived" class="hd-badge">已归档</small>
       </div>
-      <button v-if="closable" type="button" class="hd-iconbtn" aria-label="关闭详情" @click="emit('close')"><X :size="16" /></button>
       <div ref="menuEl" class="hd-menu">
         <button type="button" class="hd-iconbtn" aria-label="习惯操作" :aria-expanded="menuOpen" @click.stop="menuOpen = !menuOpen"><MoreHorizontal :size="17" /></button>
         <div v-if="menuOpen" class="hd-drop" @click.stop>
@@ -83,8 +83,9 @@
           class="hd-cell"
           :class="[`is-${stateOf(cell.key)}`, { 'is-out': !cell.inMonth, 'is-today': cell.isToday }]"
           :disabled="stateOf(cell.key) === 'future' || stateOf(cell.key) === 'none'"
-          :title="`${cell.day}日 · ${stateText(stateOf(cell.key))}`"
+          :title="cellTitle(cell)"
           @click="emit('toggle', cell.key)"
+          @contextmenu.prevent="openCellMenu($event, cell.key)"
         >
           <template v-if="stateOf(cell.key) === 'done'">
             <span v-if="habit.checkStyle === 'ICON'" class="hd-cell-emoji">{{ habit.icon }}</span>
@@ -102,21 +103,25 @@
       <div v-if="logs.length" class="hd-log-scroll">
         <ul class="hd-log-list">
           <li v-for="log in logs" :key="log.publicId">
-            <span class="hd-log-mark" :class="{ 'is-skip': log.status === 'SKIP' }">
-              <Check v-if="log.status !== 'SKIP'" :size="12" :stroke-width="3" />
+            <span class="hd-log-mark" :class="{ 'is-skip': log.status === 'SKIP', 'is-miss': log.status === 'MISS' }">
+              <Check v-if="log.status === 'DONE'" :size="12" :stroke-width="3" />
+              <Minus v-else-if="log.status === 'SKIP'" :size="12" :stroke-width="3" />
               <X v-else :size="12" :stroke-width="3" />
             </span>
             <div class="hd-log-main">
               <div class="hd-log-top">
                 <span class="hd-log-date">{{ logDateLabel(logKey(log)) }}</span>
                 <span class="hd-log-week">{{ weekdayLabel(logKey(log)) }}</span>
-                <span v-if="log.mood" class="hd-log-mood">{{ log.mood }}</span>
+                <span v-if="log.mood && log.status === 'DONE'" class="hd-log-mood">{{ log.mood }}</span>
                 <span class="hd-log-actions">
                   <button type="button" aria-label="编辑日志" @click="emit('log', log)"><Pencil :size="13" /></button>
                   <button type="button" aria-label="删除日志" @click="emit('deleteLog', log)"><Trash2 :size="13" /></button>
                 </span>
               </div>
-              <p v-if="log.note" class="hd-log-note">{{ log.note }}</p>
+              <p v-if="log.status === 'SKIP' && log.skipReason" class="hd-log-note is-skip">跳过：{{ log.skipReason }}</p>
+              <p v-else-if="log.status === 'SKIP'" class="hd-log-note is-skip">跳过</p>
+              <p v-else-if="log.status === 'MISS'" class="hd-log-note is-miss">未完成</p>
+              <p v-else-if="log.note" class="hd-log-note">{{ log.note }}</p>
               <p v-else-if="logLine(log)" class="hd-log-text">{{ logLine(log) }}</p>
             </div>
           </li>
@@ -130,8 +135,8 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
-  ArrowLeftRight, ArchiveRestore, BadgeCheck, Check, ChevronLeft, ChevronRight, CircleCheck, CircleDot,
-  Flame, FolderInput, MoreHorizontal, Pencil, Percent, Trash2, X, Zap
+  ArrowLeft, ArrowLeftRight, ArchiveRestore, BadgeCheck, Check, ChevronLeft, ChevronRight, CircleCheck, CircleDot,
+  Flame, FolderInput, Minus, MoreHorizontal, Pencil, Percent, Trash2, X, Zap
 } from 'lucide-vue-next'
 import {
   WEEKDAY_LABELS, currentStreak, dayState, frequencyLabel, longestStreak, logDateLabel, monthLogs, monthMatrix,
@@ -145,7 +150,7 @@ const props = defineProps({
   today: { type: String, default: '' },
   closable: { type: Boolean, default: false }
 })
-const emit = defineEmits(['toggle', 'edit', 'style', 'archive', 'remove', 'close', 'focus', 'log', 'deleteLog'])
+const emit = defineEmits(['toggle', 'edit', 'style', 'archive', 'remove', 'close', 'focus', 'log', 'deleteLog', 'dayMenu'])
 
 const menuEl = ref(null)
 const menuOpen = ref(false)
@@ -204,6 +209,21 @@ function stateOf(key) {
 
 function stateText(state) {
   return { done: '已完成', partial: '未达标', missed: '未完成', skip: '已跳过', todo: '待打卡', future: '未来', none: '不在这天' }[state] || ''
+}
+
+/** 悬浮提示带上跳过原因，鼠标停一下就能看到为什么跳 */
+function cellTitle(cell) {
+  const state = stateOf(cell.key)
+  const checkin = props.checkins.find(item => item.habitId === props.habit.publicId && String(item.date).slice(0, 10) === cell.key)
+  const reason = state === 'skip' ? String(checkin?.skipReason || '').trim() : ''
+  return `${cell.day}日 · ${stateText(state)}${reason ? `（${reason}）` : ''}`
+}
+
+/** 具体日期右键：记录日志 / 跳过打卡 / 未完成 */
+function openCellMenu(event, key) {
+  const state = stateOf(key)
+  if (state === 'future' || state === 'none') return
+  emit('dayMenu', { event, key })
 }
 
 function logKey(log) {
@@ -272,6 +292,7 @@ onBeforeUnmount(() => {
 .hd-badge { flex: 0 0 auto; padding: 1px 6px; border-radius: 5px; background: var(--paper); color: var(--muted); font-size: 10.5px; white-space: nowrap; }
 .hd-iconbtn { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
 .hd-iconbtn:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+.hd-iconbtn.is-back { flex: 0 0 auto; width: 32px; height: 32px; margin-left: -4px; color: var(--ink2); }
 
 /* ⌯ 菜单：白卡 14 圆角，行高 34，图标 + 文案 */
 .hd-menu { position: relative; }
@@ -333,9 +354,11 @@ onBeforeUnmount(() => {
 /* 参考图：日历格子就是圆形本身（没有日期数字），完成=蓝底白勾，漏打=红叉，未来=浅灰圆 */
 .hd-cell {
   display: grid;
-  width: 100%;
-  max-width: 30px;
-  aspect-ratio: 1;
+  width: 30px;
+  height: 30px;
+  min-width: 0;
+  /* 全局 button 有 min-height，会把圆形格子撑成椭圆，这里必须清零 */
+  min-height: 0;
   justify-self: center;
   place-items: center;
   padding: 0;
@@ -353,7 +376,7 @@ onBeforeUnmount(() => {
 .hd-cell.is-done { background: #3d8fce; color: #fff; }
 .hd-cell.is-done:hover { background: #3480ba; }
 .hd-cell.is-missed { background: transparent; color: #e34d59; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, #e34d59 30%, transparent); }
-.hd-cell.is-skip { background: transparent; color: var(--dim, var(--muted)); }
+.hd-cell.is-skip { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--muted); }
 .hd-cell.is-todo { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line2); }
 .hd-cell.is-today { box-shadow: inset 0 0 0 2px #3d8fce; }
 .hd-cell.is-today.is-done { box-shadow: 0 0 0 2px color-mix(in srgb, #3d8fce 28%, transparent); }
@@ -375,7 +398,8 @@ onBeforeUnmount(() => {
 .hd-log-list li::before { content: ''; position: absolute; top: 26px; bottom: 2px; left: 9.5px; width: 1px; background: color-mix(in srgb, #3d8fce 22%, transparent); }
 .hd-log-list li:last-child::before { display: none; }
 .hd-log-mark { display: grid; width: 20px; height: 20px; flex: 0 0 auto; place-items: center; margin-top: 1px; border-radius: 50%; background: #3d8fce; color: #fff; }
-.hd-log-mark.is-skip { background: #5a6b7d; }
+.hd-log-mark.is-skip { background: #8394a6; }
+.hd-log-mark.is-miss { background: #e34d59; }
 .hd-log-main { display: grid; flex: 1; min-width: 0; gap: 5px; }
 .hd-log-top { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
 .hd-log-date { color: var(--ink2); }
@@ -386,5 +410,7 @@ onBeforeUnmount(() => {
 .hd-log-actions button:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
 .hd-log-text { margin: 0; color: var(--ink); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .hd-log-note { margin: 0; color: var(--ink2); font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.hd-log-note.is-skip { color: var(--muted); }
+.hd-log-note.is-miss { color: #e34d59; }
 .hd-logs-empty { margin: 0; padding: 2px 0 4px; color: var(--dim, var(--muted)); font-size: 12px; }
 </style>

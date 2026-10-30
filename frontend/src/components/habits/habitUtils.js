@@ -154,15 +154,19 @@ export function progressOf(habit, checkin) {
 
 /**
  * 当天格子状态：
- * done 已完成 / partial 打了但没满 / skip 主动跳过 / missed 该打没打（过期）
+ * done 已完成 / partial 打了但没满 / skip 主动跳过（不算中断） / missed 该打没打
  * future 未来 / todo 今天还没打 / none 不在计划内
  */
 export function dayState(habit, checkins, key, today = todayKey()) {
   if (!scheduledOn(habit, key)) return 'none'
-  const checkin = findCheckin(checkins, habit.publicId, key)
+  const raw = findCheckin(checkins, habit.publicId, key)
+  // CLEAR 是「取消打卡」留下的墓碑记录，对上层等价于没有记录
+  const checkin = raw && raw.status === 'CLEAR' ? null : raw
   if (checkin && checkin.status === 'SKIP') return 'skip'
   if (isComplete(habit, checkin)) return 'done'
   if (checkin && checkin.status === 'DONE') return 'partial'
+  // 显式标记「未完成」和过期没打一样算中断
+  if (checkin && checkin.status === 'MISS') return 'missed'
   if (key > today) return 'future'
   if (key < today) return 'missed'
   return 'todo'
@@ -223,10 +227,11 @@ export function totalDone(habit, checkins) {
   return (checkins || []).filter(item => item.habitId === habit.publicId && isComplete(habit, item)).length
 }
 
-/** 某个月的打卡记录（用于日志区），按日期倒序 */
+/** 某个月的打卡记录（用于日志区），按日期倒序；取消打卡留下的空记录不显示 */
 export function monthLogs(habit, checkins, monthKey) {
   return (checkins || [])
     .filter(item => item.habitId === habit?.publicId && String(item.date).startsWith(monthKey))
+    .filter(item => item.status !== 'CLEAR')
     .sort((a, b) => (a.date < b.date ? 1 : -1))
 }
 
@@ -257,8 +262,10 @@ export function monthStats(habit, checkins, year, month, today = todayKey()) {
   for (const cell of cells) {
     if (!scheduledOn(habit, cell.key)) continue
     if (cell.key > today) continue
-    target += 1
     const state = dayState(habit, checkins, cell.key, today)
+    // 主动跳过的日子不计入应完成天数，否则完成率会被拉低
+    if (state === 'skip') continue
+    target += 1
     if (state === 'done') done += 1
     if (state === 'partial') partial += 1
   }
@@ -367,6 +374,8 @@ export function weekProgress(habits, checkins, week, today = todayKey()) {
     for (const habit of habits || []) {
       if (!scheduledOn(habit, day.key)) continue
       if (day.key > today) continue
+      // 跳过的那天不计入分母
+      if (dayState(habit, checkins, day.key, today) === 'skip') continue
       total += 1
       if (dayState(habit, checkins, day.key, today) === 'done') done += 1
     }

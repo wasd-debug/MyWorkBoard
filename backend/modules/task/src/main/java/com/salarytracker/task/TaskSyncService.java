@@ -240,7 +240,7 @@ public class TaskSyncService {
         long base = operation.baseRevision() == null ? 0 : operation.baseRevision();
         HabitCheckin saved = efficiency.checkinForSync(string(extra, "habitId"),
                 new HabitCheckinCommand(string(extra, "date"), integer(extra, "count"), string(extra, "status"), integer(extra, "amount"),
-                        string(extra, "mood"), string(extra, "note")),
+                        string(extra, "mood"), string(extra, "note"), string(extra, "skipReason")),
                 entityId, base, operation.opId());
         return result(operation.opId(), "habit-checkin", entityId, SyncStatus.APPLIED,
                 TaskEfficiencyService.syncEntity(saved, false), null, null);

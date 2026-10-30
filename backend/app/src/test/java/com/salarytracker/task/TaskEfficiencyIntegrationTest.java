@@ -56,10 +56,10 @@ class TaskEfficiencyIntegrationTest extends MySqlIntegrationTestSupport {
         var habit = service.createHabit(new HabitCommand("阅读", "book", "#2f746f", "DAILY", 1,
                 List.of(), null, today.minusDays(3).toString(), false, 0, "other", null, "CHECK", "CHECK",
                 1, false, "", 2, "AUTO", 1, true));
-        service.checkin(habit.publicId(), new HabitCheckinCommand(today.minusDays(2).toString(), 1, "DONE", 0, "", ""));
-        service.checkin(habit.publicId(), new HabitCheckinCommand(today.minusDays(1).toString(), 0, "SKIP", 0, "", ""));
-        service.checkin(habit.publicId(), new HabitCheckinCommand(today.toString(), 1, "DONE", 0, "", ""));
-        service.checkin(habit.publicId(), new HabitCheckinCommand(today.toString(), 1, "DONE", 0, "", ""));
+        service.checkin(habit.publicId(), new HabitCheckinCommand(today.minusDays(2).toString(), 1, "DONE", 0, "", "", ""));
+        service.checkin(habit.publicId(), new HabitCheckinCommand(today.minusDays(1).toString(), 0, "SKIP", 0, "", "", "出差"));
+        service.checkin(habit.publicId(), new HabitCheckinCommand(today.toString(), 1, "DONE", 0, "", "", ""));
+        service.checkin(habit.publicId(), new HabitCheckinCommand(today.toString(), 1, "DONE", 0, "", "", ""));
         var stats = service.habitStats(habit.publicId(), null, null);
         assertEquals(2, stats.currentStreak());
         assertEquals(3, stats.checkins().size());

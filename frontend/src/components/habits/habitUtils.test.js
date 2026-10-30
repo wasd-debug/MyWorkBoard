@@ -65,6 +65,24 @@ test('跳过（SKIP）不算完成，也不算中断', () => {
   assert.equal(currentStreak(habit(), checkins, '2026-10-29'), 1)
 })
 
+test('未完成（MISS）算中断，取消打卡（CLEAR）等价于没记录', () => {
+  const checkins = [
+    { habitId: 'h1', date: '2026-10-29', count: 0, status: 'MISS' },
+    { habitId: 'h1', date: '2026-10-28', count: 1, status: 'DONE' },
+    { habitId: 'h1', date: '2026-10-27', count: 1, status: 'DONE' }
+  ]
+  assert.equal(dayState(habit(), checkins, '2026-10-29', '2026-10-29'), 'missed')
+  // 明确标了未完成，连续打卡就在这里断掉
+  assert.equal(currentStreak(habit(), checkins, '2026-10-29'), 0)
+  // 去掉未完成那条，今天算「还没打」，从昨天往前数 2 天
+  assert.equal(currentStreak(habit(), checkins.slice(1), '2026-10-29'), 2)
+  // CLEAR 是取消打卡留下的空记录，今天回到待打卡、过去回到未完成
+  const cleared = [{ habitId: 'h1', date: '2026-10-29', status: 'CLEAR' }]
+  assert.equal(dayState(habit(), cleared, '2026-10-29', '2026-10-29'), 'todo')
+  assert.equal(dayState(habit(), cleared, '2026-10-29', '2026-10-30'), 'missed')
+  assert.equal(totalDone(habit(), cleared), 0)
+})
+
 test('完成量习惯按累计量判断达标，不够算 partial', () => {
   const water = habit({ targetType: 'QUANTITY', dailyTimes: 8, amountUnit: '杯', perAmount: 2 })
   assert.equal(targetAmount(water), 8)
@@ -131,8 +149,9 @@ test('月统计：完成天数、应完成天数、完成率、完成量合计',
   const stats = monthStats(water, checkins, 2026, 10, '2026-10-04')
   assert.equal(stats.done, 1)
   assert.equal(stats.partial, 1)
-  assert.equal(stats.target, 4)
-  assert.equal(stats.rate, 25)
+  // 跳过的那天不计入应完成天数，否则完成率会被拉低
+  assert.equal(stats.target, 3)
+  assert.equal(stats.rate, 33)
   assert.equal(stats.amount, 3)
 })
 

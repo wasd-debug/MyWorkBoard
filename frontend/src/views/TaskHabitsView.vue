@@ -2,7 +2,7 @@
   <main ref="pageEl" class="hp" :style="pageStyle">
     <div
       class="hp-shell"
-      :class="{ 'is-detail': showDetail, 'is-overlay': overlayMode, 'is-collapsed': !overlayMode && !drawer, 'is-resizing': resizing }"
+      :class="{ 'is-detail': showDetail, 'is-overlay': overlayMode, 'is-resizing': resizing }"
       :style="shellStyle"
     >
       <aside class="hp-side">
@@ -34,7 +34,6 @@
                 <button type="button" @click="startBatch"><ListChecks :size="15" />批量管理</button>
                 <button type="button" @click="openCheckSetting"><Settings2 :size="15" />打卡设置</button>
                 <button type="button" @click="setMode(true)"><Archive :size="15" />已归档习惯</button>
-                <button type="button" @click="toggleDrawer"><PanelRight :size="15" />{{ drawer ? '收起详情' : '展开详情' }}</button>
                 <button type="button" class="is-danger" @click="clearAll"><Trash2 :size="15" />清空所有</button>
               </div>
             </div>
@@ -62,11 +61,6 @@
           </template>
 
           <template v-else>
-            <div class="hp-datebar">
-              <button type="button" class="hp-date-btn" @click="resetDate"><ChevronDown :size="13" />{{ dateBarLabel }}</button>
-              <button v-if="!isToday" type="button" class="hp-date-x" aria-label="回到今天" @click="resetDate"><X :size="12" /></button>
-            </div>
-
             <section v-for="group in groups" :key="group.key" class="hp-group">
               <div class="hp-group-row">
                 <button type="button" class="hp-group-head" :aria-expanded="!collapsed[group.key]" @click="toggleGroup(group.key)">
@@ -111,9 +105,10 @@
         </footer>
       </aside>
 
-      <div v-if="!overlayMode && drawer" class="hp-split" role="separator" aria-orientation="vertical" aria-label="拖动调整宽度" @pointerdown="startResize" />
+      <div v-if="!overlayMode" class="hp-split" role="separator" aria-orientation="vertical" aria-label="拖动调整宽度" @pointerdown="startResize" />
 
-      <aside v-show="overlayMode || drawer" class="hp-detail">        <HabitDetailPanel
+      <aside class="hp-detail">
+        <HabitDetailPanel
           v-if="selected"
           :habit="selected"
           :checkins="checkins"
@@ -128,14 +123,13 @@
           @focus="mode => startFocus(selected, mode)"
           @log="log => openLog(selected, log)"
           @delete-log="log => deleteLog(selected, log)"
+          @day-menu="openDayMenu"
         />
         <div v-else class="hp-detail-empty">
           <p>选一个习惯看详情</p>
         </div>
       </aside>
     </div>
-
-    <button v-if="!overlayMode && !drawer" type="button" class="hp-reopen" aria-label="展开详情" @click="openDrawer"><PanelRight :size="16" /></button>
 
     <ul v-if="context" ref="contextEl" class="hp-context" :class="{ 'is-flip': context.flip }" :style="{ left: `${context.x}px`, top: `${context.y}px` }" @click.stop>
       <template v-if="context.habit.archived">
@@ -151,16 +145,15 @@
             <li><button type="button" @click="runContext('focus', 'TIMER')">开始正计时</button></li>
           </ul>
         </li>
-        <li class="has-sub" @mouseenter="contextSub = 'style'" @mouseleave="contextSub = ''">
-          <button type="button"><CircleCheck :size="16" />打卡样式<ChevronRight :size="13" class="hp-ctx-arrow" /></button>
-          <ul v-if="contextSub === 'style'" class="hp-context-sub">
-            <li><button type="button" :class="{ on: (context.habit.checkStyle || 'CHECK') === 'CHECK' }" @click="runContext('style', 'CHECK')">对勾</button></li>
-            <li><button type="button" :class="{ on: context.habit.checkStyle === 'ICON' }" @click="runContext('style', 'ICON')">习惯图标</button></li>
-          </ul>
-        </li>
         <li><button type="button" @click="runContext('archive')"><FolderInput :size="16" />归档</button></li>
         <li><button type="button" class="is-danger" @click="runContext('remove')"><Trash2 :size="16" />删除</button></li>
       </template>
+    </ul>
+
+    <ul v-if="dayMenu" ref="dayMenuEl" class="hp-context is-day" :class="{ 'is-flip': dayMenu.flip }" :style="{ left: `${dayMenu.x}px`, top: `${dayMenu.y}px` }" @click.stop>
+      <li><button type="button" @click="runDay('log')"><ClipboardList :size="16" />记录日志</button></li>
+      <li><button type="button" @click="runDay('skip')"><SkipForward :size="16" />跳过打卡</button></li>
+      <li><button type="button" @click="runDay('miss')"><X :size="16" />未完成</button></li>
     </ul>
 
     <HabitFormDialog :open="formOpen" :habit="editing" :preset-group="presetGroup" :saving="saving" @close="formOpen = false" @submit="submitForm" />
@@ -181,6 +174,7 @@
       :date="logTarget?.date || ''"
       :mood="logTarget?.checkin?.mood || ''"
       :note="logTarget?.checkin?.note || ''"
+      :status="logTarget?.checkin?.status || ''"
       @close="logTarget = null"
       @mute="muteLog"
       @save="saveLog"
@@ -192,6 +186,15 @@
       @close="checkSettingOpen = false"
       @save="applyCheckSetting"
     />
+
+    <HabitSkipDialog
+      :open="Boolean(skipTarget)"
+      :habit="skipTarget?.habit || null"
+      :date="skipTarget?.date || ''"
+      :reason="skipTarget?.reason || ''"
+      @close="skipTarget = null"
+      @confirm="confirmSkip"
+    />
   </main>
 </template>
 
@@ -199,8 +202,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleDot, FolderInput, LayoutGrid, List, ListChecks,
-  MoreHorizontal, PanelRight, Pencil, Plus, Settings2, Trash2, X
+  Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleDot, ClipboardList, FolderInput, LayoutGrid, List, ListChecks,
+  MoreHorizontal, Pencil, Plus, Settings2, SkipForward, Trash2, X
 } from 'lucide-vue-next'
 import HabitWeekStrip from '../components/habits/HabitWeekStrip.vue'
 import HabitRow from '../components/habits/HabitRow.vue'
@@ -208,6 +211,7 @@ import HabitDetailPanel from '../components/habits/HabitDetailPanel.vue'
 import HabitFormDialog from '../components/habits/HabitFormDialog.vue'
 import HabitCheckDialog from '../components/habits/HabitCheckDialog.vue'
 import HabitLogDialog from '../components/habits/HabitLogDialog.vue'
+import HabitSkipDialog from '../components/habits/HabitSkipDialog.vue'
 import HabitCheckSettingDialog from '../components/habits/HabitCheckSettingDialog.vue'
 import {
   dayState, findCheckin, groupHabits, recentWeek, targetAmount, todayKey, weekProgress
@@ -245,7 +249,7 @@ const editing = ref(null)
 const presetGroup = ref('')
 const saving = ref(false)
 const narrow = ref(false)
-const drawer = ref(true)
+/** 窄屏/自动收起时，点习惯会打开覆盖全屏的详情页 */
 const detailOpen = ref(false)
 const containerWidth = ref(0)
 const sideWidth = ref(Number(localStorage.getItem(SIDE_KEY)) || 366)
@@ -257,15 +261,20 @@ const checkSettingValue = ref(localStorage.getItem(CHECK_SETTING_KEY) !== 'false
 const logMuted = ref(localStorage.getItem(LOG_MUTED_KEY) === 'true')
 const checkPrompt = ref(null)
 const logTarget = ref(null)
+const skipTarget = ref(null)
 const context = ref(null)
 const contextSub = ref('')
 const contextEl = ref(null)
+/** 月历格子的右键菜单：记录日志 / 跳过打卡 / 未完成 */
+const dayMenu = ref(null)
+const dayMenuEl = ref(null)
 
-// 标题菜单 / 更多菜单 / 右键菜单互斥：开一个，另外两个自动收起
+// 标题菜单 / 更多菜单 / 两个右键菜单互斥：开一个，其它自动收起
 useExclusivePanels('habits-page', [
   ['title', () => titleMenu.value, value => { titleMenu.value = value }],
   ['more', () => moreMenu.value, value => { moreMenu.value = value }],
-  ['context', () => Boolean(context.value), value => { if (!value) context.value = null }]
+  ['context', () => Boolean(context.value), value => { if (!value) context.value = null }],
+  ['day', () => Boolean(dayMenu.value), value => { if (!value) dayMenu.value = null }]
 ])
 
 const allHabits = computed(() => store.habits || [])
@@ -274,27 +283,18 @@ const habits = computed(() => allHabits.value.filter(habit => !habit.archived))
 const archivedHabits = computed(() => allHabits.value.filter(habit => habit.archived))
 const groups = computed(() => groupHabits(habits.value, customGroups.value))
 const selected = computed(() => allHabits.value.find(habit => habit.publicId === selectedId.value) || null)
-// 容器太窄时右侧详情改成覆盖层（抽屉），列表占满
+// 容器太窄时右侧详情栏自动收起，点习惯改成进入整页详情
 const autoCollapsed = computed(() => !narrow.value && containerWidth.value > 0 && containerWidth.value - sideWidth.value < 340)
 const overlayMode = computed(() => narrow.value || autoCollapsed.value)
-const showDetail = computed(() => Boolean(selected.value) && (overlayMode.value ? detailOpen.value : drawer.value))
+const showDetail = computed(() => Boolean(selected.value) && (overlayMode.value ? detailOpen.value : true))
 const shellStyle = computed(() => (overlayMode.value ? {} : { gridTemplateColumns: `minmax(320px, 1fr) 6px ${sideWidth.value}px` }))
 const weekProgressMap = computed(() => Object.fromEntries(
   week.value.map(day => [day.key, weekProgress(habits.value, checkins.value, [day], today.value)])
 ))
-const isToday = computed(() => activeDate.value === today.value)
-const dateBarLabel = computed(() => {
-  const [year, month, day] = activeDate.value.split('-')
-  return `${Number(month)}月${Number(day)}日${activeDate.value === today.value ? ' 今天' : ''}` || `${year}`
-})
 
 function pickDate(key) {
   if (!key) return
   activeDate.value = key
-}
-
-function resetDate() {
-  activeDate.value = today.value
 }
 
 function syncPageHeight() {
@@ -330,32 +330,18 @@ function setMode(archived) {
 
 function select(habit) {
   selectedId.value = habit.publicId
-  if (overlayMode.value) {
-    detailOpen.value = true
-  } else {
-    drawer.value = true
-  }
+  // 右栏收起的场景（窄屏 / 容器不够宽）点习惯直接进入整页详情，详情里有返回按钮
+  if (overlayMode.value) detailOpen.value = true
 }
 
 function closeDetail() {
   detailOpen.value = false
-  if (narrow.value || autoCollapsed.value) selectedId.value = ''
+  if (overlayMode.value) selectedId.value = ''
 }
 
 function toggleLayout() {
   layout.value = layout.value === 'list' ? 'grid' : 'list'
   localStorage.setItem(LAYOUT_KEY, layout.value)
-}
-
-function toggleDrawer() {
-  moreMenu.value = false
-  if (drawer.value) drawer.value = false
-  else openDrawer()
-}
-
-function openDrawer() {
-  drawer.value = true
-  if (!selectedId.value && habits.value.length) selectedId.value = habits.value[0].publicId
 }
 
 function startBatch() {
@@ -395,9 +381,9 @@ async function toggleDay(habit, key) {
   if (state === 'future' || state === 'none') return
   const existing = findCheckin(checkins.value, habit.publicId, key)
 
-  // 已完成 → 取消打卡
+  // 已完成 → 取消打卡：写一条 CLEAR 墓碑（服务端不支持真删），当天回到未打卡
   if (state === 'done') {
-    await writeCheckin(habit, key, existing, { status: 'SKIP', count: 0, amount: 0 })
+    await writeCheckin(habit, key, existing, { status: 'CLEAR', count: 0, amount: 0, mood: '', note: '', skipReason: '' })
     return
   }
 
@@ -548,8 +534,79 @@ async function saveLog({ mood, note }) {
 
 async function deleteLog(habit, log) {
   if (!window.confirm('删除这条打卡记录？当天会变成未完成。')) return
-  const current = findCheckin(store.habitCheckins || [], habit.publicId, String(log.date).slice(0, 10)) || log
-  await store.saveEfficiency('habit-checkin', current, 'DELETE')
+  const key = String(log.date).slice(0, 10)
+  const current = findCheckin(store.habitCheckins || [], habit.publicId, key) || log
+  await writeCheckin(habit, key, current, { status: 'CLEAR', count: 0, amount: 0, mood: '', note: '', skipReason: '' })
+}
+
+/** 「记录日志」：没有记录的日子先记一次完成，再打开日志弹窗 */
+async function openLogForDay(habit, key) {
+  let current = findCheckin(store.habitCheckins || [], habit.publicId, key)
+  if (!current || current.status === 'CLEAR') {
+    current = await writeCheckin(habit, key, current || null, {
+      status: 'DONE',
+      count: 1,
+      amount: habit.targetType === 'QUANTITY' ? targetAmount(habit) : 0,
+      mood: '',
+      note: '',
+      skipReason: ''
+    })
+  }
+  if (current) logTarget.value = { habit, date: key, checkin: current }
+}
+
+/** 月历格子右键：记录日志 / 跳过打卡 / 未完成 */
+async function openDayMenu({ event, key }) {
+  if (!event || !selected.value) return
+  titleMenu.value = false
+  moreMenu.value = false
+  context.value = null
+  contextSub.value = ''
+  dayMenu.value = { key, x: event.clientX, y: event.clientY, flip: false }
+  await nextTick()
+  const el = dayMenuEl.value
+  if (!el || !dayMenu.value) return
+  const rect = el.getBoundingClientRect()
+  const pad = 8
+  dayMenu.value = {
+    ...dayMenu.value,
+    x: Math.max(pad, Math.min(event.clientX, window.innerWidth - rect.width - pad)),
+    y: Math.max(pad, Math.min(event.clientY, window.innerHeight - rect.height - pad))
+  }
+}
+
+async function runDay(action) {
+  const menu = dayMenu.value
+  const habit = selected.value
+  dayMenu.value = null
+  if (!menu || !habit) return
+  const key = menu.key
+  if (action === 'log') {
+    await openLogForDay(habit, key)
+    return
+  }
+  const existing = findCheckin(store.habitCheckins || [], habit.publicId, key)
+  // 跳过要先问原因，确认后才落库
+  if (action === 'skip') {
+    skipTarget.value = { habit, date: key, reason: existing?.status === 'SKIP' ? existing.skipReason || '' : '' }
+    return
+  }
+  // 未完成：连续打卡在这里断开
+  await writeCheckin(habit, key, existing, { status: 'MISS', count: 0, amount: 0, mood: '', note: '', skipReason: '' })
+}
+
+async function confirmSkip(reason) {
+  const target = skipTarget.value
+  skipTarget.value = null
+  if (!target) return
+  const existing = findCheckin(store.habitCheckins || [], target.habit.publicId, target.date)
+  await writeCheckin(target.habit, target.date, existing, {
+    status: 'SKIP',
+    count: 0,
+    amount: 0,
+    note: '',
+    skipReason: String(reason || '').slice(0, 100)
+  })
 }
 
 function muteLog() {
@@ -613,8 +670,9 @@ function startResize(event) {
 }
 
 function onDocPointerDown(event) {
-  if (context.value && !event.target.closest?.('.hp-context')) {
+  if ((context.value || dayMenu.value) && !event.target.closest?.('.hp-context')) {
     context.value = null
+    dayMenu.value = null
     contextSub.value = ''
   }
   if (!event.target.closest?.('.hp-title-wrap') && !event.target.closest?.('.hp-more-wrap')) {
@@ -625,6 +683,7 @@ function onDocPointerDown(event) {
 
 function onKeydown(event) {
   if (event.key !== 'Escape') return
+  if (dayMenu.value) { dayMenu.value = null; return }
   if (context.value) { context.value = null; contextSub.value = ''; return }
   if (titleMenu.value || moreMenu.value) { titleMenu.value = false; moreMenu.value = false; return }
   if (batch.value) { batch.value = false; batchPicked.value = [] }
@@ -685,8 +744,6 @@ watch(() => allHabits.value.length, () => {
   width: 100%;
   min-height: 0;
 }
-.hp-shell.is-collapsed { grid-template-columns: minmax(0, 1fr) !important; }
-.hp-shell.is-collapsed .hp-split { display: none; }
 .hp-shell.is-resizing { cursor: col-resize; user-select: none; }
 .hp-shell.is-overlay { grid-template-columns: minmax(0, 1fr) !important; }
 .hp-shell.is-overlay .hp-split { display: none; }
@@ -697,6 +754,8 @@ watch(() => allHabits.value.length, () => {
   background: var(--card); overflow-y: auto;
 }
 .hp-shell.is-overlay.is-detail .hp-detail { display: block; }
+/* 窄屏整页详情：内容居中限宽，不然卡片和日历会被拉开 */
+.hp-shell.is-overlay .hp-detail :deep(.hd) { width: 100%; max-width: 620px; margin: 0 auto; }
 
 .hp-side { display: flex; min-height: 0; min-width: 0; flex-direction: column; padding-right: 4px; }
 
@@ -730,17 +789,6 @@ watch(() => allHabits.value.length, () => {
 
 .hp-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 2px 16px; scrollbar-gutter: stable; }
 
-/* 日期条：⌄ 10月30日 ✕ */
-.hp-datebar { display: flex; align-items: center; gap: 2px; padding: 2px 4px 6px; }
-.hp-date-btn {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 4px; border: 0; border-radius: 6px;
-  background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer;
-}
-.hp-date-btn:hover { color: var(--ink2); }
-.hp-date-x { display: grid; width: 18px; height: 18px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--dim, var(--muted)); cursor: pointer; }
-.hp-date-x:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink2); }
-
 .hp-grid { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .hp-grid.is-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
@@ -770,8 +818,6 @@ watch(() => allHabits.value.length, () => {
 
 .hp-detail { min-height: 0; min-width: 0; overflow-y: auto; padding: 8px 4px 18px 14px; scrollbar-gutter: stable; }
 .hp-detail-empty { display: grid; height: 100%; place-items: center; color: var(--muted); font-size: 13px; }
-
-.hp-reopen { position: fixed; z-index: 60; top: 50%; right: 0; transform: translateY(-50%); display: grid; width: 26px; height: 52px; place-items: center; border: 0; border-radius: 10px 0 0 10px; background: var(--card); color: var(--muted); box-shadow: -2px 0 12px rgb(15 23 42 / 12%); cursor: pointer; }
 
 /* 右键菜单：白卡 + 16px 图标 + 13px 文案 */
 .hp-context {
