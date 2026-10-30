@@ -18,7 +18,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -30,6 +30,13 @@ const value = ref(true)
 watch(() => props.open, open => {
   if (open) value.value = props.show
 }, { immediate: true })
+
+function onKeydown(event) {
+  if (props.open && event.key === 'Escape') emit('close')
+}
+
+onMounted(() => document.addEventListener('keydown', onKeydown))
+onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 </script>
 
 <style scoped>

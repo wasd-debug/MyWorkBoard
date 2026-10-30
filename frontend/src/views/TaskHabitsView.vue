@@ -137,7 +137,7 @@
 
     <button v-if="!overlayMode && !drawer" type="button" class="hp-reopen" aria-label="展开详情" @click="openDrawer"><PanelRight :size="16" /></button>
 
-    <ul v-if="context" class="hp-context" :style="{ left: `${context.x}px`, top: `${context.y}px` }" @click.stop>
+    <ul v-if="context" ref="contextEl" class="hp-context" :class="{ 'is-flip': context.flip }" :style="{ left: `${context.x}px`, top: `${context.y}px` }" @click.stop>
       <template v-if="context.habit.archived">
         <li><button type="button" @click="runContext('restore')"><ArchiveRestore :size="16" />恢复习惯</button></li>
         <li><button type="button" class="is-danger" @click="runContext('remove')"><Trash2 :size="16" />删除</button></li>
@@ -213,6 +213,7 @@ import {
   dayState, findCheckin, groupHabits, recentWeek, targetAmount, todayKey, weekProgress
 } from '../components/habits/habitUtils.js'
 import { loadCustomGroups } from '../components/habits/habitGroups.js'
+import { useExclusivePanels } from '../utils/exclusivePanels.js'
 import { useTasksStore } from '../stores/tasks.js'
 
 const router = useRouter()
@@ -225,6 +226,8 @@ const SIDE_KEY = 'habit_detail_width_v2'
 const LAYOUT_KEY = 'habit_layout_v1'
 const LOG_MUTED_KEY = 'habit_log_muted_v1'
 const CHECK_SETTING_KEY = 'habit_check_setting_v1'
+/** 右键菜单二级菜单宽度，用来判断往左还是往右展开 */
+const SUB_WIDTH = 160
 
 const today = ref(todayKey())
 /** 列表里正在查看/补打卡的日期，默认今天；点顶部周条可切换 */
@@ -256,6 +259,14 @@ const checkPrompt = ref(null)
 const logTarget = ref(null)
 const context = ref(null)
 const contextSub = ref('')
+const contextEl = ref(null)
+
+// 标题菜单 / 更多菜单 / 右键菜单互斥：开一个，另外两个自动收起
+useExclusivePanels('habits-page', [
+  ['title', () => titleMenu.value, value => { titleMenu.value = value }],
+  ['more', () => moreMenu.value, value => { moreMenu.value = value }],
+  ['context', () => Boolean(context.value), value => { if (!value) context.value = null }]
+])
 
 const allHabits = computed(() => store.habits || [])
 const checkins = computed(() => store.habitCheckins || [])
@@ -550,10 +561,23 @@ function startFocus(habit, mode) {
   router.push({ path: '/tasks/focus', query: { title: habit.name, mode } })
 }
 
-function openContext(event, habit) {
+async function openContext(event, habit) {
   if (batch.value) return
-  context.value = { habit, x: event.clientX, y: event.clientY }
+  titleMenu.value = false
+  moreMenu.value = false
   contextSub.value = ''
+  context.value = { habit, x: event.clientX, y: event.clientY, flip: false }
+  // 菜单按点击位置弹出后要拉回可视区，否则贴右边右键时二级菜单会跑到屏幕外
+  await nextTick()
+  const el = contextEl.value
+  if (!el || !context.value) return
+  const rect = el.getBoundingClientRect()
+  const pad = 8
+  const maxX = window.innerWidth - rect.width - pad
+  const maxY = window.innerHeight - rect.height - pad
+  const x = Math.max(pad, Math.min(event.clientX, maxX))
+  const y = Math.max(pad, Math.min(event.clientY, maxY))
+  context.value = { ...context.value, x, y, flip: x + rect.width + SUB_WIDTH + 12 > window.innerWidth }
 }
 
 async function runContext(action, value) {
@@ -589,11 +613,21 @@ function startResize(event) {
 }
 
 function onDocPointerDown(event) {
-  if (context.value && !event.target.closest?.('.hp-context')) context.value = null
+  if (context.value && !event.target.closest?.('.hp-context')) {
+    context.value = null
+    contextSub.value = ''
+  }
   if (!event.target.closest?.('.hp-title-wrap') && !event.target.closest?.('.hp-more-wrap')) {
     titleMenu.value = false
     moreMenu.value = false
   }
+}
+
+function onKeydown(event) {
+  if (event.key !== 'Escape') return
+  if (context.value) { context.value = null; contextSub.value = ''; return }
+  if (titleMenu.value || moreMenu.value) { titleMenu.value = false; moreMenu.value = false; return }
+  if (batch.value) { batch.value = false; batchPicked.value = [] }
 }
 
 function onResize() {
@@ -608,6 +642,7 @@ onMounted(async () => {
   await store.init({ waitForRemote: false })
   window.addEventListener('resize', onResize)
   document.addEventListener('pointerdown', onDocPointerDown, true)
+  document.addEventListener('keydown', onKeydown)
   syncNarrow()
   if (pageEl.value) {
     containerWidth.value = pageEl.value.clientWidth
@@ -626,6 +661,7 @@ onBeforeUnmount(() => {
   widthObserver?.disconnect()
   window.removeEventListener('resize', onResize)
   document.removeEventListener('pointerdown', onDocPointerDown, true)
+  document.removeEventListener('keydown', onKeydown)
   window.clearTimeout(heightTimer)
 })
 
@@ -640,14 +676,13 @@ watch(() => allHabits.value.length, () => {
   height: 100vh;
   min-height: 0;
   overflow: hidden;
-  padding: 22px 26px 0;
+  /* 与任务域其它页（.clone-task-main 的 20px 30px）保持一致的左右边距，不再额外收窄 */
+  padding: 20px 30px 0;
   --hb-accent: #3d8fce;
 }
 .hp-shell {
   display: grid;
   width: 100%;
-  max-width: 1180px;
-  margin: 0 auto;
   min-height: 0;
 }
 .hp-shell.is-collapsed { grid-template-columns: minmax(0, 1fr) !important; }
@@ -757,6 +792,8 @@ watch(() => allHabits.value.length, () => {
   border-radius: 14px; background: var(--card); list-style: none;
   box-shadow: 0 18px 44px rgb(15 23 42 / 18%), 0 0 0 1px var(--line);
 }
+/* 菜单贴右边时二级菜单往左展开，不然会超出可视区 */
+.hp-context.is-flip .hp-context-sub { left: auto; right: calc(100% + 6px); }
 
 @media (max-width: 1080px) {
   .hp { padding: 16px 14px 0; }

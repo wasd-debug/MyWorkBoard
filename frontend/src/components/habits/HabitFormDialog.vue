@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
-    <div v-if="open" class="hf-mask" @click.self="emit('close')">
-      <section class="hf-sheet" role="dialog" aria-modal="true" :aria-label="habit ? '编辑习惯' : '添加习惯'" @click.stop>
+    <div v-if="open" class="hf-mask" @click.self="onMaskClick">
+      <section ref="sheetEl" class="hf-sheet" role="dialog" aria-modal="true" :aria-label="habit ? '编辑习惯' : '添加习惯'" :style="{ '--pop-max': popMax }" @click.stop>
         <span class="hf-dot" aria-hidden="true" />
         <header class="hf-head">
           <h2>{{ habit ? '编辑习惯' : '添加习惯' }}</h2>
@@ -120,10 +120,10 @@
 
           <div class="hf-field">
             <span class="hf-label">坚持天数 <HelpCircle :size="12" class="hf-help" /></span>
-            <button type="button" class="hf-value" :aria-expanded="openPanel === 'goal'" @click="togglePanel('goal')">
+            <button type="button" class="hf-value" :aria-expanded="openPanel === 'goal' || openPanel === 'goalCustom'" @click="togglePanel('goal')">
               <span>{{ goalText }}</span><ChevronDown :size="15" />
             </button>
-            <div v-if="openPanel === 'goal' || openPanel === 'goalCustom'" class="hf-pop is-list">
+            <div v-if="openPanel === 'goal' || openPanel === 'goalCustom'" class="hf-pop is-list" :class="{ 'is-up': popUp }">
               <button v-for="option in GOAL_PRESETS" :key="option.value" type="button" class="hf-option" :class="{ on: Number(draft.goalDays || 0) === option.value }" @click="pickGoal(option.value)">
                 {{ option.label }}<Check v-if="Number(draft.goalDays || 0) === option.value" :size="16" />
               </button>
@@ -152,10 +152,10 @@
 
           <div class="hf-field">
             <span class="hf-label">所属分组</span>
-            <button type="button" class="hf-value" :aria-expanded="openPanel === 'group'" @click="togglePanel('group')">
+            <button type="button" class="hf-value" :aria-expanded="openPanel === 'group' || openPanel === 'groupAdd'" @click="togglePanel('group')">
               <span>{{ groupLabel(draft.groupKey, customGroups) }}</span><ChevronDown :size="15" />
             </button>
-            <div v-if="openPanel === 'group' || openPanel === 'groupAdd'" class="hf-pop is-list">
+            <div v-if="openPanel === 'group' || openPanel === 'groupAdd'" class="hf-pop is-list" :class="{ 'is-up': popUp }">
               <button v-for="group in allGroups" :key="group.key" type="button" class="hf-option" :class="{ on: draft.groupKey === group.key }" @click="pickGroup(group.key)">
                 {{ group.label }}<Check v-if="draft.groupKey === group.key" :size="16" />
               </button>
@@ -186,7 +186,7 @@
                 <button type="button" class="hf-chip-x" :aria-label="`删除 ${time}`" @click="removeRemind(index)"><X :size="11" /></button>
               </span>
               <button type="button" class="hf-add" aria-label="添加提醒" :aria-expanded="openPanel === 'remind'" @click="togglePanel('remind')"><Plus :size="16" /></button>
-              <div v-if="openPanel === 'remind'" class="hf-pop is-remind">
+              <div v-if="openPanel === 'remind'" class="hf-pop is-remind" :class="{ 'is-up': popUp }">
                 <button v-for="time in REMIND_PRESETS" :key="time" type="button" class="hf-option" :class="{ on: times.includes(time) }" @click="pickRemind(time)">
                   {{ time }}<Check v-if="times.includes(time)" :size="16" />
                 </button>
@@ -280,6 +280,9 @@ const freq = reactive({ mode: 'DAY', days: [1, 2, 3, 4, 5, 6, 7], count: 3, inte
 const target = reactive({ type: 'CHECK', times: '1', unit: '', mode: 'AUTO', per: '1' })
 
 const times = computed(() => String(draft.remindAt || '').split(',').map(item => item.trim()).filter(Boolean))
+const sheetEl = ref(null)
+const popUp = ref(false)
+const popMax = ref('none')
 const allGroups = computed(() => [...GROUPS, ...customGroups.value])
 const iconStyle = computed(() => ({
   background: draft.color ? `color-mix(in srgb, ${draft.color} 78%, #fff)` : 'var(--paper)',
@@ -363,6 +366,30 @@ function togglePanel(name) {
   }
   if (name === 'start') calendarMonth.value = parseKey(draft.startDate)
   openPanel.value = openPanel.value === name ? '' : name
+  placePanel()
+}
+
+/**
+ * 浮层默认贴着触发按钮往下弹；下方空间不够就翻上去，
+ * 并把高度限制在可用空间内（内部滚动），避免整块白卡顶出弹窗边缘。
+ */
+async function placePanel() {
+  popUp.value = false
+  popMax.value = 'none'
+  if (!openPanel.value) return
+  await nextTick()
+  const sheet = sheetEl.value?.getBoundingClientRect()
+  const trigger = sheetEl.value?.querySelector('.hf-field [aria-expanded="true"]')
+  if (!sheet || !trigger) return
+  const rect = trigger.getBoundingClientRect()
+  const below = Math.round(sheet.bottom - rect.bottom - 12)
+  const above = Math.round(rect.top - sheet.top - 12)
+  if (below >= 300 || above <= below) {
+    popMax.value = `${Math.max(180, below)}px`
+    return
+  }
+  popUp.value = true
+  popMax.value = `${Math.max(180, above)}px`
 }
 
 /** 数字输入只留正整数，超上限截断 */
@@ -514,12 +541,39 @@ function submit() {
 function onDocPointerDown(event) {
   if (!openPanel.value) return
   const targetEl = event.target
-  if (targetEl.closest?.('.hf-field') || targetEl.closest?.('.hf-icon-wrap') || targetEl.closest?.('.hf-icon-pop')) return
+  // 遮罩交给 onMaskClick 处理（要区分「先收浮层」和「关整个弹窗」）
+  if (targetEl.classList?.contains('hf-mask')) return
+  // 点在这层弹出的内容里、或点在「当前打开那个」的触发按钮上，都不算点到外面
+  if (targetEl.closest?.('.hf-pop') || targetEl.closest?.('.hf-icon-pop') || targetEl.closest?.('[aria-expanded="true"]')) return
   openPanel.value = ''
 }
 
-onMounted(() => document.addEventListener('pointerdown', onDocPointerDown, true))
-onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDown, true))
+/** 浮层开着时点遮罩只收浮层，再点一次才关整个弹窗 */
+function onMaskClick() {
+  if (openPanel.value) {
+    openPanel.value = ''
+    return
+  }
+  emit('close')
+}
+
+function onKeydown(event) {
+  if (!props.open || event.key !== 'Escape') return
+  if (openPanel.value) {
+    openPanel.value = ''
+    return
+  }
+  emit('close')
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', onDocPointerDown, true)
+  document.addEventListener('keydown', onKeydown)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onDocPointerDown, true)
+  document.removeEventListener('keydown', onKeydown)
+})
 </script>
 
 <style scoped>
@@ -576,7 +630,10 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
 .hf-pop.is-target { gap: 2px; padding: 8px; }
 .hf-pop.is-list { gap: 1px; padding: 8px; }
 .hf-pop.is-calendar { left: auto; right: 0; width: 296px; padding: 4px; }
-.hf-pop.is-remind { left: auto; right: 0; width: 138px; max-height: 248px; overflow-y: auto; gap: 1px; padding: 6px; }
+.hf-pop.is-remind { left: auto; right: 0; width: 138px; gap: 1px; padding: 6px; }
+.hf-pop.is-up { top: auto; bottom: calc(100% - 1px); }
+.hf-pop { max-height: var(--pop-max, none); }
+.hf-pop:not(.is-calendar) { overflow-y: auto; scrollbar-width: thin; }
 .hf-pop-hint { margin: 0; padding: 0 2px; color: var(--muted); font-size: 12.5px; }
 
 /* 三页签：选中白底蓝字带阴影，未选浅灰底 */

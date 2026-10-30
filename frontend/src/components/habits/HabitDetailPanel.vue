@@ -137,6 +137,7 @@ import {
   WEEKDAY_LABELS, currentStreak, dayState, frequencyLabel, longestStreak, logDateLabel, monthLogs, monthMatrix,
   monthStats, parseKey, progressOf, targetAmount, totalDone, weekdayLabel
 } from './habitUtils.js'
+import { useExclusivePanels } from '../../utils/exclusivePanels.js'
 
 const props = defineProps({
   habit: { type: Object, required: true },
@@ -151,6 +152,20 @@ const menuOpen = ref(false)
 const subMenu = ref('')
 const streakMode = ref('current')
 const cursor = ref(currentCursor())
+
+// 「…」菜单和页面其它浮层互斥：页面开了菜单，这里自动收起
+useExclusivePanels('habit-detail', [
+  ['menu', () => menuOpen.value, value => {
+    menuOpen.value = value
+    if (!value) subMenu.value = ''
+  }]
+])
+
+function onKeydown(event) {
+  if (event.key !== 'Escape' || !menuOpen.value) return
+  if (subMenu.value) subMenu.value = ''
+  else menuOpen.value = false
+}
 
 function currentCursor() {
   return { year: Number(props.today.slice(0, 4)), month: Number(props.today.slice(5, 7)) }
@@ -237,8 +252,14 @@ function onDocPointerDown(event) {
   subMenu.value = ''
 }
 
-onMounted(() => document.addEventListener('pointerdown', onDocPointerDown, true))
-onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDown, true))
+onMounted(() => {
+  document.addEventListener('pointerdown', onDocPointerDown, true)
+  document.addEventListener('keydown', onKeydown)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onDocPointerDown, true)
+  document.removeEventListener('keydown', onKeydown)
+})
 </script>
 
 <style scoped>
@@ -269,9 +290,10 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
 .hd-drop > button.is-danger { color: var(--down, #e34d59); }
 .hd-arrow { margin-left: auto; color: var(--dim, var(--muted)); }
 .hd-sub { position: relative; }
+/* 详情栏贴着窗口右侧，二级菜单统一往左展开，避免超出可视区 */
 .hd-sub-list {
-  position: absolute; z-index: 31; top: -6px; left: 100%;
-  display: grid; gap: 1px; min-width: 150px; margin-left: 6px; padding: 6px;
+  position: absolute; z-index: 31; top: -6px; right: 100%;
+  display: grid; gap: 1px; min-width: 150px; margin-right: 6px; padding: 6px;
   border-radius: 14px; background: var(--card);
   box-shadow: 0 18px 44px rgb(15 23 42 / 18%), 0 0 0 1px var(--line);
 }

@@ -12,13 +12,14 @@
       <small>{{ day.weekday }}</small>
       <b>{{ day.day }}</b>
       <svg class="habit-week-arc" viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="9.6" class="habit-week-track" />
+        <circle cx="12" cy="12" :r="RADIUS" class="habit-week-track" />
         <circle
+          v-if="percentOf(day.key) > 0"
           cx="12"
           cy="12"
-          r="9.6"
+          :r="RADIUS"
           class="habit-week-value"
-          :stroke-dasharray="`${(progress[day.key]?.percent || 0) * 0.5027} 60.32`"
+          :stroke-dasharray="`${valueLength(day.key)} ${CIRCUM}`"
         />
       </svg>
     </button>
@@ -26,7 +27,7 @@
 </template>
 
 <script setup>
-defineProps({
+const props = defineProps({
   week: { type: Array, default: () => [] },
   /** { [dateKey]: { done, total, percent } } */
   progress: { type: Object, default: () => ({}) },
@@ -34,10 +35,25 @@ defineProps({
   active: { type: String, default: '' }
 })
 const emit = defineEmits(['pick'])
+
+// 整圈进度环：浅灰底环 + 蓝色进度，蓝色从 12 点方向顺时针铺满，100% 正好闭合
+const RADIUS = 9.6
+const CIRCUM = 2 * Math.PI * RADIUS
+
+function percentOf(key) {
+  return Math.min(100, Math.max(0, Number(props.progress?.[key]?.percent) || 0))
+}
+
+/** 0% 直接不画（圆头描边在长度为 0 时会留一个小圆点） */
+function valueLength(key) {
+  const ratio = percentOf(key) / 100
+  if (!ratio) return 0
+  return CIRCUM * ratio
+}
 </script>
 
 <style scoped>
-/* 参考图：日期下是一个 3/4 环形进度（缺口朝下），今天整列浅蓝底块 */
+/* 参考图：日期下是一整圈进度环，今天整列浅蓝底块 */
 .habit-week {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -62,12 +78,13 @@ const emit = defineEmits(['pick'])
 .habit-week-day.is-active { background: color-mix(in srgb, #3d8fce 15%, transparent); color: var(--ink); }
 .habit-week-day small { font-size: 11.5px; letter-spacing: .02em; }
 .habit-week-day b { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
-.habit-week-arc { width: 30px; height: 30px; margin-top: 3px; transform: rotate(150deg); }
-.habit-week-track { fill: none; stroke: color-mix(in srgb, var(--ink) 13%, transparent); stroke-width: 3; stroke-linecap: round; }
+/* rotate(-90deg)：让进度从 12 点方向开始顺时针铺 */
+.habit-week-arc { width: 30px; height: 30px; margin-top: 3px; transform: rotate(-90deg); }
+.habit-week-track { fill: none; stroke: color-mix(in srgb, var(--ink) 12%, transparent); stroke-width: 2.6; }
 .habit-week-value {
   fill: none;
   stroke: var(--hb-accent, #3d8fce);
-  stroke-width: 3;
+  stroke-width: 2.6;
   stroke-linecap: round;
   transition: stroke-dasharray .22s ease;
 }

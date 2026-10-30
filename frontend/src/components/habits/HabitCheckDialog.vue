@@ -39,7 +39,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { logDateLabel } from './habitUtils.js'
 
 const props = defineProps({
@@ -80,6 +80,13 @@ function confirm() {
   if (!amount.value) return
   emit('confirm', amount.value)
 }
+
+function onKeydown(event) {
+  if (props.open && event.key === 'Escape') emit('close')
+}
+
+onMounted(() => document.addEventListener('keydown', onKeydown))
+onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 </script>
 
 <style scoped>
