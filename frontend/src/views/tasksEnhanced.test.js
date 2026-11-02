@@ -708,7 +708,8 @@ test('completed, abandoned, and trash system views expose only their supported o
 })
 
 test('trash workspace header exposes only permanent clear and confirms before purging', () => {
-  const header = workspaceView.match(/<header class="clone-task-header">[\s\S]*?<\/header>/)?.[0] || ''
+  // 搜索整页另有专属表头（v-if="isSearchRoute"），常规表头现在是 v-else
+  const header = workspaceView.match(/<header v-else class="clone-task-header">[\s\S]*?<\/header>/)?.[0] || ''
   assert.match(header, /v-if="isTrashRoute"[\s\S]*aria-label="清空垃圾桶"[\s\S]*BrushCleaning/)
   assert.match(header, /v-else class="clone-header-actions"/)
   const clearDialog = workspaceView.match(/<Dialog v-model:open="trashClearOpen"[\s\S]*?<\/Dialog>/)?.[0] || ''
@@ -719,7 +720,7 @@ test('trash workspace header exposes only permanent clear and confirms before pu
   assert.match(workspaceView, /await store\.hydrate\(\);\n    if \(failures\.length\)/)
   assert.match(tasksStore, /async purge\(item, options = \{\}\)[\s\S]*error\?\.response\?\.status !== 404[\s\S]*if \(!options\.deferHydrate\) await this\.hydrate\(\)/)
   assert.match(workspaceView, /route\.name === "tasks-trash"\s*\? "垃圾桶"/)
-  assert.match(workspaceView, /v-if="!isTrashRoute && !isCompletionRoute" class="clone-quick-add"/)
+  assert.match(workspaceView, /v-if="!isTrashRoute && !isCompletionRoute && !isSearchRoute" class="clone-quick-add"/)
   // 已完成/已放弃头部只保留打印按钮（对齐滴答），且不显示快速添加
   assert.match(workspaceView, /v-else-if="isCompletionRoute" class="clone-header-actions clone-completion-header-actions">[\s\S]*?打印\$\{isAbandonedRoute \? '已放弃' : '已完成'\}任务[\s\S]*?printTaskList\('CONTENT'\)/)
   assert.match(workspaceView, /route\.name === "tasks-completed"\n          \? "已完成"/)
@@ -1119,7 +1120,10 @@ test('task domain exposes a ticktick-style desktop module rail', async () => {
   const rail = await readFile(new URL('../components/tasks/TaskModuleRail.vue', import.meta.url), 'utf8')
   const app = await readFile(new URL('../App.vue', import.meta.url), 'utf8')
   const theme = await readFile(new URL('../styles/theme.css', import.meta.url), 'utf8')
-  for (const path of ['/tasks/today', '/tasks/calendar', '/tasks/focus', '/tasks/habits', '/tasks/countdowns', '/tasks/search', '/tasks/app-settings']) assert.match(rail, new RegExp(path.replaceAll('/', '\\/')))
+  // 搜索改成弹窗后不再是 rail 的路由入口，rail 上是一个唤起弹窗的按钮
+  for (const path of ['/tasks/today', '/tasks/calendar', '/tasks/focus', '/tasks/habits', '/tasks/countdowns', '/tasks/app-settings']) assert.match(rail, new RegExp(path.replaceAll('/', '\\/')))
+  assert.match(rail, /class="task-rail-search"[\s\S]*openSearch/)
+  assert.doesNotMatch(rail, /label: 'AI'|label: '搜索'/)
   assert.match(app, /<TaskModuleRail v-if="isTasks"/)
   assert.match(theme, /workspace-topbar\.task-domain-topbar \{ display:none; \}/)
   assert.match(theme, /margin-left:58px/)

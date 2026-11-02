@@ -5,7 +5,7 @@
     :class="{
       'sidebar-hidden': sidebarHidden,
       'is-summary': isSummary,
-      'detail-open': Boolean(selectedTask || listActivityOpen),
+      'detail-open': Boolean(selectedTask || listActivityOpen || habitPaneHabit),
       'workspace-overlay-view': activeWorkspaceView !== 'LIST',
       'workspace-detail-open': activeWorkspaceView !== 'LIST' && Boolean(selectedTask || editorOpen || listActivityOpen),
     }"
@@ -157,7 +157,19 @@
     <main class="clone-task-main" :class="{ 'quick-action-open': Boolean(quickAction) }" @scroll.passive="loadMoreCompletedOnScroll">
       <TaskSummaryWorkspace v-if="isSummary" />
       <template v-else>
-      <header class="clone-task-header">
+      <header v-if="isSearchRoute" class="clone-task-header clone-search-header">
+        <div class="clone-title-block">
+          <button type="button" class="clone-icon-button" aria-label="展开或折叠任务侧栏" :aria-expanded="!sidebarHidden" @click="toggleSidebar"><PanelLeft :size="18" /></button>
+          <button type="button" class="clone-icon-button clone-search-back" aria-label="返回" title="返回" @click="leaveSearch"><ArrowLeft :size="18" /></button>
+          <h1>搜索</h1>
+          <span class="clone-search-count" :title="`${searchTotal} 条结果`">{{ searchTotal }}</span>
+          <button type="button" class="clone-icon-button clone-search-edit" aria-label="修改搜索条件" title="修改搜索条件" @click="editSearch"><Pencil :size="15" /></button>
+        </div>
+        <div class="clone-header-actions clone-search-actions">
+          <button type="button" class="clone-search-save" @click="saveSearchAsFilter"><Save :size="15" />保存为过滤器</button>
+        </div>
+      </header>
+      <header v-else class="clone-task-header">
         <div class="clone-title-block">
           <button
             type="button"
@@ -181,7 +193,7 @@
             type="button"
             class="clone-icon-button"
             aria-label="搜索任务"
-            @click="router.push('/tasks/search')"
+            @click="openTaskSearch()"
           >
             <Search :size="17" /></button
           ><button
@@ -213,6 +225,15 @@
           </button>
         </div>
       </header>
+      <div v-if="isSearchRoute" class="clone-search-filters" aria-label="搜索条件">
+        <SearchFilterSelect label="所有日期" :options="SEARCH_DATE_OPTIONS" :model-value="searchCriteria.date" custom :custom-range="{ start: searchCriteria.start, end: searchCriteria.end }" @update:model-value="value => patchSearchQuery({ date: value })" @update:custom-range="value => patchSearchQuery({ start: value.start, end: value.end })" />
+        <SearchFilterSelect label="所有清单" multiple all-label="所有清单" :options="searchListOptions" :model-value="searchCriteria.listIds" @update:model-value="value => patchSearchQuery({ listIds: value })" />
+        <SearchFilterSelect label="所有标签" multiple all-label="所有标签" :options="searchTagOptions" :model-value="searchCriteria.tagIds" @update:model-value="value => patchSearchQuery({ tagIds: value })" />
+        <SearchFilterSelect label="所有状态" :options="SEARCH_STATUS_OPTIONS" :model-value="searchCriteria.status" @update:model-value="value => patchSearchQuery({ status: value })" />
+        <SearchFilterSelect v-if="searchCriteria.priority !== 'ALL'" label="所有优先级" :options="SEARCH_PRIORITY_OPTIONS" :model-value="searchCriteria.priority" @update:model-value="value => patchSearchQuery({ priority: value })" />
+        <SearchFilterSelect v-if="searchCriteria.type !== 'ALL'" label="所有类型" :options="SEARCH_TYPE_OPTIONS" :model-value="searchCriteria.type" @update:model-value="value => patchSearchQuery({ type: value })" />
+        <span v-if="searchCriteria.date !== 'ALL'" class="clone-search-range">{{ searchDateLabel }}</span>
+      </div>
       <div v-if="isCompletionRoute" class="clone-completion-filters" aria-label="任务筛选" @click.stop>
         <div class="clone-completion-filter">
           <button type="button" class="clone-completion-filter-trigger" :aria-expanded="completionFilterMenu === 'date'" @click="toggleCompletionFilterMenu('date')">{{ completionDateLabel }}<ChevronDown :size="14" /></button>
@@ -286,7 +307,7 @@
         </div>
       </div>
       <div class="clone-quick-add-anchor">
-      <div v-if="!isTrashRoute && !isCompletionRoute" class="clone-quick-add" :class="{ 'is-simple': quickInputMode === 'SIMPLE', 'is-collapsed': !quickAddExpanded }">
+      <div v-if="!isTrashRoute && !isCompletionRoute && !isSearchRoute" class="clone-quick-add" :class="{ 'is-simple': quickInputMode === 'SIMPLE', 'is-collapsed': !quickAddExpanded }">
         <button v-if="!quickAddExpanded" type="button" class="clone-quick-add-collapsed" @click="expandQuickAdd"><Plus :size="17" /><span>添加任务至“{{ title === '今天' ? '收集箱' : title }}”</span></button>
         <form v-else class="clone-quick-add-form" @submit.prevent="quickAdd">
           <div class="clone-quick-title-row">
@@ -614,7 +635,7 @@
           <button type="button" :disabled="resolvingTaskConflict" @click="resolveTaskConflict(conflict, 'server')">采用服务端</button>
         </div>
       </div>
-      <div v-if="activeWorkspaceView === 'LIST'" class="clone-list-toolbar"><span>{{ selectedIds.size ? `已选 ${selectedIds.size} 项` : `${visibleTasks.length} 项任务` }}</span></div>
+      <div v-if="activeWorkspaceView === 'LIST' && !isSearchRoute" class="clone-list-toolbar"><span>{{ selectedIds.size ? `已选 ${selectedIds.size} 项` : `${visibleTasks.length} 项任务` }}</span></div>
       <div v-if="activeWorkspaceView === 'KANBAN'" class="clone-inline-board" aria-label="任务看板">
         <section v-for="group in groups" :key="group.key" class="clone-inline-board-column">
           <header class="clone-inline-board-column-head"><div><strong>{{ group.label }}</strong><small>{{ group.tasks.length }}</small></div><button type="button" :aria-label="`在${group.label}添加任务`" :title="`在${group.label}添加任务`" @click="openBoardQuickAdd(group)"><Plus :size="17" /></button></header>
@@ -662,14 +683,35 @@
           <ChevronDown :size="16" :class="{ rotated: collapsed.countdowns }" /><strong>倒数纪念日</strong><span>{{ todayCountdowns.length }}</span>
         </button>
         <div class="clone-collapse-panel" :class="{ 'is-collapsed': collapsed.countdowns }" :aria-hidden="collapsed.countdowns"><div class="clone-efficiency-rows clone-collapse-inner" :inert="collapsed.countdowns">
-          <article v-for="item in todayCountdowns" :key="item.publicId" class="clone-efficiency-row countdown-row">
-            <span class="clone-efficiency-icon">{{ item.icon || '◷' }}</span><strong>{{ item.name || item.title }}</strong><span class="clone-efficiency-meta">{{ countdownLabel(item) }}</span>
-          </article>
+          <button v-for="item in todayCountdowns" :key="item.publicId" type="button" class="clone-efficiency-row is-clickable countdown-row" :style="{ '--efficiency-color': item.iconColor || '#f5b544' }" :aria-label="`打开倒数日${item.title || item.name}`" @click="openCountdownDetail(item)">
+            <span class="clone-efficiency-badge" :style="iconBadgeStyle(item.iconColor)">{{ item.iconValue || item.icon || '◷' }}</span><strong>{{ item.name || item.title }}</strong><span class="clone-efficiency-meta">{{ countdownLabel(item) }}</span>
+          </button>
         </div></div>
       </section>
-      <div v-if="!visibleTasks.length && !todayHabits.length && !completedTasks.length" class="clone-empty-state">
-        <Inbox :size="28" /><strong>{{ isTrashRoute ? "垃圾桶是空的" : title === "今天" ? "今天没有安排" : "这里还没有任务" }}</strong>
-        <span v-if="!isTrashRoute && title !== '今天'">使用上方输入框快速创建第一项任务</span>
+      <section v-if="isSearchRoute && searchCountdowns.length" class="clone-efficiency-group clone-countdown-group">
+        <button class="clone-group-heading" type="button" :aria-expanded="!collapsed.searchCountdowns" @click="collapsed.searchCountdowns = !collapsed.searchCountdowns">
+          <ChevronDown :size="16" :class="{ rotated: collapsed.searchCountdowns }" /><strong>倒数纪念日</strong><span>{{ searchCountdowns.length }}</span>
+        </button>
+        <div class="clone-collapse-panel" :class="{ 'is-collapsed': collapsed.searchCountdowns }" :aria-hidden="collapsed.searchCountdowns"><div class="clone-efficiency-rows clone-collapse-inner" :inert="collapsed.searchCountdowns">
+          <button v-for="item in searchCountdowns" :key="item.publicId" type="button" class="clone-efficiency-row is-clickable countdown-row" :style="{ '--efficiency-color': item.iconColor || '#f5b544' }" :aria-label="`打开倒数日${item.title || item.name}`" @click="openCountdownDetail(item)">
+            <span class="clone-efficiency-badge" :style="iconBadgeStyle(item.iconColor)">{{ item.iconValue || item.icon || '◷' }}</span><strong>{{ item.name || item.title }}</strong><span class="clone-efficiency-meta">{{ countdownLabel(item) }}</span>
+          </button>
+        </div></div>
+      </section>
+      <section v-if="isSearchRoute && searchHabits.length" class="clone-efficiency-group clone-habit-group">
+        <button class="clone-group-heading" type="button" :aria-expanded="!collapsed.searchHabits" @click="collapsed.searchHabits = !collapsed.searchHabits">
+          <ChevronDown :size="16" :class="{ rotated: collapsed.searchHabits }" /><strong>习惯</strong><span>{{ searchHabits.length }}</span>
+        </button>
+        <div class="clone-collapse-panel" :class="{ 'is-collapsed': collapsed.searchHabits }" :aria-hidden="collapsed.searchHabits"><div class="clone-efficiency-rows clone-collapse-inner" :inert="collapsed.searchHabits">
+          <button v-for="item in searchHabits" :key="item.publicId" type="button" class="clone-efficiency-row is-clickable habit-row" :style="{ '--efficiency-color': item.color || '#22c55e' }" :aria-label="`打开习惯${item.name}`" @click="openHabitPane(item)">
+            <span class="clone-efficiency-badge" :style="iconBadgeStyle(item.color)">{{ item.icon || '✓' }}</span><strong>{{ item.name }}</strong><span class="clone-efficiency-meta">{{ habitDone(item) ? '已完成' : '待打卡' }}</span>
+          </button>
+        </div></div>
+      </section>
+      <div v-if="!visibleTasks.length && !todayHabits.length && !completedTasks.length && !searchHabits.length && !searchCountdowns.length" class="clone-empty-state">
+        <Inbox :size="28" /><strong>{{ isSearchRoute ? '没有匹配的内容' : isTrashRoute ? "垃圾桶是空的" : title === "今天" ? "今天没有安排" : "这里还没有任务" }}</strong>
+        <span v-if="isSearchRoute">换个关键词，或在右上角调整筛选条件</span>
+        <span v-else-if="!isTrashRoute && title !== '今天'">使用上方输入框快速创建第一项任务</span>
       </div>
       <div v-else class="clone-task-groups">
         <section
@@ -681,6 +723,7 @@
           @drop.prevent.stop="dropTaskIntoGroup(group)"
         >
           <button
+            v-if="group.key !== 'search'"
             class="clone-group-heading"
             type="button"
             :aria-expanded="!collapsed[group.key]"
@@ -767,8 +810,9 @@
               <ChevronDown :size="16" :class="{ rotated: collapsed.habits }" /><strong>习惯</strong><span>{{ todayHabits.length }}</span>
             </button>
             <div class="clone-collapse-panel" :class="{ 'is-collapsed': collapsed.habits }" :aria-hidden="collapsed.habits"><div class="clone-efficiency-rows clone-collapse-inner" :inert="collapsed.habits">
-              <article v-for="item in todayHabits" :key="item.publicId" class="clone-efficiency-row">
-                <button type="button" class="clone-efficiency-check" :class="{ checked: habitDone(item) }" :aria-label="`${habitDone(item) ? '取消' : '完成'}习惯${item.name}`" @click="toggleHabitToday(item)">{{ habitDone(item) ? '✓' : '' }}</button><strong>{{ item.name }}</strong><span class="clone-efficiency-meta">{{ habitDone(item) ? '已完成' : '今天' }}</span>
+              <article v-for="item in todayHabits" :key="item.publicId" class="clone-efficiency-row is-clickable habit-row" :style="{ '--efficiency-color': item.color || '#22c55e' }" role="button" tabindex="0" :aria-label="`打开习惯${item.name}`" @click="openHabitPane(item)" @keydown.enter.prevent="openHabitPane(item)">
+                <button type="button" class="clone-efficiency-check" :class="{ checked: habitDone(item) }" :aria-label="`${habitDone(item) ? '取消' : '完成'}习惯${item.name}`" @click.stop="toggleHabitToday(item)">{{ habitDone(item) ? '✓' : '' }}</button>
+                <span class="clone-efficiency-badge" :style="iconBadgeStyle(item.color)">{{ item.icon || '✓' }}</span><strong>{{ item.name }}</strong><span class="clone-efficiency-meta">{{ habitDone(item) ? '已完成' : '今天' }}</span>
               </article>
             </div></div>
           </section>
@@ -808,13 +852,14 @@
     <aside
       class="clone-detail-pane"
       :style="detailPaneStyle"
-      :class="{ 'is-empty': !selectedTask && !editorOpen && !selectedIds.size && !listActivityOpen, 'is-batch': Boolean(selectedIds.size), 'is-list-activity': listActivityOpen }"
-      :aria-label="selectedIds.size ? '批量操作' : listActivityOpen ? '清单动态' : '任务详情'"
+      :class="{ 'is-empty': !selectedTask && !editorOpen && !selectedIds.size && !listActivityOpen && !habitPaneHabit, 'is-batch': Boolean(selectedIds.size), 'is-list-activity': listActivityOpen, 'is-habit': Boolean(habitPaneHabit) }"
+      :aria-label="habitPaneHabit ? '习惯详情' : selectedIds.size ? '批量操作' : listActivityOpen ? '清单动态' : '任务详情'"
       :role="selectedIds.size || listActivityOpen || (activeWorkspaceView !== 'LIST' && (selectedTask || editorOpen)) ? 'dialog' : undefined"
       :aria-modal="selectedIds.size || listActivityOpen || (activeWorkspaceView !== 'LIST' && (selectedTask || editorOpen)) ? 'true' : undefined"
       :aria-hidden="isMobileSidebar && !selectedIds.size && !listActivityOpen ? 'true' : undefined"
     >
-      <section v-if="selectedIds.size" class="clone-batch-panel" aria-label="批量操作面板">
+      <HabitDetailPane v-if="habitPaneHabit" :habit="habitPaneHabit" @close="closeHabitPane" @removed="closeHabitPane" />
+      <section v-else-if="selectedIds.size" class="clone-batch-panel" aria-label="批量操作面板">
         <header class="clone-batch-panel-head">
           <div><strong>已选择 <b>{{ selectedIds.size }}</b> 项</strong></div>
           <button type="button" class="clone-batch-cancel" @click="clearBatchSelection">取消</button>
@@ -1598,6 +1643,7 @@ import {
   CalendarDays,
   Columns3,
   ArrowDownUp,
+  ArrowLeft,
   ArrowRight,
   ArrowUp,
   Layers3,
@@ -1673,6 +1719,23 @@ import { formatAttachmentSize, uploadQuickAttachments, validateQuickAttachmentFi
 import { quickAddTokenAtCaret, replaceQuickAddToken } from "./taskQuickAddSuggestions.js";
 import { useTasksStore } from "../stores/tasks.js";
 import { todayKey } from "../components/habits/habitUtils.js";
+import HabitDetailPane from "../components/habits/HabitDetailPane.vue";
+import SearchFilterSelect from "../components/tasks/SearchFilterSelect.vue";
+import {
+  SEARCH_DATE_OPTIONS,
+  SEARCH_PRIORITY_OPTIONS,
+  SEARCH_STATUS_OPTIONS,
+  SEARCH_TYPE_OPTIONS,
+  countdownVisible,
+  dateRangeLabel,
+  matchCountdown,
+  matchHabit,
+  matchTask,
+  searchCriteriaFromQuery,
+  searchCriteriaToQuery,
+} from "../components/tasks/taskSearch.js";
+import { daysUntil, effectiveTarget } from "../components/countdowns/countdownUtils.js";
+import { openTaskSearch } from "../utils/searchBus.js";
 import { useTaskFocusStore } from "../stores/taskFocus.js";
 import { message } from "../services/message.js";
 import {
@@ -2077,6 +2140,19 @@ const completionDateOptions = [
 const isCompletionRoute = computed(() => ["tasks-completed", "tasks-abandoned"].includes(route.name));
 const isAbandonedRoute = computed(() => route.name === "tasks-abandoned");
 const isTrashRoute = computed(() => route.name === "tasks-trash");
+// 搜索整页：条件全部落在地址栏，页面本身复用任务页的行/详情/编辑
+const isSearchRoute = computed(() => route.name === "tasks-search");
+const searchCriteria = computed(() => searchCriteriaFromQuery(route.query));
+const searchKeyword = computed(() => searchCriteria.value.q);
+const searchListOptions = computed(() => store.lists.filter(list => !list.archived).map(list => ({ value: list.publicId, label: list.name, dot: list.color || undefined })));
+const searchTagOptions = computed(() => (store.tags || []).map(tag => ({ value: tag.publicId, label: tag.name, dot: tag.color || undefined })));
+const searchDateLabel = computed(() => dateRangeLabel(searchCriteria.value.date, todayKey(), searchCriteria.value.start, searchCriteria.value.end));
+const searchTotal = computed(() => (isSearchRoute.value ? visibleTasks.value.length + searchHabits.value.length + searchCountdowns.value.length : 0));
+/** 修改搜索条件：地址栏即状态，replace 避免每敲一次条件都堆历史 */
+function patchSearchQuery(patch) {
+  const next = searchCriteriaToQuery({ ...searchCriteria.value, ...patch });
+  router.replace({ path: "/tasks/search", query: next });
+}
 const completionDateLabel = computed(() => completionDateOptions.find(option => option.value === completionFilters.dateRange)?.label || "所有日期");
 const completionListLabel = computed(() => completionFilters.listIds === null ? "所有清单" : completionFilters.listIds.length ? `已选 ${completionFilters.listIds.length} 项` : "未选择清单");
 const completionScopeOptions = computed(() => isAbandonedRoute.value
@@ -2553,7 +2629,9 @@ const filterPriorityOptions = [
   { value: "NONE", label: "无" },
 ];
 const title = computed(() =>
-  route.name === "tasks-trash"
+  isSearchRoute.value
+    ? "搜索"
+    : route.name === "tasks-trash"
     ? "垃圾桶"
     : route.name === "tasks-today"
     ? calendarDate.value && dateKey(calendarDate.value) !== dateKey(new Date())
@@ -2696,7 +2774,9 @@ const parentOptions = computed(() =>
   ),
 );
 const sourceTasks = computed(() =>
-  store.tasks.filter((task) =>
+  isSearchRoute.value
+    ? store.tasks.filter((task) => !task.deleted)
+    : store.tasks.filter((task) =>
     route.name === "tasks-trash"
       ? task.deleted
       : !task.deleted && (route.name === "tasks-completed"
@@ -2709,6 +2789,15 @@ const sourceTasks = computed(() =>
   ),
 );
 const visibleTasks = computed(() => {
+  if (isSearchRoute.value) {
+    const context = {
+      today: todayKey(),
+      listsById: new Map(store.lists.map((list) => [list.publicId, list])),
+      tagsById: new Map((store.tags || []).map((tag) => [tag.publicId, tag])),
+    };
+    const matched = sourceTasks.value.filter((task) => matchTask(task, searchCriteria.value, context));
+    return sortTaskItems(matched, { sortBy: sort.value, direction: sortDirection.value });
+  }
   let values = [...sourceTasks.value];
   const today = startOfDay(new Date());
   const tomorrow = addDays(today, 1);
@@ -2760,10 +2849,12 @@ const visibleTasks = computed(() => {
   return sortTaskItems(values, { sortBy: sort.value, direction: sortDirection.value });
 });
 const openTasks = computed(() =>
-  visibleTasks.value.filter((task) => !["COMPLETED", "ABANDONED"].includes(task.status)),
+  isSearchRoute.value
+    ? visibleTasks.value
+    : visibleTasks.value.filter((task) => !["COMPLETED", "ABANDONED"].includes(task.status)),
 );
 const completedTasks = computed(() =>
-  visibleTasks.value.filter((task) => task.status === "COMPLETED"),
+  isSearchRoute.value ? [] : visibleTasks.value.filter((task) => task.status === "COMPLETED"),
 );
 const completedPreviewTasks = computed(() => completedTasks.value.slice(0, completedLimit.value));
 const collapsedSubtaskIds = ref(new Set());
@@ -2774,6 +2865,8 @@ function toggleSubtaskBranch(publicId) {
   collapsedSubtaskIds.value = next;
 }
 const groups = computed(() => {
+  // 搜索结果是一条平铺列表，不按时间/清单分组：命中的项本来就散落在各个日期
+  if (isSearchRoute.value) return [{ key: "search", label: "搜索结果", tasks: openTasks.value }];
   if (groupBy.value !== "time" && groupBy.value !== "none") return groupTaskItems(openTasks.value, groupBy.value, store.lists, new Date(), store.tags, { includeEmptyLists: route.name === "tasks-all" });
   if (groupBy.value === "none") return [{ key: "all", label: "所有任务", tasks: openTasks.value }];
   if (route.name === "tasks-shortcut" && route.params.shortcut === "archived")
@@ -2786,10 +2879,43 @@ const groups = computed(() => {
   return result;
 });
 const listGroups = computed(() => buildTaskListGroups(groups.value, openTasks.value, collapsedSubtaskIds.value));
-const todayCountdowns = computed(() => route.name === "tasks-today" && !route.query.date ? store.countdowns.filter((item) => !item.archived && !item.deleted) : []);
+// 倒数日按「显示」选项生效：当天 / 提前 3 天 / 提前 7 天 / 一直 / 不显示
+const todayCountdowns = computed(() => (route.name === "tasks-today" && !route.query.date
+  ? store.countdowns.filter((item) => countdownVisible(item, todayKey()))
+  : []));
 const todayHabits = computed(() => route.name === "tasks-today" && !route.query.date
   ? store.habits.filter((item) => !item.archived && !item.deleted && item.showInToday !== false)
   : []);
+// 搜索整页里习惯/倒数日也是搜索对象，单独成组
+const searchHabits = computed(() => (isSearchRoute.value
+  ? (store.habits || []).filter((habit) => !habit.archived && matchHabit(habit, searchCriteria.value, {}))
+  : []));
+const searchCountdowns = computed(() => (isSearchRoute.value
+  ? (store.countdowns || []).filter((item) => matchCountdown(item, searchCriteria.value, {}))
+  : []));
+/** 任务页/搜索页右栏当前查看的习惯（点习惯行进入，和习惯页右侧详情一致） */
+const habitPaneId = ref("");
+const habitPaneHabit = computed(() => (habitPaneId.value ? store.habits.find((item) => item.publicId === habitPaneId.value) || null : null));
+// 搜索结果里点某条任务（弹窗里点进来）时直接打开它的详情
+watch(
+  () => route.query.open,
+  (publicId) => {
+    if (route.name !== "tasks-search" || !publicId) return;
+    const task = store.tasks.find((item) => item.publicId === publicId);
+    if (task) openTaskRow(task);
+  },
+  { immediate: true },
+);
+function openHabitPane(habit) {
+  if (!habit) return;
+  selectedTask.value = null;
+  editorOpen.value = false;
+  closeListActivity();
+  habitPaneId.value = habit.publicId;
+}
+function closeHabitPane() {
+  habitPaneId.value = "";
+}
 const completedLimit = ref(5);
 function showMoreCompleted() { completedLimit.value = Math.min(completedTasks.value.length, completedLimit.value + 5); }
 function loadMoreCompletedOnScroll(event) {
@@ -2897,10 +3023,59 @@ function navigateToTaskList(task) {
   router.push(list?.systemKey === "INBOX" ? "/tasks/inbox" : `/tasks/list/${task.listId}`);
 }
 function countdownLabel(item) {
-  const target = item.targetDate || item.date || item.dueDate;
+  // 口径统一走 countdownUtils：它处理了重复规则/农历算出的实际目标日
+  const target = effectiveTarget(item, todayKey());
   if (!target) return "倒数日";
-  const days = Math.ceil((new Date(target).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000);
+  const days = daysUntil(item, todayKey());
+  if (item.displayRule === "D3" && days > 0) return `${days} 天后`;
+  if (item.displayRule === "D7" && days > 0) return `${days} 天后`;
   return days >= 0 ? `还有 ${days} 天` : `已过 ${Math.abs(days)} 天`;
+}
+function iconBadgeStyle(color) {
+  if (!color) return undefined;
+  return { background: `color-mix(in srgb, ${color} 20%, transparent)`, color };
+}
+/** 倒数日在今天页/搜索页被点开：跳到倒数纪念日页并聚焦这张卡片 */
+function openCountdownDetail(item) {
+  if (!item) return;
+  router.push({ path: "/tasks/countdowns", query: { focus: item.publicId } });
+}
+function leaveSearch() {
+  if (window.history.length > 1) router.back();
+  else router.push("/tasks/today");
+}
+function editSearch() {
+  openTaskSearch({ q: searchKeyword.value, criteria: searchCriteria.value });
+}
+/** 把当前搜索条件存成筛选器：复用侧栏那套筛选器弹窗，字段一一映射 */
+function saveSearchAsFilter() {
+  const value = searchCriteria.value;
+  const dueRangeMap = {
+    THIS_WEEK: "THIS_WEEK",
+    NEXT_WEEK: "NEXT_WEEK",
+    THIS_MONTH: "THIS_MONTH",
+    LAST_WEEK: "CUSTOM",
+    LAST_MONTH: "CUSTOM",
+    CUSTOM: "CUSTOM",
+    ALL: "ANY",
+  };
+  const dueRange = dueRangeMap[value.date] || "ANY";
+  const range = dueRange === "CUSTOM" ? { start: value.start, end: value.end } : null;
+  openOrganizationDialog("filter", null, {
+    name: value.q,
+    filter: {
+      keyword: value.q,
+      listIds: value.listIds,
+      tagIds: value.tagIds,
+      tagMode: value.tagIds.length ? "SELECTED" : "ALL",
+      priorities: value.priority === "ALL" ? [] : [value.priority],
+      status: value.status,
+      dueRange,
+      dueStart: range?.start || "",
+      dueEnd: range?.end || "",
+      includeSubtasks: true,
+    },
+  });
 }
 function startOfDay(date) {
   date.setHours(0, 0, 0, 0);
@@ -4209,6 +4384,8 @@ async function openTaskIndicator(task, kind) {
   document.querySelector(selector)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 function openTaskRow(task, event) {
+  // 打开任务详情时先收起习惯详情，右栏只有一个主体
+  habitPaneId.value = "";
   const anchorElement = event?.currentTarget;
   const rect = anchorElement?.getBoundingClientRect?.();
   const clickX = Number(event?.clientX);
@@ -6914,7 +7091,7 @@ function togglePinnedObject(kind, item) {
 watch(() => store.accountScope, () => { loadSidebarObjectPrefs(); loadSidebarSections(); loadSectionDisplayModes(); void loadSidebarPreferences(); });
 function openOrganizationDialog(kind, item = null, overrides = {}) {
   const defaults = { list: { color: "#2563eb", icon: "", groupId: "" }, tag: { color: "#2f746f", parentId: "" }, filter: {}, group: { color: "#64748b", icon: "📁" } }[kind] || {};
-  const filter = kind === "filter" ? { mode: item?.mode || "BASIC", listIds: [...(item?.listIds || [])], tagIds: [...(item?.tagIds || [])], tagMode: item?.tagMode || (item?.tagIds?.length ? "SELECTED" : "ALL"), taskTypes: [...(item?.taskTypes || [])], priorities: [...(item?.priorities || [])], status: item?.status || "OPEN", dueRange: item?.dueRange || "ANY", dueStart: item?.dueStart || "", dueEnd: item?.dueEnd || "", keyword: item?.keyword || "", includeSubtasks: item?.includeSubtasks !== false, matchAllTags: Boolean(item?.matchAllTags), pinned: isPinnedObject("filter", item), rules: item?.rules || null, advanced: advancedFilterConditionsFromRules(item?.rules), previewed: false } : {};
+  const filter = kind === "filter" ? { mode: item?.mode || "BASIC", listIds: [...(item?.listIds || [])], tagIds: [...(item?.tagIds || [])], tagMode: item?.tagMode || (item?.tagIds?.length ? "SELECTED" : "ALL"), taskTypes: [...(item?.taskTypes || [])], priorities: [...(item?.priorities || [])], status: item?.status || "OPEN", dueRange: item?.dueRange || "ANY", dueStart: item?.dueStart || "", dueEnd: item?.dueEnd || "", keyword: item?.keyword || "", includeSubtasks: item?.includeSubtasks !== false, matchAllTags: Boolean(item?.matchAllTags), pinned: isPinnedObject("filter", item), rules: item?.rules || null, advanced: advancedFilterConditionsFromRules(item?.rules), previewed: false, ...(overrides.filter || {}) } : {};
   Object.assign(organizationDialog, { open: true, kind, item, name: item?.name || overrides.name || "", color: item?.color || defaults.color || "#2563eb", icon: item?.icon || defaults.icon || "", parentId: item?.parentId || overrides.parentId || defaults.parentId || "", groupId: item?.groupId || overrides.groupId || "", newGroupName: "", newGroupIcon: "📁", newGroupColor: "#64748b", groupListIds: [...(overrides.groupListIds || [])], viewType: item?.viewType || "LIST", objectType: item?.objectType || "TASK", showInSmartLists: item?.showInSmartLists !== false, pinned: Boolean(item?.pinned), filter });
   filterPreview.value = [];
   organizationDialogOpen.value = true;
@@ -8858,6 +9035,71 @@ const SidebarSection = {
 .clone-efficiency-meta { color: var(--muted); font-size: 11px; }
 .clone-efficiency-check { display: grid; width: 21px; height: 21px; place-items: center; border: 1.5px solid var(--line2); border-radius: 6px; background: transparent; color: var(--accent); cursor: pointer; }
 .clone-efficiency-check.checked { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast, #fff); }
+/* 今天页/搜索页的倒数日与习惯行：图标徽标 + 名字，整行可点 */
+.clone-efficiency-row.is-clickable {
+  width: 100%;
+  border-top: 0;
+  border-right: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.clone-efficiency-row.is-clickable:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.clone-efficiency-row.is-clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.clone-efficiency-badge {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 1;
+}
+/* 搜索整页：返回 + 标题 + 数量 + 改条件，右侧「保存为过滤器」 */
+.clone-search-back { color: var(--muted); }
+.clone-search-count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  color: var(--ink2);
+  font-size: 12px;
+  font-weight: 650;
+  text-align: center;
+}
+.clone-search-edit { color: var(--muted); }
+.clone-search-actions { gap: 8px; }
+.clone-search-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.clone-search-save:hover { border-color: var(--accent); color: var(--accent); }
+.clone-search-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 2px;
+  padding: 8px 26px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.clone-search-range { margin-left: 6px; color: var(--muted); font-size: 12px; }
+.clone-detail-pane.is-habit { padding: 0; }
 .countdown-row { --efficiency-color: #f59e0b; }
 .clone-detail-empty {
   display: grid;

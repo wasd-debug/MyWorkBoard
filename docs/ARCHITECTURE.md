@@ -1012,3 +1012,15 @@ frontend/
 ## Agent 消息与操作卡片恢复
 
 Agent 普通请求与 SSE 均持久化结构化响应。查询历史 assistant 消息时优先读取 agent_message.metadata_json，缺失才通过 user_id、session_id、turn_id 三重关联读取 agent_turn.response_json；用户消息不使用该回退。恢复卡片发生编辑时写回消息 metadata，避免被旧 turn 快照覆盖。前端不得从文字预览虚构 actionId 或审批状态，无可恢复数据时提示重新生成操作。
+
+## 任务搜索（弹窗 + 整页）与今天页聚合行（2026-11-02）
+
+搜索不再是一个独立页面入口：图标栏放大镜与 `Ctrl/Cmd+K` 打开全局搜索弹窗（`components/tasks/TaskSearchDialog.vue`），弹窗内最多展示 10 条结果，底部“查看更多”跳到 `/tasks/search`。该路由仍由 `TaskWorkspaceView` 渲染，通过 `isSearchRoute` 进入搜索模式，复用同一套任务行、右侧详情、编辑与右键菜单，避免第二套列表实现。
+
+搜索条件唯一存放在地址栏（`q/date/start/end/lists/tags/status/priority/type`），由 `components/tasks/taskSearch.js` 的 `searchCriteriaFromQuery`/`searchCriteriaToQuery` 双向转换；筛选下拉改动走 `router.replace`，所以连续调条件不会堆积历史，也不会让列表重新挂载。匹配口径集中在 `matchTask`/`matchHabit`/`matchCountdown`：任务按标题、描述、检查项、标签名和清单名分词匹配；习惯与倒数日没有标签/优先级/日期，设置这些条件后自动让位。搜索结果在整页按一条平铺列表渲染（`groups` 直接返回单个 `search` 组，且不渲染组标题），已完成的命中项留在同一列表里而不是落到“已完成”分组。
+
+“保存为过滤器”复用侧栏的筛选器弹窗（`openOrganizationDialog('filter', null, { filter })`），把搜索条件映射到筛选器字段：`keyword/listIds/tagIds/status/priorities/dueRange`；`上周/上月` 这类筛选器没有的枚举降级成 `CUSTOM` 加起止日期。弹窗因此必须是“新建”而不是“编辑”，条件通过 `overrides.filter` 注入而不是伪造一个已存在的 item。
+
+今天页的两条聚合行（倒数纪念日、习惯）改为“图标徽标 + 名称”，图标取 `iconValue/icon` 与 `iconColor/color`。倒数纪念日是否出现在今天页由卡片自己的“显示”选项决定：`countdownVisible()` 把 `SMART`（当天）、`D3`/`D7`（提前 N 天）、`ALWAYS`、`NEVER` 落成布尔值，今天页不再无条件罗列全部倒数日；搜索页不受 `SMART/D3/D7` 限制（显式搜索就是要看全部），但仍排除 `NEVER` 与已归档。点击习惯行在右栏打开 `components/habits/HabitDetailPane.vue`，它与习惯页共用 `HabitDetailPanel` 和打卡写入口径，只是把状态收在组件内部，因此任务页不需要复制一份习惯逻辑。
+
+跳转契约：弹窗里点任务 → `/tasks/search?…&open=<publicId>`，工作区监听 `route.query.open` 直接展开该任务详情；点习惯 → `/tasks/habits?habit=<publicId>`；点倒数日 → `/tasks/countdowns?focus=<publicId>`。

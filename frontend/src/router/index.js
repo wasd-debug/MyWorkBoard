@@ -19,7 +19,7 @@ const routes = [
   { path: '/tasks/board', redirect: { path: '/tasks/today', query: { workspaceView: 'KANBAN' } } },
   { path: '/tasks/timeline', redirect: { path: '/tasks/today', query: { workspaceView: 'TIMELINE' } } },
   { path: '/tasks/quadrant', name: 'tasks-quadrant', component: () => import('../views/TasksQuadrantView.vue'), meta: { title: '四象限' } },
-  { path: '/tasks/search', name: 'tasks-search', component: () => import('../views/TasksEnhancedView.vue'), meta: { title: '任务搜索' } },
+  { path: '/tasks/search', name: 'tasks-search', component: () => import('../views/TaskWorkspaceView.vue'), meta: { title: '搜索' } },
   { path: '/tasks/stats', name: 'tasks-stats', component: () => import('../views/TasksEnhancedView.vue'), meta: { title: '任务统计' } },
   { path: '/tasks/data', redirect: { path: '/tasks/settings', hash: '#data' } },
   { path: '/tasks/settings', name: 'tasks-settings', component: () => import('../views/TaskSettingsView.vue'), meta: { title: '任务设置' } },

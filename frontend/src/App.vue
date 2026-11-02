@@ -30,6 +30,7 @@
       </main>
       <BottomNav v-if="!isHome && !isExternalFlow" />
       <FloatingAgentAssistant v-if="!isHome && store.authUser && !store.offlineSession" />
+      <TaskSearchDialog />
     </template>
   </div>
 </template>
@@ -48,10 +49,12 @@ import { useTasksStore } from './stores/tasks.js'
 import BottomNav from './components/BottomNav.vue'
 import FloatingAgentAssistant from './components/FloatingAgentAssistant.vue'
 import TaskModuleRail from './components/tasks/TaskModuleRail.vue'
+import TaskSearchDialog from './components/tasks/TaskSearchDialog.vue'
 import LoadingOverlay from './components/ledger/LoadingOverlay.vue'
 import ToastViewport from './components/ui/ToastViewport.vue'
 import LoginView from './views/LoginView.vue'
 import router from './router'
+import { openTaskSearch } from './utils/searchBus.js'
 
 const store = useAppStore()
 const worktimeStore = useWorktimeStore()
@@ -60,7 +63,7 @@ const focus = useTaskFocusStore()
 const tasks = useTasksStore()
 const route = useRoute()
 const isHome = computed(() => route.path === '/')
-const taskWorkspaceRoutes = new Set(['tasks-inbox', 'tasks-today', 'tasks-tomorrow', 'tasks-next7', 'tasks-board', 'tasks-timeline', 'tasks-filter', 'tasks-shortcut', 'tasks-all', 'tasks-completed', 'tasks-abandoned', 'tasks-trash', 'tasks-list', 'tasks-group', 'tasks-tag'])
+const taskWorkspaceRoutes = new Set(['tasks-inbox', 'tasks-today', 'tasks-tomorrow', 'tasks-next7', 'tasks-board', 'tasks-timeline', 'tasks-filter', 'tasks-shortcut', 'tasks-all', 'tasks-completed', 'tasks-abandoned', 'tasks-trash', 'tasks-list', 'tasks-group', 'tasks-tag', 'tasks-search'])
 const routerViewKey = computed(() => taskWorkspaceRoutes.has(route.name) ? route.path : route.fullPath)
 const navigationLoading = ref(false)
 let navigationFinishTimer
@@ -79,7 +82,7 @@ function onGlobalKeydown(event) {
   const target = event.target
   if (target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName)) return
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); tasks.undoLast().catch(() => {}) }
-  else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); router.push('/tasks/search') }
+  else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); openTaskSearch(route.name === 'tasks-search' ? { q: String(route.query.q || '') } : null) }
   else if (!event.metaKey && !event.ctrlKey && event.key.toLowerCase() === 'n') { event.preventDefault(); window.dispatchEvent(new CustomEvent('task-new-request')) }
 }
 function clearNavigationTimers() { window.clearTimeout(navigationFinishTimer); window.clearTimeout(navigationSafetyTimer) }
