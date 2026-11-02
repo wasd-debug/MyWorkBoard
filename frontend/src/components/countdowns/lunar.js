@@ -221,7 +221,11 @@ export function yearEnd(today = new Date()) {
   return new Date(base.getFullYear(), 11, 31)
 }
 
-/** 系统内置倒数日的目标日期 */
+/**
+ * 系统内置倒数日的目标日期。
+ * 节假日只作为兜底：它的标题是「距离元旦」这类会滚动的文案，标题与目标日必须由服务端
+ * 一起更新（见 BuiltinCountdowns），前端只在拿不到 targetDate 时才用这里的推算值。
+ */
 export function builtinTargetDate(key, today = new Date()) {
   const base = toDate(today)
   if (key === 'weekend') return dateKey(nextWeekend(base))
@@ -231,9 +235,14 @@ export function builtinTargetDate(key, today = new Date()) {
   return ''
 }
 
-export const BUILTIN_COUNTDOWNS = [
-  { key: 'weekend', title: '距离周末' },
-  { key: 'holiday', title: '距离下一个法定节假日' },
-  { key: 'month-end', title: '距离本月结束' },
-  { key: 'year-end', title: '距离本年结束' }
-]
+/**
+ * 内置项标题口径：节假日取具体节日名，不再是「距离下一个法定节假日」。
+ * 页面显示以服务端写入的 title 为准（那里按放假表滚动），这里用于文案口径与离线兜底。
+ */
+export function builtinTitle(key, today = new Date()) {
+  if (key === 'weekend') return '距离周末'
+  if (key === 'holiday') return `距离${nextHoliday(today).name}`
+  if (key === 'month-end') return '距离本月结束'
+  if (key === 'year-end') return '距离本年结束'
+  return ''
+}

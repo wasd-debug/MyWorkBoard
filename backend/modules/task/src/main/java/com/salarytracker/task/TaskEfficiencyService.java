@@ -484,19 +484,30 @@ public class TaskEfficiencyService {
     }
 
     /**
-     * 系统内置倒数日：距离周末 / 距离下一个法定节假日 / 距离本月结束 / 距离本年结束。
+     * 系统内置倒数日：距离周末 / 距离{下一个法定节假日} / 距离本月结束 / 距离本年结束。
      * 账户首次读取列表时补齐，用户删除后（含软删除记录）不再重建。
+     * <p>节假日标题与目标是滚动的（今天写着「距离元旦」，过了元旦就要变成「距离春节」），
+     * 所以已存在的内置项在标题/目标日/图标发生漂移时同步更新；其它字段（封面、备注、置顶、
+     * 归档、单位等）保持用户设置不动。改动 revision 以便客户端增量同步拿到。</p>
      */
     void ensureBuiltinCountdowns(long userId) {
         LocalDate today = LocalDate.now(zone(userId));
         for (BuiltinCountdowns.BuiltinCountdown builtin : BuiltinCountdowns.all(today)) {
+            Date target = Date.valueOf(builtin.targetDate());
             Long existing = jdbc.queryForObject("SELECT COUNT(*) FROM countdown WHERE user_id=? AND builtin_key=?",
                     Long.class, userId, builtin.key());
-            if (existing != null && existing > 0) continue;
+            if (existing != null && existing > 0) {
+                jdbc.update("UPDATE countdown SET title=?,target_date=?,icon_value=?,icon_color=?,revision=revision+1 " +
+                                "WHERE user_id=? AND builtin_key=? AND deleted_at IS NULL " +
+                                "AND (title<>? OR target_date<>? OR icon_value<>?)",
+                        builtin.title(), target, builtin.icon(), builtin.color(), userId, builtin.key(),
+                        builtin.title(), target, builtin.icon());
+                continue;
+            }
             jdbc.update("INSERT INTO countdown(public_id,user_id,title,target_date,kind,repeat_yearly,is_pinned,color,note," +
                             "icon_type,icon_value,icon_color,cover,unit,precise_seconds,precise_time,remind,repeat_rule," +
                             "display_rule,archived,calendar_type,builtin_key,sort_order) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    UUID.randomUUID().toString(), userId, builtin.title(), Date.valueOf(builtin.targetDate()),
+                    UUID.randomUUID().toString(), userId, builtin.title(), target,
                     builtin.kind(), false, false, builtin.color(), "", "EMOJI", builtin.icon(), builtin.color(),
                     "IMAGE", "DAY", false, "", "", "NONE", "SMART", false, "SOLAR", builtin.key(), builtin.sortOrder());
         }

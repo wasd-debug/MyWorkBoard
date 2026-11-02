@@ -159,8 +159,13 @@ export function effectiveTarget(item, today = todayKey()) {
   if (!item) return today
   const base = parseKey(today)
   if (item.builtinKey) {
-    const computed = builtinTargetDate(item.builtinKey, base)
-    if (computed) return computed
+    // 节假日的标题与目标日由服务端按放假表一起滚动（「距离元旦」必须指向元旦），
+    // 前端只重算能纯本地推算的三项，避免标题与日期各说一套。
+    if (item.builtinKey !== 'holiday') {
+      const computed = builtinTargetDate(item.builtinKey, base)
+      if (computed) return computed
+    }
+    if (item.targetDate) return item.targetDate
   }
   const rule = item.repeatRule || (item.repeatYearly ? 'YEARLY' : 'NONE')
   const yearly = rule === 'YEARLY' || typeOf(item).key === 'BIRTHDAY'
