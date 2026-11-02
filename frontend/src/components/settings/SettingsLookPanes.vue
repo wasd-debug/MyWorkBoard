@@ -83,44 +83,6 @@
       </template>
     </template>
 
-    <template v-else-if="pane === 'sticky'">
-      <SettingRow label="默认颜色" stacked>
-        <div class="set-swatches is-compact" role="radiogroup" aria-label="便签默认颜色">
-          <button
-            v-for="color in stickyColors"
-            :key="color"
-            type="button"
-            role="radio"
-            :aria-checked="settings.stickyColor === color"
-            :aria-label="`便签颜色 ${color}`"
-            :class="{ active: settings.stickyColor === color }"
-            @click="set('stickyColor', color)"
-          ><span :style="{ background: color }"></span></button>
-        </div>
-      </SettingRow>
-      <SettingRow label="不透明度" desc="数值越低，便签越透。">
-        <div class="set-volume">
-          <input v-model.number="settings.stickyOpacity" type="range" min="30" max="100" step="1" aria-label="便签不透明度">
-          <b>{{ settings.stickyOpacity }}%</b>
-        </div>
-      </SettingRow>
-      <SettingRow label="字体大小">
-        <SettingChoices :model-value="settings.stickyFont" :options="fontOptions" label="便签字号" @update:model-value="set('stickyFont', $event)" />
-      </SettingRow>
-      <SettingRow label="默认置顶" desc="新建便签时默认置于其他窗口之上。">
-        <SettingSwitch :model-value="settings.stickyTop" label="默认置顶" @update:model-value="set('stickyTop', $event)" />
-      </SettingRow>
-      <SettingRow label="不在任务栏中显示便签" desc="便签窗口不在任务栏中显示，改用快捷键唤起。">
-        <SettingSwitch :model-value="settings.stickyHideTaskbar" label="不在任务栏中显示便签" @update:model-value="set('stickyHideTaskbar', $event)" />
-      </SettingRow>
-      <SettingRow label="恢复便签的默认大小" desc="重新打开便签时使用默认尺寸，而不是上次调整后的大小。">
-        <SettingSwitch :model-value="settings.stickyRestoreSize" label="恢复便签的默认大小" @update:model-value="set('stickyRestoreSize', $event)" />
-      </SettingRow>
-      <SettingRow label="便签默认间距">
-        <SettingChoices :model-value="settings.stickyGap" :options="gapOptions" label="便签默认间距" @update:model-value="set('stickyGap', $event)" />
-      </SettingRow>
-    </template>
-
     <template v-else>
       <div v-for="group in SHORTCUT_GROUPS" :key="group.title" class="set-shortcut-group">
         <h4 class="set-group-title">{{ group.title }}</h4>
@@ -188,13 +150,6 @@ const completedOptions = [
   { value: 'STANDARD', label: '标准' },
   { value: 'STRIKE', label: '划线' }
 ]
-const gapOptions = [
-  { value: 'NONE', label: '无' },
-  { value: 'NORMAL', label: '正常' },
-  { value: 'LARGE', label: '大' },
-  { value: 'HUGE', label: '超大' }
-]
-const stickyColors = ['#ffe8a3', '#ffd0d6', '#d6e8ff', '#d5f0e0', '#ece0ff', '#ffe0c2', '#e4e4e6', '#c9f2ef']
 const iconOptions = [
   { key: 'DEFAULT', label: '默认', symbol: '✓', background: '#3b82f6' },
   { key: 'DARK', label: '深色', symbol: '✓', background: '#22262f' },
@@ -215,16 +170,11 @@ function restoreShortcuts() {
 .set-swatches button>span{display:block;width:30px;height:30px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
 .set-swatches button small{color:var(--muted);font-size:.62rem}
 .set-swatches button.active>span{box-shadow:0 0 0 2px var(--card),0 0 0 4px #3b82f6}
-.set-swatches.is-compact{gap:8px}
-.set-swatches.is-compact button>span{width:22px;height:22px}
 .set-icon-grid{display:flex;gap:14px;flex-wrap:wrap}
 .set-icon-grid button{display:grid;justify-items:center;gap:5px;padding:0;border:0;background:transparent;cursor:pointer}
 .set-icon-grid button>span{display:grid;width:44px;height:44px;place-items:center;border-radius:11px;color:#fff;font-size:1.1rem;font-weight:700}
 .set-icon-grid button small{color:var(--muted);font-size:.64rem}
 .set-icon-grid button.active>span{box-shadow:0 0 0 2px var(--card),0 0 0 4px #3b82f6}
-.set-volume{display:inline-flex;align-items:center;gap:9px}
-.set-volume input{width:132px;accent-color:#3b82f6}
-.set-volume b{min-width:32px;color:var(--muted);font-size:.72rem;font-weight:500;text-align:right}
 .set-shortcut-group{padding-bottom:8px}
 .set-group-title{margin:14px 0 4px;color:var(--ink2);font-size:.74rem;font-weight:600}
 .set-shortcut-group:first-child .set-group-title{margin-top:2px}

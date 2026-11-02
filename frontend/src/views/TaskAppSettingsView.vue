@@ -30,7 +30,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PANES, PANE_KEYS } from '../components/settings/settingsState.js'
 import { useSettings } from '../components/settings/useSettings.js'
-import SettingsAccountPanes from '../components/settings/SettingsAccountPanes.vue'
 import SettingsDataPanes from '../components/settings/SettingsDataPanes.vue'
 import SettingsListPanes from '../components/settings/SettingsListPanes.vue'
 import SettingsLookPanes from '../components/settings/SettingsLookPanes.vue'
@@ -43,15 +42,14 @@ const { settings } = useSettings()
 
 const pageEl = ref(null)
 const pageHeight = ref(640)
-const active = ref(PANE_KEYS.includes(String(route.query.pane)) ? String(route.query.pane) : 'account')
+const active = ref(PANE_KEYS.includes(String(route.query.pane)) ? String(route.query.pane) : PANE_KEYS[0])
 
 const activeLabel = computed(() => PANES.find(pane => pane.key === active.value)?.label || '设置')
 const paneComponent = computed(() => {
-  if (['account', 'premium', 'about'].includes(active.value)) return SettingsAccountPanes
-  if (['modules', 'widget'].includes(active.value)) return SettingsModulePanes
+  if (active.value === 'modules') return SettingsModulePanes
   if (['smartlist', 'advanced', 'collab'].includes(active.value)) return SettingsListPanes
   if (['notify', 'datetime'].includes(active.value)) return SettingsTimePanes
-  if (['appearance', 'sticky', 'shortcut'].includes(active.value)) return SettingsLookPanes
+  if (['appearance', 'shortcut'].includes(active.value)) return SettingsLookPanes
   return SettingsDataPanes
 })
 

@@ -1,21 +1,15 @@
 // 设置页：分区定义 + 默认值 + 本地持久化（纯逻辑部分便于单测）
 
 export const PANES = [
-  { key: 'account', label: '账号' },
-  { key: 'premium', label: '高级会员' },
   { key: 'modules', label: '功能模块' },
   { key: 'smartlist', label: '智能清单' },
   { key: 'notify', label: '提醒与通知' },
   { key: 'datetime', label: '日期与时间' },
   { key: 'appearance', label: '外观' },
-  { key: 'ai', label: 'AI 功能' },
   { key: 'advanced', label: '更多设置' },
   { key: 'import', label: '关联与导入' },
   { key: 'collab', label: '共享协作' },
-  { key: 'sticky', label: '便签' },
-  { key: 'widget', label: '桌面小部件' },
-  { key: 'shortcut', label: '快捷键' },
-  { key: 'about', label: '关于' }
+  { key: 'shortcut', label: '快捷键' }
 ]
 
 export const PANE_KEYS = PANES.map(pane => pane.key)
@@ -164,14 +158,6 @@ export const SHORTCUT_GROUPS = [
   ] }
 ]
 
-export const WIDGETS = [
-  { key: 'task', label: '任务', desc: '直观聚焦任务列表' },
-  { key: 'calendar', label: '日历', desc: '轻松查看所有日程' },
-  { key: 'quadrant', label: '四象限', desc: '轻重缓急一目了然' },
-  { key: 'habit', label: '习惯', desc: '轻松打卡养成好习惯' },
-  { key: 'countdown', label: '倒数纪念日', desc: '记录每一个重要的日子' }
-]
-
 export const MODULES = [
   { key: 'moduleHabit', label: '习惯打卡', desc: '养成习惯，让自律成为日常。', link: '/tasks/habits', linkLabel: '打卡设置' },
   { key: 'moduleFocus', label: '番茄专注', desc: '使用番茄计时，保持专注。', link: '/tasks/focus', linkLabel: '专注设置' },
@@ -223,10 +209,6 @@ export const DEFAULT_SETTINGS = {
   listColor: 'SHOW',
   sidebarCount: 'ALL',
   completedStyle: 'STANDARD',
-  // AI
-  aiEnabled: true,
-  aiSuggest: true,
-  aiWeekly: false,
   // 更多设置
   defaultDate: 'TODAY',
   defaultDateMode: 'DATE',
@@ -244,14 +226,6 @@ export const DEFAULT_SETTINGS = {
   shareNotifyComplete: true,
   shareNotifyAdd: true,
   shareNotifyDelete: true,
-  // 便签
-  stickyColor: '#ffe8a3',
-  stickyOpacity: 88,
-  stickyFont: 'NORMAL',
-  stickyTop: true,
-  stickyHideTaskbar: false,
-  stickyRestoreSize: true,
-  stickyGap: 'NORMAL',
   // 已读过的版本提示
   seenIntro: false
 }

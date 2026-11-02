@@ -8,16 +8,17 @@ import {
   PANE_KEYS,
   SHORTCUT_GROUPS,
   SMART_LISTS,
-  WIDGETS,
   mergeSettings,
   resetSettings
 } from './settingsState.js'
 
-test('设置页：分区顺序与数量对齐参考图', () => {
-  assert.equal(PANES.length, 15)
-  assert.deepEqual(PANE_KEYS.slice(0, 4), ['account', 'premium', 'modules', 'smartlist'])
-  assert.equal(PANE_KEYS.at(-1), 'about')
+test('设置页：分区顺序与数量（账号/高级会员/AI/便签/桌面小部件/关于 已删）', () => {
+  assert.equal(PANES.length, 9)
+  assert.deepEqual(PANE_KEYS, ['modules', 'smartlist', 'notify', 'datetime', 'appearance', 'advanced', 'import', 'collab', 'shortcut'])
   assert.equal(new Set(PANE_KEYS).size, PANE_KEYS.length)
+  for (const removed of ['account', 'premium', 'ai', 'sticky', 'widget', 'about']) {
+    assert.equal(PANE_KEYS.includes(removed), false, `${removed} 分区应已删除`)
+  }
 })
 
 test('设置页：合并只保留默认值里存在的 key', () => {
@@ -47,10 +48,15 @@ test('设置页：智能清单每一项都能落到默认值里', () => {
   keys.forEach(key => assert.ok(key in DEFAULT_SETTINGS, `${key} 缺少默认值`))
 })
 
-test('设置页：功能模块与小部件的 key 都有开关默认值', () => {
+test('设置页：功能模块的 key 都有开关默认值', () => {
   MODULES.forEach(item => assert.equal(typeof DEFAULT_SETTINGS[item.key], 'boolean'))
-  assert.equal(WIDGETS.length, 5)
   assert.equal(MODULES.length, 4)
+})
+
+test('设置页：AI 与便签的默认值已随分区一起删除', () => {
+  for (const key of ['aiEnabled', 'aiSuggest', 'aiWeekly', 'stickyColor', 'stickyOpacity', 'stickyFont', 'stickyTop', 'stickyHideTaskbar', 'stickyRestoreSize', 'stickyGap']) {
+    assert.equal(key in DEFAULT_SETTINGS, false, `${key} 不应再存在`)
+  }
 })
 
 test('设置页：颜色主题 12 套且 key 唯一', () => {
