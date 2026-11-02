@@ -32,26 +32,20 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Bell, Clock, Filter, FolderInput, Keyboard, Layers, LayoutGrid, Paintbrush, Users } from 'lucide-vue-next'
+import { Bell, Clock, Filter, Layers, Paintbrush, Users } from 'lucide-vue-next'
 import { PANES, PANE_KEYS } from '../components/settings/settingsState.js'
 import { useSettings } from '../components/settings/useSettings.js'
-import SettingsDataPanes from '../components/settings/SettingsDataPanes.vue'
 import SettingsListPanes from '../components/settings/SettingsListPanes.vue'
 import SettingsLookPanes from '../components/settings/SettingsLookPanes.vue'
-import SettingsModulePanes from '../components/settings/SettingsModulePanes.vue'
-import SettingsShortcutPanes from '../components/settings/SettingsShortcutPanes.vue'
 import SettingsTimePanes from '../components/settings/SettingsTimePanes.vue'
 
 const ICONS = {
-  modules: LayoutGrid,
   smartlist: Filter,
   notify: Bell,
   datetime: Clock,
   appearance: Paintbrush,
   advanced: Layers,
-  import: FolderInput,
-  collab: Users,
-  shortcut: Keyboard
+  collab: Users
 }
 
 const route = useRoute()
@@ -64,12 +58,9 @@ const active = ref(PANE_KEYS.includes(String(route.query.pane)) ? String(route.q
 
 const activeLabel = computed(() => PANES.find(pane => pane.key === active.value)?.label || '设置')
 const paneComponent = computed(() => {
-  if (active.value === 'modules') return SettingsModulePanes
-  if (['smartlist', 'advanced', 'collab'].includes(active.value)) return SettingsListPanes
-  if (['notify', 'datetime'].includes(active.value)) return SettingsTimePanes
   if (active.value === 'appearance') return SettingsLookPanes
-  if (active.value === 'shortcut') return SettingsShortcutPanes
-  return SettingsDataPanes
+  if (['notify', 'datetime'].includes(active.value)) return SettingsTimePanes
+  return SettingsListPanes
 })
 
 function selectPane(key) {

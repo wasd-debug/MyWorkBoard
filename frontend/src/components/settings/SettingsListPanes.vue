@@ -3,9 +3,10 @@
     <template v-if="pane === 'smartlist'">
       <SettingsGroup v-for="group in SMART_LISTS" :key="group.group">
         <SettingRow v-for="item in group.items" :key="item.key" :label="item.label" :icon="ICONS[item.icon]">
-          <SettingSelect :model-value="settings[item.key]" :options="SHOW_OPTIONS" :label="item.label" @update:model-value="set(item.key, $event)" />
+          <SettingSelect :model-value="modeOf(item)" :options="optionsOf(item)" :label="item.label" @update:model-value="changeMode(item, $event)" />
         </SettingRow>
       </SettingsGroup>
+      <p class="set-sync-hint">与任务页侧栏右键菜单里的显示选项是同一份设置，两边改动保持一致。</p>
     </template>
 
     <template v-else-if="pane === 'advanced'">
@@ -96,10 +97,26 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { message } from '../../services/message.js'
 import { Check, ChevronDown, HelpCircle, Inbox, Archive, Calendar, Sunrise, CalendarDays, User, FileText, Tag, Funnel, CheckCircle2, XCircle, Trash2 } from 'lucide-vue-next'
-import { SHOW_OPTIONS, SMART_LISTS } from './settingsState.js'
+import { SMART_LISTS } from './settingsState.js'
+import {
+  applyServerPrefs,
+  fetchServerPrefs,
+  pushSystemChanges,
+  readLocalPrefs,
+  readLocalSections,
+  sectionMode,
+  sectionOptions,
+  setSectionMode,
+  setSystemMode,
+  systemMode,
+  systemOptions,
+  writeLocalPrefs,
+  writeLocalSections
+} from './sidebarObjectSync.js'
+import { useTasksStore } from '../../stores/tasks.js'
 import { useSettings } from './useSettings.js'
 import SettingRow from './SettingRow.vue'
 import SettingSelect from './SettingSelect.vue'
@@ -109,6 +126,62 @@ import SettingsGroup from './SettingsGroup.vue'
 defineProps({ pane: { type: String, required: true } })
 
 const { settings, set, reset } = useSettings()
+
+// —— 智能清单：直接读写任务页侧栏那份状态，不另存一套 ——
+const store = useTasksStore()
+const prefs = reactive(readLocalPrefs(''))
+const sections = reactive(readLocalSections(''))
+let scope = ''
+let pushTimer = null
+const pendingChanges = {}
+
+function bindScope(nextScope) {
+  if (!nextScope || nextScope === scope) return
+  scope = nextScope
+  Object.assign(prefs, readLocalPrefs(scope))
+  Object.assign(sections, readLocalSections(scope))
+  if (store.online) void refreshFromServer()
+}
+async function refreshFromServer() {
+  const server = await fetchServerPrefs()
+  if (!server || !scope) return
+  applyServerPrefs(prefs, server)
+  writeLocalPrefs(scope, prefs)
+}
+function modeOf(item) {
+  return item.section ? sectionMode(sections, item.key) : systemMode(prefs, item.key)
+}
+function optionsOf(item) {
+  return item.section ? sectionOptions(item.key) : systemOptions(item.key)
+}
+function changeMode(item, mode) {
+  if (item.section) {
+    setSectionMode(sections, item.key, mode)
+    writeLocalSections(scope, sections)
+    return
+  }
+  setSystemMode(prefs, item.key, mode)
+  writeLocalPrefs(scope, prefs)
+  pendingChanges[item.key] = mode
+  clearTimeout(pushTimer)
+  pushTimer = setTimeout(flushChanges, 350)
+}
+async function flushChanges() {
+  if (!scope || !store.online) return
+  const changes = { ...pendingChanges }
+  if (!Object.keys(changes).length) return
+  for (const key of Object.keys(pendingChanges)) delete pendingChanges[key]
+  try {
+    const saved = await pushSystemChanges(changes)
+    applyServerPrefs(prefs, saved)
+    writeLocalPrefs(scope, prefs)
+  } catch {
+    // 写服务端失败就保留本地，下次改动时一并重试
+    Object.assign(pendingChanges, changes)
+  }
+}
+watch(() => store.accountScope, bindScope)
+onMounted(() => bindScope(store.accountScope))
 
 const ICONS = {
   inbox: Inbox,
@@ -206,6 +279,7 @@ function resetDefaults() {
 
 <style scoped>
 .set-pane{display:grid;gap:14px}
+.set-sync-hint{margin:-2px 0 0;color:var(--muted);font-size:.7rem;line-height:1.5}
 .set-section-head{display:flex;align-items:center;gap:6px;margin-bottom:-4px}
 .set-section-head h3{margin:0;font-size:.86rem;font-weight:600;color:var(--ink)}
 .set-help{color:var(--muted)}

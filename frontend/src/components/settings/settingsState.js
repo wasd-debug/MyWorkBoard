@@ -1,15 +1,12 @@
 // 设置页：分区定义 + 默认值 + 本地持久化（纯逻辑部分便于单测）
 
 export const PANES = [
-  { key: 'modules', label: '功能模块' },
   { key: 'smartlist', label: '智能清单' },
   { key: 'notify', label: '提醒与通知' },
   { key: 'datetime', label: '日期与时间' },
   { key: 'appearance', label: '外观' },
   { key: 'advanced', label: '更多设置' },
-  { key: 'import', label: '关联与导入' },
-  { key: 'collab', label: '共享协作' },
-  { key: 'shortcut', label: '快捷键' }
+  { key: 'collab', label: '共享协作' }
 ]
 
 export const PANE_KEYS = PANES.map(pane => pane.key)
@@ -21,25 +18,27 @@ export const SHOW_OPTIONS = [
 ]
 
 export const SMART_LISTS = [
+  // key 必须与任务页 primaryViews / 侧栏分组一致，否则同步不上
   { group: 'main', items: [
-    { key: 'smartAll', label: '所有', icon: 'inbox', value: 'SHOW' },
-    { key: 'smartToday', label: '今天', icon: 'calendar', value: 'SHOW' },
-    { key: 'smartTomorrow', label: '明天', icon: 'sunrise', value: 'AUTO' },
-    { key: 'smartNext7', label: '最近 7 天', icon: 'calendarDays', value: 'SHOW' },
-    { key: 'smartAssigned', label: '指派给我', icon: 'user', value: 'AUTO' },
-    { key: 'smartInbox', label: '收集箱', icon: 'tray', value: 'SHOW' },
-    { key: 'smartSummary', label: '摘要', icon: 'summary', value: 'SHOW' }
+    { key: 'all', label: '所有', icon: 'inbox' },
+    { key: 'today', label: '今天', icon: 'calendar' },
+    { key: 'tomorrow', label: '明天', icon: 'sunrise' },
+    { key: 'next7', label: '最近 7 天', icon: 'calendarDays' },
+    { key: 'assigned', label: '指派给我', icon: 'user' },
+    { key: 'inbox', label: '收集箱', icon: 'tray' },
+    { key: 'summary', label: '摘要', icon: 'summary' }
   ] },
   { group: 'org', items: [
-    { key: 'navTags', label: '标签', icon: 'tag', value: 'SHOW' },
-    { key: 'navFilters', label: '过滤器', icon: 'filter', value: 'SHOW' }
+    { key: 'tags', label: '标签', icon: 'tag', section: true },
+    { key: 'filters', label: '过滤器', icon: 'filter', section: true }
   ] },
   { group: 'status', items: [
-    { key: 'navCompleted', label: '已完成', icon: 'checkCircle', value: 'SHOW' },
-    { key: 'navAbandoned', label: '已放弃', icon: 'xCircle', value: 'AUTO' },
-    { key: 'navTrash', label: '垃圾桶', icon: 'trash', value: 'SHOW' }
+    { key: 'completed', label: '已完成', icon: 'checkCircle' },
+    { key: 'abandoned', label: '已放弃', icon: 'xCircle' },
+    { key: 'trash', label: '垃圾桶', icon: 'trash' }
   ] }
 ]
+
 
 export const COLOR_THEMES = [
   { key: 'DEFAULT', label: '默认', color: '#f5f3ef' },
@@ -91,72 +90,7 @@ export const PHOTO_THEMES = [
   { key: 'RIDGE', label: '静默如谜', color: '#7d8fa0', art: 'linear-gradient(155deg,#cfd9e2 0%,#8f9fb0 55%,#4c5a68 100%)' }
 ]
 
-export const SHORTCUT_GROUPS = [
-  { title: '通用', items: [
-    { label: '同步', keys: ['⌘', 'S'] },
-    { label: '取消', keys: ['Esc'] },
-    { label: '撤销', keys: ['⌘', 'Z'] },
-    { label: '重做', keys: ['⇧', '⌘', 'Z'] },
-    { label: '打印', keys: ['⌘', 'P'], recordable: true }
-  ] },
-  { title: '任务', items: [
-    { label: '添加任务', keys: ['⌘', 'N'], recordable: true },
-    { label: '向下添加任务', keys: ['↩'] },
-    { label: '添加子任务', keys: ['⇧', '↩'] },
-    { label: '展开/折叠所有分组', recordable: true },
-    { label: '展开/折叠所有子任务', recordable: true }
-  ] },
-  { title: '编辑任务', desc: '光标位于任务时这些快捷键才会生效。', items: [
-    { label: '完成任务', keys: ['⇧', '⌘', 'M'], recordable: true },
-    { label: '置顶任务', recordable: true },
-    { label: '删除任务', keys: ['⌘', '⌫'] },
-    { label: '设置日期', keys: ['⌘', 'D'], recordable: true },
-    { label: '清除日期', keys: ['⌘', '0'], recordable: true },
-    { label: '设为今天', keys: ['⌘', '1'], recordable: true },
-    { label: '设为明天', keys: ['⌘', '2'], recordable: true },
-    { label: '设为下周', keys: ['⌘', '3'], recordable: true },
-    { label: '设置为“无优先级”', keys: ['^', '0'], recordable: true },
-    { label: '设置为“低优先级”', keys: ['^', '1'], recordable: true },
-    { label: '设置为“中优先级”', keys: ['^', '2'], recordable: true },
-    { label: '设置为“高优先级”', keys: ['^', '3'], recordable: true }
-  ] },
-  { title: '切换视图', desc: '在清单、日历中可方便的切换视图。', items: [
-    { label: '列表视图', sequences: [['V', 'L']] },
-    { label: '看板视图', sequences: [['V', 'K']] },
-    { label: '时间线视图', sequences: [['V', 'T']] },
-    { label: '日视图', keys: ['D / 1'] },
-    { label: '周视图', keys: ['W / 2'] },
-    { label: '月视图', keys: ['M / 3'] },
-    { label: '回到今天', keys: ['T'] }
-  ] }
-]
-
-export const MODULES = [
-  { key: 'moduleHabit', label: '习惯打卡', desc: '养成习惯，让自律成为日常。', link: '/tasks/habits', linkLabel: '打卡设置' },
-  { key: 'moduleFocus', label: '番茄专注', desc: '使用番茄计时，保持专注。', link: '/tasks/focus', linkLabel: '专注设置' },
-  { key: 'moduleCountdown', label: '倒数纪念日', desc: '记录每一个重要的日子。', link: '/tasks/countdowns', linkLabel: '纪念日设置' },
-  { key: 'moduleAi', label: 'AI', desc: '用 AI 轻松管理任务。', link: '/', linkLabel: 'AI 设置' }
-]
-
 export const DEFAULT_SETTINGS = {
-  // 功能模块
-  moduleHabit: true,
-  moduleFocus: true,
-  moduleCountdown: true,
-  moduleAi: true,
-  // 智能清单
-  smartAll: 'SHOW',
-  smartToday: 'SHOW',
-  smartTomorrow: 'AUTO',
-  smartNext7: 'SHOW',
-  smartAssigned: 'AUTO',
-  smartInbox: 'SHOW',
-  smartSummary: 'SHOW',
-  navTags: 'SHOW',
-  navFilters: 'SHOW',
-  navCompleted: 'SHOW',
-  navAbandoned: 'AUTO',
-  navTrash: 'SHOW',
   // 提醒与通知
   remindMethod: 'IN_APP',
   notifyDetail: 'UNLOCK',
@@ -172,7 +106,6 @@ export const DEFAULT_SETTINGS = {
   showHoliday: true,
   timezonePick: true,
   // 外观
-  appearanceTab: 'THEME',
   interfaceStyle: 'CARD',
   followSystemDark: false,
   colorTheme: 'DEFAULT',
@@ -180,11 +113,6 @@ export const DEFAULT_SETTINGS = {
   cityTheme: 'NONE',
   photoTheme: 'NONE',
   customTheme: 'NONE',
-  shortcutOverrides: {},
-  fontSize: 'NORMAL',
-  listColor: 'SHOW',
-  sidebarCount: 'ALL',
-  completedStyle: 'STANDARD',
   // 更多设置
   defaultDate: 'TODAY',
   defaultDateMode: 'DATE',
