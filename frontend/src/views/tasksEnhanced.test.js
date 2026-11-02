@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const view = await readFile(new URL('./TasksEnhancedView.vue', import.meta.url), 'utf8')
-const settingsView = await readFile(new URL('./TaskSettingsView.vue', import.meta.url), 'utf8')
 const dataPanel = await readFile(new URL('../components/tasks/TaskDataPanel.vue', import.meta.url), 'utf8')
+const dataPane = await readFile(new URL('../components/settings/SettingsDataPanes.vue', import.meta.url), 'utf8')
 const inboxView = await readFile(new URL('./TasksInboxView.vue', import.meta.url), 'utf8')
 const workspaceView = await readFile(new URL('./TaskWorkspaceView.vue', import.meta.url), 'utf8')
 const taskMarkdownPreview = await readFile(new URL('../components/tasks/TaskMarkdownPreview.vue', import.meta.url), 'utf8')
@@ -94,10 +94,11 @@ test('task import remains preview then explicit commit', () => {
   assert.match(client, /\/api\/v1\/tasks\/import\/preview/)
   assert.match(client, /apiCommitTaskImport/)
   assert.match(client, /\/api\/v1\/tasks\/import\/commit/)
-  assert.match(settingsView, /TaskDataPanel/)
+  assert.match(dataPane, /TaskDataPanel/)
   assert.match(dataPanel, /预览阶段不会写入任务/)
   assert.match(dataPanel, /确认导入/)
-  assert.match(router, /path: '\/tasks\/data', redirect: \{ path: '\/tasks\/settings', hash: '#data' \}/)
+  assert.match(router, /path: '\/tasks\/data', redirect: \{ path: '\/tasks\/app-settings', query: \{ pane: 'data' \} \}/)
+  assert.match(router, /path: '\/tasks\/settings', redirect: \{ path: '\/tasks\/app-settings', query: \{ pane: 'data' \} \}/)
 })
 
 test('completed tasks append on both workspace and document scrolling', async () => {
