@@ -3,13 +3,15 @@ import { createTaskSyncEngine } from '../../packages/sync-engine/src/index.js'
 import { apiListDeletedTaskLists, apiListTaskLists, apiListTaskTags, apiListTasks, apiPullTaskSync,
   apiGetHabitStats, apiListCountdowns, apiListHabits, apiPurgeTask, apiPushTaskSync, apiRestoreTask,
   apiRestoreTaskList, apiListTaskListGroups, apiCreateTaskListGroup, apiUpdateTaskListGroup,
-  apiDeleteTaskListGroup, apiAssignTaskListGroup, apiBatchTasks } from '../../packages/api-client/src/index.js'
+  apiDeleteTaskListGroup, apiAssignTaskListGroup, apiBatchTasks,
+  apiListCountdownGroups, apiCreateCountdownGroup, apiUpdateCountdownGroup, apiDeleteCountdownGroup } from '../../packages/api-client/src/index.js'
 import { accountScopeFor, taskDatabaseName } from '../utils/accountScope.js'
 import { createClientId } from '../utils/clientId.js'
 
 const SCOPE = 'tasks'
 const SYNC_IDLE_DELAY_MS = 1200
 const LIST_GROUPS_CACHE_META_KEY = 'task-list-groups-cache'
+const COUNTDOWN_GROUPS_CACHE_META_KEY = 'countdown-groups-cache'
 const transport = {
   push: async (_scope, operations) => {
     const blockedIds = new Set((await engine.conflicts(SCOPE)).map(item => item.operation?.opId || item.id))
@@ -43,7 +45,7 @@ let pendingInitWaitRemote = false
 
 function clearState(store) {
   Object.assign(store, { ready: false, loading: false, syncing: false, listGroups: [], lists: [], deletedLists: [], tags: [], tasks: [], total: 0, undoStack: [],
-    habits: [], habitCheckins: [], countdowns: [], conflicts: [], rejected: [], pending: 0, error: '', syncError: '' })
+    habits: [], habitCheckins: [], countdowns: [], countdownGroups: [], conflicts: [], rejected: [], pending: 0, error: '', syncError: '' })
 }
 
 function localTask(value) {
@@ -128,6 +130,7 @@ export const useTasksStore = defineStore('tasks', {
     ready: false, loading: false, saving: false, syncing: false,
     online: typeof navigator === 'undefined' ? true : navigator.onLine,
     accountScope: '', listGroups: [], lists: [], deletedLists: [], tags: [], tasks: [], habits: [], habitCheckins: [], countdowns: [],
+    countdownGroups: [],
     total: 0, conflicts: [], rejected: [], pending: 0, error: '', syncError: '', undoStack: []
   }),
   getters: {
@@ -211,14 +214,14 @@ export const useTasksStore = defineStore('tasks', {
           scoped.list('habit-checkin', { bookId: SCOPE, includeDeleted: true }),
           scoped.list('countdown', { bookId: SCOPE, includeDeleted: true }),
           scoped.conflicts(SCOPE), scoped.rejected(SCOPE), scoped.pendingOperations(SCOPE),
-          scoped.meta(LIST_GROUPS_CACHE_META_KEY)
+          scoped.meta(LIST_GROUPS_CACHE_META_KEY), scoped.meta(COUNTDOWN_GROUPS_CACHE_META_KEY)
         ])
       } catch (error) {
         if (stale()) return
         throw error
       }
       if (stale()) return
-      const [lists, tags, tasks, habits, habitCheckins, countdowns, conflicts, rejected, pending, cachedListGroups] = payload
+      const [lists, tags, tasks, habits, habitCheckins, countdowns, conflicts, rejected, pending, cachedListGroups, cachedCountdownGroups] = payload
       this.lists = lists.filter(item => !item.deleted).map(item => ({ ...item, publicId: item.id })).sort((a, b) => a.sortOrder - b.sortOrder)
       this.deletedLists = lists.filter(item => item.deleted).map(item => ({ ...item, publicId: item.id }))
       this.tags = tags.map(item => ({ ...item, publicId: item.id })).sort((a, b) => a.sortOrder - b.sortOrder)
@@ -231,6 +234,7 @@ export const useTasksStore = defineStore('tasks', {
       this.conflicts = conflicts
       this.rejected = rejected
       this.listGroups = cachedListGroups || []
+      this.countdownGroups = cachedCountdownGroups || []
       this.pending = pending.length
     },
     async refreshServer() {
@@ -242,12 +246,15 @@ export const useTasksStore = defineStore('tasks', {
         this.error = ''
         try {
           await this.syncNow()
-          const [listGroups, lists, deletedLists, tags, habits, countdowns] = await Promise.all([
-            apiListTaskListGroups(), apiListTaskLists(), apiListDeletedTaskLists(), apiListTaskTags(), apiListHabits(), apiListCountdowns()
+          const [listGroups, lists, deletedLists, tags, habits, countdowns, countdownGroups] = await Promise.all([
+            apiListTaskListGroups(), apiListTaskLists(), apiListDeletedTaskLists(), apiListTaskTags(), apiListHabits(),
+            apiListCountdowns(), apiListCountdownGroups()
           ])
           if (epoch !== sessionEpoch || scoped !== engine) return
           this.listGroups = listGroups || []
+          this.countdownGroups = countdownGroups || []
           await scoped.setMeta(LIST_GROUPS_CACHE_META_KEY, this.listGroups)
+          await scoped.setMeta(COUNTDOWN_GROUPS_CACHE_META_KEY, this.countdownGroups)
           await replaceRemoteCollection(scoped, 'task-list', [...(lists || []), ...(deletedLists || []).map(item => ({ ...item, deleted: true }))])
           await replaceRemoteCollection(scoped, 'task-tag', tags || [])
           await replaceRemoteCollection(scoped, 'habit', habits || [])
@@ -332,6 +339,41 @@ export const useTasksStore = defineStore('tasks', {
     createCountdown(payload) { return this.saveEfficiency('countdown', { ...payload, publicId: createClientId(), revision: 0 }) },
     updateCountdown(item, payload) { return this.saveEfficiency('countdown', { ...item, ...payload }) },
     deleteCountdown(item) { return this.saveEfficiency('countdown', item, 'DELETE') },
+    /** 分组是纯在线配置，不进同步 oplog；本地留一份缓存供离线显示 */
+    async loadCountdownGroups() {
+      if (!this.online) return this.countdownGroups
+      const groups = await apiListCountdownGroups()
+      this.countdownGroups = groups || []
+      if (engine) await engine.setMeta(COUNTDOWN_GROUPS_CACHE_META_KEY, this.countdownGroups)
+      return this.countdownGroups
+    },
+    async createCountdownGroup(payload) {
+      const group = await apiCreateCountdownGroup(payload)
+      this.countdownGroups = [...this.countdownGroups, group].sort((a, b) => a.sortOrder - b.sortOrder)
+      if (engine) await engine.setMeta(COUNTDOWN_GROUPS_CACHE_META_KEY, this.countdownGroups)
+      return group
+    },
+    async updateCountdownGroup(group, patch) {
+      const saved = await apiUpdateCountdownGroup(group.publicId, {
+        name: group.name, icon: group.icon, color: group.color, sortOrder: group.sortOrder, ...patch
+      }, group.revision)
+      this.countdownGroups = this.countdownGroups.map(item => item.publicId === saved.publicId ? saved : item)
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+      if (engine) await engine.setMeta(COUNTDOWN_GROUPS_CACHE_META_KEY, this.countdownGroups)
+      return saved
+    },
+    async deleteCountdownGroup(group) {
+      await apiDeleteCountdownGroup(group.publicId, group.revision)
+      this.countdownGroups = this.countdownGroups.filter(item => item.publicId !== group.publicId)
+      // 服务端把组内卡片挪到第一个分组，本地投影同步跟上
+      const fallback = this.countdownGroups[0]
+      if (fallback) {
+        this.countdowns = this.countdowns.map(item => item.groupId === group.publicId
+          ? { ...item, groupId: fallback.publicId, kind: fallback.builtinKey || 'CUSTOM' }
+          : item)
+      }
+      if (engine) await engine.setMeta(COUNTDOWN_GROUPS_CACHE_META_KEY, this.countdownGroups)
+    },
     async create(payload) {
       this.saving = true
       try {

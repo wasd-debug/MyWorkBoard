@@ -131,16 +131,24 @@
             </div>
 
             <div class="cf-row">
-              <span class="cf-label">类型</span>
-              <button type="button" class="cf-control" :class="{ 'is-open': openPanel === 'type' }" :aria-expanded="openPanel === 'type'" @click="togglePanel('type', $event)">
-                <span>{{ typeLabel }}</span>
+              <span class="cf-label">分组</span>
+              <button type="button" class="cf-control" :class="{ 'is-open': openPanel === 'group' }" :aria-expanded="openPanel === 'group'" @click="togglePanel('group', $event)">
+                <span>{{ groupLabel }}</span>
                 <ChevronDown :size="15" />
               </button>
-              <div v-if="openPanel === 'type'" class="cf-pop" :class="{ 'is-up': popUp }" @click.stop>
+              <div v-if="openPanel === 'group'" class="cf-pop" :class="{ 'is-up': popUp }" @click.stop>
                 <div class="cf-list">
-                  <button v-for="type in COUNTDOWN_TYPES" :key="type.key" type="button" :class="{ on: form.kind === type.key }" @click="pickType(type)">
-                    {{ type.label }}<Check v-if="form.kind === type.key" :size="17" />
+                  <button
+                    v-for="group in groups"
+                    :key="group.publicId"
+                    type="button"
+                    :class="{ on: form.groupId === group.publicId }"
+                    @click="pickGroup(group)"
+                  >
+                    <span class="cf-group-icon">{{ group.icon || '📁' }}</span>{{ group.name }}
+                    <Check v-if="form.groupId === group.publicId" :size="17" />
                   </button>
+                  <p v-if="!groups.length" class="cf-group-empty">分组加载中…</p>
                 </div>
               </div>
             </div>
@@ -241,9 +249,10 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { Bookmark, Check, ChevronDown, Pencil } from 'lucide-vue-next'
 import CountdownStylePanel from './CountdownStylePanel.vue'
 import CountdownIconPicker from './CountdownIconPicker.vue'
+import { useExclusivePanels } from '../../utils/exclusivePanels.js'
 import {
   COUNTDOWN_TYPES, DISPLAY_RULES, REMIND_PRESETS, defaultCountdown, displayText, preciseTimeText, repeatText,
-  reminderText, todayKey, typeOf
+  reminderText, todayKey
 } from './countdownUtils.js'
 import {
   dayLabel, decodeLunar, encodeLunar, lunarDayOptions, lunarMonthOptions, lunarToSolar, monthLabel, solarToLunar, yearLabel
@@ -252,7 +261,8 @@ import {
 const props = defineProps({
   open: Boolean,
   item: { type: Object, default: null },
-  initialType: { type: String, default: 'ANNIVERSARY' },
+  groups: { type: Array, default: () => [] },
+  initialGroup: { type: Object, default: null },
   saving: Boolean,
   error: { type: String, default: '' }
 })
@@ -279,6 +289,11 @@ const customRemind = ref('')
 const customRepeat = ref('')
 const repeatKey = ref('NONE')
 const timeDraft = reactive({ hour: 9, minute: 0 })
+
+// 弹窗内的下拉与页面菜单/卡片菜单互斥：任意一个浮层打开，其余自动收起
+useExclusivePanels('countdown-form', [
+  ['panel', () => Boolean(openPanel.value), value => { if (!value) openPanel.value = '' }]
+])
 
 const solarDays = computed(() => new Date(solar.year, solar.month, 0).getDate())
 watch(solarDays, days => { if (solar.day > days) solar.day = days })
@@ -322,7 +337,11 @@ const dateText = computed(() => {
   }
   return form.targetDate || '选择日期'
 })
-const typeLabel = computed(() => (COUNTDOWN_TYPES.find(item => item.key === form.kind) || COUNTDOWN_TYPES[0]).label)
+const groupLabel = computed(() => {
+  const found = props.groups.find(group => group.publicId === form.groupId)
+  if (found) return found.name
+  return props.groups.find(group => group.builtinKey === form.kind)?.name || '未分组'
+})
 const canSave = computed(() => Boolean(form.title && form.targetDate))
 
 watch([() => form.calendarType, () => form.lunarDate, () => form.targetDate], () => {
@@ -342,12 +361,13 @@ watch(() => props.open, async open => {
   step.value = 1
   editing.value = Boolean(props.item)
   const source = props.item
-  const base = defaultCountdown(source ? typeOf(source).key : props.initialType)
+  const base = defaultCountdown(source ? undefined : (props.initialGroup || props.groups[0]))
   const clean = source ? Object.fromEntries(Object.entries(source).filter(([key]) => !['id', 'publicId', 'revision', 'deleted', 'deletedAt', 'updatedAt', 'extra'].includes(key))) : {}
   Object.assign(form, base, { targetDate: source ? source.targetDate : '' }, source ? {
     ...clean,
     ...source,
     kind: source.kind || base.kind,
+    groupId: source.groupId || base.groupId,
     remind: source.remind || '',
     repeatRule: source.repeatRule || (source.repeatYearly ? 'YEARLY' : base.repeatRule),
     iconType: source.iconType || base.iconType,
@@ -503,13 +523,14 @@ function confirmRepeat() {
   openPanel.value = ''
 }
 
-function pickType(type) {
-  form.kind = type.key
+function pickGroup(group) {
+  form.groupId = group.publicId
+  form.kind = group.builtinKey || 'CUSTOM'
   if (!form.iconValue || COUNTDOWN_TYPES.some(item => item.icon === form.iconValue)) {
-    form.iconValue = type.icon
-    form.iconColor = type.color
+    form.iconValue = group.icon || form.iconValue
+    form.iconColor = group.color || form.iconColor
   }
-  if (type.key === 'BIRTHDAY' && form.repeatRule === 'NONE') form.repeatRule = 'YEARLY'
+  if (group.builtinKey === 'BIRTHDAY' && form.repeatRule === 'NONE') form.repeatRule = 'YEARLY'
   openPanel.value = ''
 }
 function pickDisplay(key) {
@@ -567,7 +588,11 @@ function submit() {
 
 function onGlobalPointerDown(event) {
   if (!openPanel.value) return
-  if (event.target.closest('.cf-row') || event.target.closest('.cf-pop')) return
+  const target = event.target
+  if (!target?.closest) return
+  // 只豁免浮层自身和「当前打开的那个」触发按钮：点其它行、标签、空白都要收起
+  if (target.closest('.cf-pop')) return
+  if (target.closest('[aria-expanded="true"]')) return
   openPanel.value = ''
 }
 watch(openPanel, open => {
@@ -622,7 +647,10 @@ onBeforeUnmount(() => {
 .cf-box.is-line{border:1px solid var(--line,#e4e6ec);background:transparent}
 .cf-tip{margin:8px 2px 0;color:#e05a4f;font-size:12.5px}
 .cf-list{display:grid;overflow-y:auto}
-.cf-list button{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 10px;border:0;border-radius:8px;background:transparent;color:var(--ink,#1d1d21);font:inherit;font-size:14.5px;text-align:left;cursor:pointer}
+.cf-list button{display:flex;align-items:center;justify-content:flex-start;gap:8px;padding:11px 10px;border:0;border-radius:8px;background:transparent;color:var(--ink,#1d1d21);font:inherit;font-size:14.5px;text-align:left;cursor:pointer}
+.cf-list button svg{margin-left:auto}
+.cf-group-icon{display:grid;width:20px;place-items:center;font-size:15px;line-height:1}
+.cf-group-empty{margin:0;padding:10px;color:var(--muted,#8b92a3);font-size:13px}
 .cf-list button:hover{background:color-mix(in srgb,var(--ink,#1d1d21) 6%,transparent)}
 .cf-list button.on{color:#3d8fce;font-weight:600}
 .cf-list button em{color:var(--muted,#8b92a3);font-style:normal;font-size:13px}

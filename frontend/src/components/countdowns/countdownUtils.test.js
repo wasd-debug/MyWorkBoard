@@ -176,11 +176,29 @@ test('排序：置顶优先，其余按远近', () => {
   assert.deepEqual(sortItems(items, '2026-11-02').map(item => item.publicId), ['b', 'c', 'a'])
 })
 
-test('页签：生日归入纪念日，节日单列', () => {
-  assert.equal(matchesTab({ kind: 'BIRTHDAY' }, 'ANNIVERSARY'), true)
-  assert.equal(matchesTab({ kind: 'BIRTHDAY' }, 'COUNTDOWN'), false)
-  assert.equal(matchesTab({ kind: 'FESTIVAL' }, 'FESTIVAL'), true)
-  assert.equal(matchesTab({}, 'ALL'), true)
+test('页签：按分组 id 过滤，老数据没有 groupId 时按内置键回退', () => {
+  const groups = [
+    { publicId: 'g-ann', builtinKey: 'ANNIVERSARY' },
+    { publicId: 'g-birth', builtinKey: 'BIRTHDAY' }
+  ]
+  assert.equal(matchesTab({ groupId: 'g-birth' }, 'g-birth', groups), true)
+  assert.equal(matchesTab({ groupId: 'g-birth' }, 'g-ann', groups), false)
+  assert.equal(matchesTab({ kind: 'ANNIVERSARY' }, 'g-ann', groups), true)
+  assert.equal(matchesTab({ kind: 'ANNIVERSARY' }, 'g-birth', groups), false)
+  assert.equal(matchesTab({}, 'ALL', groups), true)
+})
+
+test('新建默认值：传分组对象时沿用分组的图标与颜色', () => {
+  const birthday = defaultCountdown({ publicId: 'g-birth', name: '生日', icon: '🎂', color: '#ef7f96', builtinKey: 'BIRTHDAY' })
+  assert.equal(birthday.groupId, 'g-birth')
+  assert.equal(birthday.kind, 'BIRTHDAY')
+  assert.equal(birthday.iconValue, '🎂')
+  assert.equal(birthday.repeatRule, 'YEARLY')
+
+  const custom = defaultCountdown({ publicId: 'g-home', name: '家人', icon: '🏠', color: '#2fb39a' })
+  assert.equal(custom.kind, 'CUSTOM')
+  assert.equal(custom.iconValue, '🏠')
+  assert.equal(custom.repeatRule, 'NONE')
 })
 
 test('类型：缺 kind 时回落到倒数日', () => {

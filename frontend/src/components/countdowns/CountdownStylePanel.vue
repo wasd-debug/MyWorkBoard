@@ -97,6 +97,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Check, ChevronDown, Crown } from 'lucide-vue-next'
 import { COVER_PRESETS, PRESET_COLORS, UNIT_MENU, cardTheme, countParts, footerText, unitLabel } from './countdownUtils.js'
+import { useExclusivePanels } from '../../utils/exclusivePanels.js'
 
 const props = defineProps({
   modelValue: { type: Object, required: true },
@@ -108,6 +109,10 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue'])
 
 const unitOpen = ref(false)
+
+useExclusivePanels('countdown-style', [
+  ['unit', () => unitOpen.value, value => { if (!value) unitOpen.value = false }]
+])
 const unitButton = ref(null)
 const popStyle = ref({})
 const fileInput = ref(null)

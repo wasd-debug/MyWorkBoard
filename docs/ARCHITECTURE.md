@@ -23,6 +23,8 @@
 
 2026-11-02 倒数日秒级显示：V57 增加 `precise_time`（HH:mm，空串=当天零点）。秒级显示统一按「目标日 + 精确时刻」计算时刻差，未设时刻则回落到当天零点；`precise_seconds` 开启后除「秒」刻度外的所有刻度都补到秒（`天/周+天/月+天/年+月+天` 末尾附 `HH:MM:SS`，`分`→`分+秒`，`时`→`时+分+秒`），并把每秒刷新的条件从「时间刻度」放宽到「时间刻度或精确到秒」。同日把样式弹窗的「显示时间样式」下拉与编辑弹窗的「时刻」下拉改为 `Teleport` + `position: fixed` 浮层（弹窗体是滚动容器，内联绝对定位会被裁切），卡片增加右键菜单复用「更多」菜单。
 
+2026-11-02 倒数日分组接口化：V58 新建 `countdown_group`（名称/图标/颜色/排序/`builtin_key`/`revision`），并给 `countdown` 加 `group_id` 回填历史卡片。原来写死的「类型」升级成可增删改的分组：默认四组（纪念日/倒数日/生日/节日）在账号首次读取时补建，页签、「+」新建菜单、编辑弹窗的「分组」行都从 `GET /api/v1/tasks/countdown-groups` 渲染，支持 `POST/PUT/DELETE`（`If-Match` 带 revision）；删除分组时组内卡片迁到剩余第一个分组并同步 `kind`，只剩一个分组时拒绝删除。分组是纯在线配置，不进同步 oplog，本地用 IndexedDB meta 缓存一份供离线显示；`kind` 退化成分组内置键的冗余列（自定义分组记 `CUSTOM`），`matchesTab` 优先按 `groupId` 过滤、老数据按 `kind` 回退。同日统一浮层行为：页面菜单、卡片菜单、编辑弹窗内下拉、样式面板下拉全部接入 `panelBus`（卡片按 `countdown-card:<id>` 各自一个命名空间），任意浮层打开时其余自动收起，点击宿主容器以外任意位置一律关闭；弹窗内下拉的豁免范围从「整行」收紧到「浮层自身 + 当前打开的触发按钮」，点标签或空白处也会关。
+
 > 2026-09-30 前端接入补充：已登录在线用户在聊天首页外通过应用外壳中的悬浮 AI 面板复用同一 Agent 会话与 SSE；轻量面板负责查询和状态展示，需要补充/确认的写操作跳转完整会话处理。首页与悬浮面板输入框均采用有上限的自动增长，避免长文本遮挡工具栏或页面内容。
 
 | 阶段                   | 状态                                | 结论                                                                                                             |
@@ -423,11 +425,16 @@ pomodoro        (id, user_id, task_id, started_at, minutes, completed, tag)
 habit           (id, user_id, name, icon, frequency_json, goal, archived)
 habit_checkin   (id, user_id, habit_id, date, value)
 countdown       (id, user_id, name, icon_type, icon_value, icon_color, target_date,
-                 kind, cover, cover_image, unit, precise_seconds, precise_time, remind,
+                 kind, group_id, cover, cover_image, unit, precise_seconds, precise_time, remind,
                  repeat_rule, display_rule, archived, calendar_type, lunar_date,
                  builtin_key, sort_order)
                 -- 倒数日/纪念日/生日/节日；lunar_date 存农历月日（M-D，闰月 M-L-D），
                 -- precise_time 为 HH:mm，空串表示按当天零点；builtin_key 标记系统内置项，删除后不重建
+                -- group_id 指向 countdown_group；kind 是分组内置键的冗余列（自定义分组记 CUSTOM）
+countdown_group (id, public_id, user_id, name, icon, color, sort_order, builtin_key,
+                 revision, created_at, updated_at, deleted_at)
+                -- 倒数日的分组，即原来的「类型」升级成的可增删改实体；默认四组（纪念日/倒数日/
+                -- 生日/节日），builtin_key 对应 kind；删除分组时组内卡片迁到剩余的第一个分组
 reminder        (id, user_id, target_type, target_id, remind_at, channel, status)
 ```
 

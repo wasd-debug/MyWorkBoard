@@ -5,6 +5,8 @@ import com.salarytracker.platform.ConflictException;
 import com.salarytracker.platform.NotFoundException;
 import com.salarytracker.task.TaskEfficiencyModels.Countdown;
 import com.salarytracker.task.TaskEfficiencyModels.CountdownCommand;
+import com.salarytracker.task.TaskEfficiencyModels.CountdownGroup;
+import com.salarytracker.task.TaskEfficiencyModels.CountdownGroupCommand;
 import com.salarytracker.task.TaskEfficiencyModels.FocusDaily;
 import com.salarytracker.task.TaskEfficiencyModels.FocusFinishCommand;
 import com.salarytracker.task.TaskEfficiencyModels.FocusSession;
@@ -478,9 +480,139 @@ public class TaskEfficiencyService {
     @Transactional
     public List<Countdown> countdowns() {
         long userId = currentUser.id();
+        ensureDefaultGroups(userId);
         ensureBuiltinCountdowns(userId);
         return jdbc.query("SELECT * FROM countdown WHERE user_id=? AND deleted_at IS NULL ORDER BY is_pinned DESC,sort_order,target_date,id",
                 (row, index) -> countdown(row), userId);
+    }
+
+    /** 新建账号的默认分组：与原来的四种类型一一对应 */
+    private static final List<CountdownGroupSeed> DEFAULT_GROUPS = List.of(
+            new CountdownGroupSeed("纪念日", "🎉", "#e2685f", "ANNIVERSARY"),
+            new CountdownGroupSeed("倒数日", "⏳", "#4d78db", "COUNTDOWN"),
+            new CountdownGroupSeed("生日", "🎂", "#ef7f96", "BIRTHDAY"),
+            new CountdownGroupSeed("节日", "🎊", "#f2994a", "FESTIVAL"));
+
+    private record CountdownGroupSeed(String name, String icon, String color, String builtinKey) { }
+
+    @Transactional
+    public List<CountdownGroup> countdownGroups() {
+        long userId = currentUser.id();
+        ensureDefaultGroups(userId);
+        return jdbc.query("SELECT * FROM countdown_group WHERE user_id=? AND deleted_at IS NULL ORDER BY sort_order,id",
+                (row, index) -> countdownGroup(row), userId);
+    }
+
+    /** 分组是纯在线配置（低频），首次读取时按用户补建；已有分组则不动 */
+    void ensureDefaultGroups(long userId) {
+        Long existing = jdbc.queryForObject("SELECT COUNT(*) FROM countdown_group WHERE user_id=?", Long.class, userId);
+        if (existing != null && existing > 0) return;
+        int order = 0;
+        for (CountdownGroupSeed seed : DEFAULT_GROUPS) {
+            jdbc.update("INSERT INTO countdown_group(public_id,user_id,name,icon,color,sort_order,builtin_key) VALUES(?,?,?,?,?,?,?)",
+                    UUID.randomUUID().toString(), userId, seed.name(), seed.icon(), seed.color(), order++, seed.builtinKey());
+        }
+    }
+
+    @Transactional
+    public CountdownGroup createCountdownGroup(CountdownGroupCommand command) {
+        long userId = currentUser.id();
+        ensureDefaultGroups(userId);
+        Integer max = jdbc.queryForObject(
+                "SELECT COALESCE(MAX(sort_order),-1) FROM countdown_group WHERE user_id=? AND deleted_at IS NULL",
+                Integer.class, userId);
+        String publicId = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO countdown_group(public_id,user_id,name,icon,color,sort_order) VALUES(?,?,?,?,?,?)",
+                publicId, userId, groupName(command), groupIcon(command), groupColor(command),
+                command.sortOrder() == null ? (max == null ? 0 : max + 1) : command.sortOrder());
+        return groupById(userId, publicId);
+    }
+
+    @Transactional
+    public CountdownGroup updateCountdownGroup(String publicId, CountdownGroupCommand command, String ifMatch) {
+        long userId = currentUser.id();
+        CountdownGroup before = groupById(userId, publicId);
+        if (before.revision() != revision(ifMatch)) throw new ConflictException("分组版本已变化", before.revision());
+        jdbc.update("UPDATE countdown_group SET name=?,icon=?,color=?,sort_order=?,revision=revision+1 " +
+                        "WHERE public_id=? AND user_id=? AND deleted_at IS NULL",
+                groupName(command), groupIcon(command), groupColor(command),
+                command.sortOrder() == null ? before.sortOrder() : command.sortOrder(), publicId, userId);
+        return groupById(userId, publicId);
+    }
+
+    /** 删除分组：组内卡片挪到剩下的第一个分组，卡片本身不删；至少保留一个分组 */
+    @Transactional
+    public void deleteCountdownGroup(String publicId, String ifMatch) {
+        long userId = currentUser.id();
+        CountdownGroup before = groupById(userId, publicId);
+        if (before.revision() != revision(ifMatch)) throw new ConflictException("分组版本已变化", before.revision());
+        List<String> others = jdbc.queryForList("SELECT public_id FROM countdown_group " +
+                        "WHERE user_id=? AND deleted_at IS NULL AND public_id<>? ORDER BY sort_order,id",
+                String.class, userId, publicId);
+        if (others.isEmpty()) throw new IllegalArgumentException("至少保留一个分组");
+        String fallback = others.get(0);
+        List<String> affected = jdbc.queryForList(
+                "SELECT public_id FROM countdown WHERE user_id=? AND group_id=? AND deleted_at IS NULL",
+                String.class, userId, publicId);
+        // 迁移时连 kind 一起改：kind 是分组内置键的冗余列，不改会和归属分组对不上
+        jdbc.update("UPDATE countdown c JOIN countdown_group g ON g.user_id=c.user_id AND g.public_id=? " +
+                        "SET c.group_id=?,c.kind=CASE WHEN g.builtin_key='' THEN 'CUSTOM' ELSE g.builtin_key END," +
+                        "c.revision=c.revision+1 " +
+                        "WHERE c.user_id=? AND c.group_id=? AND c.deleted_at IS NULL",
+                fallback, fallback, userId, publicId);
+        jdbc.update("UPDATE countdown_group SET deleted_at=CURRENT_TIMESTAMP,revision=revision+1 " +
+                "WHERE public_id=? AND user_id=?", publicId, userId);
+        // 卡片虽然只是换了分组，客户端靠 revision 增量同步，必须补变更日志；
+        // oplog 唯一键是 (user_id, op_id)，每张卡片要各用一条 opId
+        for (String changed : affected) {
+            Countdown saved = countdownById(userId, changed);
+            changeLog.append(userId, UUID.randomUUID().toString(), "countdown", changed, "UPSERT", syncEntity(saved, false));
+        }
+    }
+
+    private CountdownGroup groupById(long userId, String publicId) {
+        List<CountdownGroup> rows = jdbc.query(
+                "SELECT * FROM countdown_group WHERE user_id=? AND public_id=? AND deleted_at IS NULL",
+                (row, index) -> countdownGroup(row), userId, publicId);
+        if (rows.isEmpty()) throw new NotFoundException("分组不存在");
+        return rows.get(0);
+    }
+
+    /** 解析卡片归属：传了就校验归属，没传就落到该用户第一个分组 */
+    private CountdownGroup resolveGroup(long userId, String requested, String fallback) {
+        ensureDefaultGroups(userId);
+        String publicId = requested == null ? fallback : requested.trim();
+        if (publicId != null && !publicId.isEmpty()) {
+            List<CountdownGroup> rows = jdbc.query(
+                    "SELECT * FROM countdown_group WHERE user_id=? AND public_id=? AND deleted_at IS NULL",
+                    (row, index) -> countdownGroup(row), userId, publicId);
+            if (!rows.isEmpty()) return rows.get(0);
+            if (requested != null && !requested.isEmpty()) throw new IllegalArgumentException("分组不存在");
+        }
+        List<CountdownGroup> rows = jdbc.query(
+                "SELECT * FROM countdown_group WHERE user_id=? AND deleted_at IS NULL ORDER BY sort_order,id LIMIT 1",
+                (row, index) -> countdownGroup(row), userId);
+        if (rows.isEmpty()) throw new IllegalStateException("账号没有可用分组");
+        return rows.get(0);
+    }
+
+    private String groupName(CountdownGroupCommand command) {
+        return command == null ? "" : required(command.name(), 40, "分组名称");
+    }
+
+    private String groupIcon(CountdownGroupCommand command) {
+        String icon = command == null ? null : command.icon();
+        return optional(icon == null || icon.isBlank() ? "📁" : icon, 16);
+    }
+
+    private String groupColor(CountdownGroupCommand command) {
+        String color = command == null ? null : command.color();
+        return color == null || color.isBlank() ? "#4d78db" : color(color);
+    }
+
+    private CountdownGroup countdownGroup(ResultSet row) throws SQLException {
+        return new CountdownGroup(row.getString("public_id"), row.getString("name"), row.getString("icon"),
+                row.getString("color"), row.getInt("sort_order"), row.getString("builtin_key"), row.getLong("revision"));
     }
 
     /**
@@ -492,8 +624,18 @@ public class TaskEfficiencyService {
      */
     void ensureBuiltinCountdowns(long userId) {
         LocalDate today = LocalDate.now(zone(userId));
+        List<CountdownGroup> groups = jdbc.query(
+                "SELECT * FROM countdown_group WHERE user_id=? AND deleted_at IS NULL ORDER BY sort_order,id",
+                (row, index) -> countdownGroup(row), userId);
+        if (groups.isEmpty()) return;
+        Map<String, String> byBuiltinKey = new HashMap<>();
+        for (CountdownGroup group : groups) {
+            if (!group.builtinKey().isBlank()) byBuiltinKey.putIfAbsent(group.builtinKey(), group.publicId());
+        }
+        String anyGroup = groups.get(0).publicId();
         for (BuiltinCountdowns.BuiltinCountdown builtin : BuiltinCountdowns.all(today)) {
             Date target = Date.valueOf(builtin.targetDate());
+            String groupId = byBuiltinKey.getOrDefault(builtin.kind(), anyGroup);
             Long existing = jdbc.queryForObject("SELECT COUNT(*) FROM countdown WHERE user_id=? AND builtin_key=?",
                     Long.class, userId, builtin.key());
             if (existing != null && existing > 0) {
@@ -504,11 +646,11 @@ public class TaskEfficiencyService {
                         builtin.title(), target, builtin.icon());
                 continue;
             }
-            jdbc.update("INSERT INTO countdown(public_id,user_id,title,target_date,kind,repeat_yearly,is_pinned,color,note," +
+            jdbc.update("INSERT INTO countdown(public_id,user_id,title,target_date,kind,group_id,repeat_yearly,is_pinned,color,note," +
                             "icon_type,icon_value,icon_color,cover,unit,precise_seconds,precise_time,remind,repeat_rule," +
-                            "display_rule,archived,calendar_type,builtin_key,sort_order) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            "display_rule,archived,calendar_type,builtin_key,sort_order) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     UUID.randomUUID().toString(), userId, builtin.title(), target,
-                    builtin.kind(), false, false, builtin.color(), "", "EMOJI", builtin.icon(), builtin.color(),
+                    builtin.kind(), groupId, false, false, builtin.color(), "", "EMOJI", builtin.icon(), builtin.color(),
                     "IMAGE", "DAY", false, "", "", "NONE", "SMART", false, "SOLAR", builtin.key(), builtin.sortOrder());
         }
     }
@@ -521,12 +663,14 @@ public class TaskEfficiencyService {
     @Transactional
     Countdown createCountdownForSync(CountdownCommand command, String publicId, String opId) {
         long userId = currentUser.id();
-        CountdownValues values = countdownValues(command, null);
-        jdbc.update("INSERT INTO countdown(public_id,user_id,title,target_date,kind,repeat_yearly,is_pinned,color,note," +
+        CountdownGroup group = resolveGroup(userId, command.groupId(), null);
+        CountdownValues values = countdownValues(command, null, group);
+        jdbc.update("INSERT INTO countdown(public_id,user_id,title,target_date,kind,group_id,repeat_yearly,is_pinned,color,note," +
                         "icon_type,icon_value,icon_color,cover,cover_image,unit,precise_seconds,precise_time,remind," +
                         "repeat_rule,display_rule,archived,calendar_type,lunar_date,sort_order) " +
-                        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                publicId, userId, values.title(), Date.valueOf(values.targetDate()), values.kind(), values.repeatYearly(),
+                        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                publicId, userId, values.title(), Date.valueOf(values.targetDate()), values.kind(), values.groupId(),
+                values.repeatYearly(),
                 values.pinned(), values.color(), values.note(), values.iconType(), values.iconValue(), values.iconColor(),
                 values.cover(), values.coverImage(), values.unit(), values.preciseSeconds(), values.preciseTime(),
                 values.remind(), values.repeatRule(), values.displayRule(), values.archived(), values.calendarType(),
@@ -546,12 +690,13 @@ public class TaskEfficiencyService {
         long userId = currentUser.id();
         Countdown before = countdownById(userId, publicId);
         if (before.revision() != expected) throw new ConflictException("倒数日版本已变化", before.revision());
-        CountdownValues values = countdownValues(command, before);
-        int changed = jdbc.update("UPDATE countdown SET title=?,target_date=?,kind=?,repeat_yearly=?,is_pinned=?,color=?,note=?," +
+        CountdownValues values = countdownValues(command, before, resolveGroup(userId, command.groupId(), before.groupId()));
+        int changed = jdbc.update("UPDATE countdown SET title=?,target_date=?,kind=?,group_id=?,repeat_yearly=?,is_pinned=?,color=?,note=?," +
                         "icon_type=?,icon_value=?,icon_color=?,cover=?,cover_image=?,unit=?,precise_seconds=?,precise_time=?," +
                         "remind=?,repeat_rule=?,display_rule=?,archived=?,calendar_type=?,lunar_date=?,sort_order=?," +
                         "revision=revision+1 WHERE public_id=? AND user_id=? AND revision=? AND deleted_at IS NULL",
-                values.title(), Date.valueOf(values.targetDate()), values.kind(), values.repeatYearly(), values.pinned(),
+                values.title(), Date.valueOf(values.targetDate()), values.kind(), values.groupId(), values.repeatYearly(),
+                values.pinned(),
                 values.color(), values.note(), values.iconType(), values.iconValue(), values.iconColor(), values.cover(),
                 values.coverImage(), values.unit(), values.preciseSeconds(), values.preciseTime(), values.remind(),
                 values.repeatRule(), values.displayRule(), values.archived(), values.calendarType(), values.lunarDate(),
@@ -762,6 +907,7 @@ public class TaskEfficiencyService {
         // 注意：这里必须用可变 Map，Map.of 遇到 null（note/lunarDate/coverImage）会直接抛 NPE
         Map<String, Object> extra = new LinkedHashMap<>();
         extra.put("title", item.title()); extra.put("targetDate", item.targetDate()); extra.put("kind", item.kind());
+        extra.put("groupId", item.groupId());
         extra.put("repeatYearly", item.repeatYearly()); extra.put("pinned", item.pinned());
         extra.put("color", item.color()); extra.put("note", item.note());
         extra.put("iconType", item.iconType()); extra.put("iconValue", item.iconValue());
@@ -793,7 +939,8 @@ public class TaskEfficiencyService {
 
     private Countdown countdown(ResultSet row) throws SQLException {
         return new Countdown(row.getString("public_id"), row.getString("title"), row.getDate("target_date").toLocalDate().toString(),
-                row.getString("kind"), row.getBoolean("repeat_yearly"), row.getBoolean("is_pinned"), row.getString("color"),
+                row.getString("kind"), row.getString("group_id"), row.getBoolean("repeat_yearly"),
+                row.getBoolean("is_pinned"), row.getString("color"),
                 row.getString("note"), row.getLong("revision"), row.getString("icon_type"), row.getString("icon_value"),
                 row.getString("icon_color"), row.getString("cover"), row.getString("cover_image"), row.getString("unit"),
                 row.getBoolean("precise_seconds"), row.getString("precise_time"), row.getString("remind"),
@@ -859,12 +1006,12 @@ public class TaskEfficiencyService {
         return result.isEmpty() ? null : String.join(",", result);
     }
 
-    private CountdownValues countdownValues(CountdownCommand command, Countdown before) {
+    private CountdownValues countdownValues(CountdownCommand command, Countdown before, CountdownGroup group) {
         if (command == null) throw new IllegalArgumentException("倒数日内容不能为空");
         String title = command.title() == null && before != null ? before.title() : text(command.title(), "标题", 160);
         String date = command.targetDate() == null && before != null ? before.targetDate() : parseDate(command.targetDate(), null).toString();
-        String kind = enumValue(command.kind(), before == null ? "COUNTDOWN" : before.kind(),
-                List.of("ANNIVERSARY", "COUNTDOWN", "BIRTHDAY", "FESTIVAL"), "kind");
+        // 类型不再由前端传：它就是分组的内置键，自定义分组一律记 CUSTOM
+        String kind = group.builtinKey() == null || group.builtinKey().isBlank() ? "CUSTOM" : group.builtinKey();
         String iconType = enumValue(command.iconType(), before == null ? "EMOJI" : before.iconType(),
                 List.of("ICON", "EMOJI", "TEXT"), "iconType");
         String iconValue = command.iconValue() == null
@@ -892,7 +1039,7 @@ public class TaskEfficiencyService {
         String lunarDate = command.lunarDate() == null
                 ? before == null ? null : before.lunarDate() : optional(command.lunarDate(), 16);
         int sortOrder = command.sortOrder() == null ? before == null ? 0 : before.sortOrder() : command.sortOrder();
-        return new CountdownValues(title, LocalDate.parse(date), kind,
+        return new CountdownValues(title, LocalDate.parse(date), kind, group.publicId(),
                 value(command.repeatYearly(), before != null && before.repeatYearly()),
                 value(command.pinned(), before != null && before.pinned()),
                 color(command.color() == null && before != null ? before.color() : command.color()),
@@ -1063,7 +1210,8 @@ public class TaskEfficiencyService {
                                int sortOrder, String groupKey, Integer goalDays, String checkStyle, String targetType,
                                int dailyTimes, boolean autoPopupLog, String amountUnit,
                                int intervalDays, String checkMode, int perAmount, boolean showInToday) { }
-    private record CountdownValues(String title, LocalDate targetDate, String kind, boolean repeatYearly,
+    private record CountdownValues(String title, LocalDate targetDate, String kind, String groupId,
+                                   boolean repeatYearly,
                                    boolean pinned, String color, String note, String iconType, String iconValue,
                                    String iconColor, String cover, String coverImage, String unit,
                                    boolean preciseSeconds, String preciseTime, String remind, String repeatRule,

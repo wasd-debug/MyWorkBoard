@@ -64,6 +64,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Archive, ArchiveRestore, MoreHorizontal, NotebookPen, Palette, Pencil, Star, Trash2 } from 'lucide-vue-next'
+import { useExclusivePanels } from '../../utils/exclusivePanels.js'
 import { cardTheme, countParts, footerText } from './countdownUtils.js'
 
 const props = defineProps({
@@ -77,6 +78,11 @@ const emit = defineEmits(['edit', 'style', 'note', 'archive', 'restore', 'remove
 const menuOpen = ref(false)
 const moreButton = ref(null)
 const menuStyle = ref({})
+
+// 每张卡一个命名空间：同一张卡的开合不互相打断，但能关掉别的卡片菜单与页面菜单
+useExclusivePanels(`countdown-card:${props.item.publicId}`, [
+  ['menu', () => menuOpen.value, value => { if (!value) menuOpen.value = false }]
+])
 
 const theme = computed(() => cardTheme(props.item))
 const tone = computed(() => theme.value.tone)

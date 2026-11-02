@@ -319,6 +319,10 @@ export const apiListCountdowns = async () => data(await api.get('/api/v1/tasks/c
 export const apiCreateCountdown = async payload => data(await api.post('/api/v1/tasks/countdowns', payload))
 export const apiUpdateCountdown = async (publicId, payload, currentRevision) => data(await api.put(`/api/v1/tasks/countdowns/${publicId}`, payload, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiDeleteCountdown = async (publicId, currentRevision) => data(await api.delete(`/api/v1/tasks/countdowns/${publicId}`, { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiListCountdownGroups = async () => data(await api.get('/api/v1/tasks/countdown-groups'))
+export const apiCreateCountdownGroup = async payload => data(await api.post('/api/v1/tasks/countdown-groups', payload))
+export const apiUpdateCountdownGroup = async (publicId, payload, currentRevision) => data(await api.put(`/api/v1/tasks/countdown-groups/${publicId}`, payload, { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiDeleteCountdownGroup = async (publicId, currentRevision) => data(await api.delete(`/api/v1/tasks/countdown-groups/${publicId}`, { headers: { 'If-Match': revision(currentRevision) } }))
 
 export async function apiImportLedgerPreview(bookId, file, template = 'AUTO', onUploadProgress) {
   return data(await ledger.previewLedgerImport({ bookId, file, template }, {

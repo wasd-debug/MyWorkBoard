@@ -258,7 +258,7 @@ public class TaskSyncService {
         var extra = operation.payload() == null ? null : operation.payload().extra();
         if (extra == null) throw new IllegalArgumentException("payload.extra 必填");
         CountdownCommand command = new CountdownCommand(string(extra, "title"), string(extra, "targetDate"),
-                string(extra, "kind"), bool(extra, "repeatYearly"), bool(extra, "pinned"), string(extra, "color"),
+                string(extra, "kind"), string(extra, "groupId"), bool(extra, "repeatYearly"), bool(extra, "pinned"), string(extra, "color"),
                 string(extra, "note"), string(extra, "iconType"), string(extra, "iconValue"),
                 string(extra, "iconColor"), string(extra, "cover"), string(extra, "coverImage"),
                 string(extra, "unit"), bool(extra, "preciseSeconds"), string(extra, "preciseTime"),

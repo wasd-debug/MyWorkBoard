@@ -24,19 +24,16 @@ export function typeOf(item) {
   return COUNTDOWN_TYPES.find(entry => entry.key === key) || COUNTDOWN_TYPES[1]
 }
 
-/** 顶部页签：生日归入纪念日，节日单列（与参考图一致） */
-export const TABS = [
-  { key: 'ALL', label: '所有' },
-  { key: 'ANNIVERSARY', label: '纪念日' },
-  { key: 'COUNTDOWN', label: '倒数日' },
-  { key: 'FESTIVAL', label: '节日' }
-]
-
-export function matchesTab(item, tab) {
+/**
+ * 顶部页签就是分组（分组即类型），tab 传分组 publicId。
+ * 老数据可能只有 kind 没有 groupId，此时按分组的内置键回退匹配。
+ */
+export function matchesTab(item, tab, groups = []) {
   if (!tab || tab === 'ALL') return true
-  const key = typeOf(item).key
-  if (tab === 'ANNIVERSARY') return key === 'ANNIVERSARY' || key === 'BIRTHDAY'
-  return key === tab
+  if (item?.groupId === tab) return true
+  if (item?.groupId) return false
+  const group = groups.find(entry => entry.publicId === tab)
+  return Boolean(group?.builtinKey) && item?.kind === group.builtinKey
 }
 
 /** 卡片数字的显示单位，点击卡片按此顺序循环 */
@@ -428,12 +425,23 @@ export function cardTheme(item) {
 }
 
 /** 新建时的默认值 */
-export function defaultCountdown(type = 'ANNIVERSARY') {
-  const meta = COUNTDOWN_TYPES.find(entry => entry.key === type) || COUNTDOWN_TYPES[0]
+/**
+ * 新建默认值。传分组对象（来自接口）时按分组的图标/颜色/内置类型初始化；
+ * 兼容传类型 key 的旧用法（单测与旧调用点）。
+ */
+export function defaultCountdown(group = 'ANNIVERSARY') {
+  const meta = typeof group === 'string'
+    ? COUNTDOWN_TYPES.find(entry => entry.key === group) || COUNTDOWN_TYPES[0]
+    : {
+        key: group?.builtinKey || 'CUSTOM',
+        icon: group?.icon || '📁',
+        color: group?.color || '#4d78db'
+      }
   return {
     title: '',
     targetDate: todayKey(),
     kind: meta.key,
+    groupId: typeof group === 'string' ? '' : group?.publicId || '',
     repeatYearly: false,
     pinned: false,
     color: meta.color,
@@ -447,7 +455,7 @@ export function defaultCountdown(type = 'ANNIVERSARY') {
     preciseSeconds: false,
     preciseTime: '',
     remind: '',
-    repeatRule: type === 'BIRTHDAY' ? 'YEARLY' : 'NONE',
+    repeatRule: meta.key === 'BIRTHDAY' ? 'YEARLY' : 'NONE',
     displayRule: 'SMART',
     archived: false,
     calendarType: 'SOLAR',

@@ -3,6 +3,8 @@ package com.salarytracker.task;
 import com.salarytracker.platform.ApiResponse;
 import com.salarytracker.task.TaskEfficiencyModels.Countdown;
 import com.salarytracker.task.TaskEfficiencyModels.CountdownCommand;
+import com.salarytracker.task.TaskEfficiencyModels.CountdownGroup;
+import com.salarytracker.task.TaskEfficiencyModels.CountdownGroupCommand;
 import com.salarytracker.task.TaskEfficiencyModels.FocusFinishCommand;
 import com.salarytracker.task.TaskEfficiencyModels.FocusSession;
 import com.salarytracker.task.TaskEfficiencyModels.FocusSessionUpdateCommand;
@@ -135,6 +137,31 @@ public class TaskEfficiencyController {
     @GetMapping("/countdowns") @PreAuthorize("hasAuthority('task:read')")
     @Operation(operationId = "listCountdowns")
     public ApiResponse<List<Countdown>> countdowns() { return ApiResponse.ok(service.countdowns()); }
+
+    @GetMapping("/countdown-groups") @PreAuthorize("hasAuthority('task:read')")
+    @Operation(operationId = "listCountdownGroups")
+    public ApiResponse<List<CountdownGroup>> countdownGroups() { return ApiResponse.ok(service.countdownGroups()); }
+
+    @PostMapping(value = "/countdown-groups", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')") @Operation(operationId = "createCountdownGroup")
+    public ApiResponse<CountdownGroup> createCountdownGroup(@RequestBody CountdownGroupCommand body) {
+        return ApiResponse.ok(service.createCountdownGroup(body));
+    }
+
+    @PutMapping(value = "/countdown-groups/{publicId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('task:write')") @Operation(operationId = "updateCountdownGroup")
+    public ApiResponse<CountdownGroup> updateCountdownGroup(@PathVariable String publicId,
+                                                            @RequestBody CountdownGroupCommand body,
+                                                            @RequestHeader("If-Match") String ifMatch) {
+        return ApiResponse.ok(service.updateCountdownGroup(publicId, body, ifMatch));
+    }
+
+    @DeleteMapping("/countdown-groups/{publicId}") @PreAuthorize("hasAuthority('task:write')")
+    @Operation(operationId = "deleteCountdownGroup")
+    public ApiResponse<Void> deleteCountdownGroup(@PathVariable String publicId, @RequestHeader("If-Match") String ifMatch) {
+        service.deleteCountdownGroup(publicId, ifMatch);
+        return ApiResponse.ok(null);
+    }
 
     @PostMapping(value = "/countdowns", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('task:write')") @Operation(operationId = "createCountdown")
