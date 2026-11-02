@@ -259,7 +259,11 @@ public class TaskSyncService {
         if (extra == null) throw new IllegalArgumentException("payload.extra 必填");
         CountdownCommand command = new CountdownCommand(string(extra, "title"), string(extra, "targetDate"),
                 string(extra, "kind"), bool(extra, "repeatYearly"), bool(extra, "pinned"), string(extra, "color"),
-                string(extra, "note"));
+                string(extra, "note"), string(extra, "iconType"), string(extra, "iconValue"),
+                string(extra, "iconColor"), string(extra, "cover"), string(extra, "coverImage"),
+                string(extra, "unit"), bool(extra, "preciseSeconds"), string(extra, "remind"),
+                string(extra, "repeatRule"), string(extra, "displayRule"), bool(extra, "archived"),
+                string(extra, "calendarType"), string(extra, "lunarDate"), integer(extra, "sortOrder"));
         Countdown saved = current == null
                 ? efficiency.createCountdownForSync(command, entityId, operation.opId())
                 : efficiency.updateCountdownForSync(entityId, command, base, operation.opId());

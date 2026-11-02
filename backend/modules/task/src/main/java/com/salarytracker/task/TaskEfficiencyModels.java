@@ -89,13 +89,21 @@ public final class TaskEfficiencyModels {
     public record HabitCalendarDay(String date, int completed, int total) {
     }
 
+    /** kind: ANNIVERSARY 纪念日 / COUNTDOWN 倒数日 / BIRTHDAY 生日 / FESTIVAL 节日 */
     @Schema(name = "Countdown")
     public record Countdown(String publicId, String title, String targetDate, String kind, boolean repeatYearly,
-                            boolean pinned, String color, String note, long revision) {
+                            boolean pinned, String color, String note, long revision, String iconType,
+                            String iconValue, String iconColor, String cover, String coverImage, String unit,
+                            boolean preciseSeconds, String remind, String repeatRule, String displayRule,
+                            boolean archived, String calendarType, String lunarDate, String builtinKey,
+                            int sortOrder) {
     }
 
     @Schema(name = "CountdownCommand")
     public record CountdownCommand(String title, String targetDate, String kind, Boolean repeatYearly,
-                                   Boolean pinned, String color, String note) {
+                                   Boolean pinned, String color, String note, String iconType, String iconValue,
+                                   String iconColor, String cover, String coverImage, String unit,
+                                   Boolean preciseSeconds, String remind, String repeatRule, String displayRule,
+                                   Boolean archived, String calendarType, String lunarDate, Integer sortOrder) {
     }
 }

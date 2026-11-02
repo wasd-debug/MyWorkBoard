@@ -1,78 +1,66 @@
 <template>
-  <main class="cd-page">
-    <header class="cd-top">
+  <main class="cd">
+    <header class="cd-head">
       <div class="cd-title-wrap">
-        <button type="button" class="cd-title" :aria-expanded="titleMenu" @click="toggle('title')">
-          倒数纪念日
-          <ChevronDown :size="14" />
+        <button type="button" class="cd-title" :aria-expanded="panels.title" @click="toggle('title')">
+          {{ archivedMode ? '已归档倒数纪念日' : '倒数纪念日' }}<ChevronDown :size="15" />
         </button>
-        <div v-if="titleMenu" class="cd-pop is-title">
-          <button type="button" :class="{ active: !archivedView }" @click="showActive">所有</button>
-          <button type="button" :class="{ active: archivedView }" @click="showArchived">已归档</button>
+        <div v-if="panels.title" class="cd-menu is-title" @click.stop>
+          <button type="button" :class="{ on: !archivedMode }" @click="setArchived(false)">所有</button>
+          <button type="button" :class="{ on: archivedMode }" @click="setArchived(true)">已归档</button>
         </div>
       </div>
 
       <div class="cd-actions">
-        <button type="button" class="cd-icon-btn" :aria-expanded="plusMenu" aria-label="新建" title="新建" @click="toggle('plus')">
-          <Plus :size="17" />
+        <button ref="plusButton" type="button" class="cd-icon is-add" aria-label="新建" title="新建" :aria-expanded="panels.plus" @click="toggle('plus')">
+          <Plus :size="19" />
         </button>
-        <div v-if="plusMenu" class="cd-pop is-plus">
-          <button v-for="type in COUNTDOWN_TYPES" :key="type.key" type="button" @click="startCreate(type.key)">
-            <span class="cd-pop-icon">{{ type.icon }}</span>{{ type.label }}
+        <div v-if="panels.plus" class="cd-menu is-plus" role="menu" @click.stop>
+          <button v-for="type in COUNTDOWN_TYPES" :key="type.key" type="button" role="menuitem" @click="startCreate(type.key)">
+            <span class="cd-menu-icon">{{ type.icon }}</span>{{ type.label }}
           </button>
         </div>
 
-        <button type="button" class="cd-icon-btn" :aria-expanded="moreMenu" aria-label="更多" title="更多" @click="toggle('more')">
-          <MoreHorizontal :size="17" />
+        <button type="button" class="cd-icon" aria-label="更多" title="更多" :aria-expanded="panels.more" @click="toggle('more')">
+          <MoreHorizontal :size="18" />
         </button>
-        <div v-if="moreMenu" class="cd-pop is-more">
-          <button type="button" @click="toggleBatch">{{ batchMode ? '退出批量管理' : '批量管理' }}</button>
-          <button type="button" @click="exportCsv">导出</button>
-          <button type="button" @click="openCountdownSettings">纪念日设置</button>
-          <button type="button" @click="showArchived">归档列表</button>
-          <button type="button" class="is-danger" @click="clearAll">清空所有</button>
+        <div v-if="panels.more" class="cd-menu is-more" role="menu" @click.stop>
+          <button type="button" role="menuitem" @click="setArchived(true)"><Archive :size="15" />已归档</button>
+          <button type="button" role="menuitem" @click="setArchived(false)"><LayoutGrid :size="15" />所有倒数日</button>
+          <button type="button" role="menuitem" class="is-danger" @click="clearAll"><Trash2 :size="15" />清空所有</button>
         </div>
       </div>
     </header>
 
     <nav class="cd-tabs" aria-label="倒数纪念日分类">
-      <button v-for="tab in tabs" :key="tab.key" type="button" :class="{ active: activeTab === tab.key }" @click="activeTab = tab.key">
-        {{ tab.label }}<b v-if="countOf(tab.key)">{{ countOf(tab.key) }}</b>
+      <button v-for="tab in TABS" :key="tab.key" type="button" :class="{ on: activeTab === tab.key }" @click="activeTab = tab.key">
+        {{ tab.label }}
       </button>
     </nav>
 
     <p v-if="error" class="cd-error" role="alert">{{ error }}</p>
 
-    <section v-if="visible.length" class="cd-grid">
+    <div ref="gridEl" class="cd-grid" :style="{ '--cols': columns, '--cw': `${cardWidth}px` }">
       <CountdownCard
         v-for="item in visible"
         :key="item.publicId"
         :item="item"
         :today="today"
-        :archived="archivedView"
-        :selectable="batchMode"
-        :selected="picked.includes(item.publicId)"
-        @open="startEdit(item)"
+        :now="now"
+        @cycle="cycleUnitOf(item)"
+        @pin="togglePin(item)"
+        @edit="startEdit(item)"
         @style="openStyle(item)"
         @note="openNote(item)"
-        @archive="moveToArchive(item)"
-        @restore="restore(item)"
+        @archive="setArchivedState(item, true)"
+        @restore="setArchivedState(item, false)"
         @remove="remove(item)"
-        @pin="togglePin(item)"
-        @cycle="cycleUnitOf(item)"
-        @select="togglePick(item)"
       />
-    </section>
-    <p v-else class="cd-empty">
-      {{ archivedView ? '还没有归档的纪念日' : '还没有纪念日，点右上角 + 新建一个吧' }}
-    </p>
-
-    <div v-if="batchMode" class="cd-batch">
-      <span>已选 {{ picked.length }} 项</span>
-      <button type="button" :disabled="!picked.length" @click="batchArchive">归档</button>
-      <button type="button" class="is-danger" :disabled="!picked.length" @click="batchRemove">删除</button>
-      <button type="button" @click="toggleBatch">取消</button>
     </div>
+
+    <p v-if="!visible.length && store.ready" class="cd-empty">
+      {{ archivedMode ? '还没有归档的倒数纪念日' : '还没有倒数纪念日，点右上角「+」新建一个吧' }}
+    </p>
 
     <CountdownFormDialog
       :open="formOpen"
@@ -89,86 +77,75 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { ChevronDown, MoreHorizontal, Plus } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { Archive, ChevronDown, LayoutGrid, MoreHorizontal, Plus, Trash2 } from 'lucide-vue-next'
+import { useExclusivePanels } from '../utils/exclusivePanels.js'
 import { message } from '../services/message.js'
 import { useTasksStore } from '../stores/tasks.js'
 import CountdownCard from '../components/countdowns/CountdownCard.vue'
 import CountdownFormDialog from '../components/countdowns/CountdownFormDialog.vue'
 import CountdownNoteDialog from '../components/countdowns/CountdownNoteDialog.vue'
 import CountdownStyleDialog from '../components/countdowns/CountdownStyleDialog.vue'
-import { COUNTDOWN_TYPES, cycleUnit, matchesTab, sortItems, targetText, todayKey, typeOf } from '../components/countdowns/countdownUtils.js'
-import { dropExtras, mergeExtras, readAll, saveExtras } from '../components/countdowns/countdownExtras.js'
+import {
+  COUNTDOWN_TYPES, TABS, cycleUnit, isTimeUnit, matchesTab, sortItems, todayKey
+} from '../components/countdowns/countdownUtils.js'
 
 const store = useTasksStore()
-const router = useRouter()
 
-const tabs = [{ key: 'ALL', label: '所有' }, ...COUNTDOWN_TYPES.map(type => ({ key: type.key, label: type.label }))]
+const CARD_MIN = 240
+const GAP = 20
 const activeTab = ref('ALL')
-const archivedView = ref(false)
-const titleMenu = ref(false)
-const plusMenu = ref(false)
-const moreMenu = ref(false)
-const batchMode = ref(false)
-const picked = ref([])
+const archivedMode = ref(false)
+const panels = reactive({ title: false, plus: false, more: false })
 const today = ref(todayKey())
-const extras = ref(readAll())
-const saving = ref(false)
-const formError = ref('')
+const now = ref(Date.now())
+const columns = ref(2)
+const cardWidth = ref(CARD_MIN)
+const gridEl = ref(null)
+const plusButton = ref(null)
+
 const formOpen = ref(false)
 const editing = ref(null)
-const createType = ref('COUNTDOWN')
+const createType = ref('ANNIVERSARY')
+const formError = ref('')
+const saving = ref(false)
 const styleOpen = ref(false)
 const styling = ref(null)
 const noteOpen = ref(false)
 const noting = ref(null)
 
 const error = computed(() => store.error)
-const merged = computed(() => mergeExtras(store.countdowns, extras.value))
 const visible = computed(() => sortItems(
-  merged.value
-    .filter(item => Boolean(item.archived) === archivedView.value)
+  (store.countdowns || [])
+    .filter(item => Boolean(item.archived) === archivedMode.value)
     .filter(item => matchesTab(item, activeTab.value)),
   today.value
 ))
-function countOf(key) {
-  return merged.value.filter(item => Boolean(item.archived) === archivedView.value && matchesTab(item, key)).length
+const hasTimeUnit = computed(() => visible.value.some(item => isTimeUnit(item.unit)))
+
+useExclusivePanels('countdowns-page', [
+  ['title', () => panels.title, value => { panels.title = value }],
+  ['plus', () => panels.plus, value => { panels.plus = value }],
+  ['more', () => panels.more, value => { panels.more = value }]
+])
+
+function toggle(name) {
+  const next = !panels[name]
+  panels.title = false
+  panels.plus = false
+  panels.more = false
+  panels[name] = next
 }
 
-function toggle(which) {
-  titleMenu.value = which === 'title' ? !titleMenu.value : false
-  plusMenu.value = which === 'plus' ? !plusMenu.value : false
-  moreMenu.value = which === 'more' ? !moreMenu.value : false
-}
-function closeMenus() {
-  titleMenu.value = false
-  plusMenu.value = false
-  moreMenu.value = false
-}
-function onGlobalPointerDown(event) {
-  if (!titleMenu.value && !plusMenu.value && !moreMenu.value) return
-  if (!event.target.closest('.cd-top')) closeMenus()
+function closePanels() {
+  panels.title = false
+  panels.plus = false
+  panels.more = false
 }
 
-function refreshExtras() {
-  extras.value = readAll()
-}
-function patchExtras(publicId, patch) {
-  saveExtras(publicId, patch)
-  refreshExtras()
-}
-
-function showActive() {
-  archivedView.value = false
-  closeMenus()
-  picked.value = []
-}
-function showArchived() {
-  archivedView.value = true
-  activeTab.value = 'ALL'
-  closeMenus()
-  picked.value = []
+function setArchived(value) {
+  archivedMode.value = value
+  closePanels()
 }
 
 function startCreate(type) {
@@ -176,7 +153,7 @@ function startCreate(type) {
   editing.value = null
   formError.value = ''
   formOpen.value = true
-  closeMenus()
+  closePanels()
 }
 function startEdit(item) {
   editing.value = item
@@ -184,48 +161,37 @@ function startEdit(item) {
   formOpen.value = true
 }
 
+/** 连续写同一实体必须串行，否则旧 revision 会触发冲突 */
+let writeChain = Promise.resolve()
+function enqueue(task) {
+  writeChain = writeChain.then(task).catch(failure => {
+    message.error(failure?.message || '保存失败')
+  })
+  return writeChain
+}
+
+function fresh(publicId) {
+  return (store.countdowns || []).find(item => item.publicId === publicId) || null
+}
+
+async function patch(publicId, changes) {
+  const target = fresh(publicId)
+  if (!target) return
+  await store.updateCountdown(target, changes)
+  await store.syncNow()
+}
+
 async function submitForm(payload) {
   saving.value = true
   formError.value = ''
-  const type = typeOf(payload).key
-  const body = {
-    title: payload.title,
-    targetDate: payload.targetDate,
-    kind: COUNTDOWN_TYPES.find(entry => entry.key === type)?.kind || 'COUNTDOWN',
-    repeatYearly: payload.repeat === 'YEARLY' || type === 'BIRTHDAY',
-    pinned: editing.value?.pinned || false,
-    color: payload.color,
-    note: editing.value?.note || ''
-  }
   try {
     if (editing.value) {
-      await store.updateCountdown(editing.value, body)
-      patchExtras(editing.value.publicId, {
-        type,
-        icon: payload.icon,
-        cover: payload.cover,
-        color: payload.color,
-        remind: payload.remind,
-        repeat: payload.repeat,
-        countingMode: payload.countingMode,
-        display: payload.display
-      })
+      const target = editing.value
+      await store.updateCountdown(target, payload)
+      await store.syncNow()
     } else {
-      const created = await store.createCountdown(body)
-      // saveEfficiency 返回客户端 id，hydrate 后 publicId === id
-      const publicId = typeof created === 'string' ? created : created?.publicId
-      if (publicId) {
-        patchExtras(publicId, {
-          type,
-          icon: payload.icon,
-          cover: payload.cover,
-          color: payload.color,
-          remind: payload.remind,
-          repeat: payload.repeat,
-          countingMode: payload.countingMode,
-          display: payload.display
-        })
-      }
+      await store.createCountdown(payload)
+      await store.syncNow()
     }
     formOpen.value = false
   } catch (failure) {
@@ -239,165 +205,212 @@ function openStyle(item) {
   styling.value = item
   styleOpen.value = true
 }
-function applyStyle(patch) {
-  if (styling.value) patchExtras(styling.value.publicId, patch)
+function applyStyle(patchData) {
+  const target = styling.value
   styleOpen.value = false
+  if (!target) return
+  enqueue(() => patch(target.publicId, patchData))
 }
 function openNote(item) {
   noting.value = item
   noteOpen.value = true
 }
-async function applyNote(text) {
-  if (!noting.value) return
-  try {
-    await store.updateCountdown(noting.value, { note: text })
-    message.success('备注已保存')
-  } catch {
-    message.error('备注保存失败')
-  }
+function applyNote(text) {
+  const target = noting.value
   noteOpen.value = false
+  if (!target) return
+  enqueue(() => patch(target.publicId, { note: text }))
 }
 
-async function togglePin(item) {
-  try {
-    await store.updateCountdown(item, { pinned: !item.pinned })
-  } catch {
-    message.error('置顶失败')
-  }
-}
 function cycleUnitOf(item) {
-  patchExtras(item.publicId, { unit: cycleUnit(item.unit || 'DAY') })
+  const next = cycleUnit(item.unit || 'DAY')
+  enqueue(() => patch(item.publicId, { unit: next }))
 }
-function moveToArchive(item) {
-  patchExtras(item.publicId, { archived: true })
-  message.success(`「${item.title}」已归档`)
+function togglePin(item) {
+  enqueue(() => patch(item.publicId, { pinned: !item.pinned }))
 }
-function restore(item) {
-  patchExtras(item.publicId, { archived: false })
-  message.success(`「${item.title}」已恢复`)
+function setArchivedState(item, value) {
+  enqueue(() => patch(item.publicId, { archived: value }))
 }
 async function remove(item) {
-  if (!window.confirm(`删除纪念日「${item.title}」？`)) return
+  if (!window.confirm(`删除「${item.title}」？`)) return
   try {
     await store.deleteCountdown(item)
-    dropExtras(item.publicId)
-    refreshExtras()
-  } catch {
-    message.error('删除失败')
+    await store.syncNow()
+    message.success(`已删除「${item.title}」`)
+  } catch (failure) {
+    message.error(failure?.message || '删除失败')
   }
 }
-
-function toggleBatch() {
-  batchMode.value = !batchMode.value
-  picked.value = []
-  closeMenus()
-}
-function togglePick(item) {
-  const index = picked.value.indexOf(item.publicId)
-  if (index >= 0) picked.value.splice(index, 1)
-  else picked.value.push(item.publicId)
-}
-async function batchArchive() {
-  picked.value.forEach(publicId => saveExtras(publicId, { archived: true }))
-  refreshExtras()
-  message.success(`已归档 ${picked.value.length} 项`)
-  picked.value = []
-  batchMode.value = false
-}
-async function batchRemove() {
-  if (!window.confirm(`删除选中的 ${picked.value.length} 个纪念日？`)) return
-  const targets = merged.value.filter(item => picked.value.includes(item.publicId))
-  for (const item of targets) {
+async function clearAll() {
+  closePanels()
+  const list = [...(store.countdowns || [])]
+  if (!list.length) {
+    message.info('还没有任何倒数日')
+    return
+  }
+  if (!window.confirm(`清空全部 ${list.length} 个倒数日？删除后无法恢复。`)) return
+  for (const item of list) {
     try {
       await store.deleteCountdown(item)
-      dropExtras(item.publicId)
+      await store.syncNow()
     } catch {
       // 单条失败不阻断其余删除
     }
   }
-  refreshExtras()
-  picked.value = []
-  batchMode.value = false
 }
 
-function exportCsv() {
-  const rows = [['标题', '类型', '目标日期', '备注']]
-  merged.value.forEach(item => rows.push([item.title, typeOf(item).label, targetText(item, today.value), item.note || '']))
-  const text = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n')
-  const blob = new Blob([`\uFEFF${text}`], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `倒数纪念日-${today.value}.csv`
-  link.click()
-  URL.revokeObjectURL(url)
-  closeMenus()
-  message.success('已导出 CSV')
-}
-function openCountdownSettings() {
-  closeMenus()
-  router.push({ path: '/tasks/app-settings', query: { pane: 'modules' } })
-}
-async function clearAll() {
-  closeMenus()
-  if (!merged.value.length) {
-    message.info('还没有任何纪念日')
-    return
-  }
-  if (!window.confirm('清空所有纪念日？删除后无法恢复。')) return
-  for (const item of [...merged.value]) {
-    try {
-      await store.deleteCountdown(item)
-      dropExtras(item.publicId)
-    } catch {
-      // 忽略单条失败
-    }
-  }
-  refreshExtras()
+/** 列数由容器宽度决定，最小 2 列；宽度增长时先放大卡片再增列 */
+let observer = null
+function measure() {
+  const element = gridEl.value
+  if (!element) return
+  const width = element.clientWidth
+  if (!width) return
+  let cols = Math.max(2, Math.floor((width + GAP) / (CARD_MIN + GAP)))
+  cols = Math.min(cols, 7)
+  const widthPerCard = Math.floor((width - GAP * (cols - 1)) / cols)
+  if (cols !== columns.value) columns.value = cols
+  if (widthPerCard !== cardWidth.value) cardWidth.value = widthPerCard
 }
 
 let timer = null
 onMounted(async () => {
-  document.addEventListener('pointerdown', onGlobalPointerDown, true)
-  timer = window.setInterval(() => { today.value = todayKey() }, 60000)
+  document.addEventListener('pointerdown', onDocumentPointerDown, true)
+  observer = new ResizeObserver(measure)
+  measure()
+  if (gridEl.value) observer.observe(gridEl.value)
+  timer = window.setInterval(() => {
+    const key = todayKey()
+    if (key !== today.value) today.value = key
+    if (hasTimeUnit.value) now.value = Date.now()
+  }, 1000)
   await store.init({ waitForRemote: false })
-  refreshExtras()
+  measure()
 })
+
+function onDocumentPointerDown(event) {
+  if (!panels.title && !panels.plus && !panels.more) return
+  if (event.target.closest('.cd-head')) return
+  closePanels()
+}
+
 onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', onGlobalPointerDown, true)
+  document.removeEventListener('pointerdown', onDocumentPointerDown, true)
   if (timer) window.clearInterval(timer)
+  if (observer) observer.disconnect()
 })
 </script>
 
 <style scoped>
-.cd-page{max-width:1080px;margin:0 auto;padding:26px 26px 96px}
-.cd-top{position:relative;display:flex;align-items:center;gap:8px}
-.cd-title-wrap{position:relative}
-.cd-actions{position:relative;display:flex;align-items:center;gap:2px;margin-left:4px}
-.cd-title{display:inline-flex;align-items:center;gap:5px;padding:2px 0;border:0;background:transparent;color:var(--ink);font-size:1.22rem;font-weight:700;cursor:pointer}
-.cd-title:hover{color:var(--accent)}
-.cd-actions{position:relative;display:flex;align-items:center;gap:2px}
-.cd-icon-btn{display:grid;width:30px;height:30px;place-items:center;border:0;border-radius:7px;background:transparent;color:var(--muted);cursor:pointer}
-.cd-icon-btn:hover{background:var(--panel2);color:var(--ink)}
-.cd-pop{position:absolute;top:calc(100% + 6px);z-index:20;display:grid;min-width:132px;padding:4px;border:1px solid var(--line);border-radius:9px;background:var(--card);box-shadow:0 14px 32px rgba(15,23,42,.16)}
-.cd-pop.is-title{left:0}
-.cd-pop.is-plus,.cd-pop.is-more{right:0}
-.cd-pop button{display:flex;align-items:center;gap:8px;padding:7px 10px;border:0;border-radius:6px;background:transparent;color:var(--ink);font-size:.78rem;text-align:left;cursor:pointer}
-.cd-pop button:hover{background:var(--panel2)}
-.cd-pop button.active{color:var(--accent);font-weight:600}
-.cd-pop button.is-danger{color:var(--down)}
-.cd-pop-icon{font-size:14px}
-.cd-tabs{display:flex;align-items:center;gap:6px;margin:14px 0 16px;overflow-x:auto}
-.cd-tabs button{display:inline-flex;align-items:center;gap:4px;padding:4px 11px;border:1px solid transparent;border-radius:14px;background:transparent;color:var(--muted);font-size:.78rem;white-space:nowrap;cursor:pointer}
-.cd-tabs button:hover{background:var(--panel2);color:var(--ink)}
-.cd-tabs button.active{background:var(--accent);color:var(--paper);font-weight:600}
-.cd-tabs b{font-size:.66rem;font-weight:600;opacity:.72}
-.cd-error{margin:0 0 12px;padding:9px 11px;border-left:3px solid var(--down);background:color-mix(in srgb,var(--down) 8%,transparent);font-size:.78rem}
-.cd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(204px,1fr));gap:12px}
-.cd-empty{margin:60px 0;color:var(--muted);font-size:.82rem;text-align:center}
-.cd-batch{position:fixed;right:0;bottom:0;left:50px;z-index:40;display:flex;align-items:center;justify-content:center;gap:10px;padding:9px 16px;border-top:1px solid var(--line);background:var(--card);font-size:.78rem}
-.cd-batch button{height:28px;padding:0 12px;border:1px solid var(--line2);border-radius:6px;background:var(--card);color:var(--ink);font-size:.76rem;cursor:pointer}
-.cd-batch button.is-danger{border-color:transparent;background:var(--down);color:#fff}
-.cd-batch button:disabled{opacity:.5;cursor:default}
-@media(max-width:760px){.cd-page{padding:18px 14px 96px}.cd-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}.cd-batch{left:0}}
+.cd {
+  display: flex;
+  height: 100vh;
+  min-height: 0;
+  flex-direction: column;
+  padding: 20px 30px 24px;
+  overflow-y: auto;
+  --cd-accent: #3d8fce;
+}
+.cd-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 2px;
+}
+.cd-title-wrap { position: relative; display: flex; align-items: center; }
+.cd-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cd-title:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.cd-actions { position: relative; display: flex; align-items: center; gap: 4px; }
+.cd-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink2);
+  cursor: pointer;
+}
+.cd-icon:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.cd-icon.is-add { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink); }
+.cd-icon.is-add:hover { background: color-mix(in srgb, var(--ink) 11%, transparent); }
+.cd-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 8px);
+  display: grid;
+  min-width: 168px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 20px 48px rgba(15, 23, 42, .2);
+}
+.cd-menu.is-title { left: 0; }
+.cd-menu.is-plus { right: 38px; }
+.cd-menu.is-more { right: 0; }
+.cd-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.cd-menu button:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.cd-menu button.on { color: var(--cd-accent); font-weight: 600; }
+.cd-menu button.is-danger { color: #e05a4f; }
+.cd-menu-icon { display: grid; width: 22px; place-items: center; font-size: 16px; }
+.cd-tabs { display: flex; flex: none; align-items: center; gap: 6px; margin: 12px 0 16px; }
+.cd-tabs button {
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 15px;
+  background: transparent;
+  color: var(--ink2);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.cd-tabs button:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.cd-tabs button.on { background: color-mix(in srgb, var(--cd-accent) 16%, transparent); color: var(--cd-accent); font-weight: 600; }
+.cd-error { margin: 0 0 10px; padding: 9px 11px; border-left: 3px solid #e05a4f; background: color-mix(in srgb, #e05a4f 8%, transparent); font-size: 13px; }
+.cd-grid {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr));
+  gap: 20px;
+  align-content: start;
+}
+.cd-empty { margin: 64px 0; color: var(--muted); font-size: 14px; text-align: center; }
+@media (max-width: 760px) {
+  .cd { padding: 16px 14px 20px; }
+  .cd-title { font-size: 18px; }
+  .cd-grid { gap: 12px; }
+}
 </style>

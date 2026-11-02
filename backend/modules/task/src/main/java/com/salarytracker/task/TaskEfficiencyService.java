@@ -475,9 +475,31 @@ public class TaskEfficiencyService {
         return result;
     }
 
+    @Transactional
     public List<Countdown> countdowns() {
-        return jdbc.query("SELECT * FROM countdown WHERE user_id=? AND deleted_at IS NULL ORDER BY is_pinned DESC,target_date,id",
-                (row, index) -> countdown(row), currentUser.id());
+        long userId = currentUser.id();
+        ensureBuiltinCountdowns(userId);
+        return jdbc.query("SELECT * FROM countdown WHERE user_id=? AND deleted_at IS NULL ORDER BY is_pinned DESC,sort_order,target_date,id",
+                (row, index) -> countdown(row), userId);
+    }
+
+    /**
+     * 系统内置倒数日：距离周末 / 距离下一个法定节假日 / 距离本月结束 / 距离本年结束。
+     * 账户首次读取列表时补齐，用户删除后（含软删除记录）不再重建。
+     */
+    void ensureBuiltinCountdowns(long userId) {
+        LocalDate today = LocalDate.now(zone(userId));
+        for (BuiltinCountdowns.BuiltinCountdown builtin : BuiltinCountdowns.all(today)) {
+            Long existing = jdbc.queryForObject("SELECT COUNT(*) FROM countdown WHERE user_id=? AND builtin_key=?",
+                    Long.class, userId, builtin.key());
+            if (existing != null && existing > 0) continue;
+            jdbc.update("INSERT INTO countdown(public_id,user_id,title,target_date,kind,repeat_yearly,is_pinned,color,note," +
+                            "icon_type,icon_value,icon_color,cover,unit,precise_seconds,remind,repeat_rule,display_rule," +
+                            "archived,calendar_type,builtin_key,sort_order) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    UUID.randomUUID().toString(), userId, builtin.title(), Date.valueOf(builtin.targetDate()),
+                    builtin.kind(), false, false, builtin.color(), "", "EMOJI", builtin.icon(), builtin.color(),
+                    "IMAGE", "DAY", false, "", "NONE", "SMART", false, "SOLAR", builtin.key(), builtin.sortOrder());
+        }
     }
 
     @Transactional
@@ -489,9 +511,14 @@ public class TaskEfficiencyService {
     Countdown createCountdownForSync(CountdownCommand command, String publicId, String opId) {
         long userId = currentUser.id();
         CountdownValues values = countdownValues(command, null);
-        jdbc.update("INSERT INTO countdown(public_id,user_id,title,target_date,kind,repeat_yearly,is_pinned,color,note) VALUES(?,?,?,?,?,?,?,?,?)",
+        jdbc.update("INSERT INTO countdown(public_id,user_id,title,target_date,kind,repeat_yearly,is_pinned,color,note," +
+                        "icon_type,icon_value,icon_color,cover,cover_image,unit,precise_seconds,remind,repeat_rule," +
+                        "display_rule,archived,calendar_type,lunar_date,sort_order) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 publicId, userId, values.title(), Date.valueOf(values.targetDate()), values.kind(), values.repeatYearly(),
-                values.pinned(), values.color(), values.note());
+                values.pinned(), values.color(), values.note(), values.iconType(), values.iconValue(), values.iconColor(),
+                values.cover(), values.coverImage(), values.unit(), values.preciseSeconds(), values.remind(),
+                values.repeatRule(), values.displayRule(), values.archived(), values.calendarType(), values.lunarDate(),
+                values.sortOrder());
         Countdown saved = countdownById(userId, publicId);
         changeLog.append(userId, opId, "countdown", publicId, "UPSERT", syncEntity(saved, false));
         return saved;
@@ -508,9 +535,15 @@ public class TaskEfficiencyService {
         Countdown before = countdownById(userId, publicId);
         if (before.revision() != expected) throw new ConflictException("倒数日版本已变化", before.revision());
         CountdownValues values = countdownValues(command, before);
-        int changed = jdbc.update("UPDATE countdown SET title=?,target_date=?,kind=?,repeat_yearly=?,is_pinned=?,color=?,note=?,revision=revision+1 " +
-                        "WHERE public_id=? AND user_id=? AND revision=? AND deleted_at IS NULL", values.title(), Date.valueOf(values.targetDate()),
-                values.kind(), values.repeatYearly(), values.pinned(), values.color(), values.note(), publicId, userId, expected);
+        int changed = jdbc.update("UPDATE countdown SET title=?,target_date=?,kind=?,repeat_yearly=?,is_pinned=?,color=?,note=?," +
+                        "icon_type=?,icon_value=?,icon_color=?,cover=?,cover_image=?,unit=?,precise_seconds=?,remind=?," +
+                        "repeat_rule=?,display_rule=?,archived=?,calendar_type=?,lunar_date=?,sort_order=?,revision=revision+1 " +
+                        "WHERE public_id=? AND user_id=? AND revision=? AND deleted_at IS NULL",
+                values.title(), Date.valueOf(values.targetDate()), values.kind(), values.repeatYearly(), values.pinned(),
+                values.color(), values.note(), values.iconType(), values.iconValue(), values.iconColor(), values.cover(),
+                values.coverImage(), values.unit(), values.preciseSeconds(), values.remind(), values.repeatRule(),
+                values.displayRule(), values.archived(), values.calendarType(), values.lunarDate(), values.sortOrder(),
+                publicId, userId, expected);
         if (changed == 0) throw new ConflictException("倒数日版本已变化", before.revision());
         Countdown saved = countdownById(userId, publicId);
         changeLog.append(userId, opId, "countdown", publicId, "UPSERT", syncEntity(saved, false));
@@ -714,9 +747,20 @@ public class TaskEfficiencyService {
     }
 
     static TaskModels.SyncEntity syncEntity(Countdown item, boolean deleted) {
-        return efficiencyEntity(item.publicId(), item.revision() + (deleted ? 1 : 0), deleted,
-                Map.of("title", item.title(), "targetDate", item.targetDate(), "kind", item.kind(),
-                        "repeatYearly", item.repeatYearly(), "pinned", item.pinned(), "color", item.color(), "note", item.note()));
+        // 注意：这里必须用可变 Map，Map.of 遇到 null（note/lunarDate/coverImage）会直接抛 NPE
+        Map<String, Object> extra = new LinkedHashMap<>();
+        extra.put("title", item.title()); extra.put("targetDate", item.targetDate()); extra.put("kind", item.kind());
+        extra.put("repeatYearly", item.repeatYearly()); extra.put("pinned", item.pinned());
+        extra.put("color", item.color()); extra.put("note", item.note());
+        extra.put("iconType", item.iconType()); extra.put("iconValue", item.iconValue());
+        extra.put("iconColor", item.iconColor()); extra.put("cover", item.cover());
+        extra.put("coverImage", item.coverImage()); extra.put("unit", item.unit());
+        extra.put("preciseSeconds", item.preciseSeconds()); extra.put("remind", item.remind());
+        extra.put("repeatRule", item.repeatRule()); extra.put("displayRule", item.displayRule());
+        extra.put("archived", item.archived()); extra.put("calendarType", item.calendarType());
+        extra.put("lunarDate", item.lunarDate()); extra.put("builtinKey", item.builtinKey());
+        extra.put("sortOrder", item.sortOrder());
+        return efficiencyEntity(item.publicId(), item.revision() + (deleted ? 1 : 0), deleted, extra);
     }
 
     private static TaskModels.SyncEntity efficiencyEntity(String id, long revision, boolean deleted, Map<String, Object> extra) {
@@ -737,7 +781,11 @@ public class TaskEfficiencyService {
     private Countdown countdown(ResultSet row) throws SQLException {
         return new Countdown(row.getString("public_id"), row.getString("title"), row.getDate("target_date").toLocalDate().toString(),
                 row.getString("kind"), row.getBoolean("repeat_yearly"), row.getBoolean("is_pinned"), row.getString("color"),
-                row.getString("note"), row.getLong("revision"));
+                row.getString("note"), row.getLong("revision"), row.getString("icon_type"), row.getString("icon_value"),
+                row.getString("icon_color"), row.getString("cover"), row.getString("cover_image"), row.getString("unit"),
+                row.getBoolean("precise_seconds"), row.getString("remind"), row.getString("repeat_rule"),
+                row.getString("display_rule"), row.getBoolean("archived"), row.getString("calendar_type"),
+                row.getString("lunar_date"), row.getString("builtin_key"), row.getInt("sort_order"));
     }
 
     private HabitValues habitValues(HabitCommand command, Habit before, ZoneId zone) {
@@ -801,10 +849,89 @@ public class TaskEfficiencyService {
         if (command == null) throw new IllegalArgumentException("倒数日内容不能为空");
         String title = command.title() == null && before != null ? before.title() : text(command.title(), "标题", 160);
         String date = command.targetDate() == null && before != null ? before.targetDate() : parseDate(command.targetDate(), null).toString();
-        return new CountdownValues(title, LocalDate.parse(date), enumValue(command.kind(), before == null ? "COUNTDOWN" : before.kind(),
-                List.of("COUNTDOWN", "ANNIVERSARY"), "kind"), value(command.repeatYearly(), before != null && before.repeatYearly()),
-                value(command.pinned(), before != null && before.pinned()), color(command.color() == null && before != null ? before.color() : command.color()),
-                optional(command.note() == null && before != null ? before.note() : command.note(), 1000));
+        String kind = enumValue(command.kind(), before == null ? "COUNTDOWN" : before.kind(),
+                List.of("ANNIVERSARY", "COUNTDOWN", "BIRTHDAY", "FESTIVAL"), "kind");
+        String iconType = enumValue(command.iconType(), before == null ? "EMOJI" : before.iconType(),
+                List.of("ICON", "EMOJI", "TEXT"), "iconType");
+        String iconValue = command.iconValue() == null
+                ? before == null ? "⏳" : before.iconValue() : required(command.iconValue(), 32, "图标");
+        String iconColor = command.iconColor() == null
+                ? before == null ? "#f2b13c" : before.iconColor() : color(command.iconColor());
+        String cover = enumValue(command.cover(), before == null ? "IMAGE" : before.cover(),
+                List.of("IMAGE", "LIGHT", "DEEP", "TINT", "GRADIENT"), "cover");
+        String coverImage = command.coverImage() == null
+                ? before == null ? null : before.coverImage() : coverImage(command.coverImage());
+        String unit = enumValue(command.unit(), before == null ? "DAY" : before.unit(),
+                List.of("DAY", "WEEK", "MONTH", "YEAR", "SECOND", "MINUTE", "HOUR"), "unit");
+        boolean precise = value(command.preciseSeconds(), before != null && before.preciseSeconds());
+        String remind = command.remind() == null
+                ? before == null ? "" : before.remind() : remindOffsets(command.remind());
+        String repeatRule = command.repeatRule() == null
+                ? before == null ? "NONE" : before.repeatRule() : repeatRule(command.repeatRule());
+        String displayRule = enumValue(command.displayRule(), before == null ? "SMART" : before.displayRule(),
+                List.of("SMART", "D3", "D7", "ALWAYS", "NEVER"), "displayRule");
+        boolean archived = value(command.archived(), before != null && before.archived());
+        String calendarType = enumValue(command.calendarType(), before == null ? "SOLAR" : before.calendarType(),
+                List.of("SOLAR", "LUNAR"), "calendarType");
+        String lunarDate = command.lunarDate() == null
+                ? before == null ? null : before.lunarDate() : optional(command.lunarDate(), 16);
+        int sortOrder = command.sortOrder() == null ? before == null ? 0 : before.sortOrder() : command.sortOrder();
+        return new CountdownValues(title, LocalDate.parse(date), kind,
+                value(command.repeatYearly(), before != null && before.repeatYearly()),
+                value(command.pinned(), before != null && before.pinned()),
+                color(command.color() == null && before != null ? before.color() : command.color()),
+                optional(command.note() == null && before != null ? before.note() : command.note(), 1000),
+                iconType, iconValue, iconColor, cover, coverImage, unit, precise, remind, repeatRule, displayRule,
+                archived, calendarType, lunarDate, sortOrder);
+    }
+
+    /** 自定义重复用 CUSTOM:N 表示每隔 N 天 */
+    private String repeatRule(String raw) {
+        String value = raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT);
+        if (value.matches("CUSTOM:\\d{1,3}")) {
+            int every = Integer.parseInt(value.substring(7));
+            if (every >= 1 && every <= 365) return value;
+            throw new IllegalArgumentException("自定义重复间隔必须在 1 到 365 天之间");
+        }
+        if (!List.of("NONE", "DAILY", "WEEKLY", "MONTHLY", "YEARLY", "CUSTOM").contains(value)) {
+            throw new IllegalArgumentException("repeatRule 不支持");
+        }
+        return value;
+    }
+
+    private String required(String raw, int max, String field) {
+        String value = raw == null ? "" : raw.trim();
+        if (value.isEmpty() || value.length() > max) throw new IllegalArgumentException(field + "必填且长度不能超过 " + max);
+        return value;
+    }
+
+    /** 提醒偏移：逗号分隔的自然日提前量，0 表示当天，最多 8 个 */
+    private String remindOffsets(String raw) {
+        String value = raw == null ? "" : raw.trim();
+        if (value.isEmpty()) return "";
+        List<String> result = new ArrayList<>();
+        for (String part : value.split(",")) {
+            String item = part.trim();
+            if (item.isEmpty()) continue;
+            int offset;
+            try { offset = Integer.parseInt(item); }
+            catch (NumberFormatException exception) { throw new IllegalArgumentException("提醒设置无效"); }
+            if (offset < 0 || offset > 365) throw new IllegalArgumentException("提醒提前量必须在 0 到 365 天之间");
+            result.add(String.valueOf(offset));
+        }
+        if (result.size() > 8) throw new IllegalArgumentException("提醒最多 8 个");
+        return String.join(",", result);
+    }
+
+    /** 封面图只接受内联图片或站内路径，限制长度避免把同步载荷撑爆 */
+    private String coverImage(String raw) {
+        String value = raw == null ? "" : raw.trim();
+        if (value.isEmpty()) return null;
+        if (value.length() > 1_600_000) throw new IllegalArgumentException("封面图片过大，请压缩后重试");
+        if (!value.startsWith("data:image/") && !value.startsWith("/") && !value.startsWith("https://")) {
+            throw new IllegalArgumentException("封面图片格式无效");
+        }
+        return value;
     }
 
     private void ensureFocusSettings(long userId) {
@@ -913,6 +1040,9 @@ public class TaskEfficiencyService {
                                int dailyTimes, boolean autoPopupLog, String amountUnit,
                                int intervalDays, String checkMode, int perAmount, boolean showInToday) { }
     private record CountdownValues(String title, LocalDate targetDate, String kind, boolean repeatYearly,
-                                   boolean pinned, String color, String note) { }
+                                   boolean pinned, String color, String note, String iconType, String iconValue,
+                                   String iconColor, String cover, String coverImage, String unit,
+                                   boolean preciseSeconds, String remind, String repeatRule, String displayRule,
+                                   boolean archived, String calendarType, String lunarDate, int sortOrder) { }
     private record Streak(int current, int longest) { }
 }

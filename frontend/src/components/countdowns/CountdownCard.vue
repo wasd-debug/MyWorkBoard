@@ -1,156 +1,291 @@
 <template>
   <article
-    class="cd-card"
-    :class="{ 'is-archived': archived, 'is-selectable': selectable, 'is-picked': selected, 'is-cover': !isPlain }"
-    :style="cardStyle"
+    class="cdc"
+    :class="[`is-${tone}`, { 'is-pinned': item.pinned, 'is-archived': item.archived }]"
+    :style="theme.style"
     role="button"
     tabindex="0"
-    :aria-label="ariaLabel"
-    @click="handleMainClick"
-    @keydown.enter.prevent="handleMainClick"
+    :aria-label="`${item.title}，${footText}。回车切换显示单位`"
+    @click="emit('cycle')"
+    @keydown.enter.prevent="emit('cycle')"
+    @keydown.space.prevent="emit('cycle')"
   >
-    <input
-      v-if="selectable"
-      class="cd-pick"
-      type="checkbox"
-      :checked="selected"
-      :aria-label="`选择 ${item.title}`"
-      @click.stop="emit('select')"
-    />
+    <div class="cdc-tools" @click.stop>
+      <button
+        type="button"
+        class="cdc-tool"
+        :class="{ 'is-on': item.pinned }"
+        :aria-label="item.pinned ? '取消置顶' : '置顶'"
+        :title="item.pinned ? '取消置顶' : '置顶'"
+        @click="emit('pin')"
+      >
+        <Star :size="15" :fill="item.pinned ? 'currentColor' : 'none'" />
+      </button>
+      <button
+        ref="moreButton"
+        type="button"
+        class="cdc-tool is-more"
+        aria-label="更多"
+        title="更多"
+        :aria-expanded="menuOpen"
+        @click="toggleMenu"
+      >
+        <MoreHorizontal :size="16" />
+      </button>
+    </div>
 
-    <header class="cd-card-head">
-      <span class="cd-card-icon" aria-hidden="true">{{ item.icon }}</span>
-      <h3 class="cd-card-title">{{ item.title }}</h3>
-      <span v-if="archived" class="cd-card-flag">已归档</span>
-      <span v-else-if="badge" class="cd-card-flag is-badge">{{ badge }}</span>
-    </header>
+    <Teleport to="body">
+      <div v-if="menuOpen" class="cdc-menu" :style="menuStyle" role="menu" @click.stop>
+        <button type="button" role="menuitem" @click="pick('edit')"><Pencil :size="15" />编辑</button>
+        <button type="button" role="menuitem" @click="pick('style')"><Palette :size="15" />样式</button>
+        <button type="button" role="menuitem" @click="pick('note')"><NotebookPen :size="15" />备注</button>
+        <button v-if="!item.archived" type="button" role="menuitem" @click="pick('archive')"><Archive :size="15" />归档</button>
+        <button v-else type="button" role="menuitem" @click="pick('restore')"><ArchiveRestore :size="15" />恢复</button>
+        <button type="button" role="menuitem" class="is-danger" @click="pick('remove')"><Trash2 :size="15" />删除</button>
+      </div>
+    </Teleport>
 
-    <button type="button" class="cd-card-count" :title="`点击切换为${nextUnitLabel}`" @click.stop="emit('cycle')">
-      <span v-for="part in parts" :key="`${part.value}-${part.unit}`" class="cd-count-part">
+    <div class="cdc-head">
+      <span v-if="showIcon" class="cdc-icon" :style="{ background: item.iconColor || 'transparent' }">{{ item.iconValue }}</span>
+      <h3 v-if="item.title" class="cdc-title">{{ item.title }}</h3>
+    </div>
+
+    <div class="cdc-count" :class="{ 'is-multi': parts.length > 1, 'is-long': parts.length > 2 }">
+      <span v-for="(part, index) in parts" :key="index" class="cdc-part">
         <b>{{ part.value }}</b><i v-if="part.unit">{{ part.unit }}</i>
       </span>
-    </button>
-
-    <p class="cd-card-meta">
-      <span class="cd-card-distance">{{ directionText }}</span>
-      <span class="cd-card-date">{{ typeLabel }}</span>
-    </p>
-
-    <div v-if="!selectable" class="cd-card-tools">
-      <button type="button" :title="item.pinned ? '取消置顶' : '置顶'" :aria-label="item.pinned ? '取消置顶' : '置顶'" :class="{ 'is-on': item.pinned }" @click.stop="emit('pin')">
-        <Pin :size="14" />
-      </button>
-      <button ref="moreButton" type="button" title="更多" aria-label="更多" :aria-expanded="menuOpen" @click.stop="toggleMenu">
-        <MoreHorizontal :size="14" />
-      </button>
-      <div v-if="menuOpen" class="cd-menu" role="menu">
-        <button type="button" role="menuitem" @click.stop="pick('edit')"><Pencil :size="14" />编辑</button>
-        <button type="button" role="menuitem" @click.stop="pick('style')"><Palette :size="14" />样式</button>
-        <button type="button" role="menuitem" @click.stop="pick('note')"><NotebookPen :size="14" />备注</button>
-        <button v-if="!archived" type="button" role="menuitem" @click.stop="pick('archive')"><Archive :size="14" />归档</button>
-        <button v-else type="button" role="menuitem" @click.stop="pick('restore')"><ArchiveRestore :size="14" />恢复</button>
-        <button type="button" role="menuitem" class="is-danger" @click.stop="pick('remove')"><Trash2 :size="14" />删除</button>
-      </div>
     </div>
+
+    <p class="cdc-foot">{{ footText }}</p>
   </article>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Archive, ArchiveRestore, MoreHorizontal, NotebookPen, Palette, Pencil, Pin, Trash2 } from 'lucide-vue-next'
-import { coverBackground, dayBadge, daysUntil, DISPLAY_UNITS, formatCount, relativeText, targetText, typeOf, cycleUnit } from './countdownUtils.js'
+import { Archive, ArchiveRestore, MoreHorizontal, NotebookPen, Palette, Pencil, Star, Trash2 } from 'lucide-vue-next'
+import { cardTheme, countParts, footerText } from './countdownUtils.js'
 
 const props = defineProps({
   item: { type: Object, required: true },
   today: { type: String, required: true },
-  archived: Boolean,
-  selectable: Boolean,
-  selected: Boolean
+  now: { type: Number, default: 0 }
 })
-const emit = defineEmits(['open', 'style', 'note', 'archive', 'restore', 'remove', 'pin', 'cycle', 'select'])
+
+const emit = defineEmits(['edit', 'style', 'note', 'archive', 'restore', 'remove', 'pin', 'cycle'])
 
 const menuOpen = ref(false)
 const moreButton = ref(null)
+const menuStyle = ref({})
 
-const isPlain = computed(() => false)
-const parts = computed(() => formatCount(props.item, props.item.unit || 'DAY', props.today))
-const days = computed(() => daysUntil(props.item, props.today))
-const badge = computed(() => dayBadge(days.value))
-const directionText = computed(() => {
-  const text = relativeText(props.item, props.today)
-  return text === '就是今天' ? '就是今天' : `距离 ${targetText(props.item, props.today)} ${text}`
-})
-const typeLabel = computed(() => typeOf(props.item).label)
-const nextUnitLabel = computed(() => {
-  const next = cycleUnit(props.item.unit || 'DAY')
-  return DISPLAY_UNITS.find(unit => unit.key === next)?.label || '天'
-})
-const cardStyle = computed(() => ({
-  background: coverBackground(props.item.cover, props.item.color),
-  borderColor: 'transparent'
-}))
-const ariaLabel = computed(() => `${props.item.title}，${directionText.value}`)
+const theme = computed(() => cardTheme(props.item))
+const tone = computed(() => theme.value.tone)
+const parts = computed(() => countParts(props.item, props.today, new Date(props.now || Date.now())))
+const footText = computed(() => footerText(props.item, props.today))
+const showIcon = computed(() => ['ICON', 'EMOJI', 'TEXT'].includes(props.item.iconType) && props.item.cover !== 'IMAGE')
 
+/** 菜单挂在 body 上：卡片为了圆角图片做了 overflow:hidden，内联菜单会被裁掉 */
 function toggleMenu() {
-  menuOpen.value = !menuOpen.value
-}
-function closeMenu() {
-  menuOpen.value = false
+  if (menuOpen.value) {
+    menuOpen.value = false
+    return
+  }
+  const button = moreButton.value
+  if (!button) return
+  const rect = button.getBoundingClientRect()
+  const width = 146
+  const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8))
+  const top = Math.min(rect.bottom + 6, window.innerHeight - 260)
+  menuStyle.value = { position: 'fixed', top: `${Math.round(top)}px`, left: `${Math.round(left)}px`, width: `${width}px` }
+  menuOpen.value = true
 }
 function pick(action) {
   menuOpen.value = false
   emit(action)
 }
-function handleMainClick() {
-  if (props.selectable) emit('select')
-  else emit('open')
+function onPointerDown(event) {
+  if (event.target.closest('.cdc-tools') || event.target.closest('.cdc-menu')) return
+  menuOpen.value = false
 }
-function onGlobalPointerDown(event) {
-  if (!menuOpen.value) return
-  const host = moreButton.value?.parentElement
-  if (host && !host.contains(event.target)) closeMenu()
+function closeOnViewportChange() {
+  menuOpen.value = false
 }
 watch(menuOpen, open => {
   if (typeof document === 'undefined') return
-  if (open) document.addEventListener('pointerdown', onGlobalPointerDown, true)
-  else document.removeEventListener('pointerdown', onGlobalPointerDown, true)
+  if (open) {
+    document.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('resize', closeOnViewportChange)
+    window.addEventListener('scroll', closeOnViewportChange, true)
+  } else {
+    document.removeEventListener('pointerdown', onPointerDown, true)
+    window.removeEventListener('resize', closeOnViewportChange)
+    window.removeEventListener('scroll', closeOnViewportChange, true)
+  }
 })
 onBeforeUnmount(() => {
-  if (typeof document !== 'undefined') document.removeEventListener('pointerdown', onGlobalPointerDown, true)
+  if (typeof document === 'undefined') return
+  document.removeEventListener('pointerdown', onPointerDown, true)
+  window.removeEventListener('resize', closeOnViewportChange)
+  window.removeEventListener('scroll', closeOnViewportChange, true)
 })
 </script>
 
 <style scoped>
-.cd-card{position:relative;display:flex;flex-direction:column;min-height:192px;padding:14px 15px 12px;border:1px solid var(--line);border-radius:12px;overflow:hidden;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease}
-.cd-card:hover{transform:translateY(-1px);box-shadow:0 10px 24px rgba(15,23,42,.12)}
-.cd-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.cd-card.is-cover{color:#fff}
-.cd-card.is-archived{opacity:.86}
-.cd-card.is-picked{outline:2px solid var(--accent)}
-.cd-pick{position:absolute;top:10px;left:10px;width:15px;height:15px;z-index:3}
-.cd-card-head{display:flex;align-items:center;gap:6px;min-height:22px}
-.cd-card-icon{display:grid;width:20px;height:20px;place-items:center;font-size:14px;border-radius:50%;background:rgba(255,255,255,.24)}
-.cd-card-title{margin:0;font-size:.82rem;font-weight:600;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cd-card-flag{margin-left:auto;padding:1px 6px;border-radius:8px;background:rgba(0,0,0,.28);font-size:.62rem;font-weight:600;letter-spacing:.04em}
-.cd-card-flag.is-badge{background:rgba(255,255,255,.26)}
-.cd-card-count{display:flex;align-items:baseline;gap:1px;margin:auto 0 2px;padding:0;border:0;background:transparent;color:inherit;font:inherit;font-variant-numeric:tabular-nums;cursor:pointer;text-align:left}
-.cd-card-count:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:4px}
-.cd-count-part{display:inline-flex;align-items:baseline}
-.cd-count-part b{font-size:2.35rem;font-weight:600;line-height:1}
-.cd-count-part i{margin:0 2px 0 1px;font-size:.78rem;font-style:normal;font-weight:500;opacity:.82}
-.cd-card:not(.is-cover) .cd-count-part b{font-size:2.1rem}
-.cd-card-meta{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:0;font-size:.66rem;opacity:.86}
-.cd-card-distance{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.cd-card-date{flex:none;padding:0 5px;border-radius:6px;background:rgba(0,0,0,.16);font-size:.6rem;line-height:1.5}
-.cd-card-tools{position:absolute;top:8px;right:8px;display:flex;gap:2px;opacity:0;transition:opacity .14s ease}
-.cd-card:hover .cd-card-tools,.cd-card:focus-within .cd-card-tools{opacity:1}
-.cd-card-tools>button{display:grid;width:24px;height:24px;place-items:center;border:0;border-radius:6px;background:rgba(0,0,0,.22);color:inherit;cursor:pointer}
-.cd-card-tools>button:hover{background:rgba(0,0,0,.34)}
-.cd-card-tools>button.is-on{color:#ffd166}
-.cd-card:not(.is-cover) .cd-card-tools>button{background:var(--panel2);color:var(--muted)}
-.cd-menu{position:absolute;top:28px;right:0;z-index:6;display:grid;min-width:118px;padding:4px;border:1px solid var(--line);border-radius:8px;background:var(--card);box-shadow:0 12px 28px rgba(15,23,42,.18)}
-.cd-menu button{display:flex;align-items:center;gap:8px;padding:7px 10px;border:0;border-radius:6px;background:transparent;color:var(--ink);font-size:.76rem;text-align:left;cursor:pointer}
-.cd-menu button:hover{background:var(--panel2)}
-.cd-menu button.is-danger{color:var(--down)}
-@media(max-width:640px){.cd-card{min-height:148px}.cd-count-part b{font-size:1.9rem}}
+.cdc {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  aspect-ratio: 1.39;
+  padding: calc(var(--cw, 240px) * .058) calc(var(--cw, 240px) * .065) calc(var(--cw, 240px) * .05);
+  border: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  cursor: pointer;
+  isolation: isolate;
+  transition: transform .16s ease, box-shadow .16s ease;
+}
+.cdc::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, .12) 0%, transparent 26%, transparent 72%, rgba(0, 0, 0, .16) 100%);
+  content: '';
+  pointer-events: none;
+}
+.cdc.is-light::after { display: none; }
+.cdc:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(17, 24, 39, .16); }
+.cdc:focus-visible { outline: 2px solid #3d8fce; outline-offset: 2px; }
+.cdc.is-archived { opacity: .72; }
+
+.cdc-tools {
+  position: absolute;
+  z-index: 3;
+  top: calc(var(--cw, 240px) * .045);
+  right: calc(var(--cw, 240px) * .045);
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity .15s ease;
+}
+.cdc:hover .cdc-tools,
+.cdc:focus-within .cdc-tools { opacity: 1; }
+.cdc-tools:has(.is-on) { opacity: 1; }
+.cdc-tool {
+  display: grid;
+  width: calc(var(--cw, 240px) * .11);
+  height: calc(var(--cw, 240px) * .11);
+  min-width: 26px;
+  min-height: 26px;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .9);
+  color: #2b3240;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, .16);
+}
+.cdc-tool:hover { background: #fff; }
+.cdc-tool.is-on { color: #f2b13c; }
+.cdc-tool.is-more { background: rgba(30, 35, 46, .74); color: #fff; }
+.cdc-tool.is-more:hover { background: rgba(30, 35, 46, .9); }
+.cdc.is-light .cdc-tool { background: rgba(255, 255, 255, .92); }
+
+.cdc-menu {
+  z-index: 200;
+  display: grid;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--card, #fff);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, .22);
+}
+.cdc-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.cdc-menu button:hover { background: var(--panel2, rgba(15, 23, 42, .06)); }
+.cdc-menu button.is-danger { color: #e05a4f; }
+
+.cdc-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 0;
+}
+.cdc-icon {
+  display: grid;
+  width: calc(var(--cw, 240px) * .1);
+  height: calc(var(--cw, 240px) * .1);
+  min-width: 20px;
+  min-height: 20px;
+  place-items: center;
+  border-radius: 50%;
+  font-size: calc(var(--cw, 240px) * .058);
+  line-height: 1;
+}
+.cdc-title {
+  min-width: 0;
+  margin: 0;
+  font-size: calc(var(--cw, 240px) * .06);
+  font-weight: 600;
+  line-height: 1.3;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cdc-count {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 0;
+  color: var(--num);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.cdc-part { display: inline-flex; align-items: baseline; }
+.cdc-part b {
+  font-size: calc(var(--cw, 240px) * .225);
+  font-weight: 500;
+  letter-spacing: -.02em;
+}
+.cdc-count.is-multi .cdc-part b { font-size: calc(var(--cw, 240px) * .135); }
+.cdc-count.is-long .cdc-part b { font-size: calc(var(--cw, 240px) * .115); }
+.cdc-part i {
+  margin-left: 1px;
+  font-size: calc(var(--cw, 240px) * .05);
+  font-style: normal;
+  font-weight: 500;
+  opacity: .9;
+}
+.cdc-count.is-multi .cdc-part i { margin: 0 3px 0 1px; }
+.cdc-foot {
+  margin: 0;
+  color: var(--sub);
+  font-size: calc(var(--cw, 240px) * .044);
+  line-height: 1.4;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (hover: none) {
+  .cdc-tools { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cdc { transition: none; }
+}
 </style>
