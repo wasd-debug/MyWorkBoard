@@ -10294,4 +10294,23 @@ const SidebarSection = {
   .clone-task-row.print-content .clone-print-description { display: block; overflow: visible; white-space: normal; }
   .clone-task-row, .clone-task-group { break-inside: avoid; }
 }
+
+/* 手机端：任务详情本来按抽屉规则隐藏，习惯详情改成整屏覆盖（与习惯页一致，左上角返回） */
+@media (max-width: 900px) {
+  .clone-detail-pane.is-habit {
+    position: fixed;
+    z-index: 302;
+    inset: 8px;
+    display: block !important;
+    width: auto;
+    height: auto;
+    max-height: none;
+    margin: 0;
+    overflow: auto;
+    border: 0;
+    border-radius: 12px;
+    background: var(--card);
+    box-shadow: 0 24px 60px rgb(15 23 42 / 24%);
+  }
+}
 </style>
