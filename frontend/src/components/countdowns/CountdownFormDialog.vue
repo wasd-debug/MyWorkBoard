@@ -612,6 +612,7 @@ onBeforeUnmount(() => {
 .cf-switch.on span{transform:translateX(17px)}
 .cf-switch-hint{color:var(--muted,#8b92a3);font-size:13px}
 .cf-pop-foot.is-split{align-items:center;justify-content:flex-start}
+.cf-pop-foot.is-split .cf-btn{min-width:0;flex:0 1 auto;padding:0 12px;white-space:nowrap}
 .cf-grow{flex:1}
 .cf-seg{display:flex;gap:4px;margin:2px 2px 12px;padding:3px;border-radius:10px;background:color-mix(in srgb,var(--ink,#1d1d21) 7%,transparent)}
 .cf-seg button{flex:1;height:32px;border:0;border-radius:8px;background:transparent;color:var(--ink2,#565d6b);font:inherit;font-size:14px;cursor:pointer}
