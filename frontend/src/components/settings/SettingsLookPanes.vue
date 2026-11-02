@@ -101,6 +101,7 @@ import { ref } from 'vue'
 import { Plus } from 'lucide-vue-next'
 import { message } from '../../services/message.js'
 import { CITY_THEMES, COLOR_THEMES, PHOTO_THEMES, SEASON_THEMES } from './settingsState.js'
+import { THEME_ART } from './themeArt.js'
 import { useSettings } from './useSettings.js'
 import SettingChoices from './SettingChoices.vue'
 import SettingRow from './SettingRow.vue'
@@ -120,7 +121,10 @@ const artSeries = [
   { key: 'seasonTheme', title: '季节系列', items: SEASON_THEMES },
   { key: 'cityTheme', title: '城市系列', items: CITY_THEMES },
   { key: 'photoTheme', title: '摄影系列', items: PHOTO_THEMES }
-]
+].map(series => ({
+  ...series,
+  items: series.items.map(item => ({ ...item, image: THEME_ART[series.key]?.[item.key] || '' }))
+}))
 const activeIcon = ref('DEFAULT')
 const fontOptions = [
   { value: 'NORMAL', label: '正常' },
