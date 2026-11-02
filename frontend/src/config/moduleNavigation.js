@@ -17,18 +17,17 @@ export const ledgerNavigation = [
   { key: 'audit', to: { path: '/ledger/manage', query: { view: 'audit' } }, label: '操作日志' }
 ]
 
-// 顺序与左侧图标栏保持一致：任务 日历 四象限 专注 习惯 倒数纪念日 看板 统计 设置
-// AI 与「搜索与智能清单」入口已移除：AI 走右侧悬浮助手，搜索是弹窗（Ctrl/Cmd+K）
+// 顺序与左侧图标栏保持一致：任务 日历 四象限 专注 习惯 倒数纪念日 看板 统计
+// AI、搜索、设置入口均已下线：AI 走右侧悬浮助手，搜索是弹窗（Ctrl/Cmd+K），设置页整页删除
 export const taskNavigation = [
-  { key: 'task', to: '/tasks/today', label: '任务', activePrefix: '/tasks', activeExclude: ['/tasks/habits', '/tasks/calendar', '/tasks/focus', '/tasks/countdowns', '/tasks/board', '/tasks/quadrant', '/tasks/search', '/tasks/stats', '/tasks/settings', '/tasks/app-settings'] },
+  { key: 'task', to: '/tasks/today', label: '任务', activePrefix: '/tasks', activeExclude: ['/tasks/habits', '/tasks/calendar', '/tasks/focus', '/tasks/countdowns', '/tasks/board', '/tasks/quadrant', '/tasks/search', '/tasks/stats'] },
   { key: 'calendar', to: '/tasks/calendar', label: '日历' },
   { key: 'quadrant', to: '/tasks/quadrant', label: '四象限' },
   { key: 'focus', to: '/tasks/focus', label: '专注' },
   { key: 'habits', to: '/tasks/habits', label: '习惯' },
   { key: 'countdowns', to: '/tasks/countdowns', label: '倒数纪念日' },
   { key: 'board', to: '/tasks/today', view: 'KANBAN', label: '看板' },
-  { key: 'stats', to: '/tasks/stats', label: '统计与回顾' },
-  { key: 'settings', to: '/tasks/app-settings', label: '设置' }
+  { key: 'stats', to: '/tasks/stats', label: '统计与回顾' }
 ]
 
 export function navigationItemIsActive(route, item) {

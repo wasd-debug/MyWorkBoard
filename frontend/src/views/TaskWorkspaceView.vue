@@ -125,6 +125,9 @@
         <div v-if="!isHiddenObject('system', trashView) && !isPinnedObject('system', trashView)" class="clone-sidebar-object-row" @contextmenu.prevent="openOrganizationMenu('system', trashView, $event)"><RouterLink to="/tasks/trash" class="clone-nav-item" :class="{ active: isActive('/tasks/trash') }"><Trash2 :size="15" /><span>垃圾桶</span><small>{{ trashedTaskCount }}</small></RouterLink><button class="clone-item-menu-trigger" type="button" aria-label="垃圾桶的更多操作" @click.stop="openOrganizationMenu('system', trashView, $event)"><Ellipsis :size="14" /></button></div>
       </section>
       </div>
+      <section class="clone-sidebar-block clone-sidebar-data" aria-label="导入与导出">
+        <button type="button" class="clone-nav-item clone-nav-button" @click="dataDialogOpen = true"><ArrowDownUp :size="15" /><span>导入与导出</span></button>
+      </section>
       <section class="clone-sidebar-block clone-mini-calendar" :class="{ 'is-expanded': miniCalendarExpanded }" aria-label="迷你日历">
         <button type="button" class="clone-mini-calendar-toggle" :aria-label="miniCalendarExpanded ? '收起月历' : '展开月历'" :aria-expanded="miniCalendarExpanded" :title="miniCalendarExpanded ? '收起月历' : '展开月历'" @click="miniCalendarExpanded = !miniCalendarExpanded"><ChevronDown :size="14" /></button>
         <header v-if="miniCalendarExpanded" class="clone-mini-calendar-head">
@@ -1555,6 +1558,9 @@
     <Dialog v-model:open="organizationIconPickerOpen" title="选择图标" content-class="task-icon-dialog">
       <div class="clone-icon-picker"><input v-model.trim="organizationIconSearch" aria-label="搜索图标" placeholder="搜索中文名称或图标名" /><div class="clone-icon-categories" role="tablist" aria-label="图标分类"><button v-for="category in organizationIconCategories" :key="category.value" type="button" role="tab" :aria-selected="organizationIconCategory === category.value" @click="organizationIconCategory = category.value">{{ category.label }}</button></div><div class="clone-icon-grid" role="listbox" aria-label="可选图标"><button v-for="icon in filteredOrganizationIcons" :key="icon.value" type="button" role="option" :aria-selected="currentOrganizationIcon === icon.value" :aria-label="icon.label" :title="`${icon.label} · ${icon.value}`" @click="selectOrganizationIcon(icon.value)"><component :is="icon.component" v-if="icon.component" :size="19" :stroke-width="2" aria-hidden="true" /><span v-else>{{ icon.value }}</span></button><p v-if="!filteredOrganizationIcons.length" class="clone-icon-empty">没有匹配的图标</p></div><small class="clone-icon-count">{{ filteredOrganizationIcons.length }} 个可选图标</small></div>
     </Dialog>
+    <Dialog v-model:open="dataDialogOpen" title="导入与导出" content-class="clone-data-dialog">
+      <TaskDataPanel hide-heading />
+    </Dialog>
     <Dialog v-model:open="trashClearOpen" title="清空垃圾桶"><div class="clone-confirmation"><p>将永久删除垃圾桶中的 {{ trashedTaskCount }} 项任务，且无法恢复。</p><footer><button type="button" :disabled="trashClearBusy" @click="trashClearOpen = false">取消</button><button type="button" class="clone-danger-button" :disabled="trashClearBusy || !trashedTaskCount" @click="clearTrashPermanently">{{ trashClearBusy ? '清除中…' : '永久清除' }}</button></footer></div></Dialog>
     <Dialog v-model:open="exportDialogOpen" title="导出" content-class="clone-export-dialog">
       <div class="clone-export-body">
@@ -1703,6 +1709,7 @@ import TaskOrganizationIcon from "../components/tasks/TaskOrganizationIcon.vue";
 import TaskDateTimePopover from "../components/tasks/TaskDateTimePopover.vue";
 import TasksTimelineView from "./TasksTimelineView.vue";
 import Dialog from "../components/ui/Dialog.vue";
+import TaskDataPanel from "../components/tasks/TaskDataPanel.vue";
 import { organizationIconCategories, searchOrganizationIcons } from "./taskOrganizationIcons.js";
 import { getListDropPlacement, moveItem, reorderListDrop } from "./taskSidebar.js";
 import { groupTaskItems, sortTaskItems, taskGroupDropPatch } from "./taskList.js";
@@ -2125,6 +2132,8 @@ const isNoteSelected = computed(() => Boolean(selectedTask.value && isNoteTask(s
 const detailParentPickerOpen = ref(false);
 const detailParentQuery = ref("");
 const trashClearOpen = ref(false);
+/** 导入与导出弹窗（原设置页里的数据面板，设置页下线后迁到侧栏） */
+const dataDialogOpen = ref(false);
 const trashClearBusy = ref(false);
 const completionFilterMenu = ref("");
 const completionFilters = reactive({ dateRange: "ALL", customStart: "", customEnd: "", listIds: null, scope: "ALL" });
@@ -7930,6 +7939,8 @@ const SidebarSection = {
 .clone-sidebar-system { display: grid; gap: 5px; }
 .clone-sidebar-organization { display: grid; flex: none; min-height: 0; align-content: start; gap: 10px; padding-top: 4px; border-top: 1px solid var(--line); overflow: visible; }
 .clone-sidebar-status { display: grid; gap: 2px; padding-top: 7px; border-top: 1px solid var(--line); }
+.clone-sidebar-data { display: grid; gap: 2px; padding-top: 7px; border-top: 1px solid var(--line); }
+.clone-nav-button { width: 100%; min-width: 0; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
 .clone-sidebar-object-row { position: relative; display: flex; min-width: 0; align-items: center; }
 .clone-sidebar-object-row > .clone-nav-item { min-width: 0; flex: 1 1 auto; padding-right: 32px; }
 .clone-sidebar-object-row > .clone-nav-item > small { position: absolute; right: 4px; top: 50%; display: grid; width: 24px; height: 24px; margin: 0; place-items: center; transform: translateY(-50%); color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; transition: opacity 120ms ease; pointer-events: none; }
