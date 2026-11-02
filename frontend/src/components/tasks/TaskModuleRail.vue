@@ -16,6 +16,7 @@
         <i v-else-if="tasks.syncError && !tasks.syncing" aria-hidden="true"></i>
       </button>
       <RouterLink to="/tasks/inbox-notify" aria-label="任务提醒" title="任务提醒"><Bell aria-hidden="true" /><b v-if="inbox.unread">{{ inbox.unread > 99 ? '99+' : inbox.unread }}</b></RouterLink>
+      <RouterLink to="/tasks/app-settings" aria-label="设置" title="设置"><Settings aria-hidden="true" /></RouterLink>
     </div>
   </aside>
 </template>
@@ -23,7 +24,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { Bell, CalendarDays, CalendarHeart, ChartPie, CheckSquare2, CircleDot, LayoutGrid, RefreshCw, Search, Target } from 'lucide-vue-next'
+import { Bell, CalendarDays, CalendarHeart, ChartPie, CheckSquare2, CircleDot, LayoutGrid, RefreshCw, Search, Settings, Target } from 'lucide-vue-next'
 import { useAppStore } from '../../stores/app.js'
 import { useTaskInboxStore } from '../../stores/taskInbox.js'
 import { useTasksStore } from '../../stores/tasks.js'

@@ -1,17 +1,13 @@
 <template>
-  <section id="data" class="task-data-panel" :class="{ 'is-flat': hideHeading }" :aria-labelledby="hideHeading ? undefined : 'task-data-title'">
-    <h2 v-if="!hideHeading" id="task-data-title">导入与导出</h2>
+  <section id="data" class="task-data-panel" aria-labelledby="task-data-title">
+    <h2 id="task-data-title">导入与导出</h2>
     <p v-if="error" class="data-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="data-notice" role="status">{{ notice }}</p>
     <div class="data-block">
       <h3>导入任务</h3>
       <p>支持 Excel、CSV、ICS，单文件最多 10 MB、10,000 行、20 个 Sheet。预览阶段不会写入任务。</p>
-      <div class="data-file">
-        <input ref="fileInput" class="data-file-native" type="file" accept=".xlsx,.xls,.csv,.ics" aria-label="选择要导入的文件" @change="previewImport">
-        <button type="button" class="data-file-pick" @click="fileInput?.click()">选择文件</button>
-        <span class="data-file-name">{{ fileName || '未选择文件（xlsx / xls / csv / ics）' }}</span>
-      </div>
-      <progress v-if="uploadProgress && !preview" max="100" :value="uploadProgress"></progress>
+      <input type="file" accept=".xlsx,.xls,.csv,.ics" @change="previewImport">
+      <progress v-if="uploadProgress" max="100" :value="uploadProgress"></progress>
       <div v-if="preview" class="preview">
         <div class="summary"><b>有效 {{ preview.valid }}</b><b>重复 {{ preview.duplicates }}</b><b>错误 {{ preview.errors }}</b></div>
         <div class="preview-table"><table><thead><tr><th>行</th><th>状态</th><th>标题</th><th>清单</th><th>到期</th><th>说明</th></tr></thead><tbody><tr v-for="row in preview.rows.slice(0, 200)" :key="`${row.sheet}-${row.rowNumber}`"><td>{{ row.sheet }} · {{ row.rowNumber }}</td><td>{{ row.state }}</td><td>{{ row.title }}</td><td>{{ row.listName }}</td><td>{{ dueLabel(row.dueAt) }}</td><td>{{ row.message }}</td></tr></tbody></table></div>
@@ -31,12 +27,7 @@ import { ref } from 'vue'
 import { apiCommitTaskImport, apiDownloadTaskExport, apiPreviewTaskImport } from '../../../packages/api-client/src/index.js'
 import { useTasksStore } from '../../stores/tasks.js'
 
-// hideHeading：嵌进弹窗时由弹窗标题承担，面板自己不重复一行标题
-defineProps({ hideHeading: { type: Boolean, default: false } })
-
 const store = useTasksStore()
-const fileInput = ref(null)
-const fileName = ref('')
 const error = ref('')
 const notice = ref('')
 const preview = ref(null)
@@ -46,7 +37,6 @@ function dueLabel(value) { return value ? new Date(value).toLocaleString('zh-CN'
 async function previewImport(event) {
   const file = event.target.files?.[0]
   if (!file) return
-  fileName.value = file.name
   error.value = ''
   notice.value = ''
   try {
@@ -82,5 +72,5 @@ async function download(format) {
 </script>
 
 <style scoped>
-.task-data-panel{display:grid;gap:16px}.task-data-panel.is-flat .data-block:first-of-type{padding-top:0;border-top:0}.task-data-panel>h2,.data-block h3{margin:0}.data-block{display:grid;gap:10px;padding-top:16px;border-top:1px solid var(--line)}.data-block p{margin:0;color:var(--muted)}.data-file{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.data-file-native{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}.data-file-name{color:var(--muted);font-size:12px}progress{width:100%;height:4px;accent-color:var(--accent)}.summary,.export-actions{display:flex;gap:10px;flex-wrap:wrap}.summary b{padding:8px 12px;background:var(--panel2)}button{min-height:38px;border:1px solid var(--line2);background:var(--card);color:var(--ink);padding:7px 12px;cursor:pointer}.preview-table{max-height:420px;overflow:auto}.preview-table table{width:100%;min-width:720px;border-collapse:collapse}.preview-table th,.preview-table td{text-align:left;padding:9px;border-bottom:1px solid var(--line)}.data-error,.data-notice{padding:10px 12px;border-left:3px solid var(--down);background:color-mix(in srgb,var(--down) 8%,transparent)}.data-notice{border-color:var(--accent);background:var(--accent-soft)}
+.task-data-panel{display:grid;gap:16px}.task-data-panel>h2,.data-block h3{margin:0}.data-block{display:grid;gap:10px;padding-top:16px;border-top:1px solid var(--line)}.data-block p{margin:0;color:var(--muted)}input[type=file]{max-width:100%}progress{width:100%}.summary,.export-actions{display:flex;gap:10px;flex-wrap:wrap}.summary b{padding:8px 12px;background:var(--panel2)}button{min-height:38px;border:1px solid var(--line2);background:var(--card);color:var(--ink);padding:7px 12px;cursor:pointer}.preview-table{max-height:420px;overflow:auto}.preview-table table{width:100%;min-width:720px;border-collapse:collapse}.preview-table th,.preview-table td{text-align:left;padding:9px;border-bottom:1px solid var(--line)}.data-error,.data-notice{padding:10px 12px;border-left:3px solid var(--down);background:color-mix(in srgb,var(--down) 8%,transparent)}.data-notice{border-color:var(--accent);background:var(--accent-soft)}
 </style>

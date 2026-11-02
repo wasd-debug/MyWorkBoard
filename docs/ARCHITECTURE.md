@@ -1024,11 +1024,3 @@ Agent 普通请求与 SSE 均持久化结构化响应。查询历史 assistant �
 今天页的两条聚合行（倒数纪念日、习惯）改为“图标徽标 + 名称”，图标取 `iconValue/icon` 与 `iconColor/color`。倒数纪念日是否出现在今天页由卡片自己的“显示”选项决定：`countdownVisible()` 把 `SMART`（当天）、`D3`/`D7`（提前 N 天）、`ALWAYS`、`NEVER` 落成布尔值，今天页不再无条件罗列全部倒数日；搜索页不受 `SMART/D3/D7` 限制（显式搜索就是要看全部），但仍排除 `NEVER` 与已归档。点击习惯行在右栏打开 `components/habits/HabitDetailPane.vue`，它与习惯页共用 `HabitDetailPanel` 和打卡写入口径，只是把状态收在组件内部，因此任务页不需要复制一份习惯逻辑。
 
 跳转契约：弹窗里点任务 → `/tasks/search?…&open=<publicId>`，工作区监听 `route.query.open` 直接展开该任务详情；点习惯 → `/tasks/habits?habit=<publicId>`；点倒数日 → `/tasks/countdowns?focus=<publicId>`。
-
-## 任务域设置页下线与导入导出迁移（2026-11-02）
-
-任务域原有的两屏设置整页删除：`/tasks/app-settings`（`views/TaskAppSettingsView.vue`，15 个分区：账号、高级会员、功能模块、智能清单、提醒与通知、日期与时间、外观、AI 功能、更多设置、关联与导入、共享协作、便签、桌面小部件、快捷键、关于）与它右下角跳转的 `/tasks/settings`（`views/TaskSettingsView.vue`：默认清单与视图、默认提醒、周起始、时区、日历叠加、通知、免打扰、数据面板、ICS 订阅）。同时删除 `components/settings/` 整个目录（`settingsState.js`、`useSettings.js`、六个 `Settings*Panes.vue`、四个 `Setting*.vue` 控件与单测），图标栏齿轮入口、`taskNavigation` 里的「设置」项也已移除。工作台顶栏的 `/settings`（工时/账本/账号/MCP/模型成本那一套 `SettingsView.vue`）与任务域无关，保持不动。
-
-三个老地址 `/tasks/app-settings`、`/tasks/settings`、`/tasks/data` 全部 `redirect: '/tasks/today'`，历史书签不会 404；`worktimeNavigation` / `ledgerNavigation` 里的「设置」指向 `/worktime/settings`，不受影响。
-
-按用户决定只保留导入导出：`components/tasks/TaskDataPanel.vue` 原样保留，靠新增的 `hide-heading` 开关在弹窗里隐藏自身 h2（避免和弹窗标题重复），并给文件选择换了中文按钮 + 文件名回显。入口从设置页搬到任务页左侧栏：`TaskWorkspaceView` 在滚动区之外、任务状态与迷你日历之间新增 `.clone-sidebar-data` 区块，按钮打开 `<Dialog>`（`content-class="clone-data-dialog"`，`theme.css` 里放宽到 620px 以便预览表格）。任务设置页里其余功能（默认清单/视图、默认提醒、周起始、时区、日历叠加、通知、免打扰、ICS 订阅）没有前端入口，后端 `/api/v1/tasks/settings` 与 feed 接口保留未删。

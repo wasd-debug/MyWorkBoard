@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const view = await readFile(new URL('./TasksEnhancedView.vue', import.meta.url), 'utf8')
+const settingsView = await readFile(new URL('./TaskSettingsView.vue', import.meta.url), 'utf8')
 const dataPanel = await readFile(new URL('../components/tasks/TaskDataPanel.vue', import.meta.url), 'utf8')
 const inboxView = await readFile(new URL('./TasksInboxView.vue', import.meta.url), 'utf8')
 const workspaceView = await readFile(new URL('./TaskWorkspaceView.vue', import.meta.url), 'utf8')
@@ -93,14 +94,10 @@ test('task import remains preview then explicit commit', () => {
   assert.match(client, /\/api\/v1\/tasks\/import\/preview/)
   assert.match(client, /apiCommitTaskImport/)
   assert.match(client, /\/api\/v1\/tasks\/import\/commit/)
-  // 设置页下线后导入导出迁到任务页侧栏的弹窗，面板本身仍在
-  assert.match(workspaceView, /<TaskDataPanel hide-heading \/>/)
-  assert.match(workspaceView, /class="clone-nav-item clone-nav-button" @click="dataDialogOpen = true"/)
+  assert.match(settingsView, /TaskDataPanel/)
   assert.match(dataPanel, /预览阶段不会写入任务/)
   assert.match(dataPanel, /确认导入/)
-  // 老地址回落，不再渲染设置页
-  assert.match(router, /path: '\/tasks\/settings', redirect: '\/tasks\/today'/)
-  assert.doesNotMatch(router, /TaskAppSettingsView|TaskSettingsView/)
+  assert.match(router, /path: '\/tasks\/data', redirect: \{ path: '\/tasks\/settings', hash: '#data' \}/)
 })
 
 test('completed tasks append on both workspace and document scrolling', async () => {
@@ -1081,8 +1078,7 @@ test('task sidebar uses one scroll region and keeps the mini calendar fixed at t
   assert.match(workspaceView, /listViewOptions = \[[\s\S]*value: "LIST"[\s\S]*value: "KANBAN"[\s\S]*value: "TIMELINE"/)
   assert.match(workspaceView, /serializeFilterRules\(useDraft \? buildAdvancedFilterRules\(source\.advanced\.conditions, source\.advanced\.joins\) : source\.rules\)/)
   assert.match(workspaceView, /clone-sidebar-scroll \{ display: flex; min-height: 0; flex: 1 1 auto;[\s\S]*overflow-y: auto/)
-  // 「导入与导出」入口在滚动区之外，和迷你日历一起常驻底部（原设置页的数据面板迁到这里）
-  assert.match(workspaceView, /<div class="clone-sidebar-scroll">[\s\S]*clone-sidebar-system[\s\S]*clone-sidebar-organization[\s\S]*clone-sidebar-status[\s\S]*<\/div>\s*<section class="clone-sidebar-block clone-sidebar-data"[\s\S]*<section class="clone-sidebar-block clone-mini-calendar"/)
+  assert.match(workspaceView, /<div class="clone-sidebar-scroll">[\s\S]*clone-sidebar-system[\s\S]*clone-sidebar-organization[\s\S]*clone-sidebar-status[\s\S]*<\/div>\s*<section class="clone-sidebar-block clone-mini-calendar"/)
   assert.match(workspaceView, /clone-sidebar-organization \{ display: grid; flex: none;[\s\S]*overflow: visible; \}/)
   assert.match(workspaceView, /\.clone-group-lists \{ padding-left: 16px; \}/)
   assert.match(workspaceView, /\.clone-sidebar-system \{ max-height: none; overflow: visible; \}/)
@@ -1125,9 +1121,7 @@ test('task domain exposes a ticktick-style desktop module rail', async () => {
   const app = await readFile(new URL('../App.vue', import.meta.url), 'utf8')
   const theme = await readFile(new URL('../styles/theme.css', import.meta.url), 'utf8')
   // 搜索改成弹窗后不再是 rail 的路由入口，rail 上是一个唤起弹窗的按钮
-  for (const path of ['/tasks/today', '/tasks/calendar', '/tasks/focus', '/tasks/habits', '/tasks/countdowns']) assert.match(rail, new RegExp(path.replaceAll('/', '\\/')))
-  // 设置页整页删除，rail 上的齿轮入口一并去掉
-  assert.doesNotMatch(rail, /\/tasks\/app-settings/)
+  for (const path of ['/tasks/today', '/tasks/calendar', '/tasks/focus', '/tasks/habits', '/tasks/countdowns', '/tasks/app-settings']) assert.match(rail, new RegExp(path.replaceAll('/', '\\/')))
   assert.match(rail, /class="task-rail-search"[\s\S]*openSearch/)
   assert.doesNotMatch(rail, /label: 'AI'|label: '搜索'/)
   assert.match(app, /<TaskModuleRail v-if="isTasks"/)

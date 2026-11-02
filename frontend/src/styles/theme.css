@@ -829,8 +829,6 @@ html.dark .ui-button.variant-ink:hover:not(:disabled) { background: color-mix(in
   background: var(--card); border: 1px solid var(--line); border-radius: 4px;
   box-shadow: 0 24px 60px rgba(0,0,0,.12);
 }
-/* 导入与导出弹窗要放预览表格，比默认 440 宽一些 */
-.ui-dialog.clone-data-dialog { max-width: 620px }
 .ui-dialog[data-state="open"] { animation: dialog-in .18s ease }
 .ui-dialog[data-state="closed"] { animation: dialog-out .16s ease }
 @keyframes dialog-in { from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(.985) } }
