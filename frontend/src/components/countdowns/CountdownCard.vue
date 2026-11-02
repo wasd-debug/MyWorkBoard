@@ -9,6 +9,7 @@
     @click="emit('cycle')"
     @keydown.enter.prevent="emit('cycle')"
     @keydown.space.prevent="emit('cycle')"
+    @contextmenu.prevent="openMenuAt($event)"
   >
     <div class="cdc-tools" @click.stop>
       <button
@@ -50,9 +51,9 @@
       <h3 v-if="item.title" class="cdc-title">{{ item.title }}</h3>
     </div>
 
-    <div class="cdc-count" :class="{ 'is-multi': parts.length > 1, 'is-long': parts.length > 2 }">
+    <div class="cdc-count" :class="{ 'is-multi': parts.length > 1, 'is-long': parts.length > 2, 'is-tiny': parts.length > 3 }">
       <span v-for="(part, index) in parts" :key="index" class="cdc-part">
-        <b>{{ part.value }}</b><i v-if="part.unit">{{ part.unit }}</i>
+        <b :class="{ 'is-clock': part.clock }">{{ part.value }}</b><i v-if="part.unit">{{ part.unit }}</i>
       </span>
     </div>
 
@@ -84,6 +85,18 @@ const footText = computed(() => footerText(props.item, props.today))
 const showIcon = computed(() => ['ICON', 'EMOJI', 'TEXT'].includes(props.item.iconType) && props.item.cover !== 'IMAGE')
 
 /** 菜单挂在 body 上：卡片为了圆角图片做了 overflow:hidden，内联菜单会被裁掉 */
+function placeMenu(left, top) {
+  const width = 146
+  const height = 248
+  menuStyle.value = {
+    position: 'fixed',
+    top: `${Math.round(Math.max(8, Math.min(top, window.innerHeight - height)))}px`,
+    left: `${Math.round(Math.max(8, Math.min(left, window.innerWidth - width - 8)))}px`,
+    width: `${width}px`
+  }
+  menuOpen.value = true
+}
+
 function toggleMenu() {
   if (menuOpen.value) {
     menuOpen.value = false
@@ -92,11 +105,13 @@ function toggleMenu() {
   const button = moreButton.value
   if (!button) return
   const rect = button.getBoundingClientRect()
-  const width = 146
-  const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8))
-  const top = Math.min(rect.bottom + 6, window.innerHeight - 260)
-  menuStyle.value = { position: 'fixed', top: `${Math.round(top)}px`, left: `${Math.round(left)}px`, width: `${width}px` }
-  menuOpen.value = true
+  placeMenu(rect.right - 146, rect.bottom + 6)
+}
+
+/** 右键菜单：定位到指针处，与「更多」共用同一份菜单 */
+function openMenuAt(event) {
+  if (event?.clientX == null) return
+  placeMenu(event.clientX, event.clientY)
 }
 function pick(action) {
   menuOpen.value = false
@@ -257,6 +272,8 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 .cdc-part { display: inline-flex; align-items: baseline; }
+/* 时钟段没有单位字，靠 flex gap 会和前面的数字贴在一起 */
+.cdc-count:has(.is-clock) { gap: 8px; }
 .cdc-part b {
   font-size: calc(var(--cw, 240px) * .225);
   font-weight: 500;
@@ -264,6 +281,10 @@ onBeforeUnmount(() => {
 }
 .cdc-count.is-multi .cdc-part b { font-size: calc(var(--cw, 240px) * .135); }
 .cdc-count.is-long .cdc-part b { font-size: calc(var(--cw, 240px) * .115); }
+.cdc-count.is-tiny .cdc-part b { font-size: calc(var(--cw, 240px) * .1); }
+.cdc-count.is-multi .cdc-part b.is-clock { font-size: calc(var(--cw, 240px) * .1); letter-spacing: .01em; opacity: .92; }
+.cdc-count.is-long .cdc-part b.is-clock,
+.cdc-count.is-tiny .cdc-part b.is-clock { font-size: calc(var(--cw, 240px) * .088); letter-spacing: .01em; opacity: .92; }
 .cdc-part i {
   margin-left: 1px;
   font-size: calc(var(--cw, 240px) * .05);

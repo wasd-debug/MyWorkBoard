@@ -10,10 +10,14 @@ import {
   effectiveTarget,
   footerText,
   matchesTab,
+  needsTick,
+  preciseTimeText,
   reminderText,
   repeatText,
   sortItems,
-  typeOf
+  targetMoment,
+  typeOf,
+  unitLabel
 } from './countdownUtils.js'
 import {
   builtinTargetDate,
@@ -191,5 +195,83 @@ test('新建默认值：跟随类型图标与颜色', () => {
   assert.equal(defaultCountdown('BIRTHDAY').repeatRule, 'YEARLY')
   assert.equal(defaultCountdown('FESTIVAL').kind, 'FESTIVAL')
   assert.equal(defaultCountdown().unit, 'DAY')
+  assert.equal(defaultCountdown().preciseSeconds, false)
+  assert.equal(defaultCountdown().preciseTime, '')
   assert.equal(defaultCountdown().archived, false)
+})
+
+// 2026-11-02 10:30:00 作为固定“现在”，避免用例随运行时间漂移
+const NOW = new Date(2026, 10, 2, 10, 30, 0)
+
+test('目标时刻：设了精确时刻按该时刻，没设按当天零点', () => {
+  assert.equal(targetMoment({ targetDate: '2026-11-07' }, '2026-11-02').getHours(), 0)
+  const withTime = targetMoment({ targetDate: '2026-11-07', preciseSeconds: true, preciseTime: '09:00' }, '2026-11-02')
+  assert.equal(withTime.getHours(), 9)
+  assert.equal(withTime.getMinutes(), 0)
+  // 未开启精确到秒时，残留的时刻不参与计算
+  assert.equal(targetMoment({ targetDate: '2026-11-07', preciseTime: '09:00' }, '2026-11-02').getHours(), 0)
+  assert.equal(preciseTimeText({ preciseTime: '09:00' }), '09:00')
+  assert.equal(preciseTimeText({ preciseTime: '' }), '当天零点')
+  assert.equal(preciseTimeText({ preciseTime: '99:99' }), '当天零点')
+})
+
+test('精确到秒：日级刻度末尾附时钟段，未开启时不附', () => {
+  const base = { targetDate: '2026-11-07' }
+  assert.deepEqual(countParts({ ...base, unit: 'DAY' }, '2026-11-02', NOW), [{ value: '5', unit: '' }])
+  assert.deepEqual(countParts({ ...base, unit: 'DAY', preciseSeconds: true, preciseTime: '09:00' }, '2026-11-02', NOW), [
+    { value: '4', unit: '' },
+    { value: '22:30:00', unit: '', clock: true }
+  ])
+  assert.deepEqual(countParts({ ...base, unit: 'WEEK', preciseSeconds: true, preciseTime: '09:00' }, '2026-11-02', NOW), [
+    { value: '0', unit: '周' },
+    { value: '4', unit: '天' },
+    { value: '22:30:00', unit: '', clock: true }
+  ])
+})
+
+test('精确到秒：分/时在关闭时只到分，开启后补到秒', () => {
+  const base = { targetDate: '2026-11-07', preciseTime: '09:00' }
+  assert.deepEqual(countParts({ ...base, unit: 'HOUR' }, '2026-11-02', NOW), [
+    { value: '13', unit: '时' },
+    { value: '30', unit: '分' }
+  ])
+  assert.deepEqual(countParts({ ...base, unit: 'HOUR', preciseSeconds: true }, '2026-11-02', NOW), [
+    { value: '22', unit: '时' },
+    { value: '30', unit: '分' },
+    { value: '00', unit: '秒' }
+  ])
+  assert.deepEqual(countParts({ ...base, unit: 'MINUTE' }, '2026-11-02', NOW), [{ value: '6570', unit: '分' }])
+  assert.deepEqual(countParts({ ...base, unit: 'MINUTE', preciseSeconds: true }, '2026-11-02', NOW), [
+    { value: '7110', unit: '分' },
+    { value: '00', unit: '秒' }
+  ])
+})
+
+test('精确到秒：秒刻度本身不再叠加', () => {
+  const parts = countParts({ targetDate: '2026-11-07', preciseTime: '09:00', unit: 'SECOND', preciseSeconds: true }, '2026-11-02', NOW)
+  assert.equal(parts.length, 1)
+  assert.equal(parts[0].unit, '秒')
+  assert.equal(parts[0].value, '426600')
+})
+
+test('刻度文案：开启精确到秒后除秒以外都补到秒', () => {
+  assert.equal(unitLabel('HOUR'), '时')
+  assert.equal(unitLabel('MINUTE'), '分')
+  assert.equal(unitLabel('YEAR'), '年 + 月 + 天')
+  assert.equal(unitLabel('HOUR', true), '时 + 分 + 秒')
+  assert.equal(unitLabel('MINUTE', true), '分 + 秒')
+  assert.equal(unitLabel('SECOND', true), '秒')
+  assert.equal(unitLabel('DAY', true), '天 + 时分秒')
+  assert.equal(unitLabel('YEAR', true), '年 + 月 + 天 + 时分秒')
+})
+
+test('按秒刷新：时间刻度或精确到秒都需要每秒重算', () => {
+  assert.equal(needsTick({ unit: 'SECOND' }), true)
+  assert.equal(needsTick({ unit: 'DAY' }), false)
+  assert.equal(needsTick({ unit: 'DAY', preciseSeconds: true }), true)
+})
+
+test('底部文案：设了精确时刻时带出时刻', () => {
+  assert.equal(footerText({ targetDate: '2026-11-07', preciseSeconds: true, preciseTime: '09:00' }, '2026-11-02'), '距离 2026-11-07 09:00 还有')
+  assert.equal(footerText({ targetDate: '2026-11-07', preciseTime: '09:00' }, '2026-11-02'), '距离 2026-11-07 还有')
 })

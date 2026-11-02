@@ -494,11 +494,11 @@ public class TaskEfficiencyService {
                     Long.class, userId, builtin.key());
             if (existing != null && existing > 0) continue;
             jdbc.update("INSERT INTO countdown(public_id,user_id,title,target_date,kind,repeat_yearly,is_pinned,color,note," +
-                            "icon_type,icon_value,icon_color,cover,unit,precise_seconds,remind,repeat_rule,display_rule," +
-                            "archived,calendar_type,builtin_key,sort_order) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            "icon_type,icon_value,icon_color,cover,unit,precise_seconds,precise_time,remind,repeat_rule," +
+                            "display_rule,archived,calendar_type,builtin_key,sort_order) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     UUID.randomUUID().toString(), userId, builtin.title(), Date.valueOf(builtin.targetDate()),
                     builtin.kind(), false, false, builtin.color(), "", "EMOJI", builtin.icon(), builtin.color(),
-                    "IMAGE", "DAY", false, "", "NONE", "SMART", false, "SOLAR", builtin.key(), builtin.sortOrder());
+                    "IMAGE", "DAY", false, "", "", "NONE", "SMART", false, "SOLAR", builtin.key(), builtin.sortOrder());
         }
     }
 
@@ -512,13 +512,14 @@ public class TaskEfficiencyService {
         long userId = currentUser.id();
         CountdownValues values = countdownValues(command, null);
         jdbc.update("INSERT INTO countdown(public_id,user_id,title,target_date,kind,repeat_yearly,is_pinned,color,note," +
-                        "icon_type,icon_value,icon_color,cover,cover_image,unit,precise_seconds,remind,repeat_rule," +
-                        "display_rule,archived,calendar_type,lunar_date,sort_order) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "icon_type,icon_value,icon_color,cover,cover_image,unit,precise_seconds,precise_time,remind," +
+                        "repeat_rule,display_rule,archived,calendar_type,lunar_date,sort_order) " +
+                        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 publicId, userId, values.title(), Date.valueOf(values.targetDate()), values.kind(), values.repeatYearly(),
                 values.pinned(), values.color(), values.note(), values.iconType(), values.iconValue(), values.iconColor(),
-                values.cover(), values.coverImage(), values.unit(), values.preciseSeconds(), values.remind(),
-                values.repeatRule(), values.displayRule(), values.archived(), values.calendarType(), values.lunarDate(),
-                values.sortOrder());
+                values.cover(), values.coverImage(), values.unit(), values.preciseSeconds(), values.preciseTime(),
+                values.remind(), values.repeatRule(), values.displayRule(), values.archived(), values.calendarType(),
+                values.lunarDate(), values.sortOrder());
         Countdown saved = countdownById(userId, publicId);
         changeLog.append(userId, opId, "countdown", publicId, "UPSERT", syncEntity(saved, false));
         return saved;
@@ -536,14 +537,14 @@ public class TaskEfficiencyService {
         if (before.revision() != expected) throw new ConflictException("倒数日版本已变化", before.revision());
         CountdownValues values = countdownValues(command, before);
         int changed = jdbc.update("UPDATE countdown SET title=?,target_date=?,kind=?,repeat_yearly=?,is_pinned=?,color=?,note=?," +
-                        "icon_type=?,icon_value=?,icon_color=?,cover=?,cover_image=?,unit=?,precise_seconds=?,remind=?," +
-                        "repeat_rule=?,display_rule=?,archived=?,calendar_type=?,lunar_date=?,sort_order=?,revision=revision+1 " +
-                        "WHERE public_id=? AND user_id=? AND revision=? AND deleted_at IS NULL",
+                        "icon_type=?,icon_value=?,icon_color=?,cover=?,cover_image=?,unit=?,precise_seconds=?,precise_time=?," +
+                        "remind=?,repeat_rule=?,display_rule=?,archived=?,calendar_type=?,lunar_date=?,sort_order=?," +
+                        "revision=revision+1 WHERE public_id=? AND user_id=? AND revision=? AND deleted_at IS NULL",
                 values.title(), Date.valueOf(values.targetDate()), values.kind(), values.repeatYearly(), values.pinned(),
                 values.color(), values.note(), values.iconType(), values.iconValue(), values.iconColor(), values.cover(),
-                values.coverImage(), values.unit(), values.preciseSeconds(), values.remind(), values.repeatRule(),
-                values.displayRule(), values.archived(), values.calendarType(), values.lunarDate(), values.sortOrder(),
-                publicId, userId, expected);
+                values.coverImage(), values.unit(), values.preciseSeconds(), values.preciseTime(), values.remind(),
+                values.repeatRule(), values.displayRule(), values.archived(), values.calendarType(), values.lunarDate(),
+                values.sortOrder(), publicId, userId, expected);
         if (changed == 0) throw new ConflictException("倒数日版本已变化", before.revision());
         Countdown saved = countdownById(userId, publicId);
         changeLog.append(userId, opId, "countdown", publicId, "UPSERT", syncEntity(saved, false));
@@ -755,7 +756,8 @@ public class TaskEfficiencyService {
         extra.put("iconType", item.iconType()); extra.put("iconValue", item.iconValue());
         extra.put("iconColor", item.iconColor()); extra.put("cover", item.cover());
         extra.put("coverImage", item.coverImage()); extra.put("unit", item.unit());
-        extra.put("preciseSeconds", item.preciseSeconds()); extra.put("remind", item.remind());
+        extra.put("preciseSeconds", item.preciseSeconds()); extra.put("preciseTime", item.preciseTime());
+        extra.put("remind", item.remind());
         extra.put("repeatRule", item.repeatRule()); extra.put("displayRule", item.displayRule());
         extra.put("archived", item.archived()); extra.put("calendarType", item.calendarType());
         extra.put("lunarDate", item.lunarDate()); extra.put("builtinKey", item.builtinKey());
@@ -783,9 +785,10 @@ public class TaskEfficiencyService {
                 row.getString("kind"), row.getBoolean("repeat_yearly"), row.getBoolean("is_pinned"), row.getString("color"),
                 row.getString("note"), row.getLong("revision"), row.getString("icon_type"), row.getString("icon_value"),
                 row.getString("icon_color"), row.getString("cover"), row.getString("cover_image"), row.getString("unit"),
-                row.getBoolean("precise_seconds"), row.getString("remind"), row.getString("repeat_rule"),
-                row.getString("display_rule"), row.getBoolean("archived"), row.getString("calendar_type"),
-                row.getString("lunar_date"), row.getString("builtin_key"), row.getInt("sort_order"));
+                row.getBoolean("precise_seconds"), row.getString("precise_time"), row.getString("remind"),
+                row.getString("repeat_rule"), row.getString("display_rule"), row.getBoolean("archived"),
+                row.getString("calendar_type"), row.getString("lunar_date"), row.getString("builtin_key"),
+                row.getInt("sort_order"));
     }
 
     private HabitValues habitValues(HabitCommand command, Habit before, ZoneId zone) {
@@ -864,6 +867,8 @@ public class TaskEfficiencyService {
         String unit = enumValue(command.unit(), before == null ? "DAY" : before.unit(),
                 List.of("DAY", "WEEK", "MONTH", "YEAR", "SECOND", "MINUTE", "HOUR"), "unit");
         boolean precise = value(command.preciseSeconds(), before != null && before.preciseSeconds());
+        String preciseTime = command.preciseTime() == null
+                ? before == null ? "" : before.preciseTime() : clock(command.preciseTime());
         String remind = command.remind() == null
                 ? before == null ? "" : before.remind() : remindOffsets(command.remind());
         String repeatRule = command.repeatRule() == null
@@ -881,8 +886,16 @@ public class TaskEfficiencyService {
                 value(command.pinned(), before != null && before.pinned()),
                 color(command.color() == null && before != null ? before.color() : command.color()),
                 optional(command.note() == null && before != null ? before.note() : command.note(), 1000),
-                iconType, iconValue, iconColor, cover, coverImage, unit, precise, remind, repeatRule, displayRule,
-                archived, calendarType, lunarDate, sortOrder);
+                iconType, iconValue, iconColor, cover, coverImage, unit, precise, preciseTime, remind, repeatRule,
+                displayRule, archived, calendarType, lunarDate, sortOrder);
+    }
+
+    /** 精确时刻：空串表示按当天零点，否则必须是 HH:mm */
+    private String clock(String raw) {
+        String value = raw == null ? "" : raw.trim();
+        if (value.isEmpty()) return "";
+        if (!value.matches("([01]\\d|2[0-3]):[0-5]\\d")) throw new IllegalArgumentException("精确时刻必须形如 HH:mm");
+        return value;
     }
 
     /** 自定义重复用 CUSTOM:N 表示每隔 N 天 */
@@ -1042,7 +1055,8 @@ public class TaskEfficiencyService {
     private record CountdownValues(String title, LocalDate targetDate, String kind, boolean repeatYearly,
                                    boolean pinned, String color, String note, String iconType, String iconValue,
                                    String iconColor, String cover, String coverImage, String unit,
-                                   boolean preciseSeconds, String remind, String repeatRule, String displayRule,
-                                   boolean archived, String calendarType, String lunarDate, int sortOrder) { }
+                                   boolean preciseSeconds, String preciseTime, String remind, String repeatRule,
+                                   String displayRule, boolean archived, String calendarType, String lunarDate,
+                                   int sortOrder) { }
     private record Streak(int current, int longest) { }
 }

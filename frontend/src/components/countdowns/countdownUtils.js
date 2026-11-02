@@ -45,15 +45,26 @@ export const DISPLAY_UNITS = [
   { key: 'WEEK', label: '周 + 天' },
   { key: 'MONTH', label: '月 + 天' },
   { key: 'SECOND', label: '秒' },
-  { key: 'MINUTE', label: '分 + 秒' },
-  { key: 'HOUR', label: '时 + 分 + 秒' },
+  { key: 'MINUTE', label: '分' },
+  { key: 'HOUR', label: '时' },
   { key: 'YEAR', label: '年 + 月 + 天' }
 ]
 
 export const UNIT_KEYS = DISPLAY_UNITS.map(item => item.key)
 
-export function unitLabel(key) {
-  return DISPLAY_UNITS.find(item => item.key === key)?.label || '天'
+/** 下拉里的排列顺序：先日级刻度，再时间刻度 */
+export const UNIT_MENU_KEYS = ['DAY', 'WEEK', 'MONTH', 'YEAR', 'SECOND', 'MINUTE', 'HOUR']
+
+export const UNIT_MENU = UNIT_MENU_KEYS.map(key => DISPLAY_UNITS.find(item => item.key === key))
+
+export function unitLabel(key, precise = false) {
+  const base = DISPLAY_UNITS.find(item => item.key === key)?.label || '天'
+  if (!precise) return base
+  // 精确到秒后除「秒」本身，其余刻度都补到秒
+  if (key === 'SECOND') return base
+  if (key === 'MINUTE') return '分 + 秒'
+  if (key === 'HOUR') return '时 + 分 + 秒'
+  return `${base} + 时分秒`
 }
 
 export function cycleUnit(unit) {
@@ -64,6 +75,11 @@ export function cycleUnit(unit) {
 /** 时间类单位需要按秒刷新 */
 export function isTimeUnit(unit) {
   return unit === 'SECOND' || unit === 'MINUTE' || unit === 'HOUR'
+}
+
+/** 精确到秒开启后，日级刻度也要每秒刷新 */
+export function needsTick(item) {
+  return Boolean(item?.preciseSeconds) || isTimeUnit(item?.unit)
 }
 
 /** 卡片封面样式：图片 / 浅色 / 深色 / 彩色 / 渐变 */
@@ -175,6 +191,28 @@ export function daysUntil(item, today = todayKey()) {
   return Math.round((parseKey(effectiveTarget(item, today)) - parseKey(today)) / 86400000)
 }
 
+const CLOCK_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
+
+/**
+ * 目标时刻：开启精确到秒且设了 preciseTime（HH:mm）时按该时刻，否则按当天零点。
+ * 秒级显示都以此为准，避免「还没到当天就已经算过去」。
+ */
+export function targetMoment(item, today = todayKey()) {
+  const date = parseKey(effectiveTarget(item, today))
+  const raw = String(item?.preciseTime || '')
+  if (item?.preciseSeconds && CLOCK_PATTERN.test(raw)) {
+    const [hour, minute] = raw.split(':').map(Number)
+    date.setHours(hour, minute, 0, 0)
+  }
+  return date
+}
+
+/** 精确时刻文案 */
+export function preciseTimeText(item) {
+  const raw = String(item?.preciseTime || '')
+  return CLOCK_PATTERN.test(raw) ? raw : '当天零点'
+}
+
 export function directionText(item, today = todayKey()) {
   const days = daysUntil(item, today)
   if (days === 0) return '就是今天'
@@ -184,8 +222,9 @@ export function directionText(item, today = todayKey()) {
 export function footerText(item, today = todayKey()) {
   const days = daysUntil(item, today)
   const target = effectiveTarget(item, today)
-  if (days === 0) return `今天 ${target}`
-  return `距离 ${target} ${days > 0 ? '还有' : '已经'}`
+  const clock = item?.preciseSeconds && item?.preciseTime ? ` ${item.preciseTime}` : ''
+  if (days === 0) return `今天 ${target}${clock}`
+  return `距离 ${target}${clock} ${days > 0 ? '还有' : '已经'}`
 }
 
 function calendarGap(from, to) {
@@ -204,11 +243,62 @@ function calendarGap(from, to) {
 }
 
 /**
+ * 把两个时刻之间的差拆成 年/月/天/时/分/秒（要求 to 不早于 from）。
+ * 借位口径与日历一致：退位时按「to 所在月的上一个月」的天数补足。
+ */
+function momentGap(from, to) {
+  let years = to.getFullYear() - from.getFullYear()
+  let months = to.getMonth() - from.getMonth()
+  let days = to.getDate() - from.getDate()
+  let hours = to.getHours() - from.getHours()
+  let minutes = to.getMinutes() - from.getMinutes()
+  let seconds = to.getSeconds() - from.getSeconds()
+  if (seconds < 0) { seconds += 60; minutes -= 1 }
+  if (minutes < 0) { minutes += 60; hours -= 1 }
+  if (hours < 0) { hours += 24; days -= 1 }
+  if (days < 0) { months -= 1; days += new Date(to.getFullYear(), to.getMonth(), 0).getDate() }
+  if (months < 0) { years -= 1; months += 12 }
+  return { years, months, days, hours, minutes, seconds }
+}
+
+const clockPart = gap => ({ value: `${pad(gap.hours)}:${pad(gap.minutes)}:${pad(gap.seconds)}`, unit: '', clock: true })
+
+/**
  * 把目标日期拆成若干数字段。
- * @returns {{value: string, unit: string}[]}
+ * 精确到秒关闭时按日历差分解；开启后所有刻度都补到秒（日级刻度末尾附 HH:MM:SS）。
+ * @returns {{value: string, unit: string, clock?: boolean}[]}
  */
 export function countParts(item, today = todayKey(), now = new Date()) {
   const unit = item?.unit || 'DAY'
+  const precise = Boolean(item?.preciseSeconds)
+  const moment = targetMoment(item, today)
+  const signedMs = moment.getTime() - now.getTime()
+  const totalSeconds = Math.floor(Math.abs(signedMs) / 1000)
+  const momentParts = momentGap(
+    signedMs >= 0 ? now : moment,
+    signedMs >= 0 ? moment : now
+  )
+
+  if (unit === 'SECOND') return [{ value: String(totalSeconds), unit: '秒' }]
+  if (unit === 'MINUTE') {
+    if (!precise) return [{ value: String(Math.floor(totalSeconds / 60)), unit: '分' }]
+    return [
+      { value: String(Math.floor(totalSeconds / 60)), unit: '分' },
+      { value: pad(momentParts.seconds), unit: '秒' }
+    ]
+  }
+  if (unit === 'HOUR') {
+    if (!precise) {
+      return [{ value: String(momentParts.hours), unit: '时' }, { value: pad(momentParts.minutes), unit: '分' }]
+    }
+    return [
+      { value: String(momentParts.hours), unit: '时' },
+      { value: pad(momentParts.minutes), unit: '分' },
+      { value: pad(momentParts.seconds), unit: '秒' }
+    ]
+  }
+
+  // 日级刻度：未精确到秒时沿用日历差，开启后改用时刻差并附时钟段
   const days = daysUntil(item, today)
   const abs = Math.abs(days)
   const target = parseKey(effectiveTarget(item, today))
@@ -216,16 +306,33 @@ export function countParts(item, today = todayKey(), now = new Date()) {
   const to = days >= 0 ? target : parseKey(today)
 
   if (unit === 'WEEK') {
-    const weeks = Math.floor(abs / 7)
-    const rest = abs % 7
-    return rest ? [{ value: String(weeks), unit: '周' }, { value: String(rest), unit: '天' }] : [{ value: String(weeks), unit: '周' }]
+    const total = precise ? Math.floor(Math.abs(signedMs) / 86400000) : abs
+    const weeks = Math.floor(total / 7)
+    const rest = total % 7
+    const parts = rest ? [{ value: String(weeks), unit: '周' }, { value: String(rest), unit: '天' }] : [{ value: String(weeks), unit: '周' }]
+    return precise ? [...parts, clockPart(momentParts)] : parts
   }
   if (unit === 'MONTH') {
+    if (precise) {
+      const months = momentParts.years * 12 + momentParts.months
+      const parts = []
+      if (months) parts.push({ value: String(months), unit: '月' })
+      if (momentParts.days) parts.push({ value: String(momentParts.days), unit: '天' })
+      if (!parts.length) parts.push({ value: '0', unit: '天' })
+      return [...parts, clockPart(momentParts)]
+    }
     const gap = calendarGap(from, to)
     const months = gap.years * 12 + gap.months
     return gap.days ? [{ value: String(months), unit: '月' }, { value: String(gap.days), unit: '天' }] : [{ value: String(months), unit: '月' }]
   }
   if (unit === 'YEAR') {
+    if (precise) {
+      const parts = []
+      if (momentParts.years) parts.push({ value: String(momentParts.years), unit: '年' })
+      if (momentParts.months) parts.push({ value: String(momentParts.months), unit: '月' })
+      parts.push({ value: String(momentParts.days), unit: '天' })
+      return [...parts, clockPart(momentParts)]
+    }
     const gap = calendarGap(from, to)
     const parts = []
     if (gap.years) parts.push({ value: String(gap.years), unit: '年' })
@@ -233,16 +340,7 @@ export function countParts(item, today = todayKey(), now = new Date()) {
     parts.push({ value: String(gap.days), unit: '天' })
     return parts
   }
-  if (isTimeUnit(unit)) {
-    const ms = Math.abs(target.getTime() - now.getTime())
-    const totalSeconds = Math.floor(ms / 1000)
-    if (unit === 'SECOND') return [{ value: String(totalSeconds), unit: '秒' }]
-    const hours = Math.floor(totalSeconds / 3600)
-    const minutes = Math.floor((totalSeconds % 3600) / 60)
-    const seconds = totalSeconds % 60
-    if (unit === 'MINUTE') return [{ value: String(hours * 60 + minutes), unit: '分' }, { value: pad(seconds), unit: '秒' }]
-    return [{ value: String(hours), unit: '时' }, { value: pad(minutes), unit: '分' }, { value: pad(seconds), unit: '秒' }]
-  }
+  if (precise) return [{ value: String(momentParts.days), unit: '' }, clockPart(momentParts)]
   return [{ value: String(abs), unit: '' }]
 }
 
@@ -342,6 +440,7 @@ export function defaultCountdown(type = 'ANNIVERSARY') {
     coverImage: null,
     unit: 'DAY',
     preciseSeconds: false,
+    preciseTime: '',
     remind: '',
     repeatRule: type === 'BIRTHDAY' ? 'YEARLY' : 'NONE',
     displayRule: 'SMART',

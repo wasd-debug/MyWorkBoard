@@ -160,13 +160,56 @@
                 </div>
               </div>
             </div>
+
+            <div class="cf-row">
+              <span class="cf-label">精确到秒</span>
+              <div class="cf-switch-wrap">
+                <button
+                  type="button"
+                  class="cf-switch"
+                  :class="{ on: form.preciseSeconds }"
+                  role="switch"
+                  :aria-checked="form.preciseSeconds"
+                  aria-label="精确到秒"
+                  @click="togglePrecise"
+                ><span></span></button>
+                <span class="cf-switch-hint">{{ form.preciseSeconds ? '按秒倒计时' : '按天倒计时' }}</span>
+              </div>
+            </div>
+
+            <div v-if="form.preciseSeconds" class="cf-row">
+              <span class="cf-label">时刻</span>
+              <button ref="timeButton" type="button" class="cf-control" :class="{ 'is-open': openPanel === 'time' }" :aria-expanded="openPanel === 'time'" @click="togglePanel('time', $event)">
+                <span>{{ preciseTimeText(form) }}</span>
+                <ChevronDown :size="15" />
+              </button>
+              <!-- 时刻行是最后一行，内联浮层会被弹窗滚动容器裁掉，必须挂到 body -->
+              <Teleport to="body">
+                <div v-if="openPanel === 'time'" class="cf-pop is-time is-floating" :style="timePopStyle" @click.stop>
+                  <div class="cf-date-row">
+                    <select v-model.number="timeDraft.hour" class="cf-box" aria-label="时">
+                      <option v-for="hour in 24" :key="hour" :value="hour - 1">{{ String(hour - 1).padStart(2, '0') }} 时</option>
+                    </select>
+                    <select v-model.number="timeDraft.minute" class="cf-box" aria-label="分">
+                      <option v-for="minute in 60" :key="minute" :value="minute - 1">{{ String(minute - 1).padStart(2, '0') }} 分</option>
+                    </select>
+                  </div>
+                  <div class="cf-pop-foot is-split">
+                    <button type="button" class="cf-btn is-mini" @click="clearTime">当天零点</button>
+                    <span class="cf-grow"></span>
+                    <button type="button" class="cf-btn" @click="openPanel = ''">取消</button>
+                    <button type="button" class="cf-btn is-primary" @click="confirmTime">确定</button>
+                  </div>
+                </div>
+              </Teleport>
+            </div>
           </div>
 
           <p v-if="error" class="cf-error" role="alert">{{ error }}</p>
         </div>
 
         <div v-else class="cf-body is-style">
-          <CountdownStylePanel v-model="styleDraft" :item="form" :today="today" />
+          <CountdownStylePanel v-model="styleDraft" :item="form" :today="today" :show-precise="false" />
         </div>
 
         <footer class="cf-foot">
@@ -199,7 +242,7 @@ import { Bookmark, Check, ChevronDown, Pencil } from 'lucide-vue-next'
 import CountdownStylePanel from './CountdownStylePanel.vue'
 import CountdownIconPicker from './CountdownIconPicker.vue'
 import {
-  COUNTDOWN_TYPES, DISPLAY_RULES, REMIND_PRESETS, defaultCountdown, displayText, repeatText,
+  COUNTDOWN_TYPES, DISPLAY_RULES, REMIND_PRESETS, defaultCountdown, displayText, preciseTimeText, repeatText,
   reminderText, todayKey, typeOf
 } from './countdownUtils.js'
 import {
@@ -224,6 +267,8 @@ const openPanel = ref('')
 const popUp = ref(false)
 const today = todayKey()
 const titleInput = ref(null)
+const timeButton = ref(null)
+const timePopStyle = ref({})
 
 const solarYears = Array.from({ length: 152 }, (_, index) => 1950 + index)
 const solar = reactive({ year: new Date().getFullYear(), month: new Date().getMonth() + 1, day: new Date().getDate() })
@@ -233,6 +278,7 @@ const remindDraft = ref([])
 const customRemind = ref('')
 const customRepeat = ref('')
 const repeatKey = ref('NONE')
+const timeDraft = reactive({ hour: 9, minute: 0 })
 
 const solarDays = computed(() => new Date(solar.year, solar.month, 0).getDate())
 watch(solarDays, days => { if (solar.day > days) solar.day = days })
@@ -339,13 +385,55 @@ watch(() => props.open, async open => {
   titleInput.value?.focus()
 })
 
-/** 浮层：靠近底部时向上展开 */
+/** 浮层：靠近底部时向上展开（按各类浮层的实际高度判断，时刻只有一行下拉） */
+const PANEL_HEIGHTS = { time: 132, date: 210 }
 function togglePanel(name, event) {
   const next = openPanel.value === name ? '' : name
   openPanel.value = next
   if (!next) return
   const rect = event.currentTarget.getBoundingClientRect()
-  popUp.value = rect.bottom + 340 > window.innerHeight
+  popUp.value = rect.bottom + (PANEL_HEIGHTS[name] || 340) > window.innerHeight - 12
+  if (name === 'time') {
+    syncTimeDraft()
+    placeTimePop(rect)
+  }
+}
+
+/** 时刻浮层固定定位：宽度对齐「时刻」控件，空间不足时向上翻 */
+function placeTimePop(rect) {
+  const width = Math.max(rect.width, 240)
+  const height = 116
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))
+  const up = rect.bottom + height + 8 > window.innerHeight
+  const top = up ? rect.top - height - 8 : rect.bottom + 8
+  timePopStyle.value = {
+    position: 'fixed',
+    top: `${Math.round(Math.max(8, top))}px`,
+    left: `${Math.round(left)}px`,
+    width: `${Math.round(width)}px`
+  }
+}
+
+function syncTimeDraft() {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(form.preciseTime || ''))
+  timeDraft.hour = match ? Number(match[1]) : 0
+  timeDraft.minute = match ? Number(match[2]) : 0
+}
+
+/** 打开精确到秒后：时刻留空表示按当天零点，需要具体时刻再点「时刻」 */
+function togglePrecise() {
+  form.preciseSeconds = !form.preciseSeconds
+}
+
+function confirmTime() {
+  form.preciseTime = `${String(timeDraft.hour).padStart(2, '0')}:${String(timeDraft.minute).padStart(2, '0')}`
+  openPanel.value = ''
+}
+
+/** 当天零点 = 不设精确时刻 */
+function clearTime() {
+  form.preciseTime = ''
+  openPanel.value = ''
 }
 
 function switchDateTab(tab) {
@@ -449,7 +537,10 @@ function next() {
     color: form.color,
     iconType: form.iconType,
     iconValue: form.iconValue,
-    iconColor: form.iconColor
+    iconColor: form.iconColor,
+    unit: form.unit,
+    preciseSeconds: form.preciseSeconds,
+    preciseTime: form.preciseTime
   }
   step.value = 2
 }
@@ -466,6 +557,9 @@ function submit() {
     lunarDate: form.lunarDate,
     repeatRule: form.repeatRule,
     repeatYearly: String(form.repeatRule || '').startsWith('YEARLY') || form.kind === 'BIRTHDAY',
+    // 精确到秒与时刻以第一步的表单为准，样式草稿只负责封面与单位
+    preciseSeconds: form.preciseSeconds,
+    preciseTime: form.preciseTime || '',
     coverImage: (style.coverImage ?? form.coverImage) || null
   }
   emit('submit', payload)
@@ -473,7 +567,7 @@ function submit() {
 
 function onGlobalPointerDown(event) {
   if (!openPanel.value) return
-  if (event.target.closest('.cf-row')) return
+  if (event.target.closest('.cf-row') || event.target.closest('.cf-pop')) return
   openPanel.value = ''
 }
 watch(openPanel, open => {
@@ -501,14 +595,24 @@ onBeforeUnmount(() => {
 .cf-bookmark{position:absolute;top:50%;right:12px;display:grid;place-items:center;color:var(--muted,#8b92a3);transform:translateY(-50%)}
 .cf-rows{display:grid;gap:10px}
 .cf-row{position:relative;display:flex;align-items:center;gap:12px}
-.cf-label{flex:none;width:48px;color:var(--ink2,#565d6b);font-size:14.5px}
+.cf-label{flex:none;width:62px;color:var(--ink2,#565d6b);font-size:14.5px;white-space:nowrap}
 .cf-control{display:flex;flex:1;min-width:0;height:42px;align-items:center;justify-content:space-between;gap:8px;padding:0 12px;border:1px solid var(--line,#e4e6ec);border-radius:10px;background:transparent;color:var(--ink,#1d1d21);font:inherit;font-size:14.5px;cursor:pointer}
 .cf-control.is-open{border-color:#3d8fce}
 .cf-control span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cf-control .is-placeholder{color:var(--muted,#9aa1ad)}
-.cf-pop{position:absolute;z-index:14;top:calc(100% + 8px);left:60px;right:0;display:flex;flex-direction:column;max-height:340px;padding:8px;border-radius:12px;background:var(--card,#fff);box-shadow:0 20px 48px rgba(15,23,42,.24)}
+.cf-pop{position:absolute;z-index:30;top:calc(100% + 8px);left:74px;right:0;display:flex;flex-direction:column;max-height:340px;padding:8px;border-radius:12px;background:var(--card,#fff);box-shadow:0 20px 48px rgba(15,23,42,.24)}
 .cf-pop.is-up{top:auto;bottom:calc(100% + 8px)}
-.cf-pop.is-date{left:60px}
+.cf-pop.is-date{left:74px}
+.cf-pop.is-time{right:auto;left:74px;width:260px}
+.cf-pop.is-floating{z-index:96;right:auto;top:auto;bottom:auto;max-height:none}
+.cf-switch-wrap{display:flex;flex:1;align-items:center;gap:10px}
+.cf-switch{position:relative;width:40px;height:23px;min-width:40px;min-height:23px;border:0;border-radius:12px;background:rgba(120,130,145,.35);cursor:pointer;transition:background .16s ease}
+.cf-switch span{position:absolute;top:3px;left:3px;width:17px;height:17px;border-radius:50%;background:#fff;transition:transform .16s ease}
+.cf-switch.on{background:#3d8fce}
+.cf-switch.on span{transform:translateX(17px)}
+.cf-switch-hint{color:var(--muted,#8b92a3);font-size:13px}
+.cf-pop-foot.is-split{align-items:center;justify-content:flex-start}
+.cf-grow{flex:1}
 .cf-seg{display:flex;gap:4px;margin:2px 2px 12px;padding:3px;border-radius:10px;background:color-mix(in srgb,var(--ink,#1d1d21) 7%,transparent)}
 .cf-seg button{flex:1;height:32px;border:0;border-radius:8px;background:transparent;color:var(--ink2,#565d6b);font:inherit;font-size:14px;cursor:pointer}
 .cf-seg button.on{background:var(--card,#fff);color:var(--ink,#1d1d21);font-weight:600;box-shadow:0 1px 4px rgba(15,23,42,.1)}
@@ -534,8 +638,8 @@ onBeforeUnmount(() => {
 .cf-btn.is-mini{min-width:56px;height:32px;padding:0 12px;font-size:13px}
 @media(max-width:560px){
   .cf-sheet{padding:18px 14px 12px;max-height:94vh}
-  .cf-label{width:40px;font-size:13.5px}
-  .cf-pop{left:52px}
+  .cf-label{width:54px;font-size:13px}
+  .cf-pop{left:66px}
   .cf-btn{min-width:96px}
 }
 </style>

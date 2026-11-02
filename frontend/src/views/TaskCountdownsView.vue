@@ -87,7 +87,7 @@ import CountdownFormDialog from '../components/countdowns/CountdownFormDialog.vu
 import CountdownNoteDialog from '../components/countdowns/CountdownNoteDialog.vue'
 import CountdownStyleDialog from '../components/countdowns/CountdownStyleDialog.vue'
 import {
-  COUNTDOWN_TYPES, TABS, cycleUnit, isTimeUnit, matchesTab, sortItems, todayKey
+  COUNTDOWN_TYPES, TABS, cycleUnit, matchesTab, needsTick, sortItems, todayKey
 } from '../components/countdowns/countdownUtils.js'
 
 const store = useTasksStore()
@@ -121,7 +121,7 @@ const visible = computed(() => sortItems(
     .filter(item => matchesTab(item, activeTab.value)),
   today.value
 ))
-const hasTimeUnit = computed(() => visible.value.some(item => isTimeUnit(item.unit)))
+const hasTimeUnit = computed(() => visible.value.some(item => needsTick(item)))
 
 useExclusivePanels('countdowns-page', [
   ['title', () => panels.title, value => { panels.title = value }],

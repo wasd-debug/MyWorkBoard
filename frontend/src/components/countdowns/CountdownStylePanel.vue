@@ -6,7 +6,7 @@
         <span class="sp-preview-title">{{ item?.title || '纪念日' }}</span>
       </div>
       <div class="sp-preview-count" :class="{ 'is-multi': previewParts.length > 1 }">
-        <span v-for="(part, index) in previewParts" :key="index"><b>{{ part.value }}</b><i v-if="part.unit">{{ part.unit }}</i></span>
+        <span v-for="(part, index) in previewParts" :key="index"><b :class="{ 'is-clock': part.clock }">{{ part.value }}</b><i v-if="part.unit">{{ part.unit }}</i></span>
       </div>
       <p class="sp-preview-foot">{{ previewFoot }}</p>
     </div>
@@ -58,24 +58,28 @@
     <div class="sp-field">
       <span class="sp-field-label">显示时间样式</span>
       <div class="sp-select">
-        <button type="button" :aria-expanded="unitOpen" @click="unitOpen = !unitOpen">{{ unitLabel(value.unit) }}<ChevronDown :size="15" /></button>
-        <div v-if="unitOpen" class="sp-pop" role="listbox">
-          <button
-            v-for="unit in DISPLAY_UNITS"
-            :key="unit.key"
-            type="button"
-            role="option"
-            :aria-selected="value.unit === unit.key"
-            :class="{ on: value.unit === unit.key }"
-            @click="chooseUnit(unit.key)"
-          >
-            {{ unit.label }}<Check v-if="value.unit === unit.key" :size="16" />
-          </button>
-        </div>
+        <button ref="unitButton" type="button" :aria-expanded="unitOpen" @click="toggleUnit">{{ unitLabel(value.unit, value.preciseSeconds) }}<ChevronDown :size="15" /></button>
       </div>
     </div>
 
-    <div class="sp-field is-switch">
+    <!-- 浮层挂在 body 上：弹窗体是滚动容器，内联绝对定位会被裁掉 -->
+    <Teleport to="body">
+      <div v-if="unitOpen" class="sp-pop" :style="popStyle" role="listbox" @click.stop>
+        <button
+          v-for="unit in UNIT_MENU"
+          :key="unit.key"
+          type="button"
+          role="option"
+          :aria-selected="value.unit === unit.key"
+          :class="{ on: value.unit === unit.key }"
+          @click="chooseUnit(unit.key)"
+        >
+          {{ unitLabel(unit.key, value.preciseSeconds) }}<Check v-if="value.unit === unit.key" :size="16" />
+        </button>
+      </div>
+    </Teleport>
+
+    <div v-if="showPrecise" class="sp-field is-switch">
       <span class="sp-field-label">精确到秒</span>
       <button
         type="button"
@@ -92,16 +96,20 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Check, ChevronDown, Crown } from 'lucide-vue-next'
-import { COVER_PRESETS, DISPLAY_UNITS, PRESET_COLORS, cardTheme, countParts, footerText, unitLabel } from './countdownUtils.js'
+import { COVER_PRESETS, PRESET_COLORS, UNIT_MENU, cardTheme, countParts, footerText, unitLabel } from './countdownUtils.js'
 
 const props = defineProps({
   modelValue: { type: Object, required: true },
   item: { type: Object, default: null },
-  today: { type: String, required: true }
+  today: { type: String, required: true },
+  /** 编辑页已经有「精确到秒」开关时不再重复展示 */
+  showPrecise: { type: Boolean, default: true }
 })
 const emit = defineEmits(['update:modelValue'])
 
 const unitOpen = ref(false)
+const unitButton = ref(null)
+const popStyle = ref({})
 const fileInput = ref(null)
 
 const value = computed(() => props.modelValue)
@@ -114,6 +122,29 @@ const showIcon = computed(() => ['ICON', 'EMOJI', 'TEXT'].includes(props.modelVa
 
 function set(patch) {
   emit('update:modelValue', { ...props.modelValue, ...patch })
+}
+/** 下拉固定定位到按钮下方，空间不足时向上翻转，避免被弹窗滚动容器裁切 */
+function toggleUnit() {
+  if (unitOpen.value) {
+    unitOpen.value = false
+    return
+  }
+  const button = unitButton.value
+  if (!button) return
+  const rect = button.getBoundingClientRect()
+  const width = Math.max(rect.width, 180)
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))
+  const spaceBelow = window.innerHeight - rect.bottom
+  const height = 292
+  const up = spaceBelow < height + 12 && rect.top > height + 12
+  const top = up ? Math.max(8, rect.top - height - 6) : rect.bottom + 6
+  popStyle.value = {
+    position: 'fixed',
+    top: `${Math.round(top)}px`,
+    left: `${Math.round(left)}px`,
+    width: `${Math.round(width)}px`
+  }
+  unitOpen.value = true
 }
 function chooseUnit(key) {
   unitOpen.value = false
@@ -162,18 +193,27 @@ function compress(file) {
   })
 }
 
+let cleanup = null
 watch(unitOpen, open => {
-  if (!open || typeof document === 'undefined') return
-  const close = event => {
-    if (event.target.closest('.sp-select')) return
+  if (typeof document === 'undefined') return
+  if (!open) return
+  const closeOnPointer = event => {
+    if (event.target.closest('.sp-select') || event.target.closest('.sp-pop')) return
     unitOpen.value = false
-    document.removeEventListener('pointerdown', close, true)
   }
-  document.addEventListener('pointerdown', close, true)
+  const close = () => { unitOpen.value = false }
+  document.addEventListener('pointerdown', closeOnPointer, true)
+  window.addEventListener('resize', close)
+  window.addEventListener('scroll', close, true)
+  cleanup = () => {
+    document.removeEventListener('pointerdown', closeOnPointer, true)
+    window.removeEventListener('resize', close)
+    window.removeEventListener('scroll', close, true)
+  }
 })
 onBeforeUnmount(() => {
-  if (typeof document === 'undefined') return
   unitOpen.value = false
+  if (cleanup) cleanup()
 })
 </script>
 
@@ -186,7 +226,9 @@ onBeforeUnmount(() => {
 .sp-preview-icon{display:grid;width:24px;height:24px;place-items:center;border-radius:50%;font-size:14px;line-height:1}
 .sp-preview-title{font-size:14px;font-weight:600}
 .sp-preview-count{display:flex;flex:1;align-items:center;justify-content:center;gap:2px;color:var(--num);font-size:56px;font-weight:500;line-height:1}
+.sp-preview-count:has(.is-clock){gap:8px}
 .sp-preview-count.is-multi{font-size:34px}
+.sp-preview-count b.is-clock{font-size:22px;letter-spacing:.02em;opacity:.92}
 .sp-preview-count i{margin-left:2px;font-size:14px;font-style:normal;opacity:.9}
 .sp-preview-foot{margin:0;color:var(--sub);font-size:11.5px;text-align:center}
 .sp-edit{display:flex;align-items:center;justify-content:center;gap:12px}
@@ -212,7 +254,7 @@ onBeforeUnmount(() => {
 .sp-field-label{flex:none;width:96px;color:var(--ink2,#565d6b);font-size:13.5px}
 .sp-select{position:relative;flex:1}
 .sp-select>button{display:flex;width:100%;height:36px;align-items:center;justify-content:space-between;padding:0 12px;border:1px solid var(--line,#e6e6ea);border-radius:9px;background:transparent;color:var(--ink,#1d1d21);font:inherit;font-size:13.5px;cursor:pointer}
-.sp-pop{position:absolute;z-index:12;top:calc(100% + 6px);right:0;left:0;display:grid;max-height:232px;padding:6px;border-radius:11px;background:var(--card,#fff);overflow-y:auto;box-shadow:0 18px 40px rgba(15,23,42,.2)}
+.sp-pop{position:fixed;z-index:220;display:grid;max-height:292px;padding:6px;border-radius:11px;background:var(--card,#fff);overflow-y:auto;box-shadow:0 18px 40px rgba(15,23,42,.2)}
 .sp-pop button{display:flex;align-items:center;justify-content:space-between;padding:9px 10px;border:0;border-radius:8px;background:transparent;color:var(--ink,#1d1d21);font:inherit;font-size:13.5px;text-align:left;cursor:pointer}
 .sp-pop button:hover{background:color-mix(in srgb,var(--ink,#1d1d21) 6%,transparent)}
 .sp-pop button.on{color:#3d8fce;font-weight:600}

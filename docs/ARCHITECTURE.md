@@ -21,6 +21,8 @@
 
 2026-11-02 倒数纪念日页重做：V56 把 `countdown` 从“名称+目标日+每年重复+图标”扩展为完整卡片模型（`icon_type/icon_value/icon_color`、`cover/cover_image`、`unit/precise_seconds`、`remind/repeat_rule/display_rule`、`archived/calendar_type/lunar_date/builtin_key/sort_order`），并建 `(user_id, builtin_key)`、`(user_id, archived, target_date)` 两个索引。农历换算不再走 `Intl` 中国历（2027 春节偏一天），改为固化 1900–2100 压缩表的前端 `lunar.js`，与 `lunar-java` 口径一致且运行时不依赖第三方库。`BuiltinCountdowns` 在每次拉取时按 `builtin_key` 补建“距离周末/下一个法定节假日/本月结束/本年结束”四条系统倒数日，用户删除后不再重建。分页与写操作仍是 local-first + `countdown` 同步实体，`syncEntity()` 按其显式铺开新增字段。
 
+2026-11-02 倒数日秒级显示：V57 增加 `precise_time`（HH:mm，空串=当天零点）。秒级显示统一按「目标日 + 精确时刻」计算时刻差，未设时刻则回落到当天零点；`precise_seconds` 开启后除「秒」刻度外的所有刻度都补到秒（`天/周+天/月+天/年+月+天` 末尾附 `HH:MM:SS`，`分`→`分+秒`，`时`→`时+分+秒`），并把每秒刷新的条件从「时间刻度」放宽到「时间刻度或精确到秒」。同日把样式弹窗的「显示时间样式」下拉与编辑弹窗的「时刻」下拉改为 `Teleport` + `position: fixed` 浮层（弹窗体是滚动容器，内联绝对定位会被裁切），卡片增加右键菜单复用「更多」菜单。
+
 > 2026-09-30 前端接入补充：已登录在线用户在聊天首页外通过应用外壳中的悬浮 AI 面板复用同一 Agent 会话与 SSE；轻量面板负责查询和状态展示，需要补充/确认的写操作跳转完整会话处理。首页与悬浮面板输入框均采用有上限的自动增长，避免长文本遮挡工具栏或页面内容。
 
 | 阶段                   | 状态                                | 结论                                                                                                             |
@@ -421,10 +423,11 @@ pomodoro        (id, user_id, task_id, started_at, minutes, completed, tag)
 habit           (id, user_id, name, icon, frequency_json, goal, archived)
 habit_checkin   (id, user_id, habit_id, date, value)
 countdown       (id, user_id, name, icon_type, icon_value, icon_color, target_date,
-                 kind, cover, cover_image, unit, precise_seconds, remind, repeat_rule,
-                 display_rule, archived, calendar_type, lunar_date, builtin_key, sort_order)
+                 kind, cover, cover_image, unit, precise_seconds, precise_time, remind,
+                 repeat_rule, display_rule, archived, calendar_type, lunar_date,
+                 builtin_key, sort_order)
                 -- 倒数日/纪念日/生日/节日；lunar_date 存农历月日（M-D，闰月 M-L-D），
-                -- builtin_key 标记系统内置项，删除后不重建
+                -- precise_time 为 HH:mm，空串表示按当天零点；builtin_key 标记系统内置项，删除后不重建
 reminder        (id, user_id, target_type, target_id, remind_at, channel, status)
 ```
 
