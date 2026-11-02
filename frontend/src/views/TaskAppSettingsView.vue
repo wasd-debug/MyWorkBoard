@@ -13,7 +13,6 @@
           <component :is="ICONS[pane.key]" :size="17" aria-hidden="true" />
           <span>{{ pane.label }}</span>
         </button>
-        <button type="button" class="aps-nav-extra" @click="openTaskSettings">任务设置</button>
       </aside>
 
       <section class="aps-body">
@@ -33,8 +32,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
-import { Bell, Clock, Filter, Layers, Paintbrush, Users } from 'lucide-vue-next'
+import { Bell, Clock, Filter, FolderInput, Layers, Paintbrush, Users } from 'lucide-vue-next'
 import { PANES, PANE_KEYS } from '../components/settings/settingsState.js'
+import SettingsDataPanes from '../components/settings/SettingsDataPanes.vue'
 import SettingsListPanes from '../components/settings/SettingsListPanes.vue'
 import SettingsLookPanes from '../components/settings/SettingsLookPanes.vue'
 import SettingsTimePanes from '../components/settings/SettingsTimePanes.vue'
@@ -45,7 +45,8 @@ const ICONS = {
   datetime: Clock,
   appearance: Paintbrush,
   advanced: Layers,
-  collab: Users
+  collab: Users,
+  data: FolderInput
 }
 
 const appStore = useAppStore()
@@ -58,6 +59,7 @@ const active = ref(PANE_KEYS.includes(String(route.query.pane)) ? String(route.q
 
 const activeLabel = computed(() => PANES.find(pane => pane.key === active.value)?.label || '设置')
 const paneComponent = computed(() => {
+  if (active.value === 'data') return SettingsDataPanes
   if (active.value === 'appearance') return SettingsLookPanes
   if (['notify', 'datetime'].includes(active.value)) return SettingsTimePanes
   return SettingsListPanes
@@ -69,9 +71,6 @@ function selectPane(key) {
   router.replace({ query: { ...route.query, pane: key } }).catch(() => {})
 }
 
-function openTaskSettings() {
-  router.push('/tasks/settings')
-}
 function goBack() {
   if (window.history.length > 1) router.back()
   else router.push('/tasks/today')
@@ -114,7 +113,6 @@ onBeforeUnmount(() => {
 .aps-nav button:hover{background:color-mix(in srgb,var(--line) 42%,transparent);color:var(--ink)}
 .aps-nav button.active{background:color-mix(in srgb,var(--ink2) 14%,transparent);color:var(--ink);font-weight:600}
 .aps-nav button.active svg{color:var(--ink)}
-.aps-nav-extra{margin-top:auto;color:var(--muted)!important;font-size:.76rem!important;font-weight:400!important}
 .aps-body{display:flex;flex-direction:column;min-width:0;overflow:hidden}
 .aps-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:22px 30px 12px}
 .aps-head h1{margin:0;font-size:1rem;font-weight:700}
@@ -128,7 +126,6 @@ onBeforeUnmount(() => {
   .aps-nav-title{display:none}
   .aps-nav button{min-height:32px;padding:0 10px;white-space:nowrap}
   .aps-nav button svg{display:none}
-  .aps-nav-extra{margin-top:0}
   .aps-head{padding:16px 16px 8px}
   .aps-content{padding:2px 16px 20px;overflow:visible}
 }

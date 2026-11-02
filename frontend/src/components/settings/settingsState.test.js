@@ -13,10 +13,11 @@ import {
   resetSettings
 } from './settingsState.js'
 
-test('设置页：分区只剩 6 个（功能模块/关联与导入/快捷键 已删）', () => {
-  assert.deepEqual(PANE_KEYS, ['smartlist', 'notify', 'datetime', 'appearance', 'advanced', 'collab'])
-  assert.equal(PANES.length, 6)
+test('设置页：分区共 7 个（功能模块/关联与导入/快捷键 已删，新增导入导出）', () => {
+  assert.deepEqual(PANE_KEYS, ['smartlist', 'notify', 'datetime', 'appearance', 'advanced', 'collab', 'data'])
+  assert.equal(PANES.length, 7)
   assert.equal(PANE_KEYS[0], 'smartlist')
+  assert.equal(PANES.at(-1).label, '导入导出')
   for (const removed of ['modules', 'import', 'shortcut', 'account', 'premium', 'ai', 'sticky', 'widget', 'about']) {
     assert.equal(PANE_KEYS.includes(removed), false, `${removed} 分区应已删除`)
   }

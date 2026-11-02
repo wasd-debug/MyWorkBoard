@@ -6,7 +6,8 @@ export const PANES = [
   { key: 'datetime', label: '日期与时间' },
   { key: 'appearance', label: '外观' },
   { key: 'advanced', label: '更多设置' },
-  { key: 'collab', label: '共享协作' }
+  { key: 'collab', label: '共享协作' },
+  { key: 'data', label: '导入导出' }
 ]
 
 export const PANE_KEYS = PANES.map(pane => pane.key)
