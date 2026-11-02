@@ -1,73 +1,84 @@
 <template>
   <section class="set-pane">
-    <template v-if="pane === 'appearance'">
-      <div class="set-tabs">
-        <SettingChoices :model-value="settings.appearanceTab" :options="appearanceTabs" label="外观分类" @update:model-value="set('appearanceTab', $event)" />
-      </div>
+    <div class="set-segmented" role="tablist" aria-label="外观分类">
+      <button
+        v-for="tab in appearanceTabs"
+        :key="tab.value"
+        type="button"
+        role="tab"
+        :aria-selected="settings.appearanceTab === tab.value"
+        :class="{ active: settings.appearanceTab === tab.value }"
+        @click="set('appearanceTab', tab.value)"
+      >{{ tab.label }}</button>
+    </div>
 
-      <template v-if="settings.appearanceTab === 'THEME'">
-        <SettingRow label="界面样式" stacked>
-          <SettingChoices :model-value="settings.interfaceStyle" :options="styleOptions" variant="cards" label="界面样式" @update:model-value="set('interfaceStyle', $event)" />
-        </SettingRow>
-        <SettingRow label="跟随系统切换暗色主题" desc="系统切换为深色外观时，应用自动跟随。">
-          <SettingSwitch :model-value="settings.followSystemDark" label="跟随系统切换暗色主题" @update:model-value="set('followSystemDark', $event)" />
-        </SettingRow>
-        <SettingRow label="颜色主题" stacked>
-          <div class="set-swatches" role="radiogroup" aria-label="颜色主题">
-            <button
-              v-for="theme in COLOR_THEMES"
-              :key="theme.key"
-              type="button"
-              role="radio"
-              :aria-checked="settings.colorTheme === theme.key"
-              :aria-label="theme.label"
-              :class="{ active: settings.colorTheme === theme.key }"
-              @click="set('colorTheme', theme.key)"
-            ><span :style="{ background: theme.color }"></span><small>{{ theme.label }}</small></button>
-          </div>
-        </SettingRow>
-        <SettingRow label="季节主题" stacked>
-          <div class="set-swatches" role="radiogroup" aria-label="季节主题">
-            <button
-              v-for="theme in SEASON_THEMES"
-              :key="theme.key"
-              type="button"
-              role="radio"
-              :aria-checked="settings.seasonTheme === theme.key"
-              :aria-label="theme.label"
-              :class="{ active: settings.seasonTheme === theme.key }"
-              @click="set('seasonTheme', settings.seasonTheme === theme.key ? 'NONE' : theme.key)"
-            ><span :style="{ background: theme.color }"></span><small>{{ theme.label }}</small></button>
-          </div>
-        </SettingRow>
-        <SettingRow label="城市主题" stacked>
-          <div class="set-swatches" role="radiogroup" aria-label="城市主题">
-            <button
-              v-for="theme in CITY_THEMES"
-              :key="theme.key"
-              type="button"
-              role="radio"
-              :aria-checked="settings.cityTheme === theme.key"
-              :aria-label="theme.label"
-              :class="{ active: settings.cityTheme === theme.key }"
-              @click="set('cityTheme', settings.cityTheme === theme.key ? 'NONE' : theme.key)"
-            ><span :style="{ background: theme.color }"></span><small>{{ theme.label }}</small></button>
-          </div>
-        </SettingRow>
-      </template>
+    <template v-if="settings.appearanceTab === 'THEME'">
+      <section class="set-theme-block">
+        <h4 class="set-theme-title">颜色主题</h4>
+        <div class="set-color-grid">
+          <button
+            v-for="theme in COLOR_THEMES"
+            :key="theme.key"
+            type="button"
+            :aria-label="theme.label"
+            :aria-pressed="settings.colorTheme === theme.key"
+            :class="{ active: settings.colorTheme === theme.key }"
+            @click="set('colorTheme', theme.key)"
+          >
+            <span class="set-color-swatch" :style="{ background: theme.color }">
+              <svg v-if="settings.colorTheme === theme.key" class="set-color-check" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="8" fill="#3b82f6" /><path d="M4.6 8.2l2.2 2.2 4.4-4.6" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </span>
+            <small>{{ theme.label }}</small>
+          </button>
+        </div>
+      </section>
 
-      <template v-else-if="settings.appearanceTab === 'ICON'">
-        <SettingRow label="应用图标" stacked desc="仅桌面客户端生效，Web 端仅作为预览。">
-          <div class="set-icon-grid" role="radiogroup" aria-label="应用图标">
-            <button v-for="icon in iconOptions" :key="icon.key" type="button" role="radio" :aria-checked="icon.key === activeIcon" :class="{ active: icon.key === activeIcon }" @click="activeIcon = icon.key">
-              <span :style="{ background: icon.background }">{{ icon.symbol }}</span>
-              <small>{{ icon.label }}</small>
-            </button>
-          </div>
-        </SettingRow>
-      </template>
+      <section v-for="series in artSeries" :key="series.key" class="set-theme-block">
+        <h4 class="set-theme-title">{{ series.title }}</h4>
+        <div class="set-art-grid">
+          <button
+            v-for="item in series.items"
+            :key="item.key"
+            type="button"
+            class="set-art"
+            :aria-label="item.label"
+            :aria-pressed="settings[series.key] === item.key"
+            :class="{ active: settings[series.key] === item.key }"
+            @click="set(series.key, settings[series.key] === item.key ? 'NONE' : item.key)"
+          >
+            <span class="set-art-img">
+              <img v-if="item.image" :src="item.image" :alt="item.label" loading="lazy">
+              <i v-else class="set-art-fallback" :style="{ background: item.art }" aria-hidden="true"></i>
+              <u class="set-art-corner" aria-hidden="true"></u>
+              <svg v-if="settings[series.key] === item.key" class="set-art-check" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="8" fill="#3b82f6" /><path d="M4.6 8.2l2.2 2.2 4.4-4.6" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </span>
+            <small>{{ item.label }}</small>
+          </button>
+          <button v-if="series.key === 'photoTheme'" type="button" class="set-art is-custom" aria-label="自定义主题" @click="addCustomTheme">
+            <span class="set-art-img">
+              <span class="set-art-plus"><Plus :size="16" /></span>
+            </span>
+            <small>自定义</small>
+          </button>
+        </div>
+      </section>
+    </template>
 
-      <template v-else>
+    <template v-else-if="settings.appearanceTab === 'ICON'">
+      <section class="set-theme-block">
+        <h4 class="set-theme-title">应用图标</h4>
+        <p class="set-theme-hint">仅桌面客户端生效，Web 端仅作为预览。</p>
+        <div class="set-icon-grid" role="radiogroup" aria-label="应用图标">
+          <button v-for="icon in iconOptions" :key="icon.key" type="button" role="radio" :aria-checked="icon.key === activeIcon" :class="{ active: icon.key === activeIcon }" @click="activeIcon = icon.key">
+            <span :style="{ background: icon.background }">{{ icon.symbol }}</span>
+            <small>{{ icon.label }}</small>
+          </button>
+        </div>
+      </section>
+    </template>
+
+    <template v-else>
+      <SettingsGroup>
         <SettingRow label="字体大小">
           <SettingChoices :model-value="settings.fontSize" :options="fontOptions" label="字体大小" @update:model-value="set('fontSize', $event)" />
         </SettingRow>
@@ -80,43 +91,21 @@
         <SettingRow label="已完成任务样式">
           <SettingChoices :model-value="settings.completedStyle" :options="completedOptions" label="已完成任务样式" @update:model-value="set('completedStyle', $event)" />
         </SettingRow>
-      </template>
-    </template>
-
-    <template v-else>
-      <div v-for="group in SHORTCUT_GROUPS" :key="group.title" class="set-shortcut-group">
-        <h4 class="set-group-title">{{ group.title }}</h4>
-        <p v-if="group.desc" class="set-hint">{{ group.desc }}</p>
-        <div v-for="item in group.items" :key="item.label" class="set-shortcut-row">
-          <span>{{ item.label }}</span>
-          <span v-if="item.unset" class="set-shortcut-unset">设置快捷键</span>
-          <span v-else class="set-keys">
-            <template v-if="item.sequences">
-              <kbd v-for="key in item.sequences[0]" :key="`${item.label}-${key}`">{{ key }}</kbd>
-              <em v-if="item.sequences[0].length > 1">然后</em>
-            </template>
-            <template v-else>
-              <kbd v-for="key in item.keys" :key="`${item.label}-${key}`">{{ key }}</kbd>
-            </template>
-          </span>
-        </div>
-      </div>
-      <div class="set-actions">
-        <button type="button" class="set-ghost-btn" @click="restoreShortcuts">恢复默认设置</button>
-      </div>
+      </SettingsGroup>
     </template>
   </section>
 </template>
 
 <script setup>
 import { ref } from 'vue'
+import { Plus } from 'lucide-vue-next'
 import { message } from '../../services/message.js'
-import { CITY_THEMES, COLOR_THEMES, SEASON_THEMES, SHORTCUT_GROUPS } from './settingsState.js'
+import { CITY_THEMES, COLOR_THEMES, PHOTO_THEMES, SEASON_THEMES } from './settingsState.js'
 import { useSettings } from './useSettings.js'
 import SettingChoices from './SettingChoices.vue'
 import SettingRow from './SettingRow.vue'
 import SettingSelect from './SettingSelect.vue'
-import SettingSwitch from './SettingSwitch.vue'
+import SettingsGroup from './SettingsGroup.vue'
 
 defineProps({ pane: { type: String, required: true } })
 
@@ -127,11 +116,12 @@ const appearanceTabs = [
   { value: 'ICON', label: '应用图标' },
   { value: 'DISPLAY', label: '显示' }
 ]
-const styleOptions = [
-  { value: 'CARD', label: '卡片', desc: '默认，留白充足' },
-  { value: 'COMPACT', label: '紧凑', desc: '一屏更多信息' },
-  { value: 'IMMERSIVE', label: '沉浸', desc: '弱化边框与分隔' }
+const artSeries = [
+  { key: 'seasonTheme', title: '季节系列', items: SEASON_THEMES },
+  { key: 'cityTheme', title: '城市系列', items: CITY_THEMES },
+  { key: 'photoTheme', title: '摄影系列', items: PHOTO_THEMES }
 ]
+const activeIcon = ref('DEFAULT')
 const fontOptions = [
   { value: 'NORMAL', label: '正常' },
   { value: 'LARGE', label: '大' },
@@ -156,37 +146,45 @@ const iconOptions = [
   { key: 'COLOR', label: '彩色', symbol: '✓', background: 'linear-gradient(135deg,#f0a08a,#7f76c9)' },
   { key: 'MINIMAL', label: '简约', symbol: '○', background: '#f2f0ec' }
 ]
-const activeIcon = ref('DEFAULT')
-function restoreShortcuts() {
-  message.success('快捷键已恢复默认')
+function addCustomTheme() {
+  message.info('自定义主题：可上传一张图片作为背景，功能待接入')
 }
 </script>
 
 <style scoped>
-.set-pane{display:grid;gap:4px}
-.set-tabs{display:flex;padding-bottom:4px}
-.set-swatches{display:flex;flex-wrap:wrap;gap:10px;width:100%}
-.set-swatches button{display:grid;justify-items:center;gap:3px;padding:0;border:0;background:transparent;cursor:pointer}
-.set-swatches button>span{display:block;width:30px;height:30px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
-.set-swatches button small{color:var(--muted);font-size:.62rem}
-.set-swatches button.active>span{box-shadow:0 0 0 2px var(--card),0 0 0 4px #3b82f6}
+.set-pane{display:grid;gap:18px}
+.set-segmented{display:inline-flex;align-items:center;justify-self:center;gap:2px;padding:3px;border-radius:10px;background:var(--set-group-bg,color-mix(in srgb,var(--paper) 62%,var(--card)))}
+.set-segmented button{min-height:28px;padding:0 14px;border:0;border-radius:8px;background:transparent;color:var(--muted);font-size:.78rem;cursor:pointer;transition:background .14s ease,color .14s ease}
+.set-segmented button:hover{color:var(--ink)}
+.set-segmented button.active{background:color-mix(in srgb,var(--ink2) 16%,transparent);color:var(--ink);font-weight:600}
+.set-theme-block{display:grid;gap:10px}
+.set-theme-title{margin:0;color:var(--ink);font-size:.82rem;font-weight:600}
+.set-theme-hint{margin:-4px 0 0;color:var(--muted);font-size:.7rem}
+.set-color-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:14px 12px}
+.set-color-grid button{display:grid;justify-items:center;gap:7px;padding:0;border:0;background:transparent;cursor:pointer}
+.set-color-swatch{position:relative;display:block;width:100%;max-width:64px;aspect-ratio:1;border-radius:10px;box-shadow:inset 0 0 0 1px rgba(15,23,42,.08)}
+.set-color-grid button.active .set-color-swatch{box-shadow:0 0 0 2px var(--card),0 0 0 4px #3b82f6}
+.set-color-grid small{color:var(--muted);font-size:.7rem}
+.set-color-grid button.active small{color:var(--ink)}
+.set-color-check{position:absolute;right:-5px;bottom:-5px;width:16px;height:16px}
+.set-art-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:16px 12px}
+.set-art{display:grid;gap:7px;padding:0;border:0;background:transparent;cursor:pointer}
+.set-art-img{position:relative;display:block;overflow:hidden;aspect-ratio:16/10;border-radius:9px;background:var(--set-group-bg);box-shadow:inset 0 0 0 1px rgba(15,23,42,.08)}
+.set-art-img img,.set-art-fallback{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.set-art-corner{position:absolute;top:0;left:0;width:16px;height:16px;background:#f5b942;clip-path:polygon(0 0,100% 0,0 100%)}
+.set-art-check{position:absolute;right:5px;bottom:5px;width:16px;height:16px}
+.set-art small{color:var(--muted);font-size:.7rem;text-align:center}
+.set-art.active small{color:var(--ink)}
+.set-art.active .set-art-img{box-shadow:0 0 0 2px #3b82f6}
+.set-art.is-custom .set-art-img{display:grid;place-items:center;border:1px dashed var(--line2);background:transparent;box-shadow:none}
+.set-art-plus{display:grid;width:26px;height:26px;place-items:center;border-radius:50%;background:color-mix(in srgb,var(--ink2) 14%,transparent);color:var(--ink2)}
 .set-icon-grid{display:flex;gap:14px;flex-wrap:wrap}
 .set-icon-grid button{display:grid;justify-items:center;gap:5px;padding:0;border:0;background:transparent;cursor:pointer}
 .set-icon-grid button>span{display:grid;width:44px;height:44px;place-items:center;border-radius:11px;color:#fff;font-size:1.1rem;font-weight:700}
 .set-icon-grid button small{color:var(--muted);font-size:.64rem}
 .set-icon-grid button.active>span{box-shadow:0 0 0 2px var(--card),0 0 0 4px #3b82f6}
-.set-shortcut-group{padding-bottom:8px}
-.set-group-title{margin:14px 0 4px;color:var(--ink2);font-size:.74rem;font-weight:600}
-.set-shortcut-group:first-child .set-group-title{margin-top:2px}
-.set-shortcut-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 55%,transparent);font-size:.77rem}
-.set-shortcut-row:last-child{border-bottom:0}
-.set-keys{display:inline-flex;align-items:center;gap:4px}
-.set-keys kbd{min-width:20px;padding:1px 6px;border:1px solid var(--line2);border-bottom-width:2px;border-radius:5px;background:var(--panel2);color:var(--ink2);font-family:inherit;font-size:.68rem;text-align:center}
-.set-keys em{color:var(--muted);font-size:.66rem;font-style:normal}
-.set-shortcut-unset{color:var(--accent);font-size:.7rem;cursor:pointer}
-.set-shortcut-unset:hover{text-decoration:underline}
-.set-hint{margin:2px 0 4px;color:var(--muted);font-size:.7rem}
-.set-actions{display:flex;justify-content:flex-start;padding-top:10px}
-.set-ghost-btn{height:27px;padding:0 12px;border:1px solid var(--line2);border-radius:6px;background:var(--card);color:var(--ink);font-size:.73rem;cursor:pointer}
-.set-ghost-btn:hover{border-color:var(--accent);color:var(--accent)}
+@media(max-width:640px){
+  .set-art-grid{grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}
+  .set-color-grid{grid-template-columns:repeat(auto-fill,minmax(52px,1fr))}
+}
 </style>

@@ -1,5 +1,6 @@
 <template>
   <div class="set-select">
+    <span class="set-select-value" aria-hidden="true">{{ currentLabel }}</span>
     <select :value="modelValue" :aria-label="label || undefined" @change="emit('update:modelValue', normalize($event.target.value))">
       <option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option>
     </select>
@@ -9,6 +10,7 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { ChevronDown, ChevronRight } from 'lucide-vue-next'
 import { RouterLink } from 'vue-router'
 
@@ -20,6 +22,10 @@ const props = defineProps({
   linkLabel: { type: String, default: '设置' }
 })
 const emit = defineEmits(['update:modelValue'])
+const currentLabel = computed(() => {
+  const matched = props.options.find(option => String(option.value) === String(props.modelValue))
+  return matched ? matched.label : String(props.modelValue ?? '')
+})
 function normalize(value) {
   const matched = props.options.find(option => String(option.value) === String(value))
   return matched ? matched.value : value
@@ -27,11 +33,11 @@ function normalize(value) {
 </script>
 
 <style scoped>
-.set-select{display:inline-flex;align-items:center;gap:6px}
-.set-select select{min-height:28px;padding:3px 24px 3px 9px;border:1px solid transparent;border-radius:7px;background:var(--panel2);color:var(--ink);font-size:.76rem;appearance:none;cursor:pointer}
-.set-select select:hover{border-color:var(--line2)}
-.set-select select:focus{outline:none;border-color:var(--accent)}
-.set-select-caret{margin-left:-20px;color:var(--muted);pointer-events:none}
+.set-select{position:relative;display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+.set-select-value{font-size:.78rem;white-space:nowrap}
+.set-select select{position:absolute;inset:0;width:100%;height:100%;opacity:0;font-size:.78rem;cursor:pointer;appearance:none}
+.set-select-caret{color:var(--muted);pointer-events:none}
+.set-select:hover .set-select-value,.set-select:focus-within .set-select-value{color:var(--ink)}
 .set-select-link{display:inline-flex;align-items:center;gap:1px;margin-left:4px;color:var(--accent);font-size:.72rem;text-decoration:none}
 .set-select-link:hover{text-decoration:underline}
 </style>

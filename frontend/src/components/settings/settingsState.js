@@ -21,23 +21,23 @@ export const SHOW_OPTIONS = [
 ]
 
 export const SMART_LISTS = [
-  { group: '智能清单', items: [
-    { key: 'smartAll', label: '所有', icon: '🗂️', value: 'SHOW' },
-    { key: 'smartToday', label: '今天', icon: '📅', value: 'SHOW' },
-    { key: 'smartTomorrow', label: '明天', icon: '🌅', value: 'AUTO' },
-    { key: 'smartNext7', label: '最近 7 天', icon: '7️⃣', value: 'SHOW' },
-    { key: 'smartAssigned', label: '指派给我', icon: '👤', value: 'SHOW' },
-    { key: 'smartInbox', label: '收集箱', icon: '📥', value: 'SHOW' },
-    { key: 'smartSummary', label: '摘要', icon: '📄', value: 'SHOW' }
+  { group: 'main', items: [
+    { key: 'smartAll', label: '所有', icon: 'inbox', value: 'SHOW' },
+    { key: 'smartToday', label: '今天', icon: 'calendar', value: 'SHOW' },
+    { key: 'smartTomorrow', label: '明天', icon: 'sunrise', value: 'AUTO' },
+    { key: 'smartNext7', label: '最近 7 天', icon: 'calendarDays', value: 'SHOW' },
+    { key: 'smartAssigned', label: '指派给我', icon: 'user', value: 'AUTO' },
+    { key: 'smartInbox', label: '收集箱', icon: 'tray', value: 'SHOW' },
+    { key: 'smartSummary', label: '摘要', icon: 'summary', value: 'SHOW' }
   ] },
-  { group: '组织', items: [
-    { key: 'navTags', label: '标签', icon: '🏷️', value: 'SHOW' },
-    { key: 'navFilters', label: '过滤器', icon: '🔽', value: 'SHOW' }
+  { group: 'org', items: [
+    { key: 'navTags', label: '标签', icon: 'tag', value: 'SHOW' },
+    { key: 'navFilters', label: '过滤器', icon: 'filter', value: 'SHOW' }
   ] },
-  { group: '状态', items: [
-    { key: 'navCompleted', label: '已完成', icon: '✅', value: 'SHOW' },
-    { key: 'navAbandoned', label: '已放弃', icon: '🚫', value: 'SHOW' },
-    { key: 'navTrash', label: '垃圾桶', icon: '🗑️', value: 'SHOW' }
+  { group: 'status', items: [
+    { key: 'navCompleted', label: '已完成', icon: 'checkCircle', value: 'SHOW' },
+    { key: 'navAbandoned', label: '已放弃', icon: 'xCircle', value: 'AUTO' },
+    { key: 'navTrash', label: '垃圾桶', icon: 'trash', value: 'SHOW' }
   ] }
 ]
 
@@ -57,104 +57,77 @@ export const COLOR_THEMES = [
 ]
 
 export const SEASON_THEMES = [
-  { key: 'SPRING', label: '春季', color: '#cfe3b4' },
-  { key: 'SUMMER', label: '夏季', color: '#a9d8ea' },
-  { key: 'AUTUMN', label: '秋季', color: '#f3c3a5' },
-  { key: 'WINTER', label: '冬季', color: '#bcd0e6' }
+  { key: 'SPRING', label: '春季', color: '#cfe3b4', art: 'linear-gradient(160deg,#dff0c0 0%,#c7e5a4 48%,#9ed08a 100%)' },
+  { key: 'SUMMER', label: '夏季', color: '#a9d8ea', art: 'linear-gradient(160deg,#d9f2fb 0%,#a9dcf0 46%,#63b9dd 100%)' },
+  { key: 'AUTUMN', label: '秋季', color: '#f3c3a5', art: 'linear-gradient(160deg,#ffe6cd 0%,#fbc9a4 46%,#ef9f74 100%)' },
+  { key: 'WINTER', label: '冬季', color: '#bcd0e6', art: 'linear-gradient(160deg,#eef1fb 0%,#d6d9f3 46%,#bcc4ea 100%)' }
 ]
 
 export const CITY_THEMES = [
-  { key: 'SHANGHAI', label: '上海', color: '#cbb6d6' },
-  { key: 'QINGDAO', label: '青岛', color: '#8fd4d2' },
-  { key: 'CHENGDU', label: '成都', color: '#c3a7d6' },
-  { key: 'XIAN', label: '西安', color: '#7fbfc6' }
+  { key: 'BEIJING', label: '北京', color: '#7fb2e5', art: 'linear-gradient(160deg,#cfe6fb 0%,#8fbde8 52%,#4f7fc4 100%)' },
+  { key: 'GUANGZHOU', label: '广州', color: '#5fc9be', art: 'linear-gradient(160deg,#cdeeee 0%,#7fd0c6 50%,#319c9c 100%)' },
+  { key: 'HANGZHOU', label: '杭州', color: '#7ec8a6', art: 'linear-gradient(160deg,#d8f0dd 0%,#96d6b0 50%,#4e9c7f 100%)' },
+  { key: 'LONDON', label: '伦敦', color: '#b3a4e0', art: 'linear-gradient(160deg,#dcd6f6 0%,#b2a4e2 52%,#7d6ec0 100%)' },
+  { key: 'MOSCOW', label: '莫斯科', color: '#6fa8d8', art: 'linear-gradient(160deg,#cfe2f6 0%,#7fb0dd 48%,#41618f 100%)' },
+  { key: 'NEWYORK', label: '纽约', color: '#f2b06a', art: 'linear-gradient(160deg,#ffe2b8 0%,#f5b978 48%,#c9763f 100%)' },
+  { key: 'SANFRANCISCO', label: '旧金山', color: '#ef8f70', art: 'linear-gradient(160deg,#ffd9c7 0%,#f6a382 48%,#d3654a 100%)' },
+  { key: 'SEOUL', label: '首尔', color: '#6fc7bd', art: 'linear-gradient(160deg,#d3f0ea 0%,#8fd3c8 50%,#3c9c95 100%)' },
+  { key: 'SHANGHAI', label: '上海', color: '#7f8fe0', art: 'linear-gradient(160deg,#c9cff8 0%,#8b93e6 50%,#4a4f9f 100%)' },
+  { key: 'SHENZHEN', label: '深圳', color: '#63c9b6', art: 'linear-gradient(160deg,#c8f0e2 0%,#77d3bd 50%,#2c9b86 100%)' },
+  { key: 'SYDNEY', label: '悉尼', color: '#5d90c8', art: 'linear-gradient(160deg,#bcd6f0 0%,#6d9fd4 48%,#2f4f80 100%)' },
+  { key: 'TOKYO', label: '东京', color: '#f0a8c4', art: 'linear-gradient(160deg,#fbd9e6 0%,#f3aec8 50%,#cf6f95 100%)' }
+]
+
+export const PHOTO_THEMES = [
+  { key: 'TOWER', label: '高楼大厦', color: '#9aa4b2', art: 'linear-gradient(155deg,#e3e7ee 0%,#9aa6b6 55%,#4d5561 100%)' },
+  { key: 'OCEAN', label: '浩若烟海', color: '#4a6378', art: 'linear-gradient(155deg,#7d94a8 0%,#3c5064 55%,#161f28 100%)' },
+  { key: 'DESERT', label: '无垠广漠', color: '#d7a97c', art: 'linear-gradient(155deg,#f2dcc4 0%,#dcb089 55%,#ab7a52 100%)' },
+  { key: 'LEAVES', label: '绿叶成荫', color: '#1f4a37', art: 'linear-gradient(155deg,#4c7a5c 0%,#21503c 55%,#0d2419 100%)' },
+  { key: 'FREEDOM', label: '自由', color: '#5c8378', art: 'linear-gradient(155deg,#a8c6bd 0%,#5f8d80 55%,#2b4a43 100%)' },
+  { key: 'DAWN', label: '拂晓', color: '#1d2733', art: 'linear-gradient(155deg,#3d4f63 0%,#1b2733 55%,#080c12 100%)' },
+  { key: 'SPRINGBREEZE', label: '忽尔春风', color: '#f2e6ea', art: 'linear-gradient(155deg,#ffffff 0%,#f6e9ee 55%,#e0cfd6 100%)' },
+  { key: 'FROST', label: '玄序有时', color: '#d9e4ee', art: 'linear-gradient(155deg,#ffffff 0%,#e2ecf5 55%,#bfd0e0 100%)' },
+  { key: 'FIELD', label: '山野千里', color: '#a8bf87', art: 'linear-gradient(155deg,#e6edd6 0%,#c3d3a4 55%,#7d9260 100%)' },
+  { key: 'RIDGE', label: '静默如谜', color: '#7d8fa0', art: 'linear-gradient(155deg,#cfd9e2 0%,#8f9fb0 55%,#4c5a68 100%)' }
 ]
 
 export const SHORTCUT_GROUPS = [
   { title: '通用', items: [
-    { label: '同步任务', keys: ['Ctrl', 'S'] },
+    { label: '同步', keys: ['⌘', 'S'] },
     { label: '取消', keys: ['Esc'] },
-    { label: '撤销', keys: ['Ctrl', 'Z'] },
-    { label: '重做', keys: ['Ctrl', 'Shift', 'Z'] },
-    { label: '打印', keys: ['Ctrl', 'P'] },
-    { label: '打印详细', keys: ['Ctrl', 'Alt', 'P'] },
-    { label: '打开指令菜单', keys: ['Ctrl', 'K'] },
-    { label: '快捷键', keys: ['?'] }
-  ] },
-  { title: '全局操作', desc: '应用即使在后台，也能响应的快捷键。', items: [
-    { label: '全局添加', keys: ['Ctrl', 'Shift', 'A'] },
-    { label: '显示/隐藏应用', keys: ['Ctrl', 'Shift', 'O'] },
-    { label: '开启/关闭专注弹窗', keys: ['Ctrl', 'Shift', 'T'] },
-    { label: '置顶/取消置顶应用', unset: true },
-    { label: '锁定/解锁应用', keys: ['Ctrl', 'Shift', 'L'] },
-    { label: '添加便签', unset: true },
-    { label: '显示/隐藏所有便签', unset: true }
+    { label: '撤销', keys: ['⌘', 'Z'] },
+    { label: '重做', keys: ['⇧', '⌘', 'Z'] },
+    { label: '打印', keys: ['⌘', 'P'], recordable: true }
   ] },
   { title: '任务', items: [
-    { label: '添加任务', keys: ['Ctrl', 'N'] },
-    { label: '向下添加任务', keys: ['Enter'] },
-    { label: '添加子任务', keys: ['Shift', 'Enter'] },
-    { label: '展开/折叠所有分组', unset: true },
-    { label: '展开/折叠所有子任务', unset: true },
-    { label: '列表视图', sequences: [['V', 'L']] },
-    { label: '看板视图', sequences: [['V', 'K']] },
-    { label: '时间线视图', sequences: [['V', 'T']] }
-  ] },
-  { title: '快速添加任务设置', desc: '创建或编辑任务时，可输入这些快捷键快速添加细节，如设置日期、标签、清单等。', items: [
-    { label: '设置日期', keys: ['*'] },
-    { label: '设置优先级', keys: ['!'] },
-    { label: '设置标签', keys: ['#'] },
-    { label: '添加/移动任务到指定清单', keys: ['-', '/^'] },
-    { label: '指派任务给共享成员', keys: ['@'] }
+    { label: '添加任务', keys: ['⌘', 'N'], recordable: true },
+    { label: '向下添加任务', keys: ['↩'] },
+    { label: '添加子任务', keys: ['⇧', '↩'] },
+    { label: '展开/折叠所有分组', recordable: true },
+    { label: '展开/折叠所有子任务', recordable: true }
   ] },
   { title: '编辑任务', desc: '光标位于任务时这些快捷键才会生效。', items: [
-    { label: '完成任务', keys: ['Ctrl', 'M'] },
-    { label: '置顶任务', unset: true },
-    { label: '删除任务', keys: ['Alt', 'Delete'] },
-    { label: '设置日期', keys: ['Ctrl', 'D'] },
-    { label: '清除日期', keys: ['Ctrl', '0'] },
-    { label: '设为今天', keys: ['Ctrl', '1'] },
-    { label: '设为明天', keys: ['Ctrl', '2'] },
-    { label: '设为下周', keys: ['Ctrl', '3'] },
-    { label: '设置为“无优先级”', keys: ['Alt', '0'] },
-    { label: '设置为“低优先级”', keys: ['Alt', '1'] },
-    { label: '设置为“中优先级”', keys: ['Alt', '2'] },
-    { label: '设置为“高优先级”', keys: ['Alt', '3'] },
-    { label: '以便签形式打开任务', unset: true }
+    { label: '完成任务', keys: ['⇧', '⌘', 'M'], recordable: true },
+    { label: '置顶任务', recordable: true },
+    { label: '删除任务', keys: ['⌘', '⌫'] },
+    { label: '设置日期', keys: ['⌘', 'D'], recordable: true },
+    { label: '清除日期', keys: ['⌘', '0'], recordable: true },
+    { label: '设为今天', keys: ['⌘', '1'], recordable: true },
+    { label: '设为明天', keys: ['⌘', '2'], recordable: true },
+    { label: '设为下周', keys: ['⌘', '3'], recordable: true },
+    { label: '设置为“无优先级”', keys: ['^', '0'], recordable: true },
+    { label: '设置为“低优先级”', keys: ['^', '1'], recordable: true },
+    { label: '设置为“中优先级”', keys: ['^', '2'], recordable: true },
+    { label: '设置为“高优先级”', keys: ['^', '3'], recordable: true }
   ] },
-  { title: '导航', desc: '可方便的前往功能模块、访问你的设置以及其他等等。', items: [
-    { label: '打开搜索', keys: ['Ctrl', 'F'] },
-    { label: '前往“设置”', sequences: [['G', 'S']] },
-    { label: '前往“所有”', sequences: [['G', 'A']] },
-    { label: '前往“今天”', sequences: [['G', 'T']], keys: ['Ctrl', 'Alt', '2'] },
-    { label: '前往“明天”', sequences: [['G', 'R']] },
-    { label: '前往“最近 7 天”', sequences: [['G', 'N']] },
-    { label: '前往“指派给我”', sequences: [['G', 'M']] },
-    { label: '前往“收集箱”', sequences: [['G', 'I']], keys: ['Ctrl', 'Alt', '1'] },
-    { label: '前往“已完成”', sequences: [['G', 'C']] },
-    { label: '前往“已放弃”', sequences: [['G', 'W']] },
-    { label: '前往“垃圾桶”', sequences: [['G', 'G']] },
-    { label: '前往“摘要”', sequences: [['G', 'B']] }
-  ] },
-  { title: '日历', items: [
-    { label: '日视图', keys: ['D', '1'] },
-    { label: '周视图', keys: ['W', '2'] },
-    { label: '月视图', keys: ['M', '3'] },
-    { label: '年视图', keys: ['Y', '4'] },
-    { label: '日程视图', keys: ['A', '5'] },
+  { title: '切换视图', desc: '在清单、日历中可方便的切换视图。', items: [
+    { label: '列表视图', sequences: [['V', 'L']] },
+    { label: '看板视图', sequences: [['V', 'K']] },
+    { label: '时间线视图', sequences: [['V', 'T']] },
+    { label: '日视图', keys: ['D / 1'] },
+    { label: '周视图', keys: ['W / 2'] },
+    { label: '月视图', keys: ['M / 3'] },
     { label: '回到今天', keys: ['T'] }
-  ] },
-  { title: '专注', items: [
-    { label: '继续/暂停专注', unset: true },
-    { label: '开始/结束专注', unset: true }
-  ] },
-  { title: '便签', items: [
-    { label: '颜色', keys: ['Ctrl', 'Shift', 'C'] },
-    { label: '置顶', keys: ['F12'] },
-    { label: '展开/折叠所有', keys: ['Ctrl', 'E'] },
-    { label: '顶部排列', keys: ['Alt', '↑'] },
-    { label: '居左排列', keys: ['Alt', '←'] },
-    { label: '居下排列', keys: ['Alt', '↓'] }
   ] }
 ]
 
@@ -176,13 +149,13 @@ export const DEFAULT_SETTINGS = {
   smartToday: 'SHOW',
   smartTomorrow: 'AUTO',
   smartNext7: 'SHOW',
-  smartAssigned: 'SHOW',
+  smartAssigned: 'AUTO',
   smartInbox: 'SHOW',
   smartSummary: 'SHOW',
   navTags: 'SHOW',
   navFilters: 'SHOW',
   navCompleted: 'SHOW',
-  navAbandoned: 'SHOW',
+  navAbandoned: 'AUTO',
   navTrash: 'SHOW',
   // 提醒与通知
   remindMethod: 'IN_APP',
@@ -205,6 +178,9 @@ export const DEFAULT_SETTINGS = {
   colorTheme: 'DEFAULT',
   seasonTheme: 'NONE',
   cityTheme: 'NONE',
+  photoTheme: 'NONE',
+  customTheme: 'NONE',
+  shortcutOverrides: {},
   fontSize: 'NORMAL',
   listColor: 'SHOW',
   sidebarCount: 'ALL',

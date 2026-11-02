@@ -10,7 +10,7 @@
         </div>
       </header>
       <div class="cal-mini-grid">
-        <span v-for="label in WEEKDAY_LABELS" :key="label" class="cal-mini-dow">{{ label }}</span>
+        <span v-for="(label, index) in dowLabels" :key="`${label}-${index}`" class="cal-mini-dow">{{ label }}</span>
         <button
           v-for="cell in cells"
           :key="cell.key"
@@ -104,7 +104,8 @@ const props = defineProps({
   lists: { type: Array, default: () => [] },
   tags: { type: Array, default: () => [] },
   filters: { type: Array, default: () => [] },
-  scope: { type: Object, required: true }
+  scope: { type: Object, required: true },
+  weekStart: { type: Number, default: 1 }
 })
 
 const emit = defineEmits(['move-month', 'go-today', 'select', 'update:scope'])
@@ -113,7 +114,8 @@ const miniTitle = computed(() => `${props.anchor.getFullYear()}年${props.anchor
 const todayKey = computed(() => toDateKey(props.today))
 const selectedKey = computed(() => (props.selected ? toDateKey(props.selected) : ''))
 
-const cells = computed(() => monthWeeks(props.anchor).flat().map(date => {
+const dowLabels = computed(() => Array.from({ length: 7 }, (_, index) => WEEKDAY_LABELS[(index + props.weekStart + 6) % 7]))
+const cells = computed(() => monthWeeks(props.anchor, props.weekStart).flat().map(date => {
   const key = toDateKey(date)
   // 迷你月历优先显示农历（初一是月份、其余是农历日），节假日信息在主日历的事件行里呈现
   const sub = props.lunar[key] || props.holidays[key]?.name || ''

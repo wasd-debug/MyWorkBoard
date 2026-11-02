@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  CITY_THEMES,
   COLOR_THEMES,
   DEFAULT_SETTINGS,
   MODULES,
   PANES,
   PANE_KEYS,
+  PHOTO_THEMES,
+  SEASON_THEMES,
   SHORTCUT_GROUPS,
   SMART_LISTS,
   mergeSettings,
@@ -64,15 +67,28 @@ test('设置页：颜色主题 12 套且 key 唯一', () => {
   assert.equal(new Set(COLOR_THEMES.map(item => item.key)).size, 12)
 })
 
-test('设置页：快捷键分组每项要么有按键、要么标记为待设置', () => {
-  assert.ok(SHORTCUT_GROUPS.length >= 9)
+test('设置页：快捷键分组每项要么有按键、要么可录制', () => {
+  assert.ok(SHORTCUT_GROUPS.length >= 4)
   SHORTCUT_GROUPS.forEach(group => {
     assert.ok(group.title)
     assert.ok(group.items.length)
     group.items.forEach(item => {
       const hasKeys = Array.isArray(item.keys) && item.keys.length > 0
       const hasSequence = Array.isArray(item.sequences) && item.sequences.length > 0
-      assert.ok(hasKeys || hasSequence || item.unset, `${item.label} 既没有按键也没有 unset 标记`)
+      assert.ok(hasKeys || hasSequence || item.recordable, `${item.label} 既没有按键也不能录制`)
     })
   })
+})
+
+test('设置页：主题系列条目齐全且 key 唯一', () => {
+  assert.equal(SEASON_THEMES.length, 4)
+  assert.equal(CITY_THEMES.length, 12)
+  assert.equal(PHOTO_THEMES.length, 10)
+  for (const list of [SEASON_THEMES, CITY_THEMES, PHOTO_THEMES]) {
+    assert.equal(new Set(list.map(item => item.key)).size, list.length)
+    list.forEach(item => {
+      assert.ok(item.label)
+      assert.ok(item.art || item.image, `${item.label} 缺少缩略图数据`)
+    })
+  }
 })

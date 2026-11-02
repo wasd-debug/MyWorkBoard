@@ -1,10 +1,10 @@
 <template>
   <div class="cal-month">
-    <div class="cal-month-dow">
-      <span class="cal-week-gutter"></span>
-      <span v-for="label in WEEKDAY_LABELS" :key="label">{{ label }}</span>
+    <div class="cal-month-dow" :class="{ 'is-no-wn': !showWeekNumber }">
+      <span v-if="showWeekNumber" class="cal-week-gutter"></span>
+      <span v-for="(label, index) in dowLabels" :key="`${label}-${index}`">{{ label }}</span>
     </div>
-    <div class="cal-month-body" :style="{ gridTemplateRows: `repeat(${weeks.length}, minmax(0, 1fr))` }">
+    <div class="cal-month-body" :class="{ 'is-no-wn': !showWeekNumber }" :style="{ gridTemplateRows: `repeat(${weeks.length}, minmax(0, 1fr))` }">
       <div
         v-for="(week, index) in weeks"
         :key="`week-${index}`"
@@ -12,7 +12,7 @@
         :style="{ '--lane-height': `${weekViews[index].laneHeight}px` }"
         @pointerdown="onWeekPointerDown($event)"
       >
-        <div class="cal-week-gutter" :aria-label="`第 ${weekNumber(week[0])} 周`">{{ weekNumber(week[0]) }}<small>周</small></div>
+        <div v-if="showWeekNumber" class="cal-week-gutter" :aria-label="`第 ${weekNumber(week[0])} 周`">{{ weekNumber(week[0]) }}<small>周</small></div>
         <div
           v-for="day in week"
           :key="dayKey(day)"
@@ -109,8 +109,11 @@ const props = defineProps({
   monthIndex: { type: Number, required: true },
   muteOutsideMonth: { type: Boolean, default: true },
   lunar: { type: Object, default: () => ({}) },
-  holidays: { type: Object, default: () => ({}) }
+  holidays: { type: Object, default: () => ({}) },
+  showWeekNumber: { type: Boolean, default: true }
 })
+
+const dowLabels = computed(() => (props.weeks[0] || []).map(day => WEEKDAY_LABELS[(day.getDay() + 6) % 7]))
 
 const emit = defineEmits(['select-day', 'open-event', 'select-range', 'drop-task'])
 
@@ -256,6 +259,10 @@ function eventTitle(event) {
   font-size: 11px;
   font-weight: 600;
   text-align: center;
+}
+.cal-month-dow.is-no-wn,
+.cal-month-body.is-no-wn .cal-week {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 .cal-month-dow > span:not(.cal-week-gutter) {
   padding: 7px 0;

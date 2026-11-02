@@ -1736,6 +1736,8 @@ import {
 } from "../components/tasks/taskSearch.js";
 import { daysUntil, effectiveTarget } from "../components/countdowns/countdownUtils.js";
 import { openTaskSearch } from "../utils/searchBus.js";
+import { useSettings } from "../components/settings/useSettings.js";
+import { playCompleteSound } from "../utils/completeSound.js";
 import { useTaskFocusStore } from "../stores/taskFocus.js";
 import { message } from "../services/message.js";
 import {
@@ -1772,6 +1774,8 @@ import {
 const route = useRoute();
 const router = useRouter();
 const store = useTasksStore();
+/** 任务域设置（localStorage）：默认日期 / 默认优先级会作用到快速新增 */
+const { settings: localSettings } = useSettings();
 const isSummary = computed(() => route.name === "tasks-shortcut" && route.params.shortcut === "summary");
 const focusStore = useTaskFocusStore();
 const filters = ref([]);
@@ -3152,13 +3156,18 @@ function applyQuickAddDefaults() {
     startAt: "",
     allDay: defaults.allDay,
     dateSelected: Boolean(defaults.dueAt),
-    priority: "NONE",
-    prioritySelected: false,
+    priority: localSettings.defaultPriority !== "NONE" ? localSettings.defaultPriority : "NONE",
+    prioritySelected: localSettings.defaultPriority !== "NONE",
     listId: quickDefaultListId(),
     listSelected: Boolean(quickDefaultListId()),
     tagIds: [],
   });
-  quickSelectedDate.value = defaults.dueAt ? defaults.dueAt.slice(0, 10) : "";
+  if (localSettings.defaultDate === "NONE") {
+    quickEntry.dueAt = "";
+    quickEntry.allDay = false;
+    quickEntry.dateSelected = false;
+  }
+  quickSelectedDate.value = quickEntry.dueAt ? quickEntry.dueAt.slice(0, 10) : "";
   quickDateTime.value = "";
 }
 
@@ -6286,7 +6295,7 @@ async function quickAdd() {
       checklist: quickTemplateDraft.value?.checklist?.map(item => ({ ...item })) || [],
       rrule: buildQuickRepeatRule(quickRepeat) || parsed.rrule || "",
       repeatState: { ...quickRepeat, weekdays: [...quickRepeat.weekdays] },
-      priority: quickEntry.prioritySelected ? quickEntry.priority : parsed.priority || "NONE",
+      priority: quickEntry.prioritySelected ? quickEntry.priority : parsed.priority || (localSettings.defaultPriority !== "NONE" ? localSettings.defaultPriority : "NONE"),
       listId: quickEntry.listSelected ? quickEntry.listId || store.inbox?.publicId || "" : list?.publicId || fallbackListId,
       tagIds: [...new Set([
         ...store.tags.filter((tag) => parsed.tagNames?.some((name) => name.toLocaleLowerCase() === tag.name.toLocaleLowerCase())).map((tag) => tag.publicId),
@@ -6609,9 +6618,11 @@ async function saveDetail() {
 }
 async function toggleComplete(task) {
   if (!task) return;
-  await (task.status === "COMPLETED"
+  const wasCompleted = task.status === "COMPLETED";
+  await (wasCompleted
     ? store.reopen(task)
     : store.complete(task));
+  if (!wasCompleted) playCompleteSound(localSettings.completeSound);
   selectedTask.value =
     store.tasks.find((item) => item.publicId === task.publicId) || null;
 }

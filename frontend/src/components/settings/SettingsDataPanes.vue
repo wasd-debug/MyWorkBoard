@@ -1,61 +1,87 @@
 <template>
   <section class="set-pane">
-    <h4 class="set-group-title">导入</h4>
-    <SettingRow label="从滴答清单导入" desc="支持任务、清单、标签、习惯与倒数纪念日">
-      <button type="button" class="set-ghost-btn" @click="stub('从滴答清单导入')">开始导入</button>
-    </SettingRow>
-    <SettingRow label="从 Excel / CSV 导入" desc="按列映射后批量写入指定清单">
-      <button type="button" class="set-ghost-btn" @click="stub('从 Excel / CSV 导入')">选择文件</button>
-    </SettingRow>
-    <SettingRow label="从其他应用导入" desc="Todoist、Microsoft To Do 等格式">
-      <button type="button" class="set-ghost-btn" @click="stub('从其他应用导入')">了解支持格式</button>
-    </SettingRow>
+    <div class="set-block">
+      <h4 class="set-block-title">日历</h4>
+      <div class="set-tile-grid">
+        <button v-for="item in calendarSources" :key="item.key" type="button" class="set-tile" @click="openTile(item.label)">
+          <span class="set-tile-icon" :style="{ background: item.tint, color: item.fg }"><component :is="item.icon" :size="15" /></span>
+          <span class="set-tile-label">{{ item.label }}</span>
+          <HelpCircle v-if="item.help" :size="13" class="set-tile-help" :aria-label="`${item.label} 说明`" title="填写 CalDAV 或 Webcal 订阅地址" />
+        </button>
+      </div>
+    </div>
 
-    <h4 class="set-group-title">导出</h4>
-    <SettingRow label="导出任务" desc="包含任务、清单、标签与完成状态">
-      <button type="button" class="set-ghost-btn" @click="stub('导出任务')">导出</button>
-    </SettingRow>
-    <SettingRow label="导出账本流水" desc="按时间范围导出为 CSV">
-      <button type="button" class="set-ghost-btn" @click="stub('导出账本流水')">导出</button>
-    </SettingRow>
+    <div class="set-block">
+      <h4 class="set-block-title">关联</h4>
+      <div class="set-tile-grid">
+        <button v-for="item in linkSources" :key="item.key" type="button" class="set-tile" @click="openTile(item.label)">
+          <span class="set-tile-icon" :style="{ background: item.tint, color: item.fg }"><component :is="item.icon" :size="15" /></span>
+          <span class="set-tile-label">{{ item.label }}</span>
+        </button>
+      </div>
+    </div>
 
-    <h4 class="set-group-title">关联日历账号</h4>
-    <article v-for="item in calendarAccounts" :key="item.key" class="set-account">
-      <span class="set-account-icon">{{ item.icon }}</span>
-      <div><b>{{ item.label }}</b><small>{{ item.desc }}</small></div>
-      <button type="button" class="set-ghost-btn" @click="stub(`关联${item.label}`)">关联</button>
-    </article>
-    <p class="set-hint">关联后可把外部日历日程叠加在任务日历上，只读同步，不会写回。</p>
+    <div class="set-block">
+      <h4 class="set-block-title">其他</h4>
+      <div class="set-tile-grid">
+        <button v-for="item in otherSources" :key="item.key" type="button" class="set-tile is-wide" @click="openTile(item.label)">
+          <span class="set-tile-icon" :style="{ background: item.tint, color: item.fg }"><component :is="item.icon" :size="15" /></span>
+          <span class="set-tile-text">
+            <b>{{ item.label }}</b>
+            <small>{{ item.desc }}</small>
+          </span>
+        </button>
+      </div>
+    </div>
   </section>
 </template>
 
 <script setup>
+import { Calendar, CalendarClock, CalendarDays, Cloud, HelpCircle, Link2, Mail, MessageCircle, MessageSquare, NotebookPen, Rss, Send } from 'lucide-vue-next'
 import { message } from '../../services/message.js'
-import SettingRow from './SettingRow.vue'
 
 defineProps({ pane: { type: String, required: true } })
 
-const calendarAccounts = [
-  { key: 'GOOGLE', label: 'Google 日历', desc: '只读叠加日程', icon: '📅' },
-  { key: 'OUTLOOK', label: 'Outlook 日历', desc: '只读叠加日程', icon: '📆' },
-  { key: 'CALDAV', label: 'CalDAV', desc: '自建日历服务', icon: '🗓️' }
+const calendarSources = [
+  { key: 'local', label: '本地日历', icon: Calendar, tint: '#e8f0fe', fg: '#2f6fdb' },
+  { key: 'google', label: 'Google 日历', icon: CalendarDays, tint: '#e8f0fe', fg: '#4285f4' },
+  { key: 'outlook', label: 'Outlook 日历', icon: Mail, tint: '#e3effa', fg: '#0f6cbd' },
+  { key: 'exchange', label: 'Exchange 日历', icon: Mail, tint: '#e3f0fb', fg: '#0078d4' },
+  { key: 'icloud', label: 'iCloud 日历', icon: Cloud, tint: '#e6f2ff', fg: '#3693f3' },
+  { key: 'wecom', label: '企业微信日历', icon: MessageSquare, tint: '#e6f0fd', fg: '#2a82e4' },
+  { key: 'dingtalk', label: '钉钉日历', icon: MessageCircle, tint: '#e4f3ff', fg: '#1e9fff' },
+  { key: 'feishu', label: '飞书日历', icon: Send, tint: '#e6efff', fg: '#3370ff' },
+  { key: 'caldav', label: 'CalDAV', icon: CalendarClock, tint: '#fff1e2', fg: '#f5a623' },
+  { key: 'url', label: 'URL', icon: Link2, tint: '#e8f0fe', fg: '#4285f4', help: true }
 ]
-function stub(name) {
-  message.info(`${name}：入口已就位，交互待接入`)
+const linkSources = [
+  { key: 'google-link', label: 'Google 日历', icon: CalendarDays, tint: '#e8f0fe', fg: '#4285f4' },
+  { key: 'notion', label: 'Notion', icon: NotebookPen, tint: '#eceef2', fg: '#1f2430' }
+]
+const otherSources = [
+  { key: 'subscribe', label: '订阅滴答清单', desc: '将滴答清单订阅到 Google、Outlook 等应用显示。', icon: Rss, tint: '#e8f0fe', fg: '#2f6fdb' },
+  { key: 'email', label: '邮件创建任务', desc: '发送邮件即可在滴答清单中创建任务。', icon: Mail, tint: '#e8f0fe', fg: '#2f6fdb' }
+]
+
+function openTile(name) {
+  message.info(`「${name}」：入口已就位，账号授权待接入`)
 }
 </script>
 
 <style scoped>
-.set-pane{display:grid;gap:2px}
-.set-group-title{margin:14px 0 4px;color:var(--ink2);font-size:.72rem;font-weight:600;letter-spacing:.06em}
-.set-pane>.set-group-title:first-child{margin-top:0}
-.set-account{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
-.set-account:last-of-type{border-bottom:0}
-.set-account-icon{display:grid;width:30px;height:30px;place-items:center;border-radius:8px;background:var(--panel2);font-size:14px}
-.set-account b{display:block;font-size:.78rem}
-.set-account small{color:var(--muted);font-size:.68rem}
-.set-account .set-ghost-btn{margin-left:auto}
-.set-hint{margin:6px 0 0;color:var(--muted);font-size:.7rem}
-.set-ghost-btn{height:26px;padding:0 11px;border:1px solid var(--line2);border-radius:6px;background:var(--card);color:var(--ink);font-size:.72rem;cursor:pointer}
-.set-ghost-btn:hover{border-color:var(--accent);color:var(--accent)}
+.set-pane{display:grid;gap:18px}
+.set-block{display:grid;gap:9px}
+.set-block-title{margin:0;color:var(--ink);font-size:.82rem;font-weight:600}
+.set-tile-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.set-tile{display:flex;align-items:center;gap:10px;min-height:48px;padding:0 12px;border:1px solid transparent;border-radius:9px;background:var(--set-group-bg,color-mix(in srgb,var(--paper) 62%,var(--card)));color:var(--ink);font-size:.79rem;text-align:left;cursor:pointer}
+.set-tile:hover{border-color:var(--line2)}
+.set-tile-icon{display:grid;flex:none;width:26px;height:26px;place-items:center;border-radius:6px;color:#1f2937}
+.set-tile-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.set-tile-help{flex:none;margin-left:auto;color:var(--muted)}
+.set-tile.is-wide{min-height:72px;align-items:flex-start;padding:12px}
+.set-tile.is-wide .set-tile-icon{margin-top:1px}
+.set-tile-text{display:grid;gap:3px;min-width:0}
+.set-tile-text b{font-size:.79rem;font-weight:500;color:var(--ink)}
+.set-tile-text small{color:var(--muted);font-size:.7rem;line-height:1.5}
+@media(max-width:820px){.set-tile-grid{grid-template-columns:1fr}}
 </style>

@@ -50,9 +50,10 @@ export function addMonths(value, amount) {
   return new Date(anchor.getFullYear(), anchor.getMonth(), Math.min(date.getDate(), daysInMonth(anchor)))
 }
 
-export function startOfWeek(value) {
+export function startOfWeek(value, weekStart = 1) {
   const date = startOfDay(value)
-  const offset = (date.getDay() + 6) % 7
+  const first = weekStart === 0 ? 0 : 1
+  const offset = (date.getDay() - first + 7) % 7
   return addDays(date, -offset)
 }
 
@@ -106,12 +107,12 @@ export function eachDay(start, endExclusive) {
   return days
 }
 
-export function resolveRange({ view = 'month', span, anchor = new Date(), agendaBefore = 0, agendaAfter = 0 } = {}) {
+export function resolveRange({ view = 'month', span, anchor = new Date(), agendaBefore = 0, agendaAfter = 0, weekStart = 1 } = {}) {
   const base = startOfDay(anchor)
   let start = base
   let end = addDays(base, 1)
   if (view === 'week') {
-    start = startOfWeek(base)
+    start = startOfWeek(base, weekStart)
     end = addDays(start, 7)
   } else if (view === 'multiDay') {
     const size = clampSpan('multiDay', span)
@@ -119,11 +120,11 @@ export function resolveRange({ view = 'month', span, anchor = new Date(), agenda
     end = addDays(base, size)
   } else if (view === 'multiWeek') {
     const size = clampSpan('multiWeek', span)
-    start = startOfWeek(base)
+    start = startOfWeek(base, weekStart)
     end = addDays(start, size * 7)
   } else if (view === 'month') {
-    start = startOfWeek(new Date(base.getFullYear(), base.getMonth(), 1))
-    end = addDays(startOfWeek(new Date(base.getFullYear(), base.getMonth() + 1, 0)), 7)
+    start = startOfWeek(new Date(base.getFullYear(), base.getMonth(), 1), weekStart)
+    end = addDays(startOfWeek(new Date(base.getFullYear(), base.getMonth() + 1, 0), weekStart), 7)
   } else if (view === 'year') {
     start = new Date(base.getFullYear(), 0, 1)
     end = new Date(base.getFullYear() + 1, 0, 1)
@@ -159,10 +160,10 @@ export function shiftAnchor(anchor, { view = 'month', span, direction = 'next' }
   return addMonths(base, step)
 }
 
-export function monthWeeks(anchor) {
+export function monthWeeks(anchor, weekStart = 1) {
   const base = startOfDay(anchor)
-  const start = startOfWeek(new Date(base.getFullYear(), base.getMonth(), 1))
-  const end = addDays(startOfWeek(new Date(base.getFullYear(), base.getMonth() + 1, 0)), 7)
+  const start = startOfWeek(new Date(base.getFullYear(), base.getMonth(), 1), weekStart)
+  const end = addDays(startOfWeek(new Date(base.getFullYear(), base.getMonth() + 1, 0), weekStart), 7)
   return chunkWeeks(eachDay(start, end))
 }
 

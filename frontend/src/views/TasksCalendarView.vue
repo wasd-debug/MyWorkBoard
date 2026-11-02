@@ -1,6 +1,7 @@
 <template>
   <section ref="shellEl" class="cal-shell" :class="{ 'is-collapsed': collapsed, 'is-task-route': isTaskRoute }" @click="closeMenus">
     <CalendarSidebar
+      :week-start="weekStart"
       v-if="!collapsed"
       :anchor="anchor"
       :today="today"
@@ -115,8 +116,9 @@
           :selected-key="selectedKey"
           :month-index="view === 'month' ? anchor.getMonth() : -1"
           :mute-outside-month="view === 'month'"
-          :lunar="lunarLabels"
-          :holidays="holidayMap"
+          :lunar="calendarSettings.showLunar ? lunarLabels : {}"
+          :holidays="calendarSettings.showHoliday ? holidayMap : {}"
+          :show-week-number="calendarSettings.showWeekNumber"
           @select-day="selectDay"
           @open-event="openEvent"
           @select-range="createSpan"
@@ -304,6 +306,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Flag, FolderClosed, ListTodo, MoreHorizontal, PanelLeft, Plus, Printer, Settings2, X } from 'lucide-vue-next'
+import { useSettings } from '../components/settings/useSettings.js'
 import CalendarSidebar from './calendar/CalendarSidebar.vue'
 import CalendarMonthView from './calendar/CalendarMonthView.vue'
 import CalendarTimeGrid from './calendar/CalendarTimeGrid.vue'
@@ -404,10 +407,13 @@ const collapsed = computed(() => collapsedManual.value ?? narrow.value)
 
 const calendarLists = computed(() => tasksStore.lists.filter(item => !item.archived))
 const calendarTags = computed(() => tasksStore.tags)
+const { settings: calendarSettings } = useSettings()
+const weekStart = computed(() => (calendarSettings.weekStartDay === 'SUNDAY' ? 0 : 1))
 const range = computed(() => resolveRange({
   view: view.value, span: spans[view.value], anchor: anchor.value,
   agendaBefore: view.value === 'agenda' ? agendaExtra.before : 0,
-  agendaAfter: view.value === 'agenda' ? agendaExtra.after : 0
+  agendaAfter: view.value === 'agenda' ? agendaExtra.after : 0,
+  weekStart: weekStart.value
 }))
 const viewLabelText = computed(() => spanViewLabel(view.value, spans[view.value]))
 const selectedKey = computed(() => toDateKey(selectedDay.value))
@@ -737,7 +743,7 @@ async function loadFilterTasks(filterId) {
 }
 
 function miniMonthRange() {
-  const weeks = monthWeeks(anchor.value)
+  const weeks = monthWeeks(anchor.value, weekStart.value)
   const first = weeks[0][0]
   const last = weeks[weeks.length - 1][6]
   return { from: toDateKey(first), to: toDateKey(addDays(last, 1)) }
