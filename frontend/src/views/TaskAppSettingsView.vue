@@ -30,11 +30,11 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAppStore } from '../stores/app.js'
 import { Bell, Clock, Filter, Layers, Paintbrush, Users } from 'lucide-vue-next'
 import { PANES, PANE_KEYS } from '../components/settings/settingsState.js'
-import { useSettings } from '../components/settings/useSettings.js'
 import SettingsListPanes from '../components/settings/SettingsListPanes.vue'
 import SettingsLookPanes from '../components/settings/SettingsLookPanes.vue'
 import SettingsTimePanes from '../components/settings/SettingsTimePanes.vue'
@@ -48,9 +48,9 @@ const ICONS = {
   collab: Users
 }
 
+const appStore = useAppStore()
 const route = useRoute()
 const router = useRouter()
-const { settings } = useSettings()
 
 const pageEl = ref(null)
 const pageHeight = ref(640)
@@ -86,40 +86,18 @@ function syncPageHeight() {
   pageHeight.value = Math.max(420, Math.round(window.innerHeight - offset - padBottom))
 }
 
-// 「跟随系统切换暗色主题」直接作用在 html.dark 上，和顶栏的主题开关共用同一套变量
-let mediaQuery = null
-function applyTheme() {
-  if (typeof document === 'undefined') return
-  const root = document.documentElement
-  if (!settings.followSystemDark) {
-    if (mediaQuery) root.classList.toggle('dark', mediaQuery.matches)
-    return
-  }
-  if (typeof window === 'undefined' || !window.matchMedia) return
-  root.classList.toggle('dark', window.matchMedia('(prefers-color-scheme: dark)').matches)
-}
-function watchSystemTheme(event) {
-  if (settings.followSystemDark) document.documentElement.classList.toggle('dark', event.matches)
-}
-
-watch(() => settings.followSystemDark, applyTheme)
-
 let resizeObserver = null
 onMounted(async () => {
   await nextTick()
+  appStore.applyTheme()
   syncPageHeight()
   window.addEventListener('resize', syncPageHeight)
-  if (typeof window !== 'undefined' && window.matchMedia) {
-    mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    mediaQuery.addEventListener?.('change', watchSystemTheme)
-  }
-  applyTheme()
   resizeObserver = new ResizeObserver(syncPageHeight)
   if (pageEl.value?.parentElement) resizeObserver.observe(pageEl.value.parentElement)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', syncPageHeight)
-  mediaQuery?.removeEventListener?.('change', watchSystemTheme)
+  appStore.applyTheme()
   resizeObserver?.disconnect()
 })
 </script>
