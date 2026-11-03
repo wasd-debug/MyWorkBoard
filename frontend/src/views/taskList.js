@@ -3,7 +3,7 @@ export function sortTaskItems(tasks, { sortBy = 'time', direction = 'asc' } = {}
 
   const directionFactor = direction === 'desc' ? -1 : 1
   return [...tasks].sort((left, right) => {
-    if (['time', 'created', 'updated'].includes(sortBy)) {
+    if (['time', 'created', 'updated', 'completedAt'].includes(sortBy)) {
       const leftValue = sortValue(left, sortBy)
       const rightValue = sortValue(right, sortBy)
       if (!leftValue !== !rightValue) return leftValue ? -1 : 1
@@ -135,5 +135,6 @@ function dateValue(value) {
 function sortValue(task, sortBy) {
   if (sortBy === 'created') return task.createdAt
   if (sortBy === 'updated') return task.updatedAt
+  if (sortBy === 'completedAt') return task.completedAt
   return task.dueAt
 }

@@ -36,6 +36,23 @@ test('sortTaskItems supports creation, modification and tag ordering', () => {
   assert.deepEqual(sortTaskItems(tasks, { sortBy: 'tag' }).map((task) => task.publicId), ['old', 'new'])
 })
 
+test('sortTaskItems 支持按完成时间排序，缺失完成时间的排最后', () => {
+  const tasks = [
+    { publicId: 'mid', completedAt: '2026-10-21T10:00:00Z', sortOrder: 0 },
+    { publicId: 'none', sortOrder: 1 },
+    { publicId: 'newest', completedAt: '2026-10-23T10:00:00Z', sortOrder: 2 },
+    { publicId: 'oldest', completedAt: '2026-10-01T10:00:00Z', sortOrder: 3 },
+  ]
+  assert.deepEqual(
+    sortTaskItems(tasks, { sortBy: 'completedAt', direction: 'desc' }).map((task) => task.publicId),
+    ['newest', 'mid', 'oldest', 'none'],
+  )
+  assert.deepEqual(
+    sortTaskItems(tasks, { sortBy: 'completedAt' }).map((task) => task.publicId),
+    ['oldest', 'mid', 'newest', 'none'],
+  )
+})
+
 test('groupTaskItems groups by local day and keeps undated work distinct', () => {
   const tasks = [
     { publicId: 'overdue', dueAt: '2026-10-19T23:00:00' },

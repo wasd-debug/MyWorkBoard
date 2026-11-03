@@ -71,7 +71,7 @@ public final class TaskEnhancementModels {
     @Schema(name = "TaskImportRow")
     public record ImportRow(int rowNumber, String sheet, String title, String description, String listName,
                             String dueAt, String priority, List<String> tags, String status, String rrule,
-                            String state, String message) { }
+                            String state, String message, String startAt, String completedAt) { }
 
     @Schema(name = "TaskImportPreview")
     public record ImportPreview(String previewId, String fileName, int valid, int duplicates, int errors,

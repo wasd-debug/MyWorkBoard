@@ -833,6 +833,13 @@ public class TaskService {
         return changeStatus(publicId, ifMatch, "COMPLETED", UUID.randomUUID().toString());
     }
 
+    /** 导入历史数据用：把任务置为完成，并把完成时间落成指定的时刻（而不是当前时刻）。 */
+    @Transactional
+    public TaskItem complete(String publicId, String ifMatch, Instant completedAt) {
+        if (completedAt == null) return complete(publicId, ifMatch);
+        return changeStatus(publicId, ifMatch, "COMPLETED", UUID.randomUUID().toString(), completedAt);
+    }
+
     @Transactional
     public TaskItem reopen(String publicId, String ifMatch) {
         TaskItem current = taskForUser(currentUser.id(), publicId);
@@ -1131,19 +1138,25 @@ public class TaskService {
     }
 
     private TaskItem changeStatus(String publicId, String ifMatch, String status, String opId) {
+        return changeStatus(publicId, ifMatch, status, opId, null);
+    }
+
+    private TaskItem changeStatus(String publicId, String ifMatch, String status, String opId, Instant completedAtOverride) {
         long userId = currentUser.id();
         TaskItem before = taskForUser(userId, publicId);
         long expected = requiredRevision(ifMatch);
         if (before.revision() != expected) throw new ConflictException("任务版本已变化", before.revision());
+        Instant completedAt = completedAtOverride != null ? completedAtOverride
+                : (before.completedAt() == null ? Instant.now() : Instant.parse(before.completedAt()));
         int updated = jdbcTemplate.update("UPDATE task SET status = ?, completed_at = ?, abandoned_at = ?, " +
                         "revision = revision + 1 WHERE public_id = ? AND user_id = ? AND deleted = FALSE AND revision = ?",
                 status,
-                "COMPLETED".equals(status) ? timestamp(before.completedAt() == null ? Instant.now() : Instant.parse(before.completedAt())) : null,
+                "COMPLETED".equals(status) ? timestamp(completedAt) : null,
                 "ABANDONED".equals(status) ? timestamp(before.abandonedAt() == null ? Instant.now() : Instant.parse(before.abandonedAt())) : null,
                 validUuid(publicId, "publicId"), userId, expected);
         ensureUpdated(updated, userId, publicId);
         if ("COMPLETED".equals(status)) {
-            generateNextInstance(userId, before, Instant.now());
+            generateNextInstance(userId, before, completedAt);
         }
         if ("COMPLETED".equals(status) || "ABANDONED".equals(status)) {
             jdbcTemplate.update("UPDATE task_reminder r JOIN task t ON t.id=r.task_id SET r.cancelled_at=CURRENT_TIMESTAMP(3),r.revision=r.revision+1 " +

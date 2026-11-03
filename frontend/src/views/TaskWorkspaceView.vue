@@ -791,7 +791,7 @@
                 <button v-if="task.rrule" type="button" class="clone-task-indicator clone-task-indicator-action" :title="recurrenceLabel(task.rrule)" :aria-label="`调整${task.title}重复规则`" @click.stop="openTaskIndicator(task, 'repeat')"><Repeat2 :size="14" /></button>
                 <button v-if="task.focusMinutes" type="button" class="clone-task-indicator clone-task-indicator-action" :title="`累计专注 ${task.focusMinutes} 分钟`" :aria-label="`查看${task.title}专注记录`" @click.stop="openTaskIndicator(task, 'focus')"><Timer :size="14" /></button>
                 <button v-if="task.attachmentCount || task.attachments?.length" type="button" class="clone-task-indicator clone-task-indicator-action" :title="`附件 ${task.attachmentCount || task.attachments.length} 个`" :aria-label="`查看${task.title}附件`" @click.stop="openTaskIndicator(task, 'attachments')"><Paperclip :size="14" /><small>{{ task.attachmentCount || task.attachments.length }}</small></button>
-                <button v-if="task.dueAt" type="button" class="clone-task-date" :class="{ overdue: isTaskOverdue(task), today: isTaskDueToday(task) }" data-row-date-trigger :title="`调整日期 ${formatDate(task.dueAt)}`" @click.stop="openRowDateEditor(task, $event.currentTarget)"><CalendarClock :size="14" />{{ taskDateLabel(task) }}</button>
+                <span v-if="isCompletionRoute && task.completedAt" class="clone-task-date is-completed" :title="`完成于 ${formatDate(task.completedAt)}`"><CalendarCheck :size="14" />{{ completedDateLabel(task) }}</span><button v-else-if="task.dueAt" type="button" class="clone-task-date" :class="{ overdue: isTaskOverdue(task), today: isTaskDueToday(task) }" data-row-date-trigger :title="`调整日期 ${formatDate(task.dueAt)}`" @click.stop="openRowDateEditor(task, $event.currentTarget)"><CalendarClock :size="14" />{{ taskDateLabel(task) }}</button>
                 <button v-if="showListLink" type="button" class="clone-task-list-link" :title="listName(task.listId)" @click.stop="navigateToTaskList(task)"><span class="clone-task-list-dot" :style="{ backgroundColor: taskListColor(task) }"></span>{{ listName(task.listId) }}</button>
               </div><button
               v-if="!selectedIds.has(task.publicId)"
@@ -824,7 +824,7 @@
             <TransitionGroup name="clone-sort" tag="div" class="clone-task-rows clone-collapse-inner" :inert="Boolean(collapsed.completed)">
               <article v-for="task in completedPreviewTasks" :key="task.publicId" class="clone-task-row checked" :class="{ selected: selectedTask?.publicId === task.publicId, 'is-note': isNoteTask(task), multi: selectedIds.has(task.publicId), 'print-content': printMode === 'CONTENT' }" :data-priority="task.priority" :style="{ '--task-group-color': groupColor(task) }" @contextmenu.prevent="openContext(task, $event)">
                 <button v-if="!isNoteTask(task)" type="button" class="clone-check" :aria-label="`重新打开${task.title}`" @click="handleTaskCheckClick(task, $event)"><Check :size="14" /></button><GripVertical class="clone-drag-handle" :size="15" /><button type="button" class="clone-task-content" @click="handleTaskContentClick(task, $event)"><span class="clone-print-task-copy"><strong>{{ task.title }}</strong><small v-if="task.description" class="clone-print-description">{{ printDescription(task.description) }}</small></span></button>
-                <div class="clone-task-metadata"><span v-if="showTags && task.tagIds?.length" class="clone-task-tags" :aria-label="taskTagSummary(task)"><RouterLink v-for="tagId in visibleTaskTagIds(task)" :key="tagId" :to="`/tasks/tag/${tagId}`" class="clone-task-tag" :style="taskTagStyle(tagId)" @click.stop>{{ tagName(tagId) }}</RouterLink></span><button v-if="task.dueAt" type="button" class="clone-task-date" data-row-date-trigger @click.stop="openRowDateEditor(task, $event.currentTarget)"><CalendarClock :size="14" />{{ taskDateLabel(task) }}</button><button v-if="showListLink" type="button" class="clone-task-list-link" :title="listName(task.listId)" @click.stop="navigateToTaskList(task)"><span class="clone-task-list-dot" :style="{ backgroundColor: taskListColor(task) }"></span>{{ listName(task.listId) }}</button></div>
+                <div class="clone-task-metadata"><span v-if="showTags && task.tagIds?.length" class="clone-task-tags" :aria-label="taskTagSummary(task)"><RouterLink v-for="tagId in visibleTaskTagIds(task)" :key="tagId" :to="`/tasks/tag/${tagId}`" class="clone-task-tag" :style="taskTagStyle(tagId)" @click.stop>{{ tagName(tagId) }}</RouterLink></span><span v-if="isCompletionRoute && task.completedAt" class="clone-task-date is-completed" :title="`完成于 ${formatDate(task.completedAt)}`"><CalendarCheck :size="14" />{{ completedDateLabel(task) }}</span><button v-else-if="task.dueAt" type="button" class="clone-task-date" data-row-date-trigger @click.stop="openRowDateEditor(task, $event.currentTarget)"><CalendarClock :size="14" />{{ taskDateLabel(task) }}</button><button v-if="showListLink" type="button" class="clone-task-list-link" :title="listName(task.listId)" @click.stop="navigateToTaskList(task)"><span class="clone-task-list-dot" :style="{ backgroundColor: taskListColor(task) }"></span>{{ listName(task.listId) }}</button></div>
               </article>
             </TransitionGroup>
             <button v-if="completedPreviewTasks.length < completedTasks.length" type="button" class="clone-completed-more" @click="showMoreCompleted">查看更多（{{ completedTasks.length - completedPreviewTasks.length }}）</button>
@@ -1624,6 +1624,7 @@ import {
   AlignLeft,
   BrushCleaning,
   CalendarClock,
+  CalendarCheck,
   Bell,
   Check,
   CheckCircle2,
@@ -2850,6 +2851,10 @@ const visibleTasks = computed(() => {
       listIds: completionFilters.listIds,
     });
   }
+  if (isCompletionRoute.value && sort.value === "time") {
+    // 已完成/已放弃默认按“完成时间”从新到旧，而不是按到期日
+    return sortTaskItems(values, { sortBy: "completedAt", direction: "desc" });
+  }
   return sortTaskItems(values, { sortBy: sort.value, direction: sortDirection.value });
 });
 const openTasks = computed(() =>
@@ -3021,6 +3026,14 @@ function taskDateLabel(task) {
   const sameYear = date.getFullYear() === new Date().getFullYear();
   const label = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) }).format(date);
   return date.getHours() || date.getMinutes() ? `${label} ${new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(date)}` : label;
+}
+function completedDateLabel(task) {
+  if (!task.completedAt) return "已完成";
+  const date = new Date(task.completedAt);
+  if (Number.isNaN(date.getTime())) return "已完成";
+  const sameYear = date.getFullYear() === new Date().getFullYear();
+  const day = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) }).format(date);
+  return date.getHours() || date.getMinutes() ? `${day} ${new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(date)}` : day;
 }
 function navigateToTaskList(task) {
   const list = taskList(task);
@@ -8905,6 +8918,7 @@ const SidebarSection = {
 .clone-task-date { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--accent); }
 .clone-task-date { padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; }
 .clone-task-date.overdue { color: var(--down); }
+.clone-task-date.is-completed { color: var(--muted); cursor: default; }
 .clone-task-date.today { color: var(--accent); }
 .clone-task-row.is-note { min-height: 54px; }
 .clone-task-row.is-note .clone-task-content { min-height: 44px; }
