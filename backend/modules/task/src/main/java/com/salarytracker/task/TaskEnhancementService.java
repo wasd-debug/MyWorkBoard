@@ -1,8 +1,6 @@
 package com.salarytracker.task;
 
 import com.alibaba.excel.EasyExcel;
-import com.alibaba.excel.ExcelReader;
-import com.alibaba.excel.read.metadata.ReadSheet;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -14,11 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -207,13 +201,13 @@ public class TaskEnhancementService {
         if (file == null || file.isEmpty()) throw new IllegalArgumentException("请选择导入文件");
         if (file.getSize() > MAX_BYTES) throw new IllegalArgumentException("导入文件不能超过 10 MB");
         String name = text(file.getOriginalFilename()); String lower = name.toLowerCase(Locale.ROOT);
-        List<RawRow> raw = lower.endsWith(".csv") ? csvRows(file.getBytes()) : lower.endsWith(".ics") ? icsRows(file.getBytes())
-                : lower.endsWith(".xlsx") || lower.endsWith(".xls") ? excelRows(file.getBytes())
+        List<TaskImportParser.RawRow> raw = lower.endsWith(".csv") ? TaskImportParser.csv(file.getBytes()) : lower.endsWith(".ics") ? icsRows(file.getBytes())
+                : lower.endsWith(".xlsx") || lower.endsWith(".xls") ? TaskImportParser.excel(file.getBytes())
                 : throwUnsupported();
         if (raw.size() > MAX_ROWS) throw new IllegalArgumentException("单次导入最多 10000 行");
         Set<String> existing = new LinkedHashSet<>(jdbc.query("SELECT CONCAT(LOWER(l.name),'|',LOWER(t.title),'|',COALESCE(DATE_FORMAT(t.due_at,'%Y-%m-%dT%H:%i:%sZ'),'')) FROM task t JOIN task_list l ON l.id=t.list_id WHERE t.user_id=? AND t.deleted=FALSE", (r,n)->r.getString(1), currentUser.id()));
         Set<String> source = new LinkedHashSet<>(); List<ImportRow> rows = new ArrayList<>(); int valid=0, duplicate=0, errors=0;
-        for (RawRow row : raw) {
+        for (TaskImportParser.RawRow row : raw) {
             ImportRow normalized = normalize(row); String state = normalized.state(); String message = normalized.message();
             String fp = normalized.listName().toLowerCase(Locale.ROOT)+"|"+normalized.title().toLowerCase(Locale.ROOT)+"|"+text(normalized.dueAt());
             if ("VALID".equals(state) && (!source.add(fp) || existing.contains(fp))) { state="DUPLICATE"; message="同清单、标题和到期时间重复"; }
@@ -389,13 +383,10 @@ public class TaskEnhancementService {
     private void validateFilterReferences(long user,ValidFilter v){for(String id:v.listIds)if(count("SELECT COUNT(*) FROM task_list WHERE user_id=? AND public_id=? AND deleted=FALSE",user,id)==0)throw new IllegalArgumentException("清单不存在");for(String id:v.tagIds)if(count("SELECT COUNT(*) FROM task_tag WHERE user_id=? AND public_id=? AND deleted=FALSE",user,id)==0)throw new IllegalArgumentException("标签不存在");validateRuleReferences(user,v.rules);}
     private void validateRuleReferences(long user,JsonNode node){if(node==null||node.isNull())return;if(node.has("op")){node.path("children").forEach(child->validateRuleReferences(user,child));return;}String field=node.path("field").asText();if(!List.of("listId","tagId").contains(field))return;String table="listId".equals(field)?"task_list":"task_tag";List<String>ids=new ArrayList<>();JsonNode value=node.path("value");if("IN".equalsIgnoreCase(node.path("operator").asText()))value.forEach(item->ids.add(item.asText()));else if(value.isTextual())ids.add(value.asText());for(String id:ids)if(count("SELECT COUNT(*) FROM "+table+" WHERE user_id=? AND public_id=? AND deleted=FALSE",user,id)==0)throw new IllegalArgumentException("筛选规则引用了不存在或不属于当前账号的清单/标签");}
     private Map<String,String> labels(String d){Map<String,String> m=new LinkedHashMap<>();if("LIST".equals(d))tasks.listLists().forEach(v->m.put(v.publicId(),v.name()));else if("TAG".equals(d)){tasks.listTags().forEach(v->m.put(v.publicId(),v.name()));m.put("NONE","无标签");}else{m.put("OPEN","待完成");m.put("COMPLETED","已完成");m.put("HIGH","高");m.put("MEDIUM","中");m.put("LOW","低");m.put("NONE","无优先级");}return m;}
-    private List<RawRow> excelRows(byte[] bytes){List<RawRow> out=new ArrayList<>();try(ExcelReader reader=EasyExcel.read(new ByteArrayInputStream(bytes)).build()){List<ReadSheet>sheets=reader.excelExecutor().sheetList();if(sheets.size()>20)throw new IllegalArgumentException("Sheet 数不能超过 20");for(ReadSheet sheet:sheets){List<Map<Integer,String>> data=EasyExcel.read(new ByteArrayInputStream(bytes)).sheet(sheet.getSheetNo()).headRowNumber(0).doReadSync();if(data.isEmpty())continue;Map<Integer,String>head=data.get(0);for(int i=1;i<data.size();i++){Map<String,String>v=new LinkedHashMap<>();for(var cell:data.get(i).entrySet())v.put(text(head.get(cell.getKey())).trim(),text(cell.getValue()).trim());if(v.values().stream().anyMatch(x->!x.isBlank()))out.add(new RawRow(sheet.getSheetName(),i+1,v));}}}return out;}
-    private List<RawRow> csvRows(byte[] bytes){String content=decode(bytes);String[]lines=content.replace("\r","").split("\n");if(lines.length<2)return List.of();char sep=lines[0].chars().filter(c->c==';').count()>lines[0].chars().filter(c->c==',').count()?';':',';List<String>head=parseCsv(lines[0],sep);List<RawRow>out=new ArrayList<>();for(int i=1;i<lines.length;i++){List<String>cells=parseCsv(lines[i],sep);Map<String,String>v=new LinkedHashMap<>();for(int j=0;j<head.size();j++)v.put(head.get(j),j<cells.size()?cells.get(j):"");if(v.values().stream().anyMatch(x->!x.isBlank()))out.add(new RawRow("CSV",i+1,v));}return out;}
-    private List<RawRow> icsRows(byte[] bytes){String content=decode(bytes).replace("\r\n ","");List<RawRow>out=new ArrayList<>();int row=0;for(String block:content.split("BEGIN:VEVENT")){if(!block.contains("END:VEVENT"))continue;Map<String,String>v=new LinkedHashMap<>();for(String line:block.split("\\R")){int p=line.indexOf(':');if(p>0)v.put(line.substring(0,p).split(";",2)[0],line.substring(p+1).trim());}v.put("标题",v.getOrDefault("SUMMARY",""));v.put("描述",v.getOrDefault("DESCRIPTION",""));v.put("到期时间",v.getOrDefault("DTEND",v.getOrDefault("DTSTART","")));out.add(new RawRow("ICS",++row,v));}return out;}
-    private ImportRow normalize(RawRow r){String title=value(r.values,"标题","任务","任务名称","title","SUMMARY"),desc=value(r.values,"描述","备注","备注内容","description"),list=value(r.values,"清单","清单名称","列表","项目","list");if(list.isBlank())list="收集箱";String rawDue=value(r.values,"到期时间","到期日期","截止时间","截止日期","日期","due","DTEND"),due=parseDue(rawDue);String priority=priority(value(r.values,"优先级","priority")),status=value(r.values,"状态","完成状态","status").contains("完成")?"COMPLETED":"OPEN";List<String>tags=splitMulti(value(r.values,"标签","tags"));String rrule=value(r.values,"重复规则","重复","rrule");String state=title.isBlank()?"ERROR":"VALID",message=title.isBlank()?"标题不能为空":(!rawDue.isBlank()&&due==null?"无法识别到期日期":"");if(!message.isBlank())state="ERROR";return new ImportRow(r.row,r.sheet,title,desc,list,due,priority,tags,status,rrule,state,message);}
+    private List<TaskImportParser.RawRow> icsRows(byte[] bytes){String content=decode(bytes).replace("\r\n ","");List<TaskImportParser.RawRow>out=new ArrayList<>();int row=0;for(String block:content.split("BEGIN:VEVENT")){if(!block.contains("END:VEVENT"))continue;Map<String,String>v=new LinkedHashMap<>();for(String line:block.split("\\R")){int p=line.indexOf(':');if(p>0)v.put(line.substring(0,p).split(";",2)[0],line.substring(p+1).trim());}v.put("标题",v.getOrDefault("SUMMARY",""));v.put("描述",v.getOrDefault("DESCRIPTION",""));v.put("到期时间",v.getOrDefault("DTEND",v.getOrDefault("DTSTART","")));out.add(new TaskImportParser.RawRow("ICS",++row,v));}return out;}
+    private ImportRow normalize(TaskImportParser.RawRow r){String title=value(r.values(),"标题","任务","任务名称","title","SUMMARY"),desc=value(r.values(),"描述","备注","备注内容","description"),list=value(r.values(),"清单","清单名称","列表","项目","list");if(list.isBlank())list="收集箱";String rawDue=value(r.values(),"到期时间","到期日期","截止时间","截止日期","日期","due","DTEND"),due=parseDue(rawDue);String priority=priority(value(r.values(),"优先级","priority")),status=TaskImportParser.status(value(r.values(),"状态","完成状态","status"));List<String>tags=splitMulti(value(r.values(),"标签","tags"));String rrule=value(r.values(),"重复规则","重复","rrule");String state=title.isBlank()?"ERROR":"VALID",message=title.isBlank()?"标题不能为空":(!rawDue.isBlank()&&due==null?"无法识别到期日期":"");if(!message.isBlank())state="ERROR";return new ImportRow(r.row(),r.sheet(),title,desc,list,due,priority,tags,status,rrule,state,message);}
     private String parseDue(String raw){String v=text(raw).trim();if(v.isBlank())return null;try{if(v.matches("\\d{8}T\\d{6}Z"))return LocalDateTime.parse(v,DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")).atZone(ZoneId.of("UTC")).toInstant().toString();if(v.matches("\\d{8}"))return LocalDate.parse(v,DateTimeFormatter.BASIC_ISO_DATE).atTime(23,59).atZone(ZoneId.of("Asia/Shanghai")).toInstant().toString();String normalized=v.replace("年","-").replace("月","-").replace("日","").replace('/','-').trim();if(normalized.matches("\\d{4}-\\d{1,2}-\\d{1,2}"))return LocalDate.parse(normalized,DateTimeFormatter.ofPattern("yyyy-M-d")).atTime(23,59).atZone(ZoneId.of("Asia/Shanghai")).toInstant().toString();if(normalized.matches("\\d{4}-\\d{1,2}-\\d{1,2} \\d{1,2}:\\d{2}(:\\d{2})?")){DateTimeFormatter formatter=DateTimeFormatter.ofPattern(normalized.length()==16?"yyyy-M-d H:mm":"yyyy-M-d H:mm:ss");return LocalDateTime.parse(normalized,formatter).atZone(ZoneId.of("Asia/Shanghai")).toInstant().toString();}return Instant.parse(v).toString();}catch(Exception e){return null;}}
-    private String decode(byte[]b){try{return StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(b)).toString().replace("\ufeff","");}catch(CharacterCodingException e){return new String(b,java.nio.charset.Charset.forName("GBK"));}}
-    private List<String> parseCsv(String line,char sep){List<String>out=new ArrayList<>();StringBuilder cell=new StringBuilder();boolean quote=false;for(int i=0;i<line.length();i++){char c=line.charAt(i);if(c=='"'){if(quote&&i+1<line.length()&&line.charAt(i+1)=='"'){cell.append('"');i++;}else quote=!quote;}else if(c==sep&&!quote){out.add(cell.toString().trim());cell.setLength(0);}else cell.append(c);}out.add(cell.toString().trim());return out;}
+    private String decode(byte[]b){return TaskImportParser.decode(b);}
     private List<ImportRow> readRows(String json){try{return mapper.readValue(json,new TypeReference<>(){});}catch(Exception e){throw new IllegalStateException("导入预览损坏",e);}}
     private String json(Object v){try{return mapper.writeValueAsString(v);}catch(Exception e){throw new IllegalStateException(e);}}
     private Map<String,Long> grouped(String sql,Object...args){Map<String,Long>out=new LinkedHashMap<>();jdbc.query(sql,r->{out.put(r.getString(1),r.getLong(2));},args);return out;}
@@ -419,5 +410,4 @@ public class TaskEnhancementService {
     private String text(Object v){return v==null?"":String.valueOf(v);}
     private LocalDate parseDate(String v,LocalDate fallback){try{return text(v).isBlank()?fallback:LocalDate.parse(v);}catch(DateTimeParseException e){throw new IllegalArgumentException("日期格式无效");}}
     private record ValidFilter(String name,String mode,List<String>listIds,List<String>tagIds,String tagMode,List<String>taskTypes,List<String>priorities,String status,String dueRange,String dueStart,String dueEnd,String keyword,boolean includeSubtasks,boolean matchAllTags,int sortOrder,boolean pinned,String icon,JsonNode rules){}
-    private record RawRow(String sheet,int row,Map<String,String>values){}
 }
