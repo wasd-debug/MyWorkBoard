@@ -7,6 +7,7 @@ const dataPanel = await readFile(new URL('../components/tasks/TaskDataPanel.vue'
 const dataPane = await readFile(new URL('../components/settings/SettingsDataPanes.vue', import.meta.url), 'utf8')
 const inboxView = await readFile(new URL('./TasksInboxView.vue', import.meta.url), 'utf8')
 const workspaceView = await readFile(new URL('./TaskWorkspaceView.vue', import.meta.url), 'utf8')
+const taskDatePanel = await readFile(new URL('../components/tasks/TaskDatePanel.vue', import.meta.url), 'utf8')
 const taskMarkdownPreview = await readFile(new URL('../components/tasks/TaskMarkdownPreview.vue', import.meta.url), 'utf8')
 const taskMilkdownEditor = await readFile(new URL('../components/tasks/TaskMilkdownEditor.vue', import.meta.url), 'utf8')
 const taskFilterRuleEditor = await readFile(new URL('../components/tasks/TaskFilterRuleEditor.vue', import.meta.url), 'utf8')
@@ -265,10 +266,19 @@ test('所有描述入口统一用任务详情页那套 Milkdown 编辑器', asyn
 test('task detail repeat is a passive marker and is configured from the date popover', () => {
   assert.match(workspaceView, /v-if="editorOpen \? \(draft\.rrule === 'CUSTOM' \? draft\.customRrule : draft\.rrule\) : selectedTask\?\.rrule"[\s\S]*class="clone-detail-repeat-indicator"/)
   assert.doesNotMatch(workspaceView, /clone-detail-repeat-indicator[^>]*@click/)
-  assert.match(workspaceView, /<TaskDateTimePopover[\s\S]*@click\.stop="toggleDatePanelRepeat"/)
-  assert.match(workspaceView, /function toggleDatePanelRepeat\(\) \{[\s\S]*dateRepeatOpen\.value = !dateRepeatOpen\.value;\n  dateReminderOpen\.value = false/)
-  assert.doesNotMatch(workspaceView.match(/function toggleDatePanelRepeat\(\) \{[\s\S]*?\n\}/)?.[0] || '', /datePopoverOpen\.value = false/)
-  // 提醒/重复是日期浮层的内嵌子面板，进了 workspace 互斥组就会把宿主浮层一起关掉
+  // 详情栏和快捷添加共用同一个日期面板组件，提醒/重复是面板里的二级菜单而不是 workspace 自己的一套
+  const detailPanelCall = workspaceView.match(/<TaskDatePanel\s+:due-at="detailPanelDueAt"[\s\S]*?\/>/)?.[0] || ''
+  assert.ok(detailPanelCall, '详情栏日期浮层应复用 TaskDatePanel')
+  assert.match(detailPanelCall, /@apply="applyDetailDatePanel"/)
+  assert.match(detailPanelCall, /:initial-menu="detailDateMenu"/)
+  assert.match(taskDatePanel, /@click="toggleMenu\('repeat'\)"/)
+  assert.match(taskDatePanel, /@click="toggleMenu\('reminder'\)"/)
+  assert.match(taskDatePanel, /function toggleMenu\(name\) \{\n  dateMenu\.value = dateMenu\.value === name \? '' : name;/)
+  // 二级菜单只切 dateMenu，不会顺手把宿主浮层一起关掉
+  assert.doesNotMatch(taskDatePanel.match(/function toggleMenu\(name\) \{[\s\S]*?\n\}/)?.[0] || '', /emit\('(apply|clear)'/)
+  // 任务行的重复标记点进来：开浮层并把面板里的「重复」菜单展开
+  assert.match(workspaceView, /if \(kind === "repeat"\) \{[\s\S]*?detailDateMenu\.value = "repeat";/)
+  // 提醒/重复不再作为独立浮层进 workspace 的互斥组
   const workspacePanelGroup = workspaceView.match(/useExclusivePanels\("workspace", \[([\s\S]*?)\n\]\);/)?.[1] || ''
   assert.ok(workspacePanelGroup.includes('datePopoverOpen'), 'workspace 互斥组应包含日期浮层')
   assert.doesNotMatch(workspacePanelGroup, /dateRepeatOpen|dateReminderOpen/)
@@ -502,17 +512,21 @@ test('task detail exposes contract-backed Markdown comments and attachments', ()
 test('task date, recurrence, and reminder popovers preserve task state boundaries', () => {
   for (const token of [
     'toggleDatePopover', 'saveTaskDueDate', 'applyTaskDueOffset',
-    'toggleDatePanelRepeat', 'selectTaskRepeat', 'recurrenceValue',
-    'toggleReminderPopover', 'saveTaskReminder', 'disableTaskReminder',
+    'selectTaskRepeat', 'recurrenceValue',
+    'saveTaskReminder', 'disableTaskReminder',
     'apiListTaskReminders', 'apiCreateTaskReminder', 'apiUpdateTaskReminder', 'apiDeleteTaskReminder',
     'reminderLoadSequence', 'closeAttributePopovers',
   ]) assert.ok(workspaceView.includes(token), `missing popover behavior ${token}`)
   assert.match(workspaceView, /kind: quickReminder\.kind,[\s\S]*channel: "IN_APP",[\s\S]*dailyUntilDone: quickReminder\.dailyUntilDone/)
   assert.match(workspaceView, /reminderLoadSequence \+= 1;[\s\S]*closeAttributePopovers\(\);[\s\S]*selectedTask\.value = task/)
-  assert.match(workspaceView, /if \(loadSequence !== reminderLoadSequence \|\| selectedTask\.value\?\.publicId !== task\.publicId/)
+  assert.match(workspaceView, /const loadSequence = \+\+reminderLoadSequence;[\s\S]*if \(loadSequence !== reminderLoadSequence \|\| selectedTask\.value\?\.publicId !== task\.publicId/)
   assert.match(workspaceView, /@click\.stop="toggleDatePopover"/)
-  assert.match(workspaceView, /@click\.stop="toggleDatePanelRepeat"/)
-  assert.match(workspaceView, /@click\.stop="toggleReminderPopover"/)
+  // 日期浮层里的提醒/重复是面板内的二级菜单，不再有独立的 toggleReminderPopover / toggleDatePanelRepeat
+  assert.doesNotMatch(workspaceView, /function toggleReminderPopover\(/)
+  assert.doesNotMatch(workspaceView, /function toggleDatePanelRepeat\(/)
+  // 提醒的选择在共享面板里，落库仍由 workspace 的 saveDetailReminderPresets 负责
+  assert.match(taskDatePanel, /function selectReminder\(preset\) \{/)
+  assert.match(workspaceView, /async function saveDetailReminderPresets\(payload\) \{[\s\S]*await saveTaskReminder\(\)/)
   assert.match(workspaceView, /clone-date-calendar-grid/)
   assert.match(workspaceView, /datePickerDays/)
   assert.match(workspaceView, /selectDatePickerDay/)
@@ -548,7 +562,12 @@ test('quick add exposes two-row date, priority, list controls and keeps tags in 
 })
 
 test('quick add date controls use one floating popover with ordered date fields', () => {
-  assert.match(workspaceView, /<TaskDateTimePopover[\s\S]*:range-start="quickRangeStart"[\s\S]*@update:range-end="applyQuickRangeEnd"[\s\S]*range-controlled[\s\S]*<template #rows="\{ mode: rowMode \}">/)
+  // 快捷添加把值喂给共享面板，TaskDateTimePopover / 属性行都在面板内部
+  const quickPanelCall = workspaceView.match(/<TaskDatePanel\s+:due-at="quickEntry\.dueAt"[\s\S]*?\/>/)?.[0] || ''
+  assert.ok(quickPanelCall, '快捷添加应使用共享的 TaskDatePanel')
+  assert.match(quickPanelCall, /:default-time="quickDefaultTime"/)
+  assert.match(quickPanelCall, /@apply="applyQuickDatePanel"/)
+  assert.match(taskDatePanel, /<TaskDateTimePopover[\s\S]*range-controlled[\s\S]*<template #rows="\{ mode: rowMode \}">/)
   assert.match(workspaceView, /\.clone-quick-action-panel\.is-date,\s+\.clone-quick-action-panel\.is-repeat \{ position: fixed;/)
   assert.match(workspaceView, /\.clone-quick-action-panel\.is-date > \.task-date-time-popover \{ width: 100%; \}/)
   assert.doesNotMatch(workspaceView, /<div class="clone-quick-date-panel">/)
@@ -1152,8 +1171,7 @@ test('task detail pane follows TickTick toolbar and bottom action hierarchy', ()
   assert.match(toolbar, /aria-label="设置日期"/)
   assert.match(toolbar, /class="clone-detail-repeat-indicator"/)
   assert.doesNotMatch(toolbar.match(/<span v-if="editorOpen \? \(draft\.rrule[\s\S]*?<\/span>/)?.[0] || '', /@click/)
-  assert.match(toolbar, /<TaskDateTimePopover/)
-  assert.match(toolbar, /class="clone-detail-repeat-inline is-inline"/)
+  assert.match(toolbar, /<TaskDatePanel/)
   assert.match(toolbar, /aria-label="设置优先级"/)
   assert.doesNotMatch(toolbar, /aria-label="更多详情操作"|aria-label="关闭任务详情"/)
   assert.match(workspaceView, /class="clone-detail-footer" aria-label="详情工具"/)
@@ -1217,7 +1235,7 @@ test('task row metadata shortcuts open their matching detail section or popover'
   assert.match(workspaceView, /查看\$\{task\.title\}专注记录[\s\S]*openTaskIndicator\(task, 'focus'\)/)
   assert.match(workspaceView, /查看\$\{task\.title\}附件[\s\S]*openTaskIndicator\(task, 'attachments'\)/)
   assert.match(workspaceView, /class="clone-detail-focus-summary" aria-label="专注记录"/)
-  assert.match(workspaceView, /async function openTaskIndicator\(task, kind\)[\s\S]*toggleDatePopover\(\);[\s\S]*toggleDatePanelRepeat\(\)[\s\S]*aria-label="专注记录"[\s\S]*scrollIntoView/)
+  assert.match(workspaceView, /async function openTaskIndicator\(task, kind\)[\s\S]*toggleDatePopover\(\);[\s\S]*detailDateMenu\.value = "repeat";[\s\S]*aria-label="专注记录"[\s\S]*scrollIntoView/)
   assert.match(workspaceView, /v-if="!selectedIds\.has\(task\.publicId\)"[\s\S]*class="clone-row-more"/)
 })
 

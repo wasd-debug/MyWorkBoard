@@ -15,6 +15,8 @@
     <button v-if="!sidebarHidden && isMobileSidebar" class="clone-sidebar-backdrop" type="button" aria-label="关闭任务侧栏" @click="sidebarHidden = true"></button>
     <button v-if="!isSummary && selectedIds.size && isMobileSidebar" class="clone-batch-backdrop" type="button" aria-label="关闭批量操作" @click="clearBatchSelection"></button>
     <button v-if="listActivityOpen && isMobileSidebar" class="clone-activity-backdrop" type="button" aria-label="关闭清单动态" @click="closeListActivity"></button>
+    <!-- 窄屏详情变成浮层抽屉：点抽屉外的区域直接收起，不用找关闭按钮 -->
+    <button v-if="detailPaneFloating" class="clone-detail-backdrop" type="button" aria-label="关闭任务详情" @click="closeDetail()"></button>
     <aside class="clone-task-sidebar" :class="{ 'is-editing': sidebarEditing }" aria-label="任务导航" @click="handleSidebarClick" @dragover.capture="handleOrganizationDragOver" @drop.capture.prevent.stop="handleSidebarDrop" @dragend.capture="endOrganizationDrag">
       <div class="clone-sidebar-scroll">
       <div class="clone-sidebar-head">
@@ -343,97 +345,21 @@
       <p v-if="quickAttachmentMessage" class="clone-quick-attachment-state" :role="quickAttachmentError || quickAttachmentSelectionError ? 'alert' : 'status'">{{ quickAttachmentMessage }}<button v-if="pendingQuickAttachmentBatches.length && (quickAttachmentError || !store.online)" type="button" :disabled="quickAttachmentUploading" @click="retryQuickAttachments">{{ quickAttachmentUploading ? `上传中 ${quickAttachmentProgress}%` : '重试附件上传' }}</button></p>
       <div v-if="quickAction === 'date'" ref="quickPanelMenuRef" class="clone-quick-action-panel is-date" :style="quickPanelStyle" @click.stop>
         <template v-if="quickAction === 'date'">
-          <TaskDateTimePopover
-            :mode="quickDateMode"
-            :month="quickCalendarMonth"
-            :calendar-days="quickDateTimeCalendarDays"
-            :selected-key="quickSelectedDate"
-            :time="quickEntry.allDay ? '' : quickDateTime"
+          <TaskDatePanel
+            :due-at="quickEntry.dueAt"
+            :start-at="quickEntry.startAt"
             :all-day="quickEntry.allDay"
-            :month-label="quickCalendarTitle"
-            :range-start="quickRangeStart"
-            :range-end="quickRangeEnd"
-            :range-start-time="quickRangeStartTime"
-            :range-end-time="quickRangeEndTime"
-            range-controlled
-            apply-label="确定"
-            @update:mode="setQuickDateMode"
-            @quick-date="chooseQuickDatePreset"
-            @move-month="moveQuickMonth"
-            @select-date="selectQuickCalendarDate"
-            @select-time="selectQuickTime"
-            @clear-time="clearQuickTime"
-            @clear-date="clearQuickDate"
-            @toggle-all-day="setQuickAllDay"
-            @update:range-start="applyQuickRangeStart"
-            @update:range-end="applyQuickRangeEnd"
-            @update:range-start-time="quickRangeStartTime = $event"
-            @update:range-end-time="quickRangeEndTime = $event"
-            @apply="applyQuickDate"
-          >
-            <template #rows="{ mode: rowMode }">
-              <div class="clone-date-prop-rows" aria-label="任务属性">
-                <div v-if="rowMode === 'DATE'" class="clone-date-prop-row">
-                  <button ref="quickTimeToggleRef" type="button" class="clone-date-prop-trigger" :class="{ active: Boolean(quickDateTime) }" :aria-expanded="quickDateMenu === 'time'" @click="toggleQuickDateMenu('time')"><Clock3 :size="15" /><span>{{ quickDateTime || '时间' }}</span><ChevronRight :size="14" :class="{ 'is-open': quickDateMenu === 'time' }" /></button>
-                  <button v-if="quickDateTime" type="button" class="clone-date-prop-clear" aria-label="清除时间" title="清除时间" @click="clearQuickTime"><X :size="14" /></button>
-                </div>
-                <div v-if="quickDateMenu === 'time'" class="clone-date-time-list" role="listbox" aria-label="选择时间">
-                  <button v-for="option in quickTimeOptions" :key="option" type="button" role="option" :aria-selected="option === quickDateTime" :class="{ active: option === quickDateTime }" @click="selectQuickTime(option)">{{ option }}<Check v-if="option === quickDateTime" :size="14" /></button>
-                </div>
-                <div class="clone-date-prop-row">
-                  <button ref="quickReminderToggleRef" type="button" class="clone-date-prop-trigger" :class="{ active: quickAddReminder.enabled }" :aria-expanded="quickDateMenu === 'reminder'" @click="toggleQuickDateMenu('reminder')"><Bell :size="15" /><span>{{ quickAddReminder.presets.length ? quickReminderSummary : '提醒' }}</span><ChevronRight :size="14" :class="{ 'is-open': quickDateMenu === 'reminder' }" /></button>
-                  <button v-if="quickAddReminder.presets.length" type="button" class="clone-date-prop-clear" aria-label="清除全部提醒" title="清除全部提醒" @click="clearQuickReminders"><X :size="14" /></button>
-                </div>
-                <div class="clone-date-prop-row">
-                  <button ref="quickRepeatToggleRef" type="button" class="clone-date-prop-trigger" :class="{ active: Boolean(buildQuickRepeatRule(quickRepeat)) }" :aria-expanded="quickDateMenu === 'repeat'" @click="toggleQuickDateMenu('repeat')"><Repeat2 :size="15" /><span>{{ quickRepeatLabel(quickRepeat) }}</span><ChevronRight :size="14" :class="{ 'is-open': quickDateMenu === 'repeat' }" /></button>
-                </div>
-                <div v-if="quickShowEndRow" class="clone-date-prop-row">
-                  <button ref="quickEndToggleRef" type="button" class="clone-date-prop-trigger" :aria-expanded="quickDateMenu === 'end'" @click="toggleQuickDateMenu('end')"><Timer :size="15" /><span>{{ quickEndLabel }}</span><ChevronRight :size="14" :class="{ 'is-open': quickDateMenu === 'end' }" /></button>
-                </div>
-              </div>
-              <teleport to="body">
-                <div v-if="quickDateMenu === 'reminder'" ref="quickReminderMenuRef" class="clone-quick-reminder-menu clone-quick-flyout" :style="quickReminderMenuStyle" role="listbox" aria-label="提醒设置" aria-multiselectable="true" @click.stop>
-                  <button v-for="option in quickReminderMenuOptions" :key="option.value" type="button" role="option" :aria-selected="quickAddReminder.presets.includes(option.value)" :class="{ active: quickAddReminder.presets.includes(option.value) }" @click="selectQuickReminder(option.value)">{{ option.label }}<Check v-if="quickAddReminder.presets.includes(option.value)" :size="14" /></button>
-                  <template v-if="!quickEntry.allDay && quickReminderRecentOptions.length">
-                    <span class="clone-quick-flyout-separator"></span>
-                    <span class="clone-quick-flyout-title">最近使用</span>
-                    <button v-for="option in quickReminderRecentOptions" :key="`recent-${option.value}`" type="button" role="option" :aria-selected="quickAddReminder.presets.includes(option.value)" :class="{ active: quickAddReminder.presets.includes(option.value) }" @click="selectQuickReminder(option.value)">{{ option.label }}<Check v-if="quickAddReminder.presets.includes(option.value)" :size="14" /></button>
-                  </template>
-                  <template v-if="quickAddReminder.presets.includes('CUSTOM')">
-                    <span class="clone-quick-flyout-separator"></span>
-                    <div class="clone-quick-reminder-custom">
-                      <label><span>提前</span><input v-model.number="quickAddReminder.amount" type="number" min="1" :max="quickEntry.allDay ? 365 : 10080" aria-label="自定义提醒数量" /><select v-model="quickAddReminder.unit" aria-label="自定义提醒单位"><option v-if="!quickEntry.allDay" value="MINUTE">分钟</option><option v-if="!quickEntry.allDay" value="HOUR">小时</option><option value="DAY">天</option><option value="WEEK">周</option></select></label>
-                      <label v-if="quickEntry.allDay">提醒时间<select v-model="quickAddReminder.time" aria-label="自定义提醒时间"><option v-for="option in quickTimeOptions" :key="`reminder-time-${option}`" :value="option">{{ option }}</option></select></label>
-                      <p class="clone-quick-reminder-preview">{{ quickReminderCustomPreview }}</p>
-                      <div class="clone-quick-flyout-actions"><button type="button" @click="cancelQuickReminderCustom">取消</button><button type="button" class="primary" @click="applyQuickReminderCustom">确定</button></div>
-                    </div>
-                  </template>
-                </div>
-                <div v-if="quickDateMenu === 'repeat'" ref="quickRepeatMenuRef" class="clone-quick-repeat-menu clone-quick-flyout" :style="quickRepeatMenuStyle" role="listbox" aria-label="重复规则" @click.stop>
-                  <template v-for="option in quickRepeatMenuOptions" :key="option.key">
-                    <span v-if="option.separator" class="clone-quick-flyout-separator"></span>
-                    <button v-else-if="option.isGroup" type="button" :aria-expanded="quickRepeatGroupOpen === option.key" @click="toggleQuickRepeatGroup(option.key)">{{ option.label }}<ChevronRight :size="14" :class="{ 'is-open': quickRepeatGroupOpen === option.key }" /></button>
-                    <button v-else-if="option.child" v-show="quickRepeatGroupOpen === option.groupKey" type="button" role="option" :aria-selected="option.active" :class="{ active: option.active }" @click="onQuickRepeatMenuSelect(option)">{{ option.label }}<Check v-if="option.active" :size="14" /></button>
-                    <button v-else type="button" role="option" :aria-selected="option.active" :class="{ active: option.active }" @click="onQuickRepeatMenuSelect(option)">{{ option.label }}<Check v-if="option.active" :size="14" /></button>
-                  </template>
-                </div>
-                <div v-if="quickDateMenu === 'end'" ref="quickEndMenuRef" class="clone-quick-end-menu clone-quick-flyout" :style="quickEndMenuStyle" role="listbox" aria-label="结束重复" @click.stop>
-                  <button type="button" role="option" :aria-selected="quickRepeat.endMode === 'NEVER'" :class="{ active: quickRepeat.endMode === 'NEVER' }" @click="selectQuickEndMode('NEVER')">永不结束<Check v-if="quickRepeat.endMode === 'NEVER'" :size="14" /></button>
-                  <span class="clone-quick-flyout-separator"></span>
-                  <button type="button" :aria-expanded="quickEndPanel === 'date'" @click="toggleQuickEndPanel('date')">按日期结束<ChevronRight :size="14" :class="{ 'is-open': quickEndPanel === 'date' }" /></button>
-                  <div v-if="quickEndPanel === 'date'" class="clone-quick-end-calendar">
-                    <div class="clone-quick-end-cal-head"><button type="button" aria-label="上个月" @click="moveQuickEndMonth(-1)"><ChevronLeft :size="15" /></button><strong>{{ quickEndCalendarTitle }}</strong><button type="button" aria-label="下个月" @click="moveQuickEndMonth(1)"><ChevronRight :size="15" /></button></div>
-                    <div class="clone-quick-end-cal-grid"><span v-for="weekday in quickWeekdays" :key="`end-${weekday}`">{{ weekday }}</span><button v-for="day in quickEndCalendarDays" :key="day.key" type="button" :class="{ 'other-month': !day.inMonth, selected: day.selected }" @click="pickQuickEndDate(day.key)">{{ day.date.getDate() }}</button></div>
-                  </div>
-                  <button type="button" :aria-expanded="quickEndPanel === 'count'" @click="toggleQuickEndPanel('count')">按次数结束<ChevronRight :size="14" :class="{ 'is-open': quickEndPanel === 'count' }" /></button>
-                  <div v-if="quickEndPanel === 'count'" class="clone-quick-end-count">
-                    <label>重复<input v-model.number="quickEndCountDraft" type="number" min="1" aria-label="重复次数" />次</label>
-                    <div class="clone-quick-flyout-actions"><button type="button" @click="cancelQuickEndCount">取消</button><button type="button" class="primary" @click="applyQuickEndCount">确定</button></div>
-                  </div>
-                </div>
-              </teleport>
-            </template>
-          </TaskDateTimePopover>
+            :rrule="buildQuickRepeatRule(quickRepeat)"
+            :recurrence-anchor="quickRepeat.mode === 'COMPLETION_DATE' ? 'COMPLETION_DATE' : 'DUE_DATE'"
+            :reminder="{ presets: quickAddReminder.presets, amount: quickAddReminder.amount, unit: quickAddReminder.unit, time: quickAddReminder.time, dailyUntilDone: quickAddReminder.dailyUntilDone }"
+            :default-time="quickDefaultTime"
+            :default-reminder-minutes="quickAddSettings.defaultReminderMinutes"
+            auto-reminder-default
+            @apply="applyQuickDatePanel"
+            @clear="clearQuickDatePanel"
+            @update:reminder="onQuickReminderUpdate"
+            @update:rrule="onQuickRepeatUpdate"
+          />
         </template>
       </div>
       <teleport to="body">
@@ -914,95 +840,17 @@
             <Repeat2 :size="15" />
           </span>
           <Teleport to="body"><div v-if="datePopoverOpen" class="clone-date-popover-shell" :style="detailDatePopoverStyle" @click.stop>
-            <TaskDateTimePopover
-              :mode="datePickerMode"
-              :month="datePickerMonth"
-              :calendar-days="datePickerDays"
-              :month-label="datePickerMonthLabel"
-              :selected-key="detailDateSelectedKey"
-              :time="detailDateTimeValue"
-              :all-day="detailDateAllDay"
-              :range-start="detailRangeStartKey"
-              :range-end="detailRangeEndKey"
-              :range-start-time="detailRangeStartTime"
-              :range-end-time="detailRangeEndTime"
-              range-controlled
-              apply-label="确定"
-              @update:mode="setDetailDateMode"
-              @quick-date="applyDetailQuickDate"
-              @move-month="datePickerMonth = new Date(datePickerMonth.getFullYear(), datePickerMonth.getMonth() + $event, 1)"
-              @select-date="selectDateKey($event)"
-              @clear-date="applyDetailClearDate"
-              @toggle-all-day="setDetailAllDay"
-              @update:range-start="pickDetailRangeStart"
-              @update:range-end="pickDetailRangeEnd"
-              @apply="confirmTaskDueDate"
-            >
-              <template #rows="{ mode: rowMode }">
-                <div class="clone-date-rows">
-                  <div class="clone-date-rowline">
-                    <Clock3 :size="14" />
-                    <span class="clone-date-rowlabel">时间</span>
-                    <button type="button" class="clone-date-rowvalue" :aria-expanded="detailTimeRowOpen" @click.stop="detailTimeRowOpen = !detailTimeRowOpen">
-                      {{ detailDateAllDay ? '全天' : (rowMode === 'RANGE' ? '时间段' : (detailDateTimeValue || '设置时间')) }}
-                      <ChevronDown :size="13" :class="{ rotated: detailTimeRowOpen }" />
-                    </button>
-                  </div>
-                  <div v-if="detailTimeRowOpen" class="clone-date-rowinputs">
-                    <label v-if="rowMode === 'RANGE'">开始<input v-model="detailStartModel" type="datetime-local" aria-label="开始时间" /></label>
-                    <label>{{ rowMode === 'RANGE' ? '结束' : '时间' }}<input v-model="detailDueModel" type="datetime-local" aria-label="日期时间" /></label>
-                    <label class="clone-inline-check"><input type="checkbox" :checked="detailDateAllDay" @change="setDetailAllDay($event.target.checked)" />全天</label>
-                  </div>
-
-                  <div class="clone-date-rowline">
-                    <Bell :size="14" />
-                    <span class="clone-date-rowlabel">提醒</span>
-                    <button type="button" class="clone-date-rowvalue" :class="{ active: editorOpen ? draft.reminderEnabled : quickReminder.reminder }" aria-label="设置提醒" :aria-expanded="dateReminderOpen" @click.stop="toggleReminderPopover">
-                      {{ editorOpen ? (draft.reminderEnabled ? '已开启' : '未设置') : (quickReminder.reminder ? '已开启' : '未设置') }}
-                      <ChevronDown :size="13" :class="{ rotated: dateReminderOpen }" />
-                    </button>
-                  </div>
-                  <div v-if="dateReminderOpen" class="clone-detail-date-reminder-popover is-inline" @click.stop>
-                    <p v-if="reminderLoading" class="clone-muted">正在读取提醒…</p>
-                    <template v-else>
-                      <label class="clone-inline-check"><input v-model="reminderEnabledModel" type="checkbox" />启用站内提醒</label>
-                      <template v-if="reminderEnabledModel">
-                        <label class="clone-reminder-popover-field">方式<select v-model="reminderKindModel"><option value="RELATIVE">相对截止时间</option><option value="ABSOLUTE">指定时间</option></select></label>
-                        <label v-if="reminderKindModel === 'RELATIVE'" class="clone-reminder-popover-field">提前<select v-model.number="reminderOffsetModel"><option :value="0">准时</option><option :value="5">5 分钟</option><option :value="15">15 分钟</option><option :value="30">30 分钟</option><option :value="60">1 小时</option><option :value="1440">1 天</option></select></label>
-                        <label v-else class="clone-reminder-popover-field">提醒时间<input v-model="remindLocalModel" type="datetime-local" /></label>
-                        <label class="clone-inline-check"><input v-model="dailyUntilDoneModel" type="checkbox" />未完成时每日提醒</label>
-                      </template>
-                      <div class="clone-popover-actions"><button v-if="!editorOpen && quickReminder.reminder" type="button" @click="disableTaskReminder">关闭提醒</button><button v-if="editorOpen" type="button" @click="dateReminderOpen = false">完成后保存</button><button v-else type="button" class="clone-popover-save" :disabled="reminderSaving" @click="saveTaskReminder">{{ reminderSaving ? '保存中…' : '保存提醒' }}</button></div>
-                    </template>
-                  </div>
-
-                  <div class="clone-date-rowline">
-                    <Repeat2 :size="14" />
-                    <span class="clone-date-rowlabel">重复</span>
-                    <button type="button" class="clone-date-rowvalue" :aria-expanded="dateRepeatOpen" @click.stop="toggleDatePanelRepeat">
-                      {{ recurrenceLabel(editorOpen ? (draft.rrule === 'CUSTOM' ? draft.customRrule : draft.rrule) : selectedTask?.rrule) || '不重复' }}
-                      <ChevronDown :size="13" :class="{ rotated: dateRepeatOpen }" />
-                    </button>
-                  </div>
-                  <div v-if="dateRepeatOpen" class="clone-detail-repeat-inline is-inline" @click.stop>
-                    <div class="clone-repeat-popover-header"><strong>重复</strong><button type="button" class="clone-popover-close" aria-label="关闭重复设置" @click="dateRepeatOpen = false"><X :size="15" /></button></div>
-                    <div class="clone-quick-repeat-presets clone-detail-repeat-presets"><button v-for="option in quickRepeatPresets" :key="option.value" type="button" :class="{ active: detailRepeat.preset === option.value }" @click="selectDetailRepeatPreset(option.value)">{{ option.label }}</button></div>
-                    <template v-if="detailRepeat.preset === 'CUSTOM'">
-                      <div class="clone-quick-repeat-grid"><label>重复方式<select v-model="detailRepeat.mode"><option value="DUE_DATE">到期重复</option><option value="COMPLETION_DATE">完成重复</option></select></label><label>频率<select v-model="detailRepeat.frequency" @change="setDetailRepeatFrequency"><option value="DAILY">每天</option><option value="WEEKLY">每周</option><option value="MONTHLY">每月</option><option value="YEARLY">每年</option></select></label><label>间隔<input v-model.number="detailRepeat.interval" type="number" min="1" max="365" /></label></div>
-                      <div v-if="detailRepeat.frequency === 'WEEKLY'" class="clone-quick-repeat-days"><span>每周</span><label v-for="day in DAY_CODES" :key="`detail-repeat-${day}`"><input v-model="detailRepeat.weekdays" type="checkbox" :value="day" />{{ { MO: '一', TU: '二', WE: '三', TH: '四', FR: '五', SA: '六', SU: '日' }[day] }}</label></div>
-                      <div v-if="['MONTHLY', 'YEARLY'].includes(detailRepeat.frequency)" class="clone-quick-repeat-grid"><label>重复日期<select v-model="detailRepeat.monthMode"><option value="DATE">按日期</option><option value="WEEKDAY">按星期</option><option v-if="detailRepeat.frequency === 'MONTHLY'" value="WORKDAY">按工作日</option></select></label><label v-if="detailRepeat.frequency === 'YEARLY'">月份<select v-model.number="detailRepeat.month"><option v-for="month in 12" :key="month" :value="month">{{ month }} 月</option></select></label><template v-if="detailRepeat.monthMode === 'WEEKDAY'"><label>第几周<select v-model.number="detailRepeat.ordinal"><option v-for="ordinal in 5" :key="ordinal" :value="ordinal">第 {{ ordinal }} 个</option><option :value="-1">最后一个</option></select></label><label>星期<select v-model="detailRepeat.weekday"><option v-for="day in DAY_CODES" :key="day" :value="day">{{ { MO: '周一', TU: '周二', WE: '周三', TH: '周四', FR: '周五', SA: '周六', SU: '周日' }[day] }}</option></select></label></template><label v-if="detailRepeat.monthMode === 'WORKDAY'">工作日<select v-model.number="detailRepeat.workdayPosition"><option :value="1">第一个工作日</option><option :value="-1">最后一个工作日</option></select></label></div>
-                      <div v-if="['MONTHLY', 'YEARLY'].includes(detailRepeat.frequency) && detailRepeat.monthMode === 'DATE'" class="clone-quick-repeat-date-calendar" aria-label="选择重复日期"><span v-for="weekday in quickWeekdays" :key="`detail-repeat-weekday-${weekday}`">{{ weekday }}</span><span v-for="(day, index) in detailRepeatCalendarDays.filter(value => !value)" :key="`detail-repeat-empty-${index}`" class="clone-quick-repeat-date-spacer"></span><button v-for="day in detailRepeatCalendarDays.filter(Boolean)" :key="`detail-repeat-day-${day}`" type="button" :aria-pressed="!detailRepeat.lastDay && detailRepeat.monthDays.includes(day)" :class="{ active: !detailRepeat.lastDay && detailRepeat.monthDays.includes(day) }" @click="toggleDetailRepeatMonthDay(day)">{{ day }}</button><button type="button" class="clone-quick-repeat-last-day" :aria-pressed="detailRepeat.lastDay" :class="{ active: detailRepeat.lastDay }" @click="detailRepeat.lastDay = true">最后一天</button></div>
-                      <div v-if="detailRepeat.frequency === 'DAILY'" class="clone-repeat-special-grid"><label><input v-model="detailRepeat.skipWeekends" type="checkbox" />跳过双休日</label><label><input v-model="detailRepeat.skipLegalHolidays" type="checkbox" />跳过法定节假日</label></div>
-                      <div v-else-if="detailRepeat.frequency === 'WEEKLY' || (['MONTHLY', 'YEARLY'].includes(detailRepeat.frequency) && detailRepeat.monthMode === 'WEEKDAY')" class="clone-repeat-special-grid"><label><input v-model="detailRepeat.skipLegalHolidays" type="checkbox" />跳过法定节假日</label></div>
-                    </template>
-                    <div v-if="['LUNAR_MONTHLY', 'LUNAR_YEARLY'].includes(detailRepeat.preset)" class="clone-quick-repeat-grid"><label v-if="detailRepeat.preset === 'LUNAR_YEARLY'">农历月份<select v-model.number="detailRepeat.lunarMonth"><option v-for="month in 12" :key="month" :value="month">{{ month }} 月</option></select></label><label>农历日期<select v-model.number="detailRepeat.lunarDay"><option v-for="day in 30" :key="day" :value="day">{{ day }} 日</option></select></label></div>
-                    <div v-if="detailRepeat.preset" class="clone-quick-repeat-end"><span>结束条件</span><label><input v-model="detailRepeat.endMode" type="radio" value="NEVER" />永不结束</label><label><input v-model="detailRepeat.endMode" type="radio" value="UNTIL" />按日期结束<input v-if="detailRepeat.endMode === 'UNTIL'" v-model="detailRepeat.until" type="date" /></label><label><input v-model="detailRepeat.endMode" type="radio" value="COUNT" />按次数结束<input v-if="detailRepeat.endMode === 'COUNT'" v-model.number="detailRepeat.count" type="number" min="1" /></label></div>
-                    <p v-if="detailRepeatError" class="clone-error" role="alert">{{ detailRepeatError }}</p>
-                    <div class="clone-popover-actions"><button type="button" @click="resetDetailRepeat">清除</button><button type="button" class="clone-popover-save" @click="saveDetailRepeat">完成</button></div>
-                  </div>
-                </div>
-              </template>
-            </TaskDateTimePopover>
+            <TaskDatePanel
+              :due-at="detailPanelDueAt"
+              :start-at="detailPanelStartAt"
+              :all-day="detailPanelAllDay"
+              :rrule="detailPanelRrule"
+              :recurrence-anchor="detailPanelAnchor"
+              :reminder="detailPanelReminder"
+              :initial-menu="detailDateMenu"
+              @apply="applyDetailDatePanel"
+              @clear="clearDetailDatePanel"
+            />
           </div></Teleport>
         </div>
         <div v-if="!isNoteSelected" class="clone-detail-toolbar-actions">
@@ -1712,6 +1560,7 @@ import TaskColorPicker from "../components/TaskColorPicker.vue";
 import { useExclusivePanels } from "../utils/exclusivePanels.js";
 import TaskOrganizationIcon from "../components/tasks/TaskOrganizationIcon.vue";
 import TaskDateTimePopover from "../components/tasks/TaskDateTimePopover.vue";
+import TaskDatePanel from "../components/tasks/TaskDatePanel.vue";
 import TasksTimelineView from "./TasksTimelineView.vue";
 import Dialog from "../components/ui/Dialog.vue";
 import { organizationIconCategories, searchOrganizationIcons } from "./taskOrganizationIcons.js";
@@ -1851,10 +1700,8 @@ const showTags = ref(true);
 const showListLink = ref(true);
 const quickEntry = reactive({ dueAt: "", startAt: "", allDay: false, dateSelected: false, priority: "NONE", prioritySelected: false, listId: "", listSelected: false, tagIds: [] });
 const quickRepeat = reactive(createQuickRepeatState());
-const detailRepeat = reactive(createQuickRepeatState());
 const quickAddSettings = ref({ defaultListId: "", defaultDueDate: "TODAY", defaultDueTime: "NONE", defaultReminderMinutes: null });
 const quickRepeatError = ref("");
-const detailRepeatError = ref("");
 const quickDateMode = ref("DATE");
 const quickCalendarMonth = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 const quickRangeStart = ref("");
@@ -1897,15 +1744,6 @@ const quickRepeatCalendarDays = computed(() => {
   const dueDate = quickEntry.dueAt ? new Date(quickEntry.dueAt) : new Date();
   const year = dueDate.getFullYear();
   const monthIndex = quickRepeat.frequency === "YEARLY" ? Number(quickRepeat.month || 1) - 1 : dueDate.getMonth();
-  const first = new Date(year, monthIndex, 1);
-  const offset = (first.getDay() + 6) % 7;
-  return [...Array(offset).fill(null), ...Array.from({ length: new Date(year, monthIndex + 1, 0).getDate() }, (_, index) => index + 1)];
-});
-const detailRepeatCalendarDays = computed(() => {
-  const anchor = (editorOpen.value ? draft.dueAt : selectedTask.value?.dueAt) || new Date();
-  const date = new Date(anchor);
-  const year = date.getFullYear();
-  const monthIndex = detailRepeat.frequency === "YEARLY" ? Number(detailRepeat.month || 1) - 1 : date.getMonth();
   const first = new Date(year, monthIndex, 1);
   const offset = (first.getDay() + 6) % 7;
   return [...Array(offset).fill(null), ...Array.from({ length: new Date(year, monthIndex + 1, 0).getDate() }, (_, index) => index + 1)];
@@ -1984,6 +1822,9 @@ const sidebarHidden = ref(false);
 const sidebarWidth = ref(248);
 const sidebarEditing = ref(false);
 const isMobileSidebar = ref(typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches);
+/** 窄屏（≤1279px）时详情栏会变成右侧浮层抽屉，需要一层可点击的遮罩来收起 */
+const isNarrowDetail = ref(typeof window !== "undefined" && window.matchMedia("(max-width: 1279px)").matches);
+function handleNarrowDetailChange(event) { isNarrowDetail.value = event.matches; }
 let sidebarTouchStart = null;
 let sidebarResizeState = null;
 let sidebarPreviousUserSelect = "";
@@ -2003,10 +1844,9 @@ const listOptionsOpen = ref(false);
 const workspaceMenuSection = ref("");
 const workspaceMenuStyle = ref({});
 const datePopoverOpen = ref(false);
+/** 让日期面板一打开就展开某个二级菜单（任务行的重复标记点进来时用） */
+const detailDateMenu = ref("");
 const repeatPopoverOpen = ref(false);
-const dateReminderOpen = ref(false);
-/** 日期浮层里内嵌的「重复」面板，与表单里的重复下拉不是同一个浮层 */
-const dateRepeatOpen = ref(false);
 const popoverViewportRevision = ref(0);
 const datePopoverAnchor = ref(null);
 const priorityPopoverAnchor = ref(null);
@@ -2947,6 +2787,12 @@ const searchCountdowns = computed(() => (isSearchRoute.value
 /** 任务页/搜索页右栏当前查看的习惯（点习惯行进入，和习惯页右侧详情一致） */
 const habitPaneId = ref("");
 const habitPaneHabit = computed(() => (habitPaneId.value ? store.habits.find((item) => item.publicId === habitPaneId.value) || null : null));
+/** 详情栏是否以「浮在列表上的抽屉」形式呈现（决定要不要挂遮罩）：901–1279px 的详情是 fixed 右侧抽屉 */
+const detailPaneFloating = computed(() => {
+  if (!selectedTask.value && !editorOpen.value) return false;
+  if (selectedIds.size || listActivityOpen.value || habitPaneHabit.value) return false;
+  return isNarrowDetail.value && !isMobileSidebar.value;
+});
 // 搜索结果里点某条任务（弹窗里点进来）时直接打开它的详情
 watch(
   () => route.query.open,
@@ -3432,9 +3278,8 @@ function finishSidebarSwipe(event) {
 }
 function toggleDatePopover() {
   datePopoverOpen.value = !datePopoverOpen.value;
+  detailDateMenu.value = "";
   repeatPopoverOpen.value = false;
-  dateReminderOpen.value = false;
-  dateRepeatOpen.value = false;
   priorityPopoverOpen.value = false;
   if (datePopoverOpen.value) {
     datePopoverDue.value = toLocal(editorOpen.value ? draft.dueAt : selectedTask.value?.dueAt);
@@ -3447,6 +3292,8 @@ function toggleDatePopover() {
     const currentValue = editorOpen.value ? draft.dueAt : selectedTask.value?.dueAt;
     const currentDate = currentValue ? new Date(currentValue) : new Date();
     datePickerMonth.value = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+    // 面板里的「提醒」要回显任务的真实提醒，编辑态直接用草稿，不用读接口
+    if (!editorOpen.value) void loadDetailReminderModel();
   }
 }
 const detailTimeRowOpen = ref(false);
@@ -3527,6 +3374,129 @@ function applyDetailQuickDate(kind) {
 function applyDetailClearDate() {
   setDatePopoverOffset(null);
   setDetailAllDay(false);
+}
+
+/* ---------- 详情栏复用快捷添加的日期面板 ---------- */
+const DETAIL_REMINDER_PRESET_MINUTES = { ON_TIME: 0, TODAY: 0, "5_MIN": 5, "30_MIN": 30, "1_HOUR": 60, "1_DAY": 1440, "2_DAY": 2880, "3_DAY": 4320, "1_WEEK": 10080 };
+const DETAIL_REMINDER_UNIT_MINUTES = { MINUTE: 1, HOUR: 60, DAY: 1440, WEEK: 10080 };
+function reminderPresetFromMinutes(minutes) {
+  const value = Number(minutes);
+  const found = Object.entries(DETAIL_REMINDER_PRESET_MINUTES).find(([, amount]) => amount === value);
+  if (found) return found[0];
+  return Number.isFinite(value) ? `CUSTOM:${Math.max(1, Math.round(value))}:MINUTE` : "30_MIN";
+}
+function reminderMinutesFromPresets(presets) {
+  const first = (presets || [])[0];
+  if (!first) return null;
+  if (DETAIL_REMINDER_PRESET_MINUTES[first] != null) return DETAIL_REMINDER_PRESET_MINUTES[first];
+  const match = /^CUSTOM:(\d+):(MINUTE|HOUR|DAY|WEEK)$/.exec(first);
+  if (match) return Number(match[1]) * (DETAIL_REMINDER_UNIT_MINUTES[match[2]] || 1);
+  return 30;
+}
+const detailPanelDueAt = computed(() => toLocal(editorOpen.value ? draft.dueAt : selectedTask.value?.dueAt));
+const detailPanelStartAt = computed(() => toLocal(editorOpen.value ? draft.startAt : selectedTask.value?.startAt));
+const detailPanelAllDay = computed(() => Boolean(editorOpen.value ? draft.allDay : selectedTask.value?.allDay));
+const detailPanelRrule = computed(() => {
+  if (editorOpen.value) return draft.rrule === "CUSTOM" ? draft.customRrule : draft.rrule;
+  return selectedTask.value?.rrule || "";
+});
+const detailPanelAnchor = computed(() => (editorOpen.value ? draft.recurrenceAnchor : selectedTask.value?.recurrenceAnchor) || "DUE_DATE");
+const detailPanelReminder = computed(() => {
+  // 绝对时间提醒无法用面板的「提前多久」表达；返回 null 表示不展示，也不在保存时覆盖它
+  if (editorOpen.value) {
+    if (!draft.reminderEnabled || draft.reminderKind === "ABSOLUTE") return null;
+    return { presets: [reminderPresetFromMinutes(draft.reminderOffset)], dailyUntilDone: draft.dailyUntilDone };
+  }
+  if (!quickReminder.reminder && !quickReminder.enabled) return null;
+  if (quickReminder.reminder?.kind === "ABSOLUTE") return null;
+  return { presets: [reminderPresetFromMinutes(quickReminder.offsetMinutes)], dailyUntilDone: quickReminder.dailyUntilDone };
+});
+async function loadDetailReminderModel() {
+  const task = selectedTask.value;
+  const loadSequence = ++reminderLoadSequence;
+  Object.assign(quickReminder, { enabled: false, kind: "RELATIVE", offsetMinutes: 30, remindLocal: "", dailyUntilDone: false, reminder: null });
+  if (!task?.publicId || !store.online) return;
+  try {
+    const reminders = await apiListTaskReminders(task.publicId);
+    // 切任务/重新打开详情后，旧请求回来不能覆盖当前任务的提醒回显
+    if (loadSequence !== reminderLoadSequence || selectedTask.value?.publicId !== task.publicId) return;
+    const reminder = reminders?.[0] || null;
+    quickReminder.reminder = reminder;
+    if (reminder) Object.assign(quickReminder, {
+      enabled: true,
+      kind: reminder.kind || "RELATIVE",
+      offsetMinutes: reminder.offsetMinutes ?? 30,
+      remindLocal: reminder.remindAt ? toLocal(reminder.remindAt) : "",
+      dailyUntilDone: Boolean(reminder.dailyUntilDone),
+    });
+  } catch { /* 提醒读取失败不影响日期编辑 */ }
+}
+async function saveDetailReminderPresets(payload) {
+  const minutes = reminderMinutesFromPresets(payload.presets);
+  quickReminder.enabled = minutes !== null;
+  quickReminder.kind = "RELATIVE";
+  if (minutes !== null) quickReminder.offsetMinutes = minutes;
+  quickReminder.dailyUntilDone = Boolean(payload.dailyUntilDone);
+  await saveTaskReminder();
+}
+async function applyDetailDatePanel(payload) {
+  if (!payload?.dueAt) return;
+  if (editorOpen.value) {
+    draft.dueAt = payload.dueAt;
+    draft.startAt = payload.startAt || "";
+    draft.allDay = Boolean(payload.allDay);
+    if (payload.rrule !== undefined) {
+      draft.rrule = payload.rrule ? "CUSTOM" : "";
+      draft.customRrule = payload.rrule || "";
+      draft.recurrenceAnchor = payload.rrule ? (payload.recurrenceAnchor || "DUE_DATE") : "DUE_DATE";
+    }
+    if (payload.reminder !== undefined) {
+      const minutes = reminderMinutesFromPresets(payload.reminder.presets);
+      draft.reminderEnabled = minutes !== null;
+      draft.reminderKind = "RELATIVE";
+      if (minutes !== null) draft.reminderOffset = minutes;
+      draft.dailyUntilDone = Boolean(payload.reminder.dailyUntilDone);
+    }
+    store.error = "";
+    datePopoverOpen.value = false;
+    return;
+  }
+  const task = selectedTask.value;
+  if (!task || dateSaving.value) return;
+  dateSaving.value = true;
+  try {
+    const patch = {
+      dueAt: new Date(payload.dueAt).toISOString(),
+      startAt: payload.startAt ? new Date(payload.startAt).toISOString() : "",
+      allDay: Boolean(payload.allDay),
+    };
+    if (payload.rrule !== undefined) {
+      patch.rrule = payload.rrule || "";
+      patch.recurrenceAnchor = payload.rrule ? (payload.recurrenceAnchor || "DUE_DATE") : "";
+    }
+    selectedTask.value = await store.update(task, patch);
+    store.error = "";
+    if (payload.reminder !== undefined) await saveDetailReminderPresets(payload.reminder);
+    datePopoverOpen.value = false;
+  } catch (error) {
+    store.error = error?.response?.data?.detail || error?.message || "日期保存失败";
+  } finally { dateSaving.value = false; }
+}
+async function clearDetailDatePanel() {
+  if (editorOpen.value) {
+    draft.dueAt = "";
+    draft.startAt = "";
+    draft.allDay = false;
+    datePopoverOpen.value = false;
+    return;
+  }
+  const task = selectedTask.value;
+  if (!task) return;
+  try {
+    selectedTask.value = await store.update(task, { dueAt: "", startAt: "", allDay: false });
+    store.error = "";
+    datePopoverOpen.value = false;
+  } catch (error) { store.error = error?.response?.data?.detail || error?.message || "日期清除失败"; }
 }
 function refreshAttributePopoverLayout() {
   popoverViewportRevision.value += 1;
@@ -3659,17 +3629,10 @@ async function confirmTaskDueDate() {
   await saveTaskDueDate();
 }
 /** 日期浮层里的「重复」是浮层内部的子面板：只和同级的内嵌提醒互斥，不能把宿主日期浮层一起关掉 */
-function toggleDatePanelRepeat() {
-  dateRepeatOpen.value = !dateRepeatOpen.value;
-  dateReminderOpen.value = false;
-  if (dateRepeatOpen.value) syncDetailRepeatFromRule(editorOpen.value ? (draft.rrule === "CUSTOM" ? draft.customRrule : draft.rrule) : selectedTask.value?.rrule, editorOpen.value ? draft.recurrenceAnchor : selectedTask.value?.recurrenceAnchor);
-}
 function togglePriorityPopover() {
   priorityPopoverOpen.value = !priorityPopoverOpen.value;
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
-  dateReminderOpen.value = false;
-  dateRepeatOpen.value = false;
 }
 async function applyTaskDueOffset(offset) {
   if (editorOpen.value) {
@@ -3757,69 +3720,6 @@ function syncQuickRepeatFromRule(target, rule = "", anchor = "DUE_DATE") {
   if (parts.COUNT) { target.endMode = "COUNT"; target.count = Number(parts.COUNT) || 1; }
   if (parts.UNTIL) { target.endMode = "UNTIL"; target.until = `${parts.UNTIL.slice(0, 4)}-${parts.UNTIL.slice(4, 6)}-${parts.UNTIL.slice(6, 8)}`; }
 }
-function syncDetailRepeatFromRule(rule = "", anchor = "DUE_DATE") {
-  syncQuickRepeatFromRule(detailRepeat, rule, anchor);
-  detailRepeatError.value = "";
-}
-function selectDetailRepeatPreset(value) {
-  detailRepeat.preset = value;
-  detailRepeatError.value = "";
-  if (value === "CUSTOM" && detailRepeat.frequency === "YEARLY" && detailRepeat.monthMode === "WORKDAY") detailRepeat.monthMode = "DATE";
-}
-function setDetailRepeatFrequency(event) {
-  detailRepeat.frequency = event.target.value;
-  if (detailRepeat.frequency === "YEARLY" && detailRepeat.monthMode === "WORKDAY") detailRepeat.monthMode = "DATE";
-}
-async function saveDetailRepeat() {
-  detailRepeatError.value = quickRepeatValidation(detailRepeat);
-  if (detailRepeatError.value) return;
-  const rule = buildQuickRepeatRule(detailRepeat);
-  if (editorOpen.value) {
-    draft.rrule = rule ? "CUSTOM" : "";
-    draft.customRrule = rule;
-    draft.recurrenceAnchor = detailRepeat.mode === "COMPLETION_DATE" ? "COMPLETION_DATE" : "DUE_DATE";
-    dateRepeatOpen.value = false;
-    return;
-  }
-  if (!selectedTask.value) return;
-  try {
-    selectedTask.value = await store.update(selectedTask.value, { rrule: rule, recurrenceAnchor: rule ? (detailRepeat.mode === "COMPLETION_DATE" ? "COMPLETION_DATE" : "DUE_DATE") : "" });
-    dateRepeatOpen.value = false;
-  } catch (error) { detailRepeatError.value = error?.response?.data?.detail || error?.message || "重复规则保存失败"; }
-}
-function resetDetailRepeat() {
-  Object.assign(detailRepeat, createQuickRepeatState());
-  detailRepeatError.value = "";
-}
-async function toggleReminderPopover() {
-  dateReminderOpen.value = !dateReminderOpen.value;
-  dateRepeatOpen.value = false;
-  priorityPopoverOpen.value = false;
-  const loadSequence = ++reminderLoadSequence;
-  if (!dateReminderOpen.value || editorOpen.value) return;
-  Object.assign(quickReminder, { enabled: false, kind: "RELATIVE", offsetMinutes: 30, remindLocal: "", dailyUntilDone: false, reminder: null });
-  const task = selectedTask.value;
-  if (!task?.publicId) return;
-  if (!store.online) { store.error = "提醒需要联网读取和保存"; return; }
-  reminderLoading.value = true;
-  try {
-    const reminders = await apiListTaskReminders(task.publicId);
-    if (loadSequence !== reminderLoadSequence || selectedTask.value?.publicId !== task.publicId || !dateReminderOpen.value) return;
-    const reminder = reminders?.[0] || null;
-    quickReminder.reminder = reminder;
-    if (reminder) Object.assign(quickReminder, {
-      enabled: true,
-      kind: reminder.kind || "RELATIVE",
-      offsetMinutes: reminder.offsetMinutes ?? 30,
-      remindLocal: reminder.remindAt ? toLocal(reminder.remindAt) : "",
-      dailyUntilDone: Boolean(reminder.dailyUntilDone),
-    });
-  } catch (error) {
-    if (loadSequence === reminderLoadSequence) store.error = error?.response?.data?.detail || error?.message || "提醒读取失败";
-  } finally {
-    if (loadSequence === reminderLoadSequence) reminderLoading.value = false;
-  }
-}
 async function saveTaskReminder() {
   const task = selectedTask.value;
   if (!task?.publicId || reminderSaving.value) return;
@@ -3844,7 +3744,6 @@ async function saveTaskReminder() {
         : await apiCreateTaskReminder(task.publicId, payload);
     }
     store.error = "";
-    dateReminderOpen.value = false;
     await loadActivity(task);
   } catch (error) { store.error = error?.response?.data?.detail || error?.message || "提醒保存失败"; }
   finally { reminderSaving.value = false; }
@@ -4499,8 +4398,9 @@ async function openTaskIndicator(task, kind) {
   openDetail(task);
   await nextTick();
   if (kind === "repeat") {
+    // 重复现在由日期浮层里的「重复」二级菜单配置：先开浮层，再让面板把这一项展开
     if (!datePopoverOpen.value) toggleDatePopover();
-    toggleDatePanelRepeat();
+    detailDateMenu.value = "repeat";
     return;
   }
   if (kind === "focus") {
@@ -5589,8 +5489,6 @@ async function openEdit(task) {
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
   priorityPopoverOpen.value = false;
-  dateReminderOpen.value = false;
-  dateRepeatOpen.value = false;
   void loadActivity(task);
   void loadCollaboration(task);
   if (store.online) {
@@ -5643,8 +5541,6 @@ function openCreate(parentId = "") {
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
   priorityPopoverOpen.value = false;
-  dateReminderOpen.value = false;
-  dateRepeatOpen.value = false;
 }
 // 子任务：拖动排序 / 右键菜单 / 点击进入子任务详情
 const detailSubtaskDragIndex = ref(null);
@@ -5742,8 +5638,6 @@ function closeDetail() {
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
   priorityPopoverOpen.value = false;
-  dateReminderOpen.value = false;
-  dateRepeatOpen.value = false;
 }
 // 详情栏/工具栏的浮层互斥：日期、表单里的重复下拉、优先级、插入菜单、父任务选择、页面菜单、清单选项
 // 注意：「提醒」「重复」是日期浮层内部的内嵌面板，不能进互斥组——否则一打开就会把宿主日期浮层关掉
@@ -5760,13 +5654,13 @@ useExclusivePanels("workspace", [
 function closeAttributePopovers() {
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
-  dateReminderOpen.value = false;
-  dateRepeatOpen.value = false;
   priorityPopoverOpen.value = false;
 }
 function closeAttributePopoversOnOutsidePointer(event) {
-  // 日期/重复浮层整体（含浮层内的页签、日历、时间输入）都算「里面」，否则一点页签就自己关了
-  if (event.target.closest?.(".clone-toolbar-popover, .clone-date-popover-shell, .task-date-time-popover, .clone-detail-tool[aria-label='设置日期'], .clone-detail-repeat-tool, .clone-detail-priority-tool")) return;
+  // 日期/重复浮层整体（含浮层内的页签、日历、时间输入）都算「里面」，否则一点页签就自己关了。
+  // .clone-quick-flyout 是日期面板里「提醒/重复/结束」的二级菜单，它被 teleport 到 body，
+  // DOM 上已经不在 .clone-date-popover-shell 里，不放行就会「点个提醒选项整块浮层消失」。
+  if (event.target.closest?.(".clone-toolbar-popover, .clone-date-popover-shell, .task-date-time-popover, .clone-quick-flyout, .clone-detail-tool[aria-label='设置日期'], .clone-detail-repeat-tool, .clone-detail-priority-tool")) return;
   closeAttributePopovers();
 }
 function toLocal(value) {
@@ -6165,6 +6059,40 @@ function clearQuickDate() {
   quickAction.value = "";
 }
 
+/* ---------- 快捷添加的日期面板：与详情栏共用 TaskDatePanel ---------- */
+const quickDefaultTime = computed(() => configuredQuickTime());
+function applyQuickDatePanel(payload) {
+  if (!payload?.dueAt) return;
+  quickEntry.dueAt = payload.dueAt;
+  quickEntry.startAt = payload.startAt || "";
+  quickEntry.allDay = Boolean(payload.allDay);
+  quickEntry.dateSelected = true;
+  quickParseError.value = "";
+  quickAction.value = "";
+}
+function clearQuickDatePanel() {
+  Object.assign(quickEntry, { dueAt: "", startAt: "", allDay: false, dateSelected: true });
+  Object.assign(quickAddReminder, { enabled: false, presets: [], amount: 1, unit: "DAY", time: "09:00", dailyUntilDone: false });
+  Object.assign(quickRepeat, createQuickRepeatState());
+  quickParseError.value = "";
+  quickAction.value = "";
+}
+function onQuickReminderUpdate(payload) {
+  if (!payload) return;
+  Object.assign(quickAddReminder, {
+    presets: [...payload.presets],
+    amount: payload.amount,
+    unit: payload.unit,
+    time: payload.time,
+    dailyUntilDone: payload.dailyUntilDone,
+    enabled: payload.enabled,
+  });
+}
+function onQuickRepeatUpdate(payload) {
+  if (!payload) return;
+  syncQuickRepeatFromRule(quickRepeat, payload.rrule, payload.recurrenceAnchor);
+}
+
 const QUICK_WEEKDAY_TEXT = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 const QUICK_REPEAT_GROUPS = { WORKDAY: "group-workday", LEGAL_WORKDAY: "group-workday", WEEKEND: "group-holiday", LEGAL_HOLIDAY: "group-holiday", LUNAR_MONTHLY: "group-lunar", LUNAR_YEARLY: "group-lunar" };
 const QUICK_REMINDER_RECENT_KEY = "salary-sync.quickReminderRecent";
@@ -6360,11 +6288,6 @@ function toggleQuickRepeatMonthDay(day) {
   const selected = quickRepeat.monthDays.includes(day) ? quickRepeat.monthDays.filter(value => value !== day) : [...quickRepeat.monthDays, day];
   quickRepeat.monthDays = selected.sort((a, b) => a - b);
   quickRepeat.lastDay = false;
-}
-function toggleDetailRepeatMonthDay(day) {
-  const selected = detailRepeat.monthDays.includes(day) ? detailRepeat.monthDays.filter(value => value !== day) : [...detailRepeat.monthDays, day];
-  detailRepeat.monthDays = selected.sort((a, b) => a - b);
-  detailRepeat.lastDay = false;
 }
 function selectQuickEndMode(mode) {
   quickRepeat.endMode = mode;
@@ -7955,6 +7878,7 @@ onMounted(() => {
   window.addEventListener("keydown", onKeydown);
   window.addEventListener("task:manual-sync", handleManualSync);
   window.matchMedia("(max-width: 900px)").addEventListener("change", handleSidebarViewportChange);
+  window.matchMedia("(max-width: 1279px)").addEventListener("change", handleNarrowDetailChange);
 });
 watch(() => store.online, online => {
   if (online && pendingQuickAttachmentBatches.value.length) void retryQuickAttachments();
@@ -7990,6 +7914,7 @@ onBeforeUnmount(() => {
     void saveInlineDescription().catch(() => {}).finally(() => store.releaseSyncHold(token));
   }
   window.matchMedia("(max-width: 900px)").removeEventListener("change", handleSidebarViewportChange);
+  window.matchMedia("(max-width: 1279px)").removeEventListener("change", handleNarrowDetailChange);
 });
 
 const SidebarSection = {
@@ -9461,6 +9386,8 @@ const SidebarSection = {
   border-left: 1px solid var(--line);
   background: color-mix(in srgb, var(--card) 98%, var(--paper));
 }
+/* 窄屏详情抽屉的遮罩：点抽屉外任意位置即收起 */
+.clone-detail-backdrop { position: fixed; z-index: 279; inset: 72px 0 0; display: block; border: 0; background: transparent; }
 .clone-detail-divider { position: relative; z-index: 3; cursor: ew-resize; touch-action: none; outline: 0; }
 .clone-detail-divider::after { content: ""; position: absolute; top: 0; bottom: 0; left: 2px; width: 1px; background: var(--line); }
 .clone-detail-divider:hover::after,
