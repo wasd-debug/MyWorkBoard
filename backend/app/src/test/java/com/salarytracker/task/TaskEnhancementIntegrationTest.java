@@ -14,6 +14,8 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -175,6 +177,28 @@ class TaskEnhancementIntegrationTest extends MySqlIntegrationTestSupport {
         String exported = new String(service.enhancements.export(new TaskEnhancementModels.ExportCommand("csv", true)), StandardCharsets.UTF_8);
         assertTrue(exported.contains("'=危险公式"));
         assertFalse(exported.contains("\n=危险公式"));
+    }
+
+    @Test
+    void treatsIdenticalStartAndDueAsSingleDateAndKeepsRealRanges() throws Exception {
+        Services service = services(createUser("range"));
+        String csv = "标题,清单,开始时间,到期时间\n"
+                + "单日期任务,时间段测试,2026-10-08 00:00:00,2026-10-08 00:00:00\n"
+                + "时间段任务,时间段测试,2026-10-26 00:00:00,2026-10-31 00:00:00\n";
+        var file = new MockMultipartFile("file", "tasks.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
+        var preview = service.enhancements.preview(file);
+        assertEquals(2, preview.valid());
+        assertNull(preview.rows().get(0).startAt());
+        assertNotNull(preview.rows().get(1).startAt());
+        assertEquals(2, service.enhancements.commit(new TaskEnhancementModels.ImportCommitCommand(preview.previewId(), true)).created());
+
+        var tasks = service.tasks.listTasks(null, null, "ALL", null, 0, 20).items();
+        var single = tasks.stream().filter(item -> "单日期任务".equals(item.title())).findFirst().orElseThrow();
+        var range = tasks.stream().filter(item -> "时间段任务".equals(item.title())).findFirst().orElseThrow();
+        assertNull(single.startAt());
+        assertNotNull(single.dueAt());
+        assertNotNull(range.startAt());
+        assertTrue(range.allDay());
     }
 
     @Test

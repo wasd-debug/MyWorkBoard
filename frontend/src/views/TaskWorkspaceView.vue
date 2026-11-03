@@ -355,6 +355,7 @@
             :range-end="quickRangeEnd"
             :range-start-time="quickRangeStartTime"
             :range-end-time="quickRangeEndTime"
+            range-controlled
             apply-label="确定"
             @update:mode="setQuickDateMode"
             @quick-date="chooseQuickDatePreset"
@@ -364,8 +365,8 @@
             @clear-time="clearQuickTime"
             @clear-date="clearQuickDate"
             @toggle-all-day="setQuickAllDay"
-            @update:range-start="quickRangeStart = $event"
-            @update:range-end="quickRangeEnd = $event"
+            @update:range-start="applyQuickRangeStart"
+            @update:range-end="applyQuickRangeEnd"
             @update:range-start-time="quickRangeStartTime = $event"
             @update:range-end-time="quickRangeEndTime = $event"
             @apply="applyQuickDate"
@@ -485,6 +486,7 @@
             :range-end="rowDatePanel.rangeEnd"
             :range-start-time="rowDatePanel.rangeStartTime"
             :range-end-time="rowDatePanel.rangeEndTime"
+            range-controlled
             apply-label="确定"
             @update:mode="setRowDateMode"
             @quick-date="chooseRowDatePreset"
@@ -494,8 +496,8 @@
             @clear-time="clearRowTime"
             @clear-date="clearRowDateFromPanel"
             @toggle-all-day="rowDatePanel.allDay = $event"
-            @update:range-start="rowDatePanel.rangeStart = $event"
-            @update:range-end="rowDatePanel.rangeEnd = $event"
+            @update:range-start="pickRowRangeStart"
+            @update:range-end="pickRowRangeEnd"
             @update:range-start-time="rowDatePanel.rangeStartTime = $event"
             @update:range-end-time="rowDatePanel.rangeEndTime = $event"
             @apply="applyRowDatePanel"
@@ -906,7 +908,7 @@
           <button v-if="!editorOpen && !isNoteSelected" type="button" class="clone-detail-status-tool" :class="{ completed: selectedTask?.status === 'COMPLETED', abandoned: selectedTask?.status === 'ABANDONED' }" :aria-label="selectedTask?.status === 'COMPLETED' ? '重新打开任务' : '标记任务完成'" @click="toggleComplete(selectedTask)"><Check v-if="selectedTask?.status === 'COMPLETED'" :size="14" /></button>
           <button v-else-if="editorOpen && !isNoteSelected" type="button" class="clone-detail-status-tool" :class="{ completed: draft.status === 'COMPLETED', abandoned: draft.status === 'ABANDONED' }" aria-label="任务完成状态" @click="draft.status = draft.status === 'COMPLETED' ? 'OPEN' : 'COMPLETED'"><Check v-if="draft.status === 'COMPLETED'" :size="14" /></button>
           <button ref="datePopoverAnchor" type="button" class="clone-detail-tool" aria-label="设置日期" :aria-expanded="datePopoverOpen" @click.stop="toggleDatePopover">
-            <CalendarClock :size="15" /><span>{{ editorOpen && draft.dueAt ? formatDate(draft.dueAt) : selectedTask?.dueAt ? formatDate(selectedTask.dueAt) : isNoteSelected ? '设置提醒' : '设置日期' }}</span>
+            <CalendarClock :size="15" /><span>{{ dateToolbarLabel }}</span>
           </button>
           <span v-if="editorOpen ? (draft.rrule === 'CUSTOM' ? draft.customRrule : draft.rrule) : selectedTask?.rrule" class="clone-detail-repeat-indicator" role="img" aria-label="重复任务" title="重复任务">
             <Repeat2 :size="15" />
@@ -920,13 +922,20 @@
               :selected-key="detailDateSelectedKey"
               :time="detailDateTimeValue"
               :all-day="detailDateAllDay"
+              :range-start="detailRangeStartKey"
+              :range-end="detailRangeEndKey"
+              :range-start-time="detailRangeStartTime"
+              :range-end-time="detailRangeEndTime"
+              range-controlled
               apply-label="确定"
-              @update:mode="datePickerMode = $event"
+              @update:mode="setDetailDateMode"
               @quick-date="applyDetailQuickDate"
               @move-month="datePickerMonth = new Date(datePickerMonth.getFullYear(), datePickerMonth.getMonth() + $event, 1)"
               @select-date="selectDateKey($event)"
               @clear-date="applyDetailClearDate"
               @toggle-all-day="setDetailAllDay"
+              @update:range-start="pickDetailRangeStart"
+              @update:range-end="pickDetailRangeEnd"
               @apply="confirmTaskDueDate"
             >
               <template #rows="{ mode: rowMode }">
@@ -2628,6 +2637,36 @@ const detailDateTimeValue = computed(() => {
   return toLocal(value).slice(11, 16);
 });
 const detailDateAllDay = computed(() => editorOpen.value ? Boolean(draft.allDay) : datePopoverAllDay.value);
+/** 开始与到期完全相同等于没有时间段：历史数据里单日期任务也会把开始写成和到期一样的时刻 */
+function isRangeValue(startValue, dueValue) {
+  if (!startValue || !dueValue) return false;
+  const start = new Date(startValue);
+  const due = new Date(dueValue);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(due.getTime())) return false;
+  return start.getTime() !== due.getTime();
+}
+function compactDateText(value, allDay) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const sameYear = date.getFullYear() === new Date().getFullYear();
+  const day = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) }).format(date);
+  const timed = !allDay && (date.getHours() || date.getMinutes());
+  return timed ? `${day} ${new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(date)}` : day;
+}
+const dateToolbarLabel = computed(() => {
+  if (isNoteSelected.value) return "设置提醒";
+  const startValue = editorOpen.value ? draft.startAt : selectedTask.value?.startAt;
+  const dueValue = editorOpen.value ? draft.dueAt : selectedTask.value?.dueAt;
+  const allDay = editorOpen.value ? Boolean(draft.allDay) : Boolean(selectedTask.value?.allDay);
+  if (!dueValue) return "设置日期";
+  if (isRangeValue(startValue, dueValue)) return `${compactDateText(startValue, allDay)} - ${compactDateText(dueValue, allDay)}`;
+  return compactDateText(dueValue, allDay);
+});
+const detailRangeStartKey = computed(() => detailStartModel.value ? dateKey(new Date(detailStartModel.value)) : "");
+const detailRangeEndKey = computed(() => detailDueModel.value ? dateKey(new Date(detailDueModel.value)) : "");
+const detailRangeStartTime = computed(() => detailStartModel.value ? toLocal(detailStartModel.value).slice(11, 16) : "09:00");
+const detailRangeEndTime = computed(() => detailDueModel.value ? toLocal(detailDueModel.value).slice(11, 16) : "10:00");
 const filterPriorityOptions = [
   { value: "HIGH", label: "高" },
   { value: "MEDIUM", label: "中" },
@@ -3399,7 +3438,9 @@ function toggleDatePopover() {
     datePopoverStart.value = toLocal(editorOpen.value ? draft.startAt : selectedTask.value?.startAt);
     datePopoverAllDay.value = Boolean(editorOpen.value ? draft.allDay : selectedTask.value?.allDay);
     detailTimeRowOpen.value = false;
-    datePickerMode.value = "DATE";
+    // 任务本身是时间段（开始与到期不是同一时刻）时直接落在「时间段」页签，否则默认「日期」
+    const startValue = editorOpen.value ? draft.startAt : selectedTask.value?.startAt;
+    datePickerMode.value = isRangeValue(startValue, datePopoverDue.value) ? "RANGE" : "DATE";
     const currentValue = editorOpen.value ? draft.dueAt : selectedTask.value?.dueAt;
     const currentDate = currentValue ? new Date(currentValue) : new Date();
     datePickerMonth.value = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
@@ -3436,7 +3477,45 @@ const detailDatePopoverStyle = computed(() => {
 function selectDateKey(key) {
   const [year, month, day] = String(key || "").split("-").map(Number);
   if (!year) return;
+  if (datePickerMode.value === "RANGE") {
+    // 时间段模式下点日历就是在选区间端点，交给统一的端点处理
+    const startKey = detailRangeStartKey.value;
+    if (!startKey || detailRangeEndKey.value) pickDetailRangeStart(key);
+    else pickDetailRangeEnd(key);
+    return;
+  }
   selectDatePickerDay(new Date(year, month - 1, day));
+}
+function setDetailDateMode(mode) {
+  datePickerMode.value = mode;
+  if (mode === "RANGE") {
+    // 从「日期」切到「时间段」时，用当前到期日兜底开始日，避免出现空的开始
+    if (!detailStartModel.value) detailStartModel.value = detailDueModel.value || toLocal(new Date());
+    return;
+  }
+  // 切回「日期」等于放弃时间段，开始时间必须清空，否则保存后仍然是区间任务
+  detailStartModel.value = "";
+}
+function pickDetailRangeStart(key) {
+  const allDay = detailDateAllDay.value;
+  const startTime = allDay ? "00:00" : (detailRangeStartTime.value || "09:00");
+  detailStartModel.value = `${key}T${startTime}`;
+  const dueValue = detailDueModel.value;
+  if (!dueValue || dateKey(new Date(dueValue)) < key) {
+    detailDueModel.value = `${key}T${allDay ? "00:00" : (detailRangeEndTime.value || "10:00")}`;
+  }
+}
+function pickDetailRangeEnd(key) {
+  const allDay = detailDateAllDay.value;
+  const endTime = allDay ? "00:00" : (detailRangeEndTime.value || "10:00");
+  const startKey = detailRangeStartKey.value;
+  if (startKey && key < startKey) {
+    // 先改结束再往前拖：整段翻转，原来的开始变成结束
+    detailDueModel.value = `${startKey}T${endTime}`;
+    detailStartModel.value = `${key}T${allDay ? "00:00" : (detailRangeStartTime.value || "09:00")}`;
+    return;
+  }
+  detailDueModel.value = `${key}T${endTime}`;
 }
 function applyDetailQuickDate(kind) {
   if (kind === "NEXT_MONTH") { chooseDetailDatePreset("NEXT_MONTH"); return; }
@@ -3526,14 +3605,16 @@ function selectDetailTime(time) {
   }
 }
 function clearDetailTime() {
-  const current = editorOpen.value ? draft.dueAt : datePopoverDue.value;
-  if (current) {
-    const date = new Date(current);
+  // 只把时刻归零，全天标记由调用方（setDetailAllDay）设置，避免两边互相调用递归
+  const snap = (value) => {
+    const date = new Date(value);
     date.setHours(0, 0, 0, 0);
-    if (editorOpen.value) draft.dueAt = toLocal(date);
-    else datePopoverDue.value = toLocal(date);
-  }
-  setDetailAllDay(true);
+    return toLocal(date);
+  };
+  const due = editorOpen.value ? draft.dueAt : datePopoverDue.value;
+  if (due) editorOpen.value ? (draft.dueAt = snap(due)) : (datePopoverDue.value = snap(due));
+  const start = editorOpen.value ? draft.startAt : datePopoverStart.value;
+  if (start) editorOpen.value ? (draft.startAt = snap(start)) : (datePopoverStart.value = snap(start));
 }
 function clearDetailDate() {
   if (editorOpen.value) {
@@ -3554,9 +3635,18 @@ function setDetailAllDay(value) {
 async function confirmTaskDueDate() {
   const start = editorOpen.value ? draft.startAt : datePopoverStart.value;
   const due = editorOpen.value ? draft.dueAt : datePopoverDue.value;
-  if (datePickerMode.value === "RANGE" && start && due && new Date(due) <= new Date(start)) {
-    store.error = "时间段结尾必须晚于开始";
-    return;
+  if (datePickerMode.value === "RANGE") {
+    if (!start || !due) {
+      store.error = "请选择开始和结束日期";
+      return;
+    }
+    if (new Date(due) <= new Date(start)) {
+      store.error = "时间段结尾必须晚于开始";
+      return;
+    }
+  } else {
+    // 「日期」模式只保留一个到期时间，别把旧的时间段开始偷偷留在库里
+    detailStartModel.value = "";
   }
   if (editorOpen.value) {
     datePopoverOpen.value = false;
@@ -3597,6 +3687,8 @@ async function saveTaskDueDate() {
     selectedTask.value = await store.update(selectedTask.value, {
       dueAt: datePopoverDue.value ? new Date(datePopoverDue.value).toISOString() : "",
       startAt: datePickerMode.value === "RANGE" && datePopoverStart.value ? new Date(datePopoverStart.value).toISOString() : "",
+      // 全天开关也要一起落库，否则只改日期会把「全天」状态丢掉
+      allDay: datePopoverAllDay.value,
     });
     store.error = "";
     datePopoverOpen.value = false;
@@ -4585,7 +4677,7 @@ function openRowDateEditor(task, anchorEl = null) {
   rowTimeListOpen.value = false;
   const due = task.dueAt ? new Date(task.dueAt) : null;
   const allDay = Boolean(task.allDay);
-  rowDatePanel.mode = task.startAt ? "RANGE" : "DATE";
+  rowDatePanel.mode = isRangeValue(task.startAt, task.dueAt) ? "RANGE" : "DATE";
   rowDatePanel.selectedDate = due ? localDateKey(due) : "";
   rowDatePanel.time = due && !allDay ? toLocal(task.dueAt).slice(11, 16) : "";
   rowDatePanel.allDay = allDay || !due;
@@ -4627,7 +4719,26 @@ function positionRowDatePanel() {
 }
 function setRowDateMode(mode) {
   rowDatePanel.mode = mode;
-  if (mode === "RANGE") rowDatePanel.allDay = false;
+  if (mode === "RANGE") {
+    rowDatePanel.allDay = false;
+    // 切到时间段时用当前到期日兜底开始日，结束留给用户点
+    if (!rowDatePanel.rangeStart) rowDatePanel.rangeStart = rowDatePanel.rangeEnd || rowDatePanel.selectedDate;
+    return;
+  }
+  rowDatePanel.rangeStart = "";
+  rowDatePanel.rangeEnd = "";
+}
+function pickRowRangeStart(key) {
+  rowDatePanel.rangeStart = key;
+  if (!rowDatePanel.rangeEnd || rowDatePanel.rangeEnd < key) rowDatePanel.rangeEnd = key;
+}
+function pickRowRangeEnd(key) {
+  if (rowDatePanel.rangeStart && key < rowDatePanel.rangeStart) {
+    rowDatePanel.rangeEnd = rowDatePanel.rangeStart;
+    rowDatePanel.rangeStart = key;
+    return;
+  }
+  rowDatePanel.rangeEnd = key;
 }
 function chooseRowDatePreset(preset) {
   const now = new Date();
@@ -4701,7 +4812,7 @@ async function applyRowDatePanel() {
       return;
     }
     newDueAt = new Date(`${rowDatePanel.selectedDate}T${rowDatePanel.time || "00:00"}`).toISOString();
-    await saveRowDate(task, newDueAt, { allDay: !rowDatePanel.time, rrule: rule, recurrenceAnchor: anchor });
+    await saveRowDate(task, newDueAt, { startAt: "", allDay: !rowDatePanel.time, rrule: rule, recurrenceAnchor: anchor });
   }
   await syncRowReminders(task.publicId, newDueAt, rowDatePanel.mode === "RANGE" ? rowDatePanel.allDay : !rowDatePanel.time);
   closeRowDateEditor();
@@ -5645,7 +5756,8 @@ function closeAttributePopovers() {
   priorityPopoverOpen.value = false;
 }
 function closeAttributePopoversOnOutsidePointer(event) {
-  if (event.target.closest?.(".clone-toolbar-popover, .clone-detail-tool[aria-label='设置日期'], .clone-detail-repeat-tool, .clone-detail-priority-tool")) return;
+  // 日期/重复浮层整体（含浮层内的页签、日历、时间输入）都算「里面」，否则一点页签就自己关了
+  if (event.target.closest?.(".clone-toolbar-popover, .clone-date-popover-shell, .task-date-time-popover, .clone-detail-tool[aria-label='设置日期'], .clone-detail-repeat-tool, .clone-detail-priority-tool")) return;
   closeAttributePopovers();
 }
 function toLocal(value) {
@@ -5901,19 +6013,22 @@ function isQuickRangeEndpoint(key) {
 }
 
 function selectQuickCalendarDate(key) {
-  if (quickDateMode.value === "DATE") {
-    quickSelectedDate.value = key;
+  quickSelectedDate.value = key;
+  if (quickDateMode.value !== "RANGE") return;
+  // 时间段模式下日历端点由 pickRangeDay 单独回写，这里只在没有开始日时兜底
+  if (!quickRangeStart.value) quickRangeStart.value = key;
+}
+function applyQuickRangeStart(key) {
+  quickRangeStart.value = key;
+  if (quickRangeEnd.value && quickRangeEnd.value < key) quickRangeEnd.value = "";
+}
+function applyQuickRangeEnd(key) {
+  if (quickRangeStart.value && key < quickRangeStart.value) {
+    quickRangeEnd.value = quickRangeStart.value;
+    quickRangeStart.value = key;
     return;
   }
-  if (!quickRangeStart.value || quickRangeEnd.value) {
-    quickRangeStart.value = key;
-    quickRangeEnd.value = "";
-    return;
-  }
-  if (key < quickRangeStart.value) {
-    quickRangeStart.value = key;
-    quickRangeEnd.value = "";
-  } else quickRangeEnd.value = key;
+  quickRangeEnd.value = key;
 }
 
 function chooseQuickDatePreset(preset) {
@@ -5946,7 +6061,14 @@ function setQuickAllDay(allDay) {
 
 function setQuickDateMode(mode) {
   quickDateMode.value = mode;
-  if (mode === "RANGE") setQuickAllDay(false);
+  if (mode === "RANGE") {
+    setQuickAllDay(false);
+    // 开始日先用当前选中的到期日兜底，结束日留给用户点
+    if (!quickRangeStart.value) quickRangeStart.value = quickSelectedDate.value || (quickEntry.dueAt ? localDateKey(new Date(quickEntry.dueAt)) : "");
+    return;
+  }
+  quickRangeStart.value = "";
+  quickRangeEnd.value = "";
 }
 
 function selectQuickTime(time) {

@@ -371,7 +371,7 @@ test('middle task workspace matches the note-row, date, view, display, and print
   // 行内日期编辑复用 TaskDateTimePopover 弹层（teleport 到 body，按触发按钮定位）
   assert.match(workspaceView, /openRowDateEditor\(task, \$event\.currentTarget\)/)
   assert.match(workspaceView, /class="clone-row-date-panel"[\s\S]*<TaskDateTimePopover/)
-  assert.match(workspaceView, /function applyRowDatePanel\(\)[\s\S]*saveRowDate\(task, newDueAt, \{ allDay: !rowDatePanel\.time, rrule: rule, recurrenceAnchor: anchor \}\)/)
+  assert.match(workspaceView, /function applyRowDatePanel\(\)[\s\S]*saveRowDate\(task, newDueAt, \{ startAt: "", allDay: !rowDatePanel\.time, rrule: rule, recurrenceAnchor: anchor \}\)/)
   assert.match(workspaceView, /await syncRowReminders\(task\.publicId, newDueAt, rowDatePanel\.mode === "RANGE" \? rowDatePanel\.allDay : !rowDatePanel\.time\)/)
   assert.match(workspaceView, /document\.addEventListener\("pointerdown", closeRowDatePanelOnOutsidePointer\)/)
   assert.doesNotMatch(workspaceView, /clone-row-date-editor/)
@@ -392,7 +392,7 @@ test('标签 +N 悬浮展开隐藏标签，行内日期弹层支持时间段与�
   // 行尾标签悬浮时放开 metadata 裁剪，移除按钮（X）不被剪掉
   assert.match(workspaceView, /\.clone-task-metadata:has\(\.clone-task-tag-wrap:hover\),\n\.clone-task-metadata:has\(\.clone-task-tag-remove:focus-visible\) \{ overflow: visible; \}/)
   // 行内日期弹层：时间段模式保存 startAt/dueAt，清除同时清空 startAt
-  assert.match(workspaceView, /rowDatePanel\.mode = task\.startAt \? "RANGE" : "DATE"/)
+  assert.match(workspaceView, /rowDatePanel\.mode = isRangeValue\(task\.startAt, task\.dueAt\) \? "RANGE" : "DATE"/)
   assert.match(workspaceView, /await saveRowDate\(task, newDueAt, \{ startAt, allDay: rowDatePanel\.allDay, rrule: rule, recurrenceAnchor: anchor \}\)/)
   assert.match(workspaceView, /function clearRowDateFromPanel\(\)[\s\S]*saveRowDate\(task, "", \{ startAt: "", allDay: false \}\)/)
   // Escape 与外部 pointerdown 均可关闭
@@ -544,7 +544,7 @@ test('quick add exposes two-row date, priority, list controls and keeps tags in 
 })
 
 test('quick add date controls use one floating popover with ordered date fields', () => {
-  assert.match(workspaceView, /<TaskDateTimePopover[\s\S]*:range-start="quickRangeStart"[\s\S]*@update:range-end="quickRangeEnd = \$event"[\s\S]*<template #rows="\{ mode: rowMode \}">/)
+  assert.match(workspaceView, /<TaskDateTimePopover[\s\S]*:range-start="quickRangeStart"[\s\S]*@update:range-end="applyQuickRangeEnd"[\s\S]*range-controlled[\s\S]*<template #rows="\{ mode: rowMode \}">/)
   assert.match(workspaceView, /\.clone-quick-action-panel\.is-date,\s+\.clone-quick-action-panel\.is-repeat \{ position: fixed;/)
   assert.match(workspaceView, /\.clone-quick-action-panel\.is-date > \.task-date-time-popover \{ width: 100%; \}/)
   assert.doesNotMatch(workspaceView, /<div class="clone-quick-date-panel">/)
@@ -1355,7 +1355,7 @@ test('笔记形态：无勾选/优先级/互转，菜单精简，转换为任务
   assert.match(workspaceView, /v-if="!isNoteSelected" type="button" class="clone-detail-content-toggle"/)
   assert.match(workspaceView, /v-if="!isNoteSelected" class="clone-checklist-read"/)
   assert.match(workspaceView, /v-if="selectedTask && !isNoteSelected" class="clone-detail-subtasks"/)
-  assert.match(workspaceView, /isNoteSelected \? '设置提醒' : '设置日期'/)
+  assert.match(workspaceView, /if \(isNoteSelected\.value\) return "设置提醒";/)
   // 菜单：笔记隐藏任务项，显示转换为任务；动态文案切换
   for (const label of ['添加子任务', '关联主任务', '放弃', '开始专注', '保存为模板']) {
     const pattern = new RegExp(`v-if="!isNoteSelected"[^>]*>[^<]*(?:<[^>]+>)*[^<]*${label}`)

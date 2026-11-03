@@ -30,21 +30,22 @@
 
     <template v-else>
       <div class="task-date-time-range-fields">
-        <label class="task-range-row">
+        <label class="task-range-row" :class="{ active: rangePicker === 'start' }">
           <span>开始</span>
-          <input type="date" readonly :value="rangeStart" aria-label="开始日期" @click="rangePicker = rangePicker === 'start' ? '' : 'start'" />
+          <input type="date" readonly :value="rangeStart" aria-label="开始日期" @click="rangePicker = 'start'" />
           <input v-if="!allDay" type="time" :value="rangeStartTime" aria-label="开始时间" @change="$emit('update:rangeStartTime', $event.target.value)" />
         </label>
-        <label class="task-range-row">
+        <label class="task-range-row" :class="{ active: rangePicker === 'end' }">
           <span>结束</span>
-          <input type="date" readonly :value="rangeEnd" aria-label="结束日期" @click="rangePicker = rangePicker === 'end' ? '' : 'end'" />
+          <input type="date" readonly :value="rangeEnd" aria-label="结束日期" @click="rangePicker = 'end'" />
           <input v-if="!allDay" type="time" :value="rangeEndTime" aria-label="结束时间" @change="$emit('update:rangeEndTime', $event.target.value)" />
         </label>
         <div class="task-range-allday">
           <span>全天</span>
           <button type="button" role="switch" :aria-checked="allDay" class="task-range-switch" :class="{ on: allDay }" @click="$emit('toggle-all-day', !allDay)"><i></i></button>
         </div>
-        <div v-if="rangePicker" class="task-range-picker">
+        <p class="task-range-hint">点日历选择{{ rangePicker === 'end' ? '结束' : '开始' }}日期</p>
+        <div class="task-range-picker">
           <div class="task-date-time-month-head">
             <strong>{{ monthLabel }}</strong>
             <div>
@@ -71,7 +72,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { CalendarPlus, ChevronLeft, ChevronRight, Circle, Moon, Sun, Sunrise } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -90,20 +91,34 @@ const props = defineProps({
   rangeEnd: { type: String, default: '' },
   rangeStartTime: { type: String, default: '' },
   rangeEndTime: { type: String, default: '' },
+  /** 由父组件托管区间端点：开启后点日历回写 update:rangeStart/rangeEnd，否则沿用 select-date */
+  rangeControlled: { type: Boolean, default: false },
 });
 const emit = defineEmits(['update:mode', 'quick-date', 'move-month', 'select-date', 'select-time', 'clear-time', 'clear-date', 'toggle-all-day', 'apply', 'update:rangeStart', 'update:rangeEnd', 'update:rangeStartTime', 'update:rangeEndTime']);
 const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
-const rangePicker = ref('');
+/** 时间段面板默认在改哪一端：两端都有值时默认改结束，否则先选开始 */
+const rangePicker = ref(props.mode === 'RANGE' && props.rangeStart && props.rangeEnd ? 'end' : 'start');
+watch(() => props.mode, (mode) => {
+  if (mode !== 'RANGE') return;
+  rangePicker.value = props.rangeStart && props.rangeEnd ? 'end' : 'start';
+});
 const pickerDays = computed(() => props.calendarDays.map(day => ({
   ...day,
   selected: day.key === props.rangeStart || day.key === props.rangeEnd,
   inRange: Boolean(props.rangeStart && props.rangeEnd && day.key > props.rangeStart && day.key < props.rangeEnd),
 })));
 function pickRangeDay(key) {
-  emit('select-date', key);
-  const other = rangePicker.value === 'start' ? props.rangeEnd : props.rangeStart;
-  if (other) rangePicker.value = '';
-  else rangePicker.value = rangePicker.value === 'start' ? 'end' : 'start';
+  if (!props.rangeControlled) {
+    emit('select-date', key);
+    const other = rangePicker.value === 'start' ? props.rangeEnd : props.rangeStart;
+    if (other) rangePicker.value = '';
+    else rangePicker.value = rangePicker.value === 'start' ? 'end' : 'start';
+    return;
+  }
+  // 端点由父组件托管：按「当前在选开始还是结束」直接回写对应的一端，父组件不用再猜这一下点的是哪端
+  const pickStart = rangePicker.value !== 'end' || !props.rangeStart;
+  emit(pickStart ? 'update:rangeStart' : 'update:rangeEnd', key);
+  rangePicker.value = 'end';
 }
 </script>
 
@@ -151,6 +166,8 @@ function pickRangeDay(key) {
 .task-range-row:has(> input:only-of-type) { grid-template-columns: 34px minmax(0, 1fr); }
 .task-range-row input { min-width: 0; min-height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; }
 .task-range-row input:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.task-range-row.active input[type="date"] { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.task-range-hint { margin: 0; color: var(--muted); font-size: 11px; }
 .task-range-allday { display: flex; align-items: center; justify-content: space-between; min-height: 32px; color: var(--ink2); font-size: 12px; }
 .task-range-switch { position: relative; width: 40px; height: 22px; border: 0; border-radius: 11px; background: var(--line2); cursor: pointer; transition: background .15s ease; }
 .task-range-switch.on { background: var(--accent); }

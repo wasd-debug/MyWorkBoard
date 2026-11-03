@@ -385,7 +385,23 @@ public class TaskEnhancementService {
     private void validateRuleReferences(long user,JsonNode node){if(node==null||node.isNull())return;if(node.has("op")){node.path("children").forEach(child->validateRuleReferences(user,child));return;}String field=node.path("field").asText();if(!List.of("listId","tagId").contains(field))return;String table="listId".equals(field)?"task_list":"task_tag";List<String>ids=new ArrayList<>();JsonNode value=node.path("value");if("IN".equalsIgnoreCase(node.path("operator").asText()))value.forEach(item->ids.add(item.asText()));else if(value.isTextual())ids.add(value.asText());for(String id:ids)if(count("SELECT COUNT(*) FROM "+table+" WHERE user_id=? AND public_id=? AND deleted=FALSE",user,id)==0)throw new IllegalArgumentException("筛选规则引用了不存在或不属于当前账号的清单/标签");}
     private Map<String,String> labels(String d){Map<String,String> m=new LinkedHashMap<>();if("LIST".equals(d))tasks.listLists().forEach(v->m.put(v.publicId(),v.name()));else if("TAG".equals(d)){tasks.listTags().forEach(v->m.put(v.publicId(),v.name()));m.put("NONE","无标签");}else{m.put("OPEN","待完成");m.put("COMPLETED","已完成");m.put("HIGH","高");m.put("MEDIUM","中");m.put("LOW","低");m.put("NONE","无优先级");}return m;}
     private List<TaskImportParser.RawRow> icsRows(byte[] bytes){String content=decode(bytes).replace("\r\n ","");List<TaskImportParser.RawRow>out=new ArrayList<>();int row=0;for(String block:content.split("BEGIN:VEVENT")){if(!block.contains("END:VEVENT"))continue;Map<String,String>v=new LinkedHashMap<>();for(String line:block.split("\\R")){int p=line.indexOf(':');if(p>0)v.put(line.substring(0,p).split(";",2)[0],line.substring(p+1).trim());}v.put("标题",v.getOrDefault("SUMMARY",""));v.put("描述",v.getOrDefault("DESCRIPTION",""));v.put("到期时间",v.getOrDefault("DTEND",v.getOrDefault("DTSTART","")));out.add(new TaskImportParser.RawRow("ICS",++row,v));}return out;}
-    private ImportRow normalize(TaskImportParser.RawRow r){String title=value(r.values(),"标题","任务","任务名称","title","SUMMARY"),desc=value(r.values(),"描述","备注","备注内容","description"),list=value(r.values(),"清单","清单名称","列表","项目","list");if(list.isBlank())list="收集箱";String rawDue=value(r.values(),"到期时间","到期日期","截止时间","截止日期","日期","due","DTEND"),due=parseDue(rawDue);String rawStart=value(r.values(),"开始时间","开始日期","起始时间","起始日期","start","DTSTART"),start=parseDue(rawStart);String rawDone=value(r.values(),"完成时间","完成日期","完成于","completedAt","completed"),completed=parseDue(rawDone);String priority=priority(value(r.values(),"优先级","priority")),status=TaskImportParser.status(value(r.values(),"状态","完成状态","status"));List<String>tags=splitMulti(value(r.values(),"标签","tags"));String rrule=value(r.values(),"重复规则","重复","rrule");List<TaskEnhancementModels.ChecklistItem>checklist=TaskImportParser.checklist(value(r.values(),"检查项","检查事项","子任务","清单项","checklist","items"));String state=title.isBlank()?"ERROR":"VALID",message=title.isBlank()?"标题不能为空":(!rawDue.isBlank()&&due==null?"无法识别到期日期":"");if(!message.isBlank())state="ERROR";return new ImportRow(r.row(),r.sheet(),title,desc,list,due,priority,tags,status,rrule,state,message,start,completed,checklist);}
+    private ImportRow normalize(TaskImportParser.RawRow r){
+        String title=value(r.values(),"标题","任务","任务名称","title","SUMMARY"),desc=value(r.values(),"描述","备注","备注内容","description"),list=value(r.values(),"清单","清单名称","列表","项目","list");
+        if(list.isBlank())list="收集箱";
+        String rawDue=value(r.values(),"到期时间","到期日期","截止时间","截止日期","日期","due","DTEND"),due=parseDue(rawDue);
+        String rawStart=value(r.values(),"开始时间","开始日期","起始时间","起始日期","start","DTSTART"),start=parseDue(rawStart);
+        // 滴答等工具导出的单日期任务会把开始时间写成与到期时间相同的值，这种情况按单日期任务导入，
+        // 否则每条任务都会被当成「时间段」，列表和详情里就只剩一个 00:00 的时间点。
+        if(start!=null&&start.equals(due))start=null;
+        String rawDone=value(r.values(),"完成时间","完成日期","完成于","completedAt","completed"),completed=parseDue(rawDone);
+        String priority=priority(value(r.values(),"优先级","priority")),status=TaskImportParser.status(value(r.values(),"状态","完成状态","status"));
+        List<String>tags=splitMulti(value(r.values(),"标签","tags"));
+        String rrule=value(r.values(),"重复规则","重复","rrule");
+        List<TaskEnhancementModels.ChecklistItem>checklist=TaskImportParser.checklist(value(r.values(),"检查项","检查事项","子任务","清单项","checklist","items"));
+        String state=title.isBlank()?"ERROR":"VALID",message=title.isBlank()?"标题不能为空":(!rawDue.isBlank()&&due==null?"无法识别到期日期":"");
+        if(!message.isBlank())state="ERROR";
+        return new ImportRow(r.row(),r.sheet(),title,desc,list,due,priority,tags,status,rrule,state,message,start,completed,checklist);
+    }
     private Instant importInstant(String iso){if(iso==null||iso.isBlank())return null;try{return Instant.parse(iso);}catch(Exception e){return null;}}
     /** 纯日期导入时开始落在 00:00、截止落在 23:59 或 00:00，只有出现别的时刻才算定时任务 */
     private boolean importAllDay(String start,String due){
