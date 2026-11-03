@@ -84,6 +84,31 @@ final class TaskImportParser {
     }
 
     /** 任务状态归一：先排除「未完成 / 待完成」这类含「完成」字样但并非完成的表述。 */
+    /** 检查项列：支持 `[x] 上班打卡; [ ] 下班打卡`、`☑/☐`、`✓/✗`，分隔符支持 ; ； | 换行 */
+    static List<TaskEnhancementModels.ChecklistItem> checklist(String raw) {
+        String value = text(raw).trim();
+        List<TaskEnhancementModels.ChecklistItem> out = new ArrayList<>();
+        if (value.isEmpty()) return out;
+        for (String part : value.split("[;；|\\n]")) {
+            String item = part.trim();
+            if (item.isEmpty()) continue;
+            boolean completed = false;
+            java.util.regex.Matcher matcher = MARKER.matcher(item);
+            if (matcher.find()) {
+                completed = CHECKED.matcher(matcher.group(1)).matches();
+                item = item.substring(matcher.end()).trim();
+            }
+            if (item.isEmpty()) continue;
+            out.add(new TaskEnhancementModels.ChecklistItem(item.length() > 200 ? item.substring(0, 200) : item, completed));
+        }
+        return out;
+    }
+
+    private static final java.util.regex.Pattern MARKER =
+            java.util.regex.Pattern.compile("^(\\[[xX✓✔√]\\]|\\[[ ]\\]|☑|☐|✓|✔|√|✗|✘|-\\s)");
+    private static final java.util.regex.Pattern CHECKED =
+            java.util.regex.Pattern.compile("\\[[xX✓✔√]\\]|☑|✓|✔|√");
+
     static String status(String raw) {
         String value = text(raw).trim();
         if (value.isEmpty()) return "OPEN";

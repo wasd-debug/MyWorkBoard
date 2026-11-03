@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -76,6 +77,21 @@ class TaskImportParserTest {
     }
 
     /** 两个工作表：第一个是专注流水（无标题列），第二个才是任务表。 */
+
+    @Test
+    void parsesChecklistColumn() {
+        var items = TaskImportParser.checklist("[x] 上班打卡; [ ] 下班打卡；☑ 工时记录 | 未标记项");
+        assertEquals(4, items.size());
+        assertTrue(items.get(0).completed());
+        assertEquals("上班打卡", items.get(0).title());
+        assertFalse(items.get(1).completed());
+        assertTrue(items.get(2).completed());
+        assertEquals("工时记录", items.get(2).title());
+        assertFalse(items.get(3).completed());
+        assertEquals("未标记项", items.get(3).title());
+        assertTrue(TaskImportParser.checklist("").isEmpty());
+    }
+
     private byte[] workbook() {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         com.alibaba.excel.ExcelWriter writer = EasyExcel.write(out).build();
