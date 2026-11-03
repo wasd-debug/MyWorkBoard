@@ -957,12 +957,12 @@
                   <div class="clone-date-rowline">
                     <Bell :size="14" />
                     <span class="clone-date-rowlabel">提醒</span>
-                    <button type="button" class="clone-date-rowvalue" :class="{ active: editorOpen ? draft.reminderEnabled : quickReminder.reminder }" aria-label="设置提醒" :aria-expanded="reminderPopoverOpen" @click.stop="toggleReminderPopover">
+                    <button type="button" class="clone-date-rowvalue" :class="{ active: editorOpen ? draft.reminderEnabled : quickReminder.reminder }" aria-label="设置提醒" :aria-expanded="dateReminderOpen" @click.stop="toggleReminderPopover">
                       {{ editorOpen ? (draft.reminderEnabled ? '已开启' : '未设置') : (quickReminder.reminder ? '已开启' : '未设置') }}
-                      <ChevronDown :size="13" :class="{ rotated: reminderPopoverOpen }" />
+                      <ChevronDown :size="13" :class="{ rotated: dateReminderOpen }" />
                     </button>
                   </div>
-                  <div v-if="reminderPopoverOpen" class="clone-detail-date-reminder-popover is-inline" @click.stop>
+                  <div v-if="dateReminderOpen" class="clone-detail-date-reminder-popover is-inline" @click.stop>
                     <p v-if="reminderLoading" class="clone-muted">正在读取提醒…</p>
                     <template v-else>
                       <label class="clone-inline-check"><input v-model="reminderEnabledModel" type="checkbox" />启用站内提醒</label>
@@ -972,20 +972,20 @@
                         <label v-else class="clone-reminder-popover-field">提醒时间<input v-model="remindLocalModel" type="datetime-local" /></label>
                         <label class="clone-inline-check"><input v-model="dailyUntilDoneModel" type="checkbox" />未完成时每日提醒</label>
                       </template>
-                      <div class="clone-popover-actions"><button v-if="!editorOpen && quickReminder.reminder" type="button" @click="disableTaskReminder">关闭提醒</button><button v-if="editorOpen" type="button" @click="reminderPopoverOpen = false">完成后保存</button><button v-else type="button" class="clone-popover-save" :disabled="reminderSaving" @click="saveTaskReminder">{{ reminderSaving ? '保存中…' : '保存提醒' }}</button></div>
+                      <div class="clone-popover-actions"><button v-if="!editorOpen && quickReminder.reminder" type="button" @click="disableTaskReminder">关闭提醒</button><button v-if="editorOpen" type="button" @click="dateReminderOpen = false">完成后保存</button><button v-else type="button" class="clone-popover-save" :disabled="reminderSaving" @click="saveTaskReminder">{{ reminderSaving ? '保存中…' : '保存提醒' }}</button></div>
                     </template>
                   </div>
 
                   <div class="clone-date-rowline">
                     <Repeat2 :size="14" />
                     <span class="clone-date-rowlabel">重复</span>
-                    <button type="button" class="clone-date-rowvalue" :aria-expanded="repeatPopoverOpen" @click.stop="toggleRepeatPopover">
+                    <button type="button" class="clone-date-rowvalue" :aria-expanded="dateRepeatOpen" @click.stop="toggleDatePanelRepeat">
                       {{ recurrenceLabel(editorOpen ? (draft.rrule === 'CUSTOM' ? draft.customRrule : draft.rrule) : selectedTask?.rrule) || '不重复' }}
-                      <ChevronDown :size="13" :class="{ rotated: repeatPopoverOpen }" />
+                      <ChevronDown :size="13" :class="{ rotated: dateRepeatOpen }" />
                     </button>
                   </div>
-                  <div v-if="repeatPopoverOpen" class="clone-detail-repeat-inline is-inline" @click.stop>
-                    <div class="clone-repeat-popover-header"><strong>重复</strong><button type="button" class="clone-popover-close" aria-label="关闭重复设置" @click="repeatPopoverOpen = false"><X :size="15" /></button></div>
+                  <div v-if="dateRepeatOpen" class="clone-detail-repeat-inline is-inline" @click.stop>
+                    <div class="clone-repeat-popover-header"><strong>重复</strong><button type="button" class="clone-popover-close" aria-label="关闭重复设置" @click="dateRepeatOpen = false"><X :size="15" /></button></div>
                     <div class="clone-quick-repeat-presets clone-detail-repeat-presets"><button v-for="option in quickRepeatPresets" :key="option.value" type="button" :class="{ active: detailRepeat.preset === option.value }" @click="selectDetailRepeatPreset(option.value)">{{ option.label }}</button></div>
                     <template v-if="detailRepeat.preset === 'CUSTOM'">
                       <div class="clone-quick-repeat-grid"><label>重复方式<select v-model="detailRepeat.mode"><option value="DUE_DATE">到期重复</option><option value="COMPLETION_DATE">完成重复</option></select></label><label>频率<select v-model="detailRepeat.frequency" @change="setDetailRepeatFrequency"><option value="DAILY">每天</option><option value="WEEKLY">每周</option><option value="MONTHLY">每月</option><option value="YEARLY">每年</option></select></label><label>间隔<input v-model.number="detailRepeat.interval" type="number" min="1" max="365" /></label></div>
@@ -2004,7 +2004,9 @@ const workspaceMenuSection = ref("");
 const workspaceMenuStyle = ref({});
 const datePopoverOpen = ref(false);
 const repeatPopoverOpen = ref(false);
-const reminderPopoverOpen = ref(false);
+const dateReminderOpen = ref(false);
+/** 日期浮层里内嵌的「重复」面板，与表单里的重复下拉不是同一个浮层 */
+const dateRepeatOpen = ref(false);
 const popoverViewportRevision = ref(0);
 const datePopoverAnchor = ref(null);
 const priorityPopoverAnchor = ref(null);
@@ -3431,7 +3433,8 @@ function finishSidebarSwipe(event) {
 function toggleDatePopover() {
   datePopoverOpen.value = !datePopoverOpen.value;
   repeatPopoverOpen.value = false;
-  reminderPopoverOpen.value = false;
+  dateReminderOpen.value = false;
+  dateRepeatOpen.value = false;
   priorityPopoverOpen.value = false;
   if (datePopoverOpen.value) {
     datePopoverDue.value = toLocal(editorOpen.value ? draft.dueAt : selectedTask.value?.dueAt);
@@ -3467,7 +3470,7 @@ const detailDatePopoverStyle = computed(() => {
   if (!anchor || typeof window === "undefined") return { position: "fixed", zIndex: 1000, top: "80px", left: "24px" };
   const rect = anchor.getBoundingClientRect();
   const width = Math.min(378, window.innerWidth - 24);
-  const height = Math.min(660, window.innerHeight - 24);
+  const height = Math.min(690, window.innerHeight - 24);
   const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
   let top = rect.bottom + 8;
   if (top + height > window.innerHeight - 12) top = Math.max(12, rect.top - height - 8);
@@ -3655,17 +3658,18 @@ async function confirmTaskDueDate() {
   }
   await saveTaskDueDate();
 }
-function toggleRepeatPopover() {
-  repeatPopoverOpen.value = !repeatPopoverOpen.value;
-  reminderPopoverOpen.value = false;
-  priorityPopoverOpen.value = false;
-  if (repeatPopoverOpen.value) syncDetailRepeatFromRule(editorOpen.value ? (draft.rrule === "CUSTOM" ? draft.customRrule : draft.rrule) : selectedTask.value?.rrule, editorOpen.value ? draft.recurrenceAnchor : selectedTask.value?.recurrenceAnchor);
+/** 日期浮层里的「重复」是浮层内部的子面板：只和同级的内嵌提醒互斥，不能把宿主日期浮层一起关掉 */
+function toggleDatePanelRepeat() {
+  dateRepeatOpen.value = !dateRepeatOpen.value;
+  dateReminderOpen.value = false;
+  if (dateRepeatOpen.value) syncDetailRepeatFromRule(editorOpen.value ? (draft.rrule === "CUSTOM" ? draft.customRrule : draft.rrule) : selectedTask.value?.rrule, editorOpen.value ? draft.recurrenceAnchor : selectedTask.value?.recurrenceAnchor);
 }
 function togglePriorityPopover() {
   priorityPopoverOpen.value = !priorityPopoverOpen.value;
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
-  reminderPopoverOpen.value = false;
+  dateReminderOpen.value = false;
+  dateRepeatOpen.value = false;
 }
 async function applyTaskDueOffset(offset) {
   if (editorOpen.value) {
@@ -3774,13 +3778,13 @@ async function saveDetailRepeat() {
     draft.rrule = rule ? "CUSTOM" : "";
     draft.customRrule = rule;
     draft.recurrenceAnchor = detailRepeat.mode === "COMPLETION_DATE" ? "COMPLETION_DATE" : "DUE_DATE";
-    repeatPopoverOpen.value = false;
+    dateRepeatOpen.value = false;
     return;
   }
   if (!selectedTask.value) return;
   try {
     selectedTask.value = await store.update(selectedTask.value, { rrule: rule, recurrenceAnchor: rule ? (detailRepeat.mode === "COMPLETION_DATE" ? "COMPLETION_DATE" : "DUE_DATE") : "" });
-    repeatPopoverOpen.value = false;
+    dateRepeatOpen.value = false;
   } catch (error) { detailRepeatError.value = error?.response?.data?.detail || error?.message || "重复规则保存失败"; }
 }
 function resetDetailRepeat() {
@@ -3788,11 +3792,11 @@ function resetDetailRepeat() {
   detailRepeatError.value = "";
 }
 async function toggleReminderPopover() {
-  reminderPopoverOpen.value = !reminderPopoverOpen.value;
-  repeatPopoverOpen.value = false;
+  dateReminderOpen.value = !dateReminderOpen.value;
+  dateRepeatOpen.value = false;
   priorityPopoverOpen.value = false;
   const loadSequence = ++reminderLoadSequence;
-  if (!reminderPopoverOpen.value || editorOpen.value) return;
+  if (!dateReminderOpen.value || editorOpen.value) return;
   Object.assign(quickReminder, { enabled: false, kind: "RELATIVE", offsetMinutes: 30, remindLocal: "", dailyUntilDone: false, reminder: null });
   const task = selectedTask.value;
   if (!task?.publicId) return;
@@ -3800,7 +3804,7 @@ async function toggleReminderPopover() {
   reminderLoading.value = true;
   try {
     const reminders = await apiListTaskReminders(task.publicId);
-    if (loadSequence !== reminderLoadSequence || selectedTask.value?.publicId !== task.publicId || !reminderPopoverOpen.value) return;
+    if (loadSequence !== reminderLoadSequence || selectedTask.value?.publicId !== task.publicId || !dateReminderOpen.value) return;
     const reminder = reminders?.[0] || null;
     quickReminder.reminder = reminder;
     if (reminder) Object.assign(quickReminder, {
@@ -3840,7 +3844,7 @@ async function saveTaskReminder() {
         : await apiCreateTaskReminder(task.publicId, payload);
     }
     store.error = "";
-    reminderPopoverOpen.value = false;
+    dateReminderOpen.value = false;
     await loadActivity(task);
   } catch (error) { store.error = error?.response?.data?.detail || error?.message || "提醒保存失败"; }
   finally { reminderSaving.value = false; }
@@ -4495,7 +4499,8 @@ async function openTaskIndicator(task, kind) {
   openDetail(task);
   await nextTick();
   if (kind === "repeat") {
-    toggleRepeatPopover();
+    if (!datePopoverOpen.value) toggleDatePopover();
+    toggleDatePanelRepeat();
     return;
   }
   if (kind === "focus") {
@@ -5584,7 +5589,8 @@ async function openEdit(task) {
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
   priorityPopoverOpen.value = false;
-  reminderPopoverOpen.value = false;
+  dateReminderOpen.value = false;
+  dateRepeatOpen.value = false;
   void loadActivity(task);
   void loadCollaboration(task);
   if (store.online) {
@@ -5637,7 +5643,8 @@ function openCreate(parentId = "") {
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
   priorityPopoverOpen.value = false;
-  reminderPopoverOpen.value = false;
+  dateReminderOpen.value = false;
+  dateRepeatOpen.value = false;
 }
 // 子任务：拖动排序 / 右键菜单 / 点击进入子任务详情
 const detailSubtaskDragIndex = ref(null);
@@ -5735,13 +5742,14 @@ function closeDetail() {
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
   priorityPopoverOpen.value = false;
-  reminderPopoverOpen.value = false;
+  dateReminderOpen.value = false;
+  dateRepeatOpen.value = false;
 }
-// 详情栏/工具栏的浮层互斥：日期、重复、提醒、优先级、插入菜单、父任务选择、页面菜单、清单选项
+// 详情栏/工具栏的浮层互斥：日期、表单里的重复下拉、优先级、插入菜单、父任务选择、页面菜单、清单选项
+// 注意：「提醒」「重复」是日期浮层内部的内嵌面板，不能进互斥组——否则一打开就会把宿主日期浮层关掉
 useExclusivePanels("workspace", [
   ["date", () => datePopoverOpen.value, value => (datePopoverOpen.value = value)],
   ["repeat", () => repeatPopoverOpen.value, value => (repeatPopoverOpen.value = value)],
-  ["reminder", () => reminderPopoverOpen.value, value => (reminderPopoverOpen.value = value)],
   ["priority", () => priorityPopoverOpen.value, value => (priorityPopoverOpen.value = value)],
   ["detailBlock", () => detailBlockMenuOpen.value, value => (detailBlockMenuOpen.value = value)],
   ["detailParent", () => detailParentPickerOpen.value, value => (detailParentPickerOpen.value = value)],
@@ -5752,7 +5760,8 @@ useExclusivePanels("workspace", [
 function closeAttributePopovers() {
   datePopoverOpen.value = false;
   repeatPopoverOpen.value = false;
-  reminderPopoverOpen.value = false;
+  dateReminderOpen.value = false;
+  dateRepeatOpen.value = false;
   priorityPopoverOpen.value = false;
 }
 function closeAttributePopoversOnOutsidePointer(event) {

@@ -174,7 +174,8 @@ function pickRangeDay(key) {
 .task-range-switch i { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s ease; }
 .task-range-switch.on i { transform: translateX(18px); }
 .task-range-picker { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); box-shadow: 0 10px 26px rgb(15 23 42 / 14%); }
-.task-date-time-footer { display: flex; justify-content: space-between; gap: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+/* 展开提醒/重复后内容会超过浮层高度，页脚吸底，保证「清除/确定」始终可见 */
+.task-date-time-footer { position: sticky; bottom: -12px; z-index: 1; display: flex; justify-content: space-between; gap: 8px; margin: 0 -12px -12px; padding: 8px 12px 12px; border-top: 1px solid var(--line); background: var(--card); }
 .task-date-time-footer button { min-height: 30px; padding: 5px 12px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
 .task-date-time-footer .task-date-time-apply { background: var(--accent); color: var(--accent-contrast, #fff); }
 </style>
