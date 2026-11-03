@@ -19,6 +19,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -66,16 +67,17 @@ class TaskEfficiencyIntegrationTest extends MySqlIntegrationTestSupport {
         assertThrows(RuntimeException.class, () -> efficiency(outsider).habitStats(habit.publicId(), null, null));
 
         var countdown = service.createCountdown(countdownCommand("纪念日", today.plusDays(10).toString(), "ANNIVERSARY"));
-        assertEquals(1, service.countdowns().size());
-        assertEquals(0, efficiency(outsider).countdowns().size());
+        // 每个账号都带内置倒计时，这里只校验自建的那条对本人可见、对他人不可见
+        assertTrue(service.countdowns().stream().anyMatch(v -> v.publicId().equals(countdown.publicId())));
+        assertTrue(efficiency(outsider).countdowns().stream().noneMatch(v -> v.publicId().equals(countdown.publicId())));
         assertThrows(ConflictException.class, () -> service.updateCountdown(countdown.publicId(),
                 countdownCommand("改名", countdown.targetDate(), countdown.kind()), "0"));
     }
 
     /** CountdownCommand 字段较多，测试里只关心标题/日期/类型，其余留空走服务端默认值 */
     private static CountdownCommand countdownCommand(String title, String targetDate, String kind) {
-        return new CountdownCommand(title, targetDate, kind, true, true, "#2f746f", "", null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null);
+        return new CountdownCommand(title, targetDate, kind, null, true, true, "#2f746f", "", null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     private TaskEfficiencyService efficiency(long userId) {
