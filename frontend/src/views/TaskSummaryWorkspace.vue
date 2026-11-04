@@ -297,20 +297,22 @@ async function saveAsImage() {
     if (!target) return
     // 编辑器内部是三层滚动/定高容器（区域 flex:1 → 编辑器 height:100% → 输入区 overflow:auto）：
     // 导出前全部放开为内容高度，否则长报告只截到可视区域
-    const editor = target.querySelector('.task-rich-editor')
-    const wrap = target.querySelector('.task-rich-input-wrap')
-    const input = target.querySelector('.task-rich-input')
+    // 选择器对应 Milkdown 的真实结构：[data-milkdown-root] > .milkdown > .ProseMirror
+    const editor = target.querySelector('.task-milkdown-editor')
+    const wrap = target.querySelector('[data-milkdown-root]')
+    const input = target.querySelector('.ProseMirror')
     const previous = {
       areaOverflow: target.style.overflow, areaHeight: target.style.height,
       editorHeight: editor?.style.height || '',
       wrapOverflow: wrap?.style.overflow || '', wrapHeight: wrap?.style.height || '',
       inputHeight: input?.style.height || '',
+      inputMinHeight: input?.style.minHeight || '',
     }
     target.style.overflow = 'visible'
     target.style.height = 'auto'
     if (editor) editor.style.height = 'auto'
     if (wrap) { wrap.style.overflow = 'visible'; wrap.style.height = 'auto' }
-    if (input) input.style.height = 'auto'
+    if (input) { input.style.height = 'auto'; input.style.minHeight = '0' }
     const canvas = await html2canvas(target, {
       backgroundColor: getComputedStyle(document.body).backgroundColor || '#ffffff',
       scale: 2,
@@ -323,7 +325,7 @@ async function saveAsImage() {
       target.style.height = previous.areaHeight
       if (editor) editor.style.height = previous.editorHeight
       if (wrap) { wrap.style.overflow = previous.wrapOverflow; wrap.style.height = previous.wrapHeight }
-      if (input) input.style.height = previous.inputHeight
+      if (input) { input.style.height = previous.inputHeight; input.style.minHeight = previous.inputMinHeight }
     })
     const link = document.createElement('a')
     link.download = `${reportTitle()}.png`
@@ -397,16 +399,15 @@ onBeforeUnmount(() => {
 .summary-range-apply:disabled{opacity:.55;cursor:not-allowed}
 .summary-range-apply:hover,.summary-range-cancel:hover{filter:brightness(1.05)}
 .summary-editor-area{min-height:0;flex:1;overflow:auto;padding:14px 26px}
-.summary-editor-area :deep(.task-rich-editor){display:flex;height:100%;min-height:320px;flex-direction:column;border:0;border-radius:0;background:transparent}
-.summary-editor-area :deep(.task-rich-input-wrap){flex:1;min-height:0;overflow:auto}
-.summary-editor-area :deep(.task-rich-input){min-height:100%;padding:4px 2px 40px;font-size:13px}
-.summary-editor-area :deep(.task-rich-input table){width:100%;margin:10px 0 16px;border-collapse:collapse;font-size:12px}
-.summary-editor-area :deep(.task-rich-input th),
-.summary-editor-area :deep(.task-rich-input td){padding:6px 10px;border:1px solid var(--line);text-align:left;vertical-align:top}
-.summary-editor-area :deep(.task-rich-input th){background:var(--paper);font-weight:600;white-space:nowrap}
-.summary-editor-area :deep(.task-rich-input td:first-child){white-space:nowrap}
+/* Milkdown 编辑器的结构是 [data-milkdown-root] > .milkdown > .ProseMirror，
+   原先写的 .task-rich-editor / .task-rich-input 系列类名已经不存在，等于没生效 */
+.summary-editor-area :deep([data-milkdown-root]){min-height:100%;padding:4px 2px 40px;font-size:13px}
+.summary-editor-area :deep(.milkdown),
+.summary-editor-area :deep(.ProseMirror){min-height:100%}
+/* 摘要表格的表头与首列（状态/进度这类短值）不换行，任务名称列自然吃掉剩余宽度 */
+.summary-editor-area :deep(.ProseMirror th),
+.summary-editor-area :deep(.ProseMirror td:first-child){white-space:nowrap}
 .summary-editor-area :deep(.task-rich-toolbar){padding:4px 0;border-bottom:1px solid var(--line);background:transparent}
-.summary-editor-area :deep(.task-rich-hint){display:none}
 .summary-foot{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:10px 92px 14px 26px;border-top:1px solid var(--line)}
 .summary-feedback{color:var(--muted);font-size:12px}
 .summary-foot-actions{display:flex;align-items:center;gap:10px}

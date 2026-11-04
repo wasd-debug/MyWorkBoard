@@ -169,6 +169,34 @@ defineExpose({ runToolbar, insertLink, focusEditor })
   text-decoration: line-through;
 }
 
+/* 表格：摘要报告与任务描述里的 markdown 表格都靠这套样式，缺了会挤成一坨没有边框 */
+.task-milkdown-editor :deep(.ProseMirror table) {
+  width: 100%;
+  margin: 10px 0 16px;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.task-milkdown-editor :deep(.ProseMirror th),
+.task-milkdown-editor :deep(.ProseMirror td) {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.task-milkdown-editor :deep(.ProseMirror th) {
+  background: var(--paper);
+  font-weight: 600;
+}
+
+/* 单元格里的段落默认带 0.45em 上下外边距，会把行高撑得很松 */
+.task-milkdown-editor :deep(.ProseMirror th p),
+.task-milkdown-editor :deep(.ProseMirror td p) {
+  margin: 0;
+}
+
 .task-milkdown-editor :deep(.ProseMirror blockquote) {
   margin: 0.5em 0;
   padding-left: 11px;

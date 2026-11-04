@@ -1303,6 +1303,13 @@ test('摘要页显示内容菜单不超出视口，编辑器保留表格结构�
   // 编辑器把表格 DOM 还原为 Markdown 表格语法，避免编辑其它段落时表格被拍平丢失
   const surface = await readFile(new URL('../components/tasks/TaskMilkdownEditorSurface.vue', import.meta.url), 'utf8')
   assert.match(surface, /\.use\(gfm\)/)
+  // 表格得有自己的样式：少了边框和内边距，单元格会挤成一坨文字（看起来「不是表格」）
+  assert.match(taskMilkdownEditor, /\.ProseMirror table\)[^{]*\{[\s\S]*?border-collapse: collapse/)
+  assert.match(taskMilkdownEditor, /\.ProseMirror th\),[\s\S]*?\.ProseMirror td\)[\s\S]*?border: 1px solid var\(--line\)/)
+  assert.match(taskMilkdownEditor, /\.ProseMirror td p\)[^{]*\{[\s\S]*?margin: 0/)
+  // 摘要页的样式要挂在 Milkdown 的真实结构上；.task-rich-input 系列类名早已不存在
+  assert.doesNotMatch(summaryView, /:deep\(\.task-rich-input/)
+  assert.match(summaryView, /:deep\(\[data-milkdown-root\]\)\{min-height:100%;padding:4px 2px 40px/)
 })
 
 test('任务详情栏第一批改造：检查项、描述插入菜单、标签、底部清单（P2-FE123）', async () => {
