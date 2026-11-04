@@ -130,11 +130,14 @@ public class TaskEfficiencyService {
         boolean manual = explicit || !requested.equals(LocalDate.now(zone));
         Instant started;
         Instant ended;
+        // 显式给起止时间时，真实时长可能远超单个番茄钟的 180 分钟上限：
+        // planned 仍按 180 截断（计划时长语义），actual 必须用真实差值，否则补记 4 小时会被记成 3 小时
+        long explicitMinutes = 0;
         if (explicit) {
             if (!explicitEnd.isAfter(explicitStart)) throw new IllegalArgumentException("结束时间需要晚于开始时间");
             if (explicitStart.isAfter(dbNow())) throw new IllegalArgumentException("不能新增未来时间的专注记录");
-            long minutes = Math.max(1, Math.round(java.time.Duration.between(explicitStart, explicitEnd).toSeconds() / 60.0));
-            planned = (int) Math.min(180, minutes);
+            explicitMinutes = Math.max(1, Math.round(java.time.Duration.between(explicitStart, explicitEnd).toSeconds() / 60.0));
+            planned = (int) Math.min(180, explicitMinutes);
             started = explicitStart;
             ended = explicitEnd;
         } else {
@@ -144,7 +147,7 @@ public class TaskEfficiencyService {
             ended = manual && planned > 0 ? started.plusSeconds(planned * 60L) : null;
         }
         String status = manual ? "COMPLETED" : "RUNNING";
-        int actual = manual ? planned : 0;
+        int actual = manual ? (explicit ? (int) Math.min(24 * 60L, explicitMinutes) : planned) : 0;
         try {
             jdbc.update("INSERT INTO focus_session(public_id,user_id,task_id,planned_minutes,actual_minutes,started_at,ended_at,status,device_label,note,client_op_key) " +
                             "VALUES(?,?,?,?,?,?,?,?,?,?,?)", publicId, userId, taskId, planned, actual,
@@ -155,7 +158,8 @@ public class TaskEfficiencyService {
             if (running != null) throw new ConflictException("已有进行中的专注", running.revision());
             throw exception;
         }
-        if (manual) applyFocusCompletion(userId, publicId, taskId, planned);
+        // 任务累计专注时长要用真实时长，不能跟着 planned 一起被 180 截断
+        if (manual) applyFocusCompletion(userId, publicId, taskId, actual);
         return focusById(userId, publicId);
     }
 
