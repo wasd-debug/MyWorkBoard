@@ -12,9 +12,10 @@
         <h4 class="focus-picker-group"><Repeat :size="13" />习惯</h4>
         <ul class="focus-picker-list">
           <li v-for="habit in habitRows" :key="habit.publicId">
-            <button type="button" @click="emit('pick', { kind: 'habit', id: habit.publicId, title: habit.title, icon: habit.icon || '🔁' })">
+            <button type="button" @click="emit('pick', { kind: 'habit', id: habit.publicId, title: habit.name || habit.title, icon: habit.icon || '🔁' })">
               <span class="focus-picker-icon">{{ habit.icon || '🔁' }}</span>
-              <span class="focus-picker-title">{{ habit.title }}</span>
+              <span class="focus-picker-title">{{ habit.name || habit.title }}</span>
+              <Check v-if="selectedId && habit.publicId === selectedId" :size="13" class="focus-picker-check" />
             </button>
           </li>
         </ul>
@@ -149,7 +150,7 @@ const pickerTasks = computed(() => tasksStore.tasks.filter(task => task.status =
 const habitRows = computed(() => {
   const value = query.value.toLowerCase()
   return tasksStore.habits
-    .filter(habit => !habit.deleted && (!value || String(habit.title || '').toLowerCase().includes(value)))
+    .filter(habit => !habit.deleted && (!value || String(habit.name || habit.title || '').toLowerCase().includes(value)))
     .slice(0, 80)
 })
 
@@ -179,8 +180,27 @@ const groups = computed(() => {
     const seen = new Set()
     const rows = []
     for (const session of focus.sessions) {
-      if (!session.taskId || seen.has(session.taskId)) continue
-      seen.add(session.taskId)
+      // 最近专注既有挂任务的也有挂习惯的，两个都算关联对象
+      const linkedId = session.taskId || session.habitId
+      if (!linkedId || seen.has(linkedId)) continue
+      seen.add(linkedId)
+      if (session.habitId) {
+        const habit = (tasksStore.habits || []).find(item => item.publicId === session.habitId)
+        const title = habit?.name || habit?.title || session.habitTitle
+        if (!title || !match(title)) continue
+        rows.push({
+          key: `recent-${session.habitId}`,
+          kind: 'habit',
+          id: session.habitId,
+          title,
+          icon: habit?.icon || '🔁',
+          whenLabel: '最近',
+          color: 'transparent',
+          isChild: false
+        })
+        if (rows.length >= 8) break
+        continue
+      }
       const task = pickerTasks.value.find(item => item.publicId === session.taskId)
       const title = task?.title || session.taskTitle
       if (!title || !match(title)) continue
@@ -226,7 +246,7 @@ const groups = computed(() => {
         key: `habit-${habit.publicId}`,
         kind: 'habit',
         id: habit.publicId,
-        title: habit.title,
+        title: habit.name || habit.title,
         icon: habit.icon || '🔁',
         whenLabel: '',
         color: 'transparent',

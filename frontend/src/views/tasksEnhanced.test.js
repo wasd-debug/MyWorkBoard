@@ -1428,13 +1428,17 @@ test('专注页：专注对象选择器 / 可拖动分栏 / 声音浮层（P2-FO
   // 选择器：三个页签，页签状态单一来源（组件化，专注页与补记弹窗共用）
   assert.match(picker, /\{ id: 'recent', label: '最近' \},\s*\{ id: 'task', label: '任务' \},\s*\{ id: 'habit', label: '习惯' \}/)
   assert.match(picker, /class="focus-picker-tabs"[\s\S]{0,200}:aria-selected="tabId === tab\.id"/)
+  // 习惯接口字段是 name，前端没有 title 映射，只写 title 会渲染成空白行
+  assert.match(picker, /\{\{ habit\.name \|\| habit\.title \}\}/)
+  // 习惯接口字段是 name，前端没有 title 映射，只写 title 会渲染成空白行
+  assert.match(picker, /\{\{ habit\.name \|\| habit\.title \}\}/)
   // 分组只对根任务分桶，子任务跟随父任务缩进
   assert.match(picker, /function buildTree\(items\)[\s\S]{0,420}item\.parentId && byId\.has\(item\.parentId\) \? item\.parentId : ''/)
   assert.match(picker, /function flattenTree\(roots, childrenOf, groupKey\)[\s\S]{0,520}isChild: depth > 0/)
   assert.match(picker, /const \{ roots, childrenOf \} = buildTree\(pickerTasks\.value\.filter\(task => match\(task\.title\)\)\)/)
-  // 选中任务后开始专注要把 taskId 带进创建请求
-  assert.match(focusView, /const target = focusTarget\.value && focusTarget\.value\.kind !== 'preset' \? focusTarget\.value\.id : undefined/)
-  assert.match(focusView, /\.\.\.\(target \? \{ taskId: target \} : \{\}\)/)
+  // 选中任务/习惯后开始专注要把对应 id 带进创建请求（任务走 taskId、习惯走 habitId）
+  assert.match(focusView, /const picked = focusTarget\.value && focusTarget\.value\.kind !== 'preset' \? focusTarget\.value : null/)
+  assert.match(focusView, /picked\.kind === 'habit' \? \{ habitId: picked\.id \} : \{ taskId: picked\.id \}/)
   // 运行中不允许换目标
   assert.match(focusView, /:disabled="Boolean\(focus\.current\)"/)
 
@@ -1521,12 +1525,15 @@ test('专注页：点记录行弹出详情浮层，可改关联任务与想法�
 
   // 关联任务：复用任务选择器，选中即保存（连当前笔记、起止时间一起提交）
   assert.match(detail, /<FocusTargetPicker v-if="pickerOpen"/)
-  assert.match(detail, /focus\.updateRecord\(props\.session, \{ taskId, \.\.\.currentPayload\(\) \}\)/)
+  assert.match(detail, /focus\.updateRecord\(props\.session, \{ \.\.\.link, \.\.\.currentPayload\(\) \}\)/)
+  // 习惯也是合法关联对象：选习惯传 habitId，选「常用专注」清掉两种关联
+  assert.match(detail, /item\.kind === 'habit' \? \{ habitId: item\.id \} : \{ taskId: item\.id \}/)
   assert.match(detail, /focus\.updateRecord\(props\.session, currentPayload\(\)\)/)
   assert.match(detail, /focus\.remove\(props\.session\)/)
 
   // store：null 表示不改，空串才是解除关联（后端约定）
-  assert.match(focusStore, /async updateRecord\(session, \{ taskId, note, startedAt, endedAt \} = \{\}\)/)
+  assert.match(focusStore, /async updateRecord\(session, \{ taskId, habitId, note, startedAt, endedAt \} = \{\}\)/)
+  assert.match(focusStore, /payload\.habitId = habitId === null \? '' : habitId/)
   assert.match(focusStore, /payload\.taskId = taskId === null \? '' : taskId/)
   assert.match(focusStore, /payload\.startedAt = startedAt/)
   assert.match(focusStore, /payload\.endedAt = endedAt/)

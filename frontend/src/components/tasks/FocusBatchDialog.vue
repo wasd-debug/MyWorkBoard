@@ -67,7 +67,7 @@
                   <span class="focus-batch-clock" aria-hidden="true"><Timer :size="13" /></span>
                   <span class="focus-batch-row-main">
                     <span class="focus-batch-row-time">{{ timeRange(session) }}</span>
-                    <span class="focus-batch-row-title">{{ session.taskTitle || '未关联任务' }}</span>
+                    <span class="focus-batch-row-title">{{ focusTargetLabel(session) }}</span>
                   </span>
                   <span class="focus-batch-row-duration">{{ shortMinutes(session.actualMinutes) }}</span>
                 </button>
@@ -102,6 +102,7 @@ import FocusRecordDetail from './FocusRecordDetail.vue'
 import { apiListFocusSessions } from '../../../packages/api-client/src/index.js'
 import { useTaskFocusStore } from '../../stores/taskFocus.js'
 import { message } from '../../services/message.js'
+import { focusTargetLabel, isFocusLinked } from '../../utils/focusTarget.js'
 
 const props = defineProps({
   open: { type: Boolean, default: false }
@@ -202,8 +203,8 @@ const filtered = computed(() => {
     const minutes = Number(session.actualMinutes) || 0
     if (min && minutes < min) return false
     if (max !== Number.MAX_SAFE_INTEGER && minutes >= max) return false
-    if (linkFilter.value === 'linked' && !session.taskId) return false
-    if (linkFilter.value === 'unlinked' && session.taskId) return false
+    if (linkFilter.value === 'linked' && !isFocusLinked(session)) return false
+    if (linkFilter.value === 'unlinked' && isFocusLinked(session)) return false
     return true
   })
 })

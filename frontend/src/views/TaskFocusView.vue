@@ -170,7 +170,7 @@
                   <span class="focus-row-dot" aria-hidden="true"></span>
                   <div class="focus-row-main">
                     <span class="focus-row-time">{{ timeRange(session) }}</span>
-                    <span class="focus-row-task">{{ session.taskTitle || '未关联任务' }}<em v-if="session.note"> · {{ session.note }}</em></span>
+                    <span class="focus-row-task">{{ focusTargetLabel(session) }}<em v-if="session.note"> · {{ session.note }}</em></span>
                   </div>
                   <span class="focus-row-duration">{{ shortMinutes(session.actualMinutes) }}</span>
                 </li>
@@ -266,6 +266,7 @@ import { apiListFocusSessions } from '../../packages/api-client/src/index.js'
 import { useTaskFocusStore } from '../stores/taskFocus.js'
 import { useTasksStore } from '../stores/tasks.js'
 import { createFocusPreset } from '../utils/focusPresets.js'
+import { focusTargetLabel } from '../utils/focusTarget.js'
 import FocusTargetPicker from '../components/tasks/FocusTargetPicker.vue'
 import FocusRecordDialog from '../components/tasks/FocusRecordDialog.vue'
 import FocusBatchDialog from '../components/tasks/FocusBatchDialog.vue'
@@ -477,7 +478,7 @@ const activePreset = computed(() => focus.presets.find(item => item.id === activ
 const focusTarget = ref(null)
 const durationEditor = reactive({ open: false, minutes: 25 })
 
-const targetLabel = computed(() => focus.current?.taskTitle || focusTarget.value?.title || '专注')
+const targetLabel = computed(() => focusTargetLabel(focus.current, '') || focusTarget.value?.title || '专注')
 const canEditDuration = computed(() => !focus.current && mode.value !== 'STOPWATCH')
 
 function openDurationEditor() {
@@ -622,11 +623,12 @@ function savePreset() {
 
 async function startFocus() {
   if (focus.loading) return
-  // 选中的是任务/习惯时把 id 一并带上，记录里才能显示关联任务
-  const target = focusTarget.value && focusTarget.value.kind !== 'preset' ? focusTarget.value.id : undefined
+  // 选中的是任务或习惯时把对应的 id 带上，记录里才能显示关联对象（两者互斥）
+  const picked = focusTarget.value && focusTarget.value.kind !== 'preset' ? focusTarget.value : null
+  const link = picked ? (picked.kind === 'habit' ? { habitId: picked.id } : { taskId: picked.id }) : {}
   try {
     await focus.start({
-      ...(target ? { taskId: target } : {}),
+      ...link,
       plannedMinutes: mode.value === 'STOPWATCH' ? 0 : plannedMinutes.value
     })
     // 开始是用户手势，此时建立 AudioContext 才不会被浏览器拦
@@ -768,7 +770,7 @@ async function exportExcel() {
         [
           cell(new Date(session.startedAt).toLocaleString('zh-CN')),
           cell(session.endedAt ? new Date(session.endedAt).toLocaleString('zh-CN') : ''),
-          cell(session.taskTitle || '未关联任务'),
+          cell(focusTargetLabel(session)),
           cell(session.actualMinutes ?? 0, true),
           cell(session.status === 'COMPLETED' ? '已完成' : '已放弃'),
           cell(session.note || '')

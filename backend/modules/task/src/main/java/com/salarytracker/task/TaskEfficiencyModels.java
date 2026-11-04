@@ -19,22 +19,23 @@ public final class TaskEfficiencyModels {
                                        Integer longBreakInterval, Boolean autoStartBreak, Boolean autoStartNext) {
     }
 
+    /** 关联对象要么是任务（taskId/taskTitle），要么是习惯（habitId/habitTitle），不会同时有值。 */
     @Schema(name = "FocusSession")
-    public record FocusSession(String publicId, String taskId, String taskTitle, int plannedMinutes,
-                               int actualMinutes, String startedAt, String plannedEndAt, String endedAt,
-                               String status, String deviceLabel, String note, long revision) {
+    public record FocusSession(String publicId, String taskId, String taskTitle, String habitId, String habitTitle,
+                               int plannedMinutes, int actualMinutes, String startedAt, String plannedEndAt,
+                               String endedAt, String status, String deviceLabel, String note, long revision) {
     }
 
     /** 补记时可以直接给 startedAt / endedAt（ISO-8601），时长自动按差值算。 */
     @Schema(name = "FocusStartCommand")
-    public record FocusStartCommand(String taskId, Integer plannedMinutes, String deviceLabel, String requestedDate,
-                                    String startedAt, String endedAt, String note) {
+    public record FocusStartCommand(String taskId, String habitId, Integer plannedMinutes, String deviceLabel,
+                                    String requestedDate, String startedAt, String endedAt, String note) {
     }
 
-    /** 专注记录改「想法」「关联任务」或「起止时间」。
-     *  taskId 传空串表示解除关联，传 null 表示不改；startedAt / endedAt 同理，null 表示不改。 */
+    /** 专注记录改「想法」「关联任务/习惯」或「起止时间」。
+     *  taskId / habitId 传空串表示解除关联，传 null 表示不改；startedAt / endedAt 同理，null 表示不改。 */
     @Schema(name = "FocusSessionUpdateCommand")
-    public record FocusSessionUpdateCommand(String taskId, String note, String startedAt, String endedAt) {
+    public record FocusSessionUpdateCommand(String taskId, String habitId, String note, String startedAt, String endedAt) {
     }
 
     @Schema(name = "FocusFinishCommand")

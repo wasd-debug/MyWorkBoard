@@ -167,14 +167,15 @@ export const useTaskFocusStore = defineStore('task-focus', {
       }
       this.hasMore = false
     },
-    async start({ taskId, plannedMinutes, deviceLabel = 'Web' } = {}) {
+    async start({ taskId, habitId, plannedMinutes, deviceLabel = 'Web' } = {}) {
       this.loading = true
       this.error = ''
       try {
         this.current = await apiStartFocus({
           plannedMinutes: plannedMinutes ?? (this.settings?.focusMinutes || 25),
           deviceLabel,
-          ...(taskId ? { taskId } : {})
+          ...(taskId ? { taskId } : {}),
+          ...(habitId ? { habitId } : {})
         })
         this.now = Date.now()
         await this.reloadSessions()
@@ -200,13 +201,14 @@ export const useTaskFocusStore = defineStore('task-focus', {
     },
     async complete() { if (this.current && !this.loading) await this.finish('COMPLETED') },
     async abort() { await this.finish('ABORTED') },
-    /** 补记：给起止时间 + 任务 + 笔记 */
-    async createRecord({ taskId, startedAt, endedAt, note }) {
+    /** 补记：给起止时间 + 关联任务/习惯 + 笔记 */
+    async createRecord({ taskId, habitId, startedAt, endedAt, note }) {
       this.loading = true
       this.error = ''
       try {
         const created = await apiStartFocus({
           ...(taskId ? { taskId } : {}),
+          ...(habitId ? { habitId } : {}),
           startedAt,
           endedAt,
           note: note || '',
@@ -223,12 +225,14 @@ export const useTaskFocusStore = defineStore('task-focus', {
       }
     },
     /**
-     * 改记录的关联任务 / 想法 / 起止时间。
-     * taskId 传 undefined 表示不动；传 null 表示解除关联（后端约定空串才是解除，null 是不改）。
+     * 改记录的关联任务/习惯、想法、起止时间。
+     * taskId / habitId 传 undefined 表示不动；传 null 表示解除关联（后端约定空串才是解除，null 是不改）。
+     * 传了其中一个后端会把另一个清掉，一条记录只会关联一个对象。
      */
-    async updateRecord(session, { taskId, note, startedAt, endedAt } = {}) {
+    async updateRecord(session, { taskId, habitId, note, startedAt, endedAt } = {}) {
       const payload = {}
       if (taskId !== undefined) payload.taskId = taskId === null ? '' : taskId
+      if (habitId !== undefined) payload.habitId = habitId === null ? '' : habitId
       if (note !== undefined) payload.note = note
       if (startedAt) payload.startedAt = startedAt
       if (endedAt) payload.endedAt = endedAt

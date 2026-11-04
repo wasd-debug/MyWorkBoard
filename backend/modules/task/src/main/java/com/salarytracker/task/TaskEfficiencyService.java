@@ -94,15 +94,19 @@ public class TaskEfficiencyService {
         ZoneId zone = zone(userId);
         Instant start = parseDate(from, LocalDate.now(zone).minusDays(30)).atStartOfDay(zone).toInstant();
         Instant end = parseDate(to, LocalDate.now(zone).plusDays(1)).atStartOfDay(zone).toInstant();
-        return jdbc.query("SELECT f.*,t.public_id task_public_id,t.title task_title FROM focus_session f " +
-                        "LEFT JOIN task t ON t.id=f.task_id WHERE f.user_id=? AND f.started_at>=? AND f.started_at<? " +
+        return jdbc.query("SELECT f.*,t.public_id task_public_id,t.title task_title," +
+                        "h.public_id habit_public_id,h.name habit_title FROM focus_session f " +
+                        "LEFT JOIN task t ON t.id=f.task_id LEFT JOIN habit h ON h.id=f.habit_id " +
+                        "WHERE f.user_id=? AND f.started_at>=? AND f.started_at<? " +
                         "ORDER BY f.started_at DESC",
                 (row, index) -> focusSession(row), userId, Timestamp.from(start), Timestamp.from(end));
     }
 
     public FocusSession currentFocus() {
-        List<FocusSession> rows = jdbc.query("SELECT f.*,t.public_id task_public_id,t.title task_title FROM focus_session f " +
-                        "LEFT JOIN task t ON t.id=f.task_id WHERE f.user_id=? AND f.status='RUNNING'",
+        List<FocusSession> rows = jdbc.query("SELECT f.*,t.public_id task_public_id,t.title task_title," +
+                        "h.public_id habit_public_id,h.name habit_title FROM focus_session f " +
+                        "LEFT JOIN task t ON t.id=f.task_id LEFT JOIN habit h ON h.id=f.habit_id " +
+                        "WHERE f.user_id=? AND f.status='RUNNING'",
                 (row, index) -> focusSession(row), currentUser.id());
         return rows.isEmpty() ? null : rows.get(0);
     }
@@ -111,14 +115,19 @@ public class TaskEfficiencyService {
     public FocusSession startFocus(FocusStartCommand command, String idempotencyKey) {
         long userId = currentUser.id();
         String opKey = text(idempotencyKey, "Idempotency-Key", 120);
-        List<FocusSession> replay = jdbc.query("SELECT f.*,t.public_id task_public_id,t.title task_title FROM focus_session f " +
-                        "LEFT JOIN task t ON t.id=f.task_id WHERE f.user_id=? AND f.client_op_key=?",
+        List<FocusSession> replay = jdbc.query("SELECT f.*,t.public_id task_public_id,t.title task_title," +
+                        "h.public_id habit_public_id,h.name habit_title FROM focus_session f " +
+                        "LEFT JOIN task t ON t.id=f.task_id LEFT JOIN habit h ON h.id=f.habit_id " +
+                        "WHERE f.user_id=? AND f.client_op_key=?",
                 (row, index) -> focusSession(row), userId, opKey);
         if (!replay.isEmpty()) return replay.get(0);
         if (currentFocus() != null) throw new ConflictException("已有进行中的专注", currentFocus().revision());
         // plannedMinutes = 0 表示「正计时」：不设计划结束时间，由用户手动结束
         int planned = bounded(command == null ? null : command.plannedMinutes(), focusSettings().focusMinutes(), 0, 180, "专注时长");
         Long taskId = taskId(userId, command == null ? null : command.taskId());
+        // 任务和习惯同时传时以习惯为准，关联对象只会有一个
+        Long habitId = habitId(userId, command == null ? null : command.habitId());
+        if (habitId != null) taskId = null;
         String publicId = UUID.randomUUID().toString();
         ZoneId zone = zone(userId);
         String note = optional(command == null ? null : command.note(), 1000);
@@ -149,8 +158,8 @@ public class TaskEfficiencyService {
         String status = manual ? "COMPLETED" : "RUNNING";
         int actual = manual ? (explicit ? (int) Math.min(24 * 60L, explicitMinutes) : planned) : 0;
         try {
-            jdbc.update("INSERT INTO focus_session(public_id,user_id,task_id,planned_minutes,actual_minutes,started_at,ended_at,status,device_label,note,client_op_key) " +
-                            "VALUES(?,?,?,?,?,?,?,?,?,?,?)", publicId, userId, taskId, planned, actual,
+            jdbc.update("INSERT INTO focus_session(public_id,user_id,task_id,habit_id,planned_minutes,actual_minutes,started_at,ended_at,status,device_label,note,client_op_key) " +
+                            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", publicId, userId, taskId, habitId, planned, actual,
                     Timestamp.from(started), ended == null ? null : Timestamp.from(ended), status,
                     optional(command == null ? null : command.deviceLabel(), 120), note, opKey);
         } catch (DuplicateKeyException exception) {
@@ -197,12 +206,23 @@ public class TaskEfficiencyService {
         long expected = revision(ifMatch);
         if (before.revision() != expected) throw new ConflictException("专注记录版本已变化", before.revision());
         String note = command != null && command.note() != null ? optional(command.note(), 1000) : before.note();
+        // 关联对象要么任务要么习惯，改其中一个就把另一个清掉；不传（null）表示保持不动
         Long taskId;
+        Long habitId;
         String requestTask = command == null ? null : command.taskId();
-        if (requestTask == null) {
+        String requestHabit = command == null ? null : command.habitId();
+        if (requestTask == null && requestHabit == null) {
             taskId = before.taskId() == null || before.taskId().isBlank() ? null : taskId(userId, before.taskId());
+            habitId = before.habitId() == null || before.habitId().isBlank() ? null : habitId(userId, before.habitId());
+        } else if (requestHabit != null && !requestHabit.isBlank()) {
+            habitId = habitId(userId, requestHabit);
+            taskId = null;
+        } else if (requestTask != null && !requestTask.isBlank()) {
+            taskId = taskId(userId, requestTask);
+            habitId = null;
         } else {
-            taskId = requestTask.isBlank() ? null : taskId(userId, requestTask);
+            taskId = null;
+            habitId = null;
         }
         // 起止时间：没传就不动；传了就必须两个都合法，时长一律按差值重算
         boolean timeChanged = command != null && (command.startedAt() != null || command.endedAt() != null);
@@ -225,8 +245,8 @@ public class TaskEfficiencyService {
             planned = Math.min(180, actual);
             status = "COMPLETED";
         }
-        int changed = jdbc.update("UPDATE focus_session SET note=?,task_id=?,started_at=?,ended_at=?,actual_minutes=?,planned_minutes=?,status=?,revision=revision+1 " +
-                        "WHERE public_id=? AND user_id=? AND revision=?", note, taskId,
+        int changed = jdbc.update("UPDATE focus_session SET note=?,task_id=?,habit_id=?,started_at=?,ended_at=?,actual_minutes=?,planned_minutes=?,status=?,revision=revision+1 " +
+                        "WHERE public_id=? AND user_id=? AND revision=?", note, taskId, habitId,
                 Timestamp.from(started), ended == null ? null : Timestamp.from(ended), actual, planned, status, publicId, userId, expected);
         if (changed == 0) throw new ConflictException("专注记录版本已变化", before.revision());
         // 任务上的累计专注时长要跟着差额走，否则任务详情里的「专注时长」会和记录对不上
@@ -727,8 +747,10 @@ public class TaskEfficiencyService {
     }
 
     private FocusSession focusById(long userId, String publicId) {
-        List<FocusSession> rows = jdbc.query("SELECT f.*,t.public_id task_public_id,t.title task_title FROM focus_session f " +
-                        "LEFT JOIN task t ON t.id=f.task_id WHERE f.user_id=? AND f.public_id=?",
+        List<FocusSession> rows = jdbc.query("SELECT f.*,t.public_id task_public_id,t.title task_title," +
+                        "h.public_id habit_public_id,h.name habit_title FROM focus_session f " +
+                        "LEFT JOIN task t ON t.id=f.task_id LEFT JOIN habit h ON h.id=f.habit_id " +
+                        "WHERE f.user_id=? AND f.public_id=?",
                 (row, index) -> focusSession(row), userId, publicId);
         if (rows.isEmpty()) throw new NotFoundException("专注记录不存在");
         return rows.get(0);
@@ -737,6 +759,7 @@ public class TaskEfficiencyService {
     private FocusSession focusSession(ResultSet row) throws SQLException {
         Instant started = row.getTimestamp("started_at").toInstant();
         return new FocusSession(row.getString("public_id"), row.getString("task_public_id"), row.getString("task_title"),
+                row.getString("habit_public_id"), row.getString("habit_title"),
                 row.getInt("planned_minutes"), row.getInt("actual_minutes"), started.toString(),
                 row.getInt("planned_minutes") > 0 ? started.plusSeconds(row.getInt("planned_minutes") * 60L).toString() : null,
                 instant(row.getTimestamp("ended_at")),
@@ -1118,6 +1141,14 @@ public class TaskEfficiencyService {
         List<Long> rows = jdbc.query("SELECT id FROM task WHERE public_id=? AND user_id=? AND deleted=FALSE",
                 (row, index) -> row.getLong(1), publicId, userId);
         if (rows.isEmpty()) throw new IllegalArgumentException("关联任务不存在");
+        return rows.get(0);
+    }
+
+    private Long habitId(long userId, String publicId) {
+        if (publicId == null || publicId.isBlank()) return null;
+        List<Long> rows = jdbc.query("SELECT id FROM habit WHERE public_id=? AND user_id=? AND deleted_at IS NULL",
+                (row, index) -> row.getLong(1), publicId, userId);
+        if (rows.isEmpty()) throw new IllegalArgumentException("关联习惯不存在");
         return rows.get(0);
     }
 

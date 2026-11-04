@@ -8,10 +8,10 @@
         </header>
 
         <label class="focus-record-row">
-          <span class="focus-record-label">专注任务</span>
+          <span class="focus-record-label">专注对象</span>
           <div class="focus-record-control is-relative">
             <button type="button" class="focus-record-select" :class="{ 'is-empty': !target }" @click.stop="taskPickerOpen = !taskPickerOpen">
-              <span>{{ target?.title || '选择任务' }}</span>
+              <span>{{ target?.title || '选择任务或习惯' }}</span>
               <ChevronDown :size="15" />
             </button>
             <FocusTargetPicker v-if="taskPickerOpen" class="focus-record-picker" @pick="pickTarget" />
@@ -252,7 +252,8 @@ async function save() {
   error.value = ''
   try {
     await focus.createRecord({
-      ...(target.value && target.value.kind !== 'preset' ? { taskId: target.value.id } : {}),
+      ...(target.value && target.value.kind === 'habit' ? { habitId: target.value.id } : {}),
+      ...(target.value && target.value.kind === 'task' ? { taskId: target.value.id } : {}),
       startedAt: startAt.value,
       endedAt: endAt.value,
       note: note.value

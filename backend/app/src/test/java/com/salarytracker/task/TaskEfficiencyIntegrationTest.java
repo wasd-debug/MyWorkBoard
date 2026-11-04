@@ -5,6 +5,7 @@ import com.salarytracker.integration.MySqlIntegrationTestSupport;
 import com.salarytracker.platform.ConflictException;
 import com.salarytracker.task.TaskEfficiencyModels.CountdownCommand;
 import com.salarytracker.task.TaskEfficiencyModels.FocusFinishCommand;
+import com.salarytracker.task.TaskEfficiencyModels.FocusSessionUpdateCommand;
 import com.salarytracker.task.TaskEfficiencyModels.FocusStartCommand;
 import com.salarytracker.task.TaskEfficiencyModels.HabitCheckinCommand;
 import com.salarytracker.task.TaskEfficiencyModels.HabitCommand;
@@ -12,6 +13,7 @@ import com.salarytracker.task.TaskModels.TaskCommand;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -32,10 +34,10 @@ class TaskEfficiencyIntegrationTest extends MySqlIntegrationTestSupport {
                 false, "Asia/Shanghai", null), "task-focus").publicId();
         TaskEfficiencyService service = efficiency(userId);
 
-        var started = service.startFocus(new FocusStartCommand(taskId, 25, "test", null, null, null, null), "focus-1");
+        var started = service.startFocus(new FocusStartCommand(taskId, null, 25, "test", null, null, null, null), "focus-1");
         assertEquals(started.publicId(), service.currentFocus().publicId());
         assertThrows(ConflictException.class,
-                () -> service.startFocus(new FocusStartCommand(null, 25, "test", null, null, null, null), "focus-2"));
+                () -> service.startFocus(new FocusStartCommand(null, null, 25, "test", null, null, null, null), "focus-2"));
         jdbc.update("UPDATE focus_session SET started_at=DATE_SUB(started_at, INTERVAL 5 MINUTE) WHERE public_id=?",
                 started.publicId());
         var completed = service.finishFocus(started.publicId(), new FocusFinishCommand("COMPLETED"), "1");
@@ -46,6 +48,38 @@ class TaskEfficiencyIntegrationTest extends MySqlIntegrationTestSupport {
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM work_record WHERE user_id=?", Integer.class, userId));
         assertThrows(ConflictException.class,
                 () -> service.finishFocus(started.publicId(), new FocusFinishCommand("ABORTED"), "1"));
+    }
+
+    @Test
+    void focusCanBeLinkedToHabitInsteadOfTask() {
+        long userId = createUser();
+        TaskService tasks = tasks(userId);
+        TaskEfficiencyService service = efficiency(userId);
+        LocalDate today = LocalDate.now();
+        var habit = service.createHabit(new HabitCommand("运动", "run", "#3d8fce", "DAILY", 1,
+                List.of(), null, today.toString(), false, 0, "other", null, "CHECK", "CHECK",
+                1, false, "", 2, "AUTO", 1, true));
+
+        // 补记形态（显式起止时间）一次就是已完成，正好验证习惯关联
+        Instant start = Instant.now().minusSeconds(1500);
+        Instant end = Instant.now().minusSeconds(60);
+        var session = service.startFocus(new FocusStartCommand(null, habit.publicId(), 25, "test",
+                null, start.toString(), end.toString(), ""), "focus-habit");
+        assertEquals("COMPLETED", session.status());
+        assertEquals(habit.publicId(), session.habitId());
+        assertEquals("运动", session.habitTitle());
+        assertNull(session.taskId());
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM focus_session WHERE user_id=? AND habit_id IS NOT NULL",
+                Integer.class, userId));
+
+        // 改挂到任务上时习惯关联要一起清掉，两个关联不会同时存在
+        String taskId = tasks.create(new TaskCommand(null, "改挂任务", "", "NONE", null, null,
+                false, "Asia/Shanghai", null), "task-focus-relink").publicId();
+        var relinked = service.updateFocus(session.publicId(),
+                new FocusSessionUpdateCommand(taskId, null, null, null, null), "1");
+        assertEquals(taskId, relinked.taskId());
+        assertNull(relinked.habitId());
+        assertNull(relinked.habitTitle());
     }
 
     @Test

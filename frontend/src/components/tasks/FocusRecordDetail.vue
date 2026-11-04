@@ -17,15 +17,15 @@
       >
         <header class="focus-detail-head">
           <span class="focus-detail-icon" aria-hidden="true"><Timer :size="15" /></span>
-          <button type="button" class="focus-detail-task" :class="{ 'is-empty': !session.taskTitle }" @click="togglePicker">
-            {{ session.taskTitle || '未关联任务' }}
+          <button type="button" class="focus-detail-task" :class="{ 'is-empty': !focusTargetLabel(session, '') }" @click="togglePicker">
+            {{ focusTargetLabel(session) }}
           </button>
           <button
             type="button"
             class="focus-detail-link"
             :class="{ on: pickerOpen }"
-            aria-label="关联任务"
-            title="关联任务"
+            aria-label="关联任务或习惯"
+            title="关联任务或习惯"
             :aria-expanded="pickerOpen"
             @click="togglePicker"
           >
@@ -34,7 +34,7 @@
           <button v-if="isModal" type="button" class="focus-detail-close" aria-label="关闭" @click="emit('close')"><X :size="16" /></button>
         </header>
 
-        <FocusTargetPicker v-if="pickerOpen" class="focus-detail-picker" :selected-id="session.taskId || ''" @pick="relink" />
+        <FocusTargetPicker v-if="pickerOpen" class="focus-detail-picker" :selected-id="focusTargetId(session)" @pick="relink" />
 
         <div class="focus-detail-time">
           <span class="focus-detail-label">开始</span>
@@ -75,6 +75,7 @@ import FocusTargetPicker from './FocusTargetPicker.vue'
 import FocusDateTimeField from './FocusDateTimeField.vue'
 import { useTaskFocusStore } from '../../stores/taskFocus.js'
 import { message } from '../../services/message.js'
+import { focusTargetId, focusTargetLabel } from '../../utils/focusTarget.js'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -217,16 +218,19 @@ function currentPayload() {
 async function relink(item) {
   if (!props.session) return
   pickerOpen.value = false
-  const taskId = item.kind === 'preset' ? null : item.id
+  // 任务与习惯互斥：选习惯就传 habitId，选「常用专注」等于解除关联
+  const link = item.kind === 'preset'
+    ? { taskId: null, habitId: null }
+    : (item.kind === 'habit' ? { habitId: item.id } : { taskId: item.id })
   try {
-    const updated = await focus.updateRecord(props.session, { taskId, ...currentPayload() })
+    const updated = await focus.updateRecord(props.session, { ...link, ...currentPayload() })
     emit('saved', updated)
     if (!isModal.value) {
       await nextTick()
       place()
     }
   } catch (cause) {
-    error.value = cause?.response?.data?.detail || '关联任务失败'
+    error.value = cause?.response?.data?.detail || '关联失败'
   }
 }
 

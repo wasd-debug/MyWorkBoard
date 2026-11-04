@@ -108,7 +108,7 @@
         <ul v-else class="fs-records">
           <li v-for="session in focus.sessions.slice(0, 20)" :key="session.publicId">
             <span>{{ formatDate(session.startedAt) }}</span>
-            <b>{{ session.taskTitle || '未关联任务' }}</b>
+            <b>{{ focusTargetLabel(session) }}</b>
             <em>{{ shortMinutes(session.actualMinutes) }}</em>
           </li>
         </ul>
@@ -123,6 +123,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import LedgerReportChart from '../components/ledger/LedgerReportChart.vue'
 import { useTaskFocusStore } from '../stores/taskFocus.js'
 import { useTasksStore } from '../stores/tasks.js'
+import { focusTargetLabel } from '../utils/focusTarget.js'
 
 const focus = useTaskFocusStore()
 const tasksStore = useTasksStore()
