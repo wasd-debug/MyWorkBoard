@@ -310,7 +310,7 @@
       </div>
       <div class="clone-quick-add-anchor">
       <div v-if="!isTrashRoute && !isCompletionRoute && !isSearchRoute" class="clone-quick-add" :class="{ 'is-simple': quickInputMode === 'SIMPLE', 'is-collapsed': !quickAddExpanded }">
-        <button v-if="!quickAddExpanded" type="button" class="clone-quick-add-collapsed" @click="expandQuickAdd"><Plus :size="17" /><span>添加任务至“{{ title === '今天' ? '收集箱' : title }}”</span></button>
+        <button v-if="!quickAddExpanded" type="button" class="clone-quick-add-collapsed" @click="expandQuickAdd"><Plus :size="17" /><span>添加{{ itemNoun }}至“{{ title === '今天' ? '收集箱' : title }}”</span></button>
         <form v-else class="clone-quick-add-form" @submit.prevent="quickAdd">
           <div class="clone-quick-title-row">
             <Repeat2 v-if="quickRepeatRuleActive" class="clone-quick-repeat-badge" :size="14" />
@@ -318,7 +318,7 @@
               ref="quickTitleInput"
               v-model="quickTitle"
               aria-label="快速添加任务标题"
-              placeholder="准备做什么？"
+              :placeholder="isNoteListView ? '写点什么…' : '准备做什么？'"
               @input="updateQuickSuggestion"
               @keydown="handleQuickSuggestionKeydown"
             />
@@ -563,7 +563,7 @@
           <button type="button" :disabled="resolvingTaskConflict" @click="resolveTaskConflict(conflict, 'server')">采用服务端</button>
         </div>
       </div>
-      <div v-if="activeWorkspaceView === 'LIST' && !isSearchRoute" class="clone-list-toolbar"><span>{{ selectedIds.size ? `已选 ${selectedIds.size} 项` : `${visibleTasks.length} 项任务` }}</span></div>
+      <div v-if="activeWorkspaceView === 'LIST' && !isSearchRoute" class="clone-list-toolbar"><span>{{ selectedIds.size ? `已选 ${selectedIds.size} ${itemUnit}` : `${visibleTasks.length} ${itemUnit}${itemNoun}` }}</span></div>
       <div v-if="activeWorkspaceView === 'KANBAN'" class="clone-inline-board" aria-label="任务看板">
         <section v-for="group in groups" :key="group.key" class="clone-inline-board-column">
           <header class="clone-inline-board-column-head"><div><strong>{{ group.label }}</strong><small>{{ group.tasks.length }}</small></div><button type="button" :aria-label="`在${group.label}添加任务`" :title="`在${group.label}添加任务`" @click="openBoardQuickAdd(group)"><Plus :size="17" /></button></header>
@@ -637,9 +637,9 @@
         </div></div>
       </section>
       <div v-if="!visibleTasks.length && !todayHabits.length && !completedTasks.length && !searchHabits.length && !searchCountdowns.length" class="clone-empty-state">
-        <Inbox :size="28" /><strong>{{ isSearchRoute ? '没有匹配的内容' : isTrashRoute ? "垃圾桶是空的" : title === "今天" ? "今天没有安排" : "这里还没有任务" }}</strong>
+        <Inbox :size="28" /><strong>{{ isSearchRoute ? '没有匹配的内容' : isTrashRoute ? "垃圾桶是空的" : title === "今天" ? "今天没有安排" : `这里还没有${itemNoun}` }}</strong>
         <span v-if="isSearchRoute">换个关键词，或在右上角调整筛选条件</span>
-        <span v-else-if="!isTrashRoute && title !== '今天'">使用上方输入框快速创建第一项任务</span>
+        <span v-else-if="!isTrashRoute && title !== '今天'">使用上方输入框快速创建第一{{ isNoteListView ? '篇笔记' : '项任务' }}</span>
       </div>
       <div v-else class="clone-task-groups">
         <section
@@ -864,8 +864,8 @@
       </header>
       <div v-if="!selectedTask && !editorOpen" class="clone-detail-empty">
         <span class="clone-detail-empty-icon">✦</span>
-        <strong>选择一个任务</strong>
-        <p>任务详情、检查项和活动记录会显示在这里</p>
+        <strong>{{ isNoteListView ? '选择一篇笔记' : '选择一个任务' }}</strong>
+        <p>{{ isNoteListView ? '笔记内容、标签和活动记录会显示在这里' : '任务详情、检查项和活动记录会显示在这里' }}</p>
       </div>
       <form
         v-else-if="editorOpen"
@@ -2583,6 +2583,11 @@ const currentTaskList = computed(() => route.name === "tasks-list"
   ? store.lists.find(item => item.publicId === route.params.publicId) || null
   : null);
 const isOrdinaryTaskListView = computed(() => Boolean(currentTaskList.value && currentTaskList.value.objectType !== "NOTE"));
+/** 当前打开的是笔记清单：清单内的量词/动词要说「笔记」而不是「任务」 */
+const isNoteListView = computed(() => currentTaskList.value?.objectType === "NOTE");
+/** 笔记清单里「篇」，任务清单里「项」 */
+const itemUnit = computed(() => (isNoteListView.value ? "篇" : "项"));
+const itemNoun = computed(() => (isNoteListView.value ? "笔记" : "任务"));
 const showChecklistMenuItem = computed(() => route.name === "tasks-filter");
 const calendarDate = computed(() => {
   const match = String(route.query.date || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);

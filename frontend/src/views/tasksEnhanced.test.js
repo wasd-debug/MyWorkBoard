@@ -1568,3 +1568,20 @@ test('专注记录详情浮层与批量管理弹窗共用同一组件，可改�
   // 量尺寸要量内层面板，外层定位壳宽度恒等于视口
   assert.match(field, /const box = pop\.firstElementChild \|\| pop/)
 })
+
+test('笔记清单里的量词与动词用「笔记」而不是「任务」', () => {
+  // 清单类型来自当前路由对应的清单，不是全局开关
+  assert.match(workspaceView, /const isNoteListView = computed\(\(\) => currentTaskList\.value\?\.objectType === "NOTE"\)/)
+  assert.match(workspaceView, /const itemUnit = computed\(\(\) => \(isNoteListView\.value \? "篇" : "项"\)\)/)
+  assert.match(workspaceView, /const itemNoun = computed\(\(\) => \(isNoteListView\.value \? "笔记" : "任务"\)\)/)
+  // 三处入口文案：快捷添加按钮、列表计数、详情空状态
+  assert.match(workspaceView, /<span>添加\{\{ itemNoun \}\}至“/)
+  assert.match(workspaceView, /\$\{visibleTasks\.length\} \$\{itemUnit\}\$\{itemNoun\}/)
+  assert.match(workspaceView, /isNoteListView \? '选择一篇笔记' : '选择一个任务'/)
+  // 输入框占位与空列表提示也跟着变
+  assert.match(workspaceView, /:placeholder="isNoteListView \? '写点什么…' : '准备做什么？'"/)
+  assert.match(workspaceView, /这里还没有\$\{itemNoun\}/)
+  assert.match(workspaceView, /快速创建第一\{\{ isNoteListView \? '篇笔记' : '项任务' \}\}/)
+  // 任务清单不能被写死成笔记口径
+  assert.doesNotMatch(workspaceView, /<span>添加笔记至“/)
+})
