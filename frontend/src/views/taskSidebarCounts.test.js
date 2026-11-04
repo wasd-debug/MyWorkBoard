@@ -59,3 +59,21 @@ test("aggregates open tasks by folder while excluding completed, abandoned, and 
   assert.equal(counts.openByGroup.get("folder"), 2);
   assert.equal(counts.openByGroup.has("missing-folder"), false);
 });
+
+test("时间段任务覆盖今天时计入今天与摘要，跨到明天时也计入明天", () => {
+  const now = new Date(2026, 9, 21, 14);
+  const counts = buildTaskSidebarCounts([
+    {
+      publicId: "span",
+      listId: "inbox",
+      startAt: new Date(2026, 9, 20, 9).toISOString(),
+      dueAt: new Date(2026, 9, 22, 18).toISOString(),
+      tagIds: [],
+    },
+  ], [], "inbox", now);
+
+  assert.equal(counts.counts.today, 1);
+  assert.equal(counts.counts.tomorrow, 1);
+  assert.equal(counts.counts.next7, 1);
+  assert.equal(counts.counts.summary, 1);
+});

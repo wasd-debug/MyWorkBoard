@@ -1594,10 +1594,11 @@ import {
   searchCriteriaFromQuery,
   searchCriteriaToQuery,
 } from "../components/tasks/taskSearch.js";
-import { daysUntil, effectiveTarget } from "../components/countdowns/countdownUtils.js";
+import { daysUntil, effectiveTarget, parseKey } from "../components/countdowns/countdownUtils.js";
 import { openTaskSearch } from "../utils/searchBus.js";
 import { useSettings } from "../components/settings/useSettings.js";
 import { playCompleteSound } from "../utils/completeSound.js";
+import { taskHitsDay, taskOverlapsKeys, taskRange } from "../utils/taskDates.js";
 import { useTaskFocusStore } from "../stores/taskFocus.js";
 import { message } from "../services/message.js";
 import {
@@ -2605,7 +2606,24 @@ const miniCalendarDays = computed(() => {
   const lunarByDate = new Map((miniCalendarResponse.value.lunar || []).map(item => [item.date, item]));
   const holidayByDate = new Map((miniCalendarResponse.value.holidays || []).map(item => [item.date, item]));
   const taskById = new Map([...store.tasks, ...(miniCalendarResponse.value.tasks || [])].map(task => [task.publicId, task]));
-  const taskDates = new Set([...taskById.values()].filter(task => !task.deleted && task.status !== "COMPLETED").flatMap(task => [task.startAt, task.dueAt].filter(Boolean).map(value => dateKey(new Date(value)))));
+  const taskDates = new Set();
+  for (const task of taskById.values()) {
+    if (task.deleted || task.status === "COMPLETED") continue;
+    const range = taskRange(task);
+    if (!range) {
+      if (task.dueAt) taskDates.add(dateKey(new Date(task.dueAt)));
+      continue;
+    }
+    // 时间段任务：区间内的每一天都标成「有任务」，不只是首尾两天
+    const cursor = new Date(range.start);
+    cursor.setHours(0, 0, 0, 0);
+    const last = new Date(range.end);
+    last.setHours(0, 0, 0, 0);
+    for (let guard = 0; cursor <= last && guard < 400; guard += 1) {
+      taskDates.add(dateKey(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  }
   return Array.from({ length: 42 }, (_, index) => {
     const date = addDays(miniCalendarRange.value.from, index);
     const key = dateKey(date);
@@ -2705,21 +2723,22 @@ const visibleTasks = computed(() => {
     values = values.filter((task) => task.listId === store.inbox?.publicId);
   else if (route.name === "tasks-today") {
     const dayStart = calendarDate.value ? startOfDay(calendarDate.value) : today;
-    values = values.filter((task) => inRange(task.dueAt, dayStart, addDays(dayStart, 1)));
+    // 时间段任务在区间内的每一天都算今天的安排，而不是只在结束那天出现
+    values = values.filter((task) => taskHitsDay(task, dayStart, addDays(dayStart, 1)));
   }
   else if (route.name === "tasks-tomorrow")
     values = values.filter((task) =>
-      inRange(task.dueAt, tomorrow, addDays(tomorrow, 1)),
+      taskHitsDay(task, tomorrow, addDays(tomorrow, 1)),
     );
   else if (route.name === "tasks-next7")
-    values = values.filter((task) => inRange(task.dueAt, today, end));
+    values = values.filter((task) => taskHitsDay(task, today, end));
   else if (route.name === "tasks-shortcut") {
     const shortcut = route.params.shortcut;
     const archivedIds = new Set(archivedLists.value.map(list => list.publicId));
     values = values.filter(task => shortcut === "assigned"
       ? false
       : shortcut === "summary"
-        ? task.status !== "COMPLETED" && task.dueAt && new Date(task.dueAt) < tomorrow
+        ? task.status !== "COMPLETED" && (taskHitsDay(task, today, tomorrow) || (task.dueAt && new Date(task.dueAt) < tomorrow))
         : shortcut === "archived"
           ? archivedIds.has(task.listId)
           : false);
@@ -3008,9 +3027,6 @@ function addDays(date, days) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
-}
-function inRange(value, start, end) {
-  return value && new Date(value) >= start && new Date(value) < end;
 }
 function formatDate(value) {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -7398,22 +7414,33 @@ function matchesFilterDraft(task, filter) {
   if (filter.keyword && !`${task.title} ${task.description || ""}`.toLocaleLowerCase().includes(filter.keyword.toLocaleLowerCase())) return false;
   const dueDate = task.dueAt ? new Date(task.dueAt) : null, today = new Date(); today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  const range = taskRange(task);
   if (filter.dueRange === "NONE" && dueDate) return false;
   if (filter.dueRange === "REPEATING" && !task.rrule) return false;
-  if (filter.dueRange === "CUSTOM" && (!dueDate || !filter.dueStart || !filter.dueEnd || dateKey(dueDate) < filter.dueStart || dateKey(dueDate) > filter.dueEnd)) return false;
+  if (filter.dueRange === "CUSTOM" && (!dueDate || !filter.dueStart || !filter.dueEnd || !taskOverlapsKeys(task, filter.dueStart, filter.dueEnd, parseKey))) return false;
   if (["TODAY", "TOMORROW", "NEXT7", "OVERDUE", "THIS_WEEK", "NEXT_WEEK", "THIS_MONTH", "NEXT_MONTH"].includes(filter.dueRange)) {
     if (!dueDate) return false;
-    const day = new Date(dueDate); day.setHours(0, 0, 0, 0);
-    if (filter.dueRange === "TODAY" && day.getTime() !== today.getTime()) return false;
-    if (filter.dueRange === "TOMORROW" && day.getTime() !== tomorrow.getTime()) return false;
-    if (filter.dueRange === "NEXT7" && !(day >= today && day < new Date(today.getTime() + 8 * 86400000))) return false;
-    if (filter.dueRange === "OVERDUE" && !(day < today && task.status === "OPEN")) return false;
+    // 时间段任务只要区间和筛选窗口有交集就算命中（今天/明天/本周等都是按「这天有没有安排」算）
     const weekStart = new Date(today); weekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7));
     const nextWeek = new Date(weekStart); nextWeek.setDate(nextWeek.getDate() + 7);
-    if (filter.dueRange === "THIS_WEEK" && !(day >= weekStart && day < nextWeek)) return false;
-    if (filter.dueRange === "NEXT_WEEK" && !(day >= nextWeek && day < new Date(nextWeek.getTime() + 7 * 86400000))) return false;
-    if (filter.dueRange === "THIS_MONTH" && (day.getMonth() !== today.getMonth() || day.getFullYear() !== today.getFullYear())) return false;
-    if (filter.dueRange === "NEXT_MONTH") { const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1); if (day.getMonth() !== nextMonth.getMonth() || day.getFullYear() !== nextMonth.getFullYear()) return false; }
+    const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const windows = {
+      TODAY: [today, tomorrow],
+      TOMORROW: [tomorrow, addDays(tomorrow, 1)],
+      NEXT7: [today, new Date(today.getTime() + 8 * 86400000)],
+      THIS_WEEK: [weekStart, nextWeek],
+      NEXT_WEEK: [nextWeek, new Date(nextWeek.getTime() + 7 * 86400000)],
+      THIS_MONTH: [new Date(today.getFullYear(), today.getMonth(), 1), nextMonth],
+      NEXT_MONTH: [nextMonth, new Date(today.getFullYear(), today.getMonth() + 2, 1)],
+    };
+    if (filter.dueRange === "OVERDUE") {
+      // 只有整段都结束了才算过期，跨到今天的区间不算
+      const endedAt = range ? range.end : dueDate;
+      if (!(endedAt < today && task.status === "OPEN")) return false;
+    } else {
+      const window = windows[filter.dueRange];
+      if (window && !taskHitsDay(task, window[0], window[1])) return false;
+    }
   }
   return true;
 }

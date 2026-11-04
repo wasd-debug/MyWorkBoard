@@ -117,3 +117,16 @@ test('taskGroupDropPatch assigns stable local dates for time groups', () => {
   assert.equal(new Date(taskGroupDropPatch(task, 'time', 'later', now).dueAt).getDate(), 25)
   assert.equal(new Date(taskGroupDropPatch(task, 'time', 'overdue', now).dueAt).getDate(), 23)
 })
+
+test('时间段任务覆盖今天时归到「今天」分组，而不是「之后」', () => {
+  const tasks = [
+    { publicId: 'span', startAt: new Date(2026, 9, 18, 9).toISOString(), dueAt: new Date(2026, 9, 23, 18).toISOString() },
+    { publicId: 'later', dueAt: new Date(2026, 9, 25, 9).toISOString() },
+    { publicId: 'ended', startAt: new Date(2026, 9, 10, 9).toISOString(), dueAt: new Date(2026, 9, 12, 18).toISOString() },
+  ]
+
+  assert.deepEqual(
+    groupTaskItems(tasks, 'time', [], today).map((group) => [group.key, group.tasks.map((task) => task.publicId)]),
+    [['overdue', ['ended']], ['today', ['span']], ['later', ['later']]],
+  )
+})

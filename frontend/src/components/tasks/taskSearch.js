@@ -2,6 +2,7 @@
 // 日期一律按本地时区的 yyyy-MM-dd 判定，不用 toISOString（东八区早 8 点前会跨天）
 
 import { dateKey, effectiveTarget, parseKey, todayKey } from '../countdowns/countdownUtils.js'
+import { taskOverlapsKeys } from '../../utils/taskDates.js'
 
 /** 弹窗顶部页签：点哪个就搜哪类对象 */
 export const SEARCH_SCOPES = [
@@ -216,12 +217,6 @@ function countdownHaystack(item) {
   return normalizeText([countdownTitle(item), item?.note, item?.remark].join(' '))
 }
 
-function dueDateKey(task) {
-  if (!task?.dueAt) return ''
-  const date = new Date(task.dueAt)
-  return Number.isNaN(date.getTime()) ? '' : dateKey(date)
-}
-
 /** 任务是否命中条件 */
 export function matchTask(task, criteria = {}, context = {}) {
   if (!task || task.deleted) return false
@@ -244,8 +239,8 @@ export function matchTask(task, criteria = {}, context = {}) {
 
   const range = dateRangeFor(value.date, context.today, value.start, value.end)
   if (range) {
-    const key = dueDateKey(task)
-    if (!key || key < range.start || key > range.end) return false
+    // 时间段任务只要和筛选日期有交集就算命中，不再只看结束日
+    if (!taskOverlapsKeys(task, range.start, range.end, parseKey)) return false
   }
   return true
 }

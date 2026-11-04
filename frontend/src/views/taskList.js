@@ -1,3 +1,5 @@
+import { taskHitsDay, taskRange } from '../utils/taskDates.js'
+
 export function sortTaskItems(tasks, { sortBy = 'time', direction = 'asc' } = {}) {
   if (sortBy === 'manual') return [...tasks]
 
@@ -81,8 +83,19 @@ export function groupTaskItems(tasks, groupBy, lists, today = new Date(), tags =
   ]
 
   for (const task of tasks) {
-    if (!task.dueAt) result[3].tasks.push(task)
-    else if (new Date(task.dueAt) < start) result[0].tasks.push(task)
+    const range = taskRange(task)
+    if (!task.dueAt && !range) {
+      result[3].tasks.push(task)
+      continue
+    }
+    // 时间段任务：整段区间都还没到 → 之后；覆盖今天 → 今天；已经结束 → 逾期
+    if (range) {
+      if (range.end < start) result[0].tasks.push(task)
+      else if (taskHitsDay(task, start, tomorrow)) result[1].tasks.push(task)
+      else result[2].tasks.push(task)
+      continue
+    }
+    if (new Date(task.dueAt) < start) result[0].tasks.push(task)
     else if (new Date(task.dueAt) < tomorrow) result[1].tasks.push(task)
     else result[2].tasks.push(task)
   }

@@ -1,3 +1,5 @@
+import { taskHitsDay, taskRange } from '../utils/taskDates.js'
+
 /** 四象限：规则匹配、分组、排序与偏好持久化（纯函数，便于单测） */
 
 export const QUADRANT_DEFS = [
@@ -86,10 +88,20 @@ export function dateBucket(task, now = new Date()) {
   if (!due) return 'NONE'
   const today = startOfDay(now)
   const tomorrow = new Date(today.getTime() + 86400000)
+  const dayAfter = new Date(tomorrow.getTime() + 86400000)
   const weekEnd = new Date(today.getTime() + (7 - ((today.getDay() + 6) % 7)) * 86400000)
+  const range = taskRange(task)
+  // 时间段任务按「今天有没有安排」归档，避免跨到今天的还落在「以后」
+  if (range) {
+    if (range.end < today) return 'OVERDUE'
+    if (taskHitsDay(task, today, tomorrow)) return 'TODAY'
+    if (taskHitsDay(task, tomorrow, dayAfter)) return 'TOMORROW'
+    if (range.start < weekEnd) return 'THIS_WEEK'
+    return 'LATER'
+  }
   if (due < today) return 'OVERDUE'
   if (due >= today && due < tomorrow) return 'TODAY'
-  if (due >= tomorrow && due < new Date(tomorrow.getTime() + 86400000)) return 'TOMORROW'
+  if (due >= tomorrow && due < dayAfter) return 'TOMORROW'
   if (due < weekEnd) return 'THIS_WEEK'
   return 'LATER'
 }

@@ -1,3 +1,5 @@
+import { taskHitsDay } from '../utils/taskDates.js'
+
 const OPEN_EXCLUDED_STATUSES = new Set(["COMPLETED", "ABANDONED"]);
 
 function startOfDay(value) {
@@ -10,10 +12,6 @@ function addDays(value, days) {
   const date = new Date(value);
   date.setDate(date.getDate() + days);
   return date;
-}
-
-function inRange(value, start, end) {
-  return value && new Date(value) >= start && new Date(value) < end;
 }
 
 export function buildTaskSidebarCounts(tasks, archivedListIds, inboxId, groupByList = new Map(), now = new Date()) {
@@ -54,10 +52,12 @@ export function buildTaskSidebarCounts(tasks, archivedListIds, inboxId, groupByL
     }
     for (const tagId of task.tagIds || []) openByTag.set(tagId, (openByTag.get(tagId) || 0) + 1);
     if (task.dueAt) {
-      if (new Date(task.dueAt) < tomorrow) counts.summary += 1;
-      if (inRange(task.dueAt, today, tomorrow)) counts.today += 1;
-      if (inRange(task.dueAt, tomorrow, addDays(tomorrow, 1))) counts.tomorrow += 1;
-      if (inRange(task.dueAt, today, addDays(today, 8))) counts.next7 += 1;
+      const todayHit = taskHitsDay(task, today, tomorrow);
+      if (new Date(task.dueAt) < tomorrow || todayHit) counts.summary += 1;
+      // 时间段任务：区间覆盖今天/明天/未来 7 天的每一天都各算一次
+      if (todayHit) counts.today += 1;
+      if (taskHitsDay(task, tomorrow, addDays(tomorrow, 1))) counts.tomorrow += 1;
+      if (taskHitsDay(task, today, addDays(today, 8))) counts.next7 += 1;
     }
     if (task.listId === inboxId) counts.inbox += 1;
   }
