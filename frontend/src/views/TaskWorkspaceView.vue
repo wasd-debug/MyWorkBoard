@@ -8145,7 +8145,7 @@ const SidebarSection = {
 .clone-drag-placeholder { min-height: 28px; border: 1px dashed color-mix(in srgb, var(--accent) 62%, var(--line)); background: color-mix(in srgb, var(--accent) 7%, var(--card)); color: var(--muted); pointer-events: none; }
 .clone-list-group { display: grid; min-width: 0; gap: 2px; }
 .clone-list-group-heading { position: relative; display: flex; align-items: center; gap: 0; min-height: 28px; padding: 0 8px 0 10px; color: var(--muted); font-size: 10px; font-weight: 600; }
-.clone-group-navigation > span:not(.clone-group-toggle) { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clone-group-navigation > span:not(.clone-group-toggle):not(.clone-list-group-icon) { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clone-list-group-heading button { display: grid; width: 22px; height: 22px; place-items: center; border: 0; border-radius: 0; background: transparent; color: var(--muted); cursor: pointer; }
 .clone-list-group-heading button:hover, .clone-item-menu-trigger:hover, .clone-sidebar-object-row > .clone-item-menu-trigger:hover { background: transparent; color: var(--ink); }
 .clone-list-group-heading .clone-list-group-icon { display: inline-grid; flex: none; width: 16px; height: 16px; place-items: center; font-size: 14px; line-height: 1; }

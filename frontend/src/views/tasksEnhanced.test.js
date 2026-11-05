@@ -1086,7 +1086,9 @@ test('task sidebar uses one scroll region and keeps the mini calendar fixed at t
   assert.match(workspaceView, /\.clone-item-menu-trigger:hover, \.clone-sidebar-object-row > \.clone-item-menu-trigger:hover \{ background: transparent/)
   assert.match(workspaceView, /\.clone-group-lists \{ padding-left: 16px; \}/)
   assert.match(workspaceView, /\.clone-list-group-heading \.clone-list-group-icon \{ display: inline-grid; flex: none; width: 16px; height: 16px/)
-  assert.match(workspaceView, /\.clone-group-navigation > span:not\(\.clone-group-toggle\) \{ min-width: 0; flex: 1;/)
+  // 图标 span 必须是独立定宽，不能被下面「名字撑满」的规则一起选中：否则 emoji 图标会被 flex:1 拉宽 80 多像素，把分组名挤走
+  assert.match(workspaceView, /\.clone-group-navigation > span:not\(\.clone-group-toggle\):not\(\.clone-list-group-icon\) \{ min-width: 0; flex: 1;/)
+  assert.doesNotMatch(workspaceView, /\.clone-group-navigation > span:not\(\.clone-group-toggle\) \{/)
   assert.doesNotMatch(workspaceView, /\.clone-list-group-heading span \{ min-width: 0; flex: 1;/)
   assert.match(workspaceView, /\.clone-group-navigation \.clone-list-group-icon \{ margin-left: -5px; color: inherit; \}/)
   assert.match(workspaceView, /aria-label="选择文件夹图标"/)
