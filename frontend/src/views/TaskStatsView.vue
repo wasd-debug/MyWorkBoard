@@ -319,9 +319,9 @@
                 <button type="button" aria-label="下一年" @click="shiftYear(1)"><ChevronRight :size="12" /></button>
               </span>
             </h2>
-            <div class="ts-heat">
-              <div class="ts-heat-months" :style="{ gridTemplateColumns: `repeat(${heatWeeks.length || 1}, 13px)` }">
-                <b v-for="cell in heatMonths" :key="cell.column" :style="{ gridColumn: cell.column + 1 }">{{ cell.label }}</b>
+            <div class="ts-heat" :style="{ '--weeks': heatWeeks.length || 53 }">
+              <div class="ts-heat-months">
+                <b v-for="(slot, index) in heatMonthSlots" :key="index">{{ slot }}</b>
               </div>
               <div class="ts-heat-body">
                 <div v-for="(week, index) in heatWeeks" :key="index" class="ts-heat-week">
@@ -745,18 +745,20 @@ const heatWeeks = computed(() => {
 })
 
 // 每个月 1 号落在第几列，用于热力图顶部的月份刻度
-const heatMonths = computed(() => {
+// 输出与周列等长的槽位数组，靠 flex 等分保证和下面的格子严丝合缝
+const heatMonthSlots = computed(() => {
   const days = focusPage.value?.heatmap || []
   const lead = heatLead.value
-  const marks = []
+  const slots = new Array(heatWeeks.value.length).fill('')
+  let lastColumn = -1
   days.forEach((day, index) => {
     if (!day.date.endsWith('-01')) return
     const column = Math.floor((index + lead) / 7)
-    if (!marks.length || column > marks[marks.length - 1].column) {
-      marks.push({ column, label: `${Number(day.date.slice(5, 7))}月` })
-    }
+    if (column <= lastColumn || column >= slots.length) return
+    slots[column] = `${Number(day.date.slice(5, 7))}月`
+    lastColumn = column
   })
-  return marks
+  return slots
 })
 
 // ---------------------------------------------------------------- 工具
@@ -925,7 +927,7 @@ function message(error) {
 .ts-stepper strong { padding: 0 4px; color: var(--ink2); font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 .ts-stepper.is-mini strong { font-size: 11px; }
 
-.ts-donut-row { display: grid; grid-template-columns: 210px 148px; align-items: center; justify-content: center; gap: 18px; padding: 6px 0; }
+.ts-donut-row { display: grid; grid-template-columns: minmax(140px, 210px) minmax(0, 148px); align-items: center; justify-content: center; gap: 18px; padding: 6px 0; }
 .ts-donut { position: relative; min-width: 0; }
 .ts-donut-center { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; gap: 2px; pointer-events: none; }
 .ts-donut-center b { color: var(--ink); font-size: 20px; font-weight: 700; }
@@ -974,11 +976,14 @@ function message(error) {
 .ts-timeline-days b.today { color: #3f7ae0; font-weight: 600; }
 
 .ts-heat { display: grid; gap: 8px; padding: 6px 0 0; }
-.ts-heat-months { display: grid; gap: 3px; padding-bottom: 2px; }
-.ts-heat-months b { justify-self: start; color: var(--muted); font-size: 10px; font-weight: 400; white-space: nowrap; }
-.ts-heat-body { display: flex; gap: 3px; overflow: hidden; }
-.ts-heat-week { display: grid; grid-template-rows: repeat(7, 1fr); gap: 3px; }
-.ts-heat-week i { width: 13px; height: 13px; border-radius: 2px; background: #eef1f5; }
+/* 常规宽度铺满卡片；超宽屏按周数封顶，最多 22px 一格，免得变成大方块 */
+.ts-heat-months { display: flex; gap: 3px; padding-bottom: 2px; }
+.ts-heat-months b { flex: 1 1 0; min-width: 0; color: var(--muted); font-size: 10px; font-weight: 400; white-space: nowrap; }
+.ts-heat-body, .ts-heat-months { max-width: calc(var(--weeks, 53) * 25px - 3px); }
+.ts-heat-body { display: flex; gap: 3px; }
+/* 格子按卡片可用宽度等分，窄窗口下自动缩小，不会顶出卡片右侧 */
+.ts-heat-week { display: grid; flex: 1 1 0; min-width: 0; grid-template-rows: repeat(7, auto); gap: 3px; }
+.ts-heat-week i { width: 100%; height: auto; aspect-ratio: 1; border-radius: 2px; background: #eef1f5; }
 .ts-heat-week i.blank { background: transparent; }
 .ts-heat-legend { display: flex; align-items: center; justify-content: flex-end; gap: 4px; color: var(--muted); font-size: 10px; }
 .ts-heat-legend i { width: 10px; height: 10px; border-radius: 2px; }
