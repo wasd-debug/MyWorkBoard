@@ -259,6 +259,9 @@ export const apiGetTaskBoard = async (dimension = 'list') => data(await api.get(
 export const apiGetTaskQuadrant = async () => data(await api.get('/api/v1/tasks/quadrant'))
 export const apiSearchTasks = async q => data(await api.get('/api/v1/tasks/search', { params: { q } }))
 export const apiGetTaskStats = async params => data(await api.get('/api/v1/tasks/stats', { params }))
+export const apiGetStatsOverview = async () => data(await api.get('/api/v1/tasks/stats/overview'))
+export const apiGetStatsTaskPage = async params => data(await api.get('/api/v1/tasks/stats/tasks', { params }))
+export const apiGetStatsFocusPage = async params => data(await api.get('/api/v1/tasks/stats/focus', { params }))
 export const apiParseTaskQuickAdd = async text => data(await api.post('/api/v1/tasks/parse', { text }))
 export async function apiPreviewTaskImport(file, onUploadProgress) {
   const form = new FormData(); form.append('file', file)

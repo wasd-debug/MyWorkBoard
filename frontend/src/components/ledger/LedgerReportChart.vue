@@ -1,7 +1,7 @@
 <template>
   <div class="ledger-report-chart-wrap">
     <div ref="chartRef" class="ledger-report-chart" :style="{ height }" :aria-label="ariaLabel" role="img"></div>
-    <details v-if="tableRows.length" class="chart-data-table">
+    <details v-if="showTable && tableRows.length" class="chart-data-table">
       <summary>查看图表数据</summary>
       <div class="chart-data-scroll"><table><caption>{{ ariaLabel }}</caption><thead><tr><th>项目</th><th v-for="name in seriesNames" :key="name">{{ name }}</th></tr></thead><tbody><tr v-for="row in tableRows" :key="row.label"><td>{{ row.label }}</td><td v-for="(value, index) in row.values" :key="index">{{ value }}</td></tr></tbody></table></div>
     </details>
@@ -32,7 +32,8 @@ echarts.use([
 const props = defineProps({
   option: { type: Object, required: true },
   ariaLabel: { type: String, default: '账本报表图表' },
-  height: { type: String, default: '280px' }
+  height: { type: String, default: '280px' },
+  showTable: { type: Boolean, default: true }
 })
 const emit = defineEmits(['chart-click'])
 
