@@ -14,6 +14,12 @@ DUPLICATE，不会产生脏数据。entityId 用 uuid5 派生，同样稳定。
 
   # 真正导入（跳过滴答里的「未完成」记录）
   APP_ACCESS_TOKEN=xxx python3 import-dida-habit-checkins.py --missed skip
+
+  # 滴答里是「每日重复任务」而不是习惯的（如写日记），按已完成任务反推打卡
+  APP_ACCESS_TOKEN=xxx python3 import-dida-habit-checkins.py --task-habits 写日记
+
+注意：滴答 Open API 只返回未归档的习惯；习惯在滴答里处于归档状态时，
+`habit list` 看不到它，需要先在滴答里恢复该习惯。
 """
 from __future__ import annotations
 
@@ -103,6 +109,115 @@ def checkin_uuid(habit_public_id: str, day: date) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"salary-sync/dida/habit-checkin/{habit_public_id}/{day.isoformat()}"))
 
 
+def checkin_op(habit_public_id: str, day: date, status: str, prefix: str) -> dict:
+    entity_id = checkin_uuid(habit_public_id, day)
+    return {
+        "opId": f"{prefix}:{habit_public_id}:{day.isoformat()}",
+        "entityType": "habit-checkin",
+        "entityId": entity_id,
+        "operation": "UPSERT",
+        "baseRevision": 0,
+        "payload": {"id": entity_id, "extra": {
+            "habitId": habit_public_id,
+            "date": day.isoformat(),
+            "count": 1 if status == "DONE" else 0,
+            "status": status,
+            "amount": 0,
+            "mood": "",
+            "note": "",
+            "skipReason": "",
+        }},
+    }
+
+
+def append_start_op(habit_ops: list[dict], app_habit: dict, first_day: date) -> None:
+    """补卡不能早于习惯开始日期，所以先把 startDate 前移到最早一条记录。"""
+    if first_day.isoformat() >= app_habit["startDate"]:
+        return
+    habit_ops.append({
+        "opId": f"dida-habit-start:{app_habit['publicId']}:{first_day.isoformat()}",
+        "entityType": "habit",
+        "entityId": app_habit["publicId"],
+        "operation": "UPSERT",
+        "baseRevision": app_habit["revision"],
+        "payload": {"id": app_habit["publicId"], "extra": {"startDate": first_day.isoformat()}},
+    })
+    app_habit["startDate"] = first_day.isoformat()
+
+
+def parse_dida_time(value: str) -> date:
+    return datetime.strptime(value[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc) \
+        .astimezone(TZ_SHANGHAI).date()
+
+
+def fetch_completed_tasks(dida: str, project_ids: list[str], start: str, end: str, cap: int = 200) -> list[dict]:
+    """已完成任务接口每次最多 200 条，命中上限就把时间窗对半切开递归取，避免漏项。
+
+    滴答对查询有 300 次 / 5 分钟的限流，细分查询很容易打满，所以每个窗口的结果
+    落在 ~/.cache/salary-sync/dida 里复用；只有「没触顶」的窗口才落缓存。
+    """
+    import hashlib
+    from pathlib import Path
+
+    cache_dir = Path(os.environ.get("DIDA_CACHE_DIR", os.path.expanduser("~/.cache/salary-sync/dida")))
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    scope = ",".join(project_ids)
+
+    def query(lo: str, hi: str) -> list[dict]:
+        key = hashlib.sha1(f"{scope}|{lo}|{hi}".encode()).hexdigest()
+        cached = cache_dir / f"{key}.json"
+        if cached.exists():
+            try:
+                return json.loads(cached.read_text("utf-8"))
+            except json.JSONDecodeError:
+                cached.unlink(missing_ok=True)
+        result = subprocess.run(
+            [dida, "task", "completed", "--projects", scope,
+             "--start-date", lo, "--end-date", hi, "--json"],
+            capture_output=True, text=True, timeout=180,
+        )
+        if result.returncode != 0:
+            raise SystemExit(f"dida 拉取已完成任务失败：{result.stderr.strip()[:400]}")
+        try:
+            rows = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return []
+        if len(rows) < cap:
+            cached.write_text(json.dumps(rows, ensure_ascii=False), "utf-8")
+        return rows
+
+    def walk(lo: str, hi: str) -> list[dict]:
+        rows = query(lo, hi)
+        lo_dt = datetime.fromisoformat(lo.replace("Z", "+00:00"))
+        hi_dt = datetime.fromisoformat(hi.replace("Z", "+00:00"))
+        if len(rows) < cap or (hi_dt - lo_dt) <= timedelta(days=1):
+            return rows
+        mid = lo_dt + (hi_dt - lo_dt) / 2
+        fmt = "%Y-%m-%dT%H:%M:%SZ"
+        return walk(lo, mid.strftime(fmt)) + walk(mid.strftime(fmt), hi)
+
+    return walk(start, end)
+
+
+def task_dates_by_title(dida: str, titles: set[str], start: str, end: str) -> dict[str, set[date]]:
+    """把「已完成任务」当打卡：同一标题的重复任务，按完成时间（东八区）落到天。"""
+    projects = run_dida(dida, ["project", "list", "--json"])
+    project_ids = [item["id"] for item in projects]  # type: ignore[union-attr]
+    if not project_ids or not titles:
+        return {}
+    rows = fetch_completed_tasks(dida, project_ids, start, end)
+    result: dict[str, set[date]] = defaultdict(set)
+    for task in rows:
+        title = (task.get("title") or "").strip()
+        if title not in titles:
+            continue
+        completed = task.get("completedTime")
+        if not completed:
+            continue
+        result[title].add(parse_dida_time(completed))
+    return result
+
+
 def weekday_days(dida_habit: dict) -> list[int]:
     """把滴答的 RRULE 转成本项目的 customDays（1=周一 ... 7=周日）。"""
     rule = (dida_habit.get("repeatRule") or "").upper()
@@ -118,7 +233,7 @@ def weekday_days(dida_habit: dict) -> list[int]:
 
 def build_plan(dida_habits: list[dict], dida_checkins: dict[str, dict[int, dict]],
                app_habits: list[dict], only_names: set[str], missed_mode: str,
-               create_missing: bool) -> tuple[list[dict], list[dict]]:
+               create_missing: bool, task_dates: dict[str, set[date]] | None = None) -> tuple[list[dict], list[dict]]:
     """返回 (习惯写入操作, 打卡写入操作)。"""
     by_name: dict[str, list[dict]] = defaultdict(list)
     for habit in app_habits:
@@ -178,37 +293,13 @@ def build_plan(dida_habits: list[dict], dida_checkins: dict[str, dict[int, dict]
                 }},
             })
             app_habit = {"publicId": public_id, "name": name, "startDate": min(first_day.isoformat(), created_at)}
-        elif first_day.isoformat() < app_habit["startDate"]:
-            habit_ops.append({
-                "opId": f"dida-habit-start:{app_habit['publicId']}:{first_day.isoformat()}",
-                "entityType": "habit",
-                "entityId": app_habit["publicId"],
-                "operation": "UPSERT",
-                "baseRevision": app_habit["revision"],
-                "payload": {"id": app_habit["publicId"], "extra": {"startDate": first_day.isoformat()}},
-            })
+        else:
+            append_start_op(habit_ops, app_habit, first_day)
 
         for stamp in chosen:
             day = stamp_to_date(stamp)
-            # startDate 可能在上面的习惯操作里被前移，这里以服务端最终值为准
             status = "DONE" if records[stamp].get("status") == STATUS_DONE else "MISS"
-            checkin_ops.append({
-                "opId": f"dida:{app_habit['publicId']}:{day.isoformat()}",
-                "entityType": "habit-checkin",
-                "entityId": checkin_uuid(app_habit["publicId"], day),
-                "operation": "UPSERT",
-                "baseRevision": 0,
-                "payload": {"id": checkin_uuid(app_habit["publicId"], day), "extra": {
-                    "habitId": app_habit["publicId"],
-                    "date": day.isoformat(),
-                    "count": 1 if status == "DONE" else 0,
-                    "status": status,
-                    "amount": 0,
-                    "mood": "",
-                    "note": "",
-                    "skipReason": "",
-                }},
-            })
+            checkin_ops.append(checkin_op(app_habit["publicId"], day, status, "dida"))
 
         report.append({
             "name": name,
@@ -220,6 +311,30 @@ def build_plan(dida_habits: list[dict], dida_checkins: dict[str, dict[int, dict]
             "ignoredMiss": len(miss if missed_mode == "skip" else []),
             "unknown": len(unknown),
             "range": f"{chosen[0]}-{chosen[-1]}",
+        })
+
+    # 滴答里当成「每日重复任务」而不是习惯的，按完成时间反推打卡
+    for name, days in (task_dates or {}).items():
+        if not days:
+            continue
+        app_habit = by_name.get(name, [None])[0]
+        if app_habit is None:
+            report.append({"name": name, "note": "本项目没有同名习惯，无法归入任务来源", "habitId": None})
+            continue
+        ordered = sorted(days)
+        append_start_op(habit_ops, app_habit, ordered[0])
+        for day in ordered:
+            checkin_ops.append(checkin_op(app_habit["publicId"], day, "DONE", "dida-task"))
+        report.append({
+            "name": f"{name}(任务)",
+            "habitId": app_habit["publicId"],
+            "startDate": app_habit["startDate"],
+            "newStartDate": min(ordered[0].isoformat(), app_habit["startDate"]),
+            "done": len(ordered),
+            "miss": 0,
+            "ignoredMiss": 0,
+            "unknown": 0,
+            "range": f"{ordered[0].isoformat()}-{ordered[-1].isoformat()}",
         })
 
     return habit_ops, checkin_ops, report
@@ -257,6 +372,8 @@ def main() -> int:
     parser.add_argument("--missed", choices=["import", "skip"], default="import",
                         help="滴答里的「未完成」记录是否一起导入为 MISS")
     parser.add_argument("--habits", default="", help="只处理指定习惯名，逗号分隔")
+    parser.add_argument("--task-habits", default="",
+                        help="把滴答里同名的「已完成任务」当打卡，逗号分隔（如 写日记）")
     parser.add_argument("--create-missing", action="store_true", help="本项目缺同名习惯时自动创建")
     parser.add_argument("--dry-run", action="store_true", help="只打印计划，不写库")
     parser.add_argument("--batch", type=int, default=200)
@@ -266,6 +383,7 @@ def main() -> int:
         raise SystemExit("缺少 --token（或环境变量 APP_ACCESS_TOKEN）")
 
     only_names = {item.strip() for item in args.habits.split(",") if item.strip()}
+    task_names = {item.strip() for item in args.task_habits.split(",") if item.strip()}
 
     log("1/4 读取滴答清单习惯…")
     dida_habits = fetch_dida_habits(args.dida)
@@ -274,6 +392,17 @@ def main() -> int:
     log("2/4 拉取滴答打卡记录…")
     dida_checkins = fetch_dida_checkins(args.dida, [h["id"] for h in dida_habits], args.start, args.end)
     log(f"    覆盖 {len(dida_checkins)} 个习惯，共 {sum(len(v) for v in dida_checkins.values())} 条记录")
+
+    task_dates: dict[str, set[date]] = {}
+    if task_names:
+        log(f"    另外按「已完成任务」反推：{', '.join(sorted(task_names))}")
+        task_dates = task_dates_by_title(
+            args.dida, task_names,
+            f"{args.start[:4]}-{args.start[4:6]}-{args.start[6:]}T00:00:00Z",
+            f"{args.end[:4]}-{args.end[4:6]}-{args.end[6:]}T00:00:00Z",
+        )
+        for name in sorted(task_names):
+            log(f"      {name}: {len(task_dates.get(name, set()))} 天")
 
     log("3/4 读取本项目习惯…")
     app_habits = []
@@ -287,7 +416,7 @@ def main() -> int:
     log(f"    本项目习惯 {len(app_habits)} 个")
 
     habit_ops, checkin_ops, report = build_plan(
-        dida_habits, dida_checkins, app_habits, only_names, args.missed, args.create_missing
+        dida_habits, dida_checkins, app_habits, only_names, args.missed, args.create_missing, task_dates
     )
 
     log("\n导入计划")
