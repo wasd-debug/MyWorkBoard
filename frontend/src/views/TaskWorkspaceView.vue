@@ -1599,6 +1599,7 @@ import { openTaskSearch } from "../utils/searchBus.js";
 import { useSettings } from "../components/settings/useSettings.js";
 import { playCompleteSound } from "../utils/completeSound.js";
 import { taskHitsDay, taskOverlapsKeys, taskRange } from "../utils/taskDates.js";
+import { uuid } from "../utils/uuid.js";
 import { useTaskFocusStore } from "../stores/taskFocus.js";
 import { message } from "../services/message.js";
 import {
@@ -3167,7 +3168,7 @@ function selectBoardQuickAttachments(event) {
   const files = Array.from(event.target.files || []);
   event.target.value = "";
   const { accepted } = validateQuickAttachmentFiles(files);
-  boardQuickAddAttachments.value.push(...accepted.map(file => ({ id: crypto.randomUUID(), file, name: file.name, size: file.size })));
+  boardQuickAddAttachments.value.push(...accepted.map(file => ({ id: uuid(), file, name: file.name, size: file.size })));
 }
 
 function closeBoardQuickAddOnOutsidePointer(event) {
@@ -4208,7 +4209,7 @@ function saveTaskTemplateFromDialog() {
   const task = selectedTask.value;
   const name = taskTemplateName.value.trim();
   if (!task || !name) return;
-  const template = { id: crypto.randomUUID(), title: task.title, templateName: name, description: task.description || "", checklist: (task.checklist || []).map(item => item.title) };
+  const template = { id: uuid(), title: task.title, templateName: name, description: task.description || "", checklist: (task.checklist || []).map(item => item.title) };
   try {
     const templates = [...savedTaskTemplates.value, template];
     localStorage.setItem(taskTemplateStorageKey(), JSON.stringify(templates));
@@ -5873,7 +5874,7 @@ function selectQuickAttachments(event) {
   const files = Array.from(event.target.files || []);
   event.target.value = "";
   const { accepted, rejected } = validateQuickAttachmentFiles(files);
-  quickAttachments.value.push(...accepted.map(file => ({ id: crypto.randomUUID(), file, name: file.name, size: file.size })));
+  quickAttachments.value.push(...accepted.map(file => ({ id: uuid(), file, name: file.name, size: file.size })));
   quickAttachmentSelectionError.value = rejected.map(item => `${item.file.name}：${item.reason}`).join("；");
 }
 
@@ -6465,7 +6466,7 @@ async function createQuickAddTask() {
       checklist: quickDraft.value.checklist?.map((item, sortOrder) => ({ ...item, sortOrder })) || [],
     });
     if (saved?.publicId && quickAttachments.value.length) {
-      pendingQuickAttachmentBatches.value.push({ id: crypto.randomUUID(), taskId: saved.publicId, attachments: quickAttachments.value });
+      pendingQuickAttachmentBatches.value.push({ id: uuid(), taskId: saved.publicId, attachments: quickAttachments.value });
       quickAttachments.value = [];
       quickAttachmentSelectionError.value = "";
       if (store.online) await retryQuickAttachments();

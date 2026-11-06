@@ -67,6 +67,7 @@ import HabitLogDialog from './HabitLogDialog.vue'
 import HabitSkipDialog from './HabitSkipDialog.vue'
 import { dayState, findCheckin, targetAmount, todayKey } from './habitUtils.js'
 import { useTasksStore } from '../../stores/tasks.js'
+import { uuid } from '../../utils/uuid.js'
 
 const props = defineProps({
   habit: { type: Object, required: true }
@@ -92,7 +93,7 @@ async function writeCheckin(habit, key, existing, patch) {
     ...(existing || {}),
     habitId: habit.publicId,
     date: key,
-    publicId: existing?.publicId || crypto.randomUUID(),
+    publicId: existing?.publicId || uuid(),
     revision: existing?.revision || 0,
     amount: 0,
     mood: existing?.mood || '',
