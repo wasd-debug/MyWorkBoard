@@ -428,7 +428,7 @@ test('普通清单视图的更多菜单按路由区分动作并可打开当前�
   assert.match(workspaceView, /const currentTaskList = computed\(\(\) => route\.name === "tasks-list"/)
   assert.match(workspaceView, /function openListActivity\(\)[\s\S]*route\.name === "tasks-inbox" \? store\.inbox : currentTaskList\.value/)
   assert.match(workspaceView, /function addGroupForCurrentList\(\)[\s\S]*openOrganizationDialog\("group", null, \{ groupListIds: \[list\.publicId\] \}\)/)
-  assert.match(workspaceView, /async function shareCurrentList\(\)[\s\S]*navigator\.clipboard\.writeText\(url\)/)
+  assert.match(workspaceView, /async function shareCurrentList\(\)[\s\S]*copyText\(url\)/)
   assert.match(workspaceView, /function loadListActivityPage\(reset = false\)[\s\S]*const listId = listActivityListId\.value/)
   assert.match(workspaceView, />清单动态<\/button>/)
   assert.match(workspaceView, /apiListTaskListActivity\(listId, \{ page, size: 50 \}\)/)
@@ -1217,7 +1217,7 @@ test('task multi-select panel matches the action sheet and exposes supported act
   assert.match(workspaceView, /async function setDetailParent\(parent\)[\s\S]*if \(selectedIds\.size\)[\s\S]*store\.update\(task, \{ parentId: parent\.publicId \}\)/)
   assert.match(workspaceView, /async function batchDuplicate\(\)[\s\S]*title: `\$\{task\.title\} 副本`/)
   assert.match(workspaceView, /function openBatchStickyNote\(\)[\s\S]*window\.open\("", "task-batch-note"/)
-  assert.match(workspaceView, /async function copyBatchTaskText\(\)[\s\S]*navigator\.clipboard\.writeText\(text\)/)
+  assert.match(workspaceView, /async function copyBatchTaskText\(\)[\s\S]*copyText\(text\)/)
 })
 
 test('task detail subtasks can be completed, quickly renamed, dated, and added inline', () => {
@@ -1288,7 +1288,7 @@ test('摘要页布局：整块编辑器 + 顶部图标（分组/显示内容）+
   assert.match(summaryView, /return `# \$\{rangeLabel\}\\n\\n\$\{buildSummaryMarkdown/)
   // 底部：复制 Markdown / 保存为 PDF、图片、笔记清单
   assert.match(summaryView, /class="summary-copy" @click="copyMarkdown">复制/)
-  assert.match(summaryView, /async function copyMarkdown\(\)[\s\S]*navigator\.clipboard\.writeText\(draft\.value\)/)
+  assert.match(summaryView, /async function copyMarkdown\(\)[\s\S]*copyText\(draft\.value\)/)
   assert.match(summaryView, /保存为<ChevronDown/)
   assert.match(summaryView, /@click="saveAsPdf">保存为 PDF/)
   assert.match(summaryView, /@click="saveAsImage">保存为图片/)
@@ -1370,7 +1370,7 @@ test('任务详情栏第二批：子任务交互、更多菜单细化、导出�
   // 导出弹窗：Markdown / 纯文本预览 + 复制 + 下载
   assert.match(workspaceView, /<Dialog v-model:open="exportDialogOpen" title="导出"/)
   assert.match(workspaceView, /clone-export-tabs[\s\S]{0,400}exportFormat = 'markdown'[\s\S]{0,200}exportFormat = 'text'/)
-  assert.match(workspaceView, /async function copyExportContent\(\)[\s\S]*navigator\.clipboard\.writeText\(exportContent\.value\)/)
+  assert.match(workspaceView, /async function copyExportContent\(\)[\s\S]*copyText\(exportContent\.value\)/)
   assert.match(workspaceView, /function downloadExportContent\(\)[\s\S]*new Blob\(\[exportContent\.value\]/)
   // 保存为模板改为应用内弹窗
   assert.match(workspaceView, /<Dialog v-model:open="taskTemplateDialogOpen" title="保存为模板"/)

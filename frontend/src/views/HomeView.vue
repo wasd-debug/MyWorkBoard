@@ -340,6 +340,7 @@ import { Calendar, List, Timer, Wallet } from '../icons.js'
 import { message } from '../services/message.js'
 import { autoGrowTextarea } from '../directives/autoGrowTextarea.js'
 import { parseAgentMetadata, normalizeAgentActions, recoverAgentMetadata, missingActionCard } from '../utils/agentMessageRecovery.js'
+import { copyText } from '../utils/clipboard.js'
 import { useAppStore } from '../stores/app'
 import { useLedgerStore } from '../stores/ledger'
 import { useWorktimeStore } from '../stores/worktime'
@@ -698,7 +699,7 @@ async function rejectAllActions(item) {
     for (const action of pendingLedgerActions(item)) await rejectAction(action)
   } finally { item.batchBusy = false; persist() }
 }
-async function copyMessage(item) { try { await navigator.clipboard.writeText(item.content || '') } catch { const area = document.createElement('textarea'); area.value = item.content || ''; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove() }; copiedId.value = item.id; window.setTimeout(() => { if (copiedId.value === item.id) copiedId.value = '' }, 1600) }
+async function copyMessage(item) { try { await copyText(item.content || '') } catch { /* 兜底已在 copyText 内完成 */ } copiedId.value = item.id; window.setTimeout(() => { if (copiedId.value === item.id) copiedId.value = '' }, 1600) }
 function handleMetaToggle(event) { const current = event.currentTarget; if (!current.open) return; current.closest('.message-meta')?.querySelectorAll('details[open]').forEach(detail => { if (detail !== current) detail.open = false }) }
 function closeMetaPopovers(event) {
   if (!event.target.closest?.('.agent-entity-picker')) entityPickerState.value = Object.fromEntries(Object.entries(entityPickerState.value).map(([key, value]) => [key, { ...value, open: false }]))

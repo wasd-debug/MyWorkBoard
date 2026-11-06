@@ -78,6 +78,7 @@ import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import TaskMilkdownEditor from '../components/tasks/TaskMilkdownEditor.vue'
 import { useTasksStore } from '../stores/tasks.js'
+import { copyText } from '../utils/clipboard.js'
 import { SUMMARY_FIELDS, SUMMARY_GROUPS, buildSummaryMarkdown, filterSummaryItems, groupSummaryItems, summaryDateRange, summaryRangeLabel } from './taskSummary.js'
 
 const store = useTasksStore()
@@ -278,7 +279,7 @@ function reportTitle() {
 }
 async function copyMarkdown() {
   try {
-    await navigator.clipboard.writeText(draft.value)
+    await copyText(draft.value)
     showFeedback('已复制 Markdown')
   } catch {
     showFeedback('复制失败，请手动选择内容复制')

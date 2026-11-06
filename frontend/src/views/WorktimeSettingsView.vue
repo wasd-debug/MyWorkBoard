@@ -76,6 +76,7 @@ import { message } from '../services/message.js'
 import { useAppStore } from '../stores/app'
 import { DEFAULT_WORKTIME_SETTINGS as DEFAULTS, useWorktimeStore } from '../stores/worktime.js'
 import { CALC } from '../utils/calc'
+import { copyText } from '../utils/clipboard.js'
 
 const appStore = useAppStore()
 const store = useWorktimeStore()
@@ -126,7 +127,7 @@ function doExport() { ioArea.value = JSON.stringify({ settings: store.settings, 
 async function doCopy() {
   const data = JSON.stringify({ settings: store.settings, records: store.records })
   ioArea.value = data
-  try { await navigator.clipboard.writeText(data); message.success('已复制到剪贴板') } catch { message.warning('复制失败，请手动复制') }
+  try { await copyText(data); message.success('已复制到剪贴板') } catch { message.warning('复制失败，请手动复制') }
 }
 async function doImport() {
   let data

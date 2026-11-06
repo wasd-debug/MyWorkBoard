@@ -1600,6 +1600,7 @@ import { useSettings } from "../components/settings/useSettings.js";
 import { playCompleteSound } from "../utils/completeSound.js";
 import { taskHitsDay, taskOverlapsKeys, taskRange } from "../utils/taskDates.js";
 import { uuid } from "../utils/uuid.js";
+import { copyText } from "../utils/clipboard.js";
 import { useTaskFocusStore } from "../stores/taskFocus.js";
 import { message } from "../services/message.js";
 import {
@@ -4034,7 +4035,7 @@ async function copyContextTaskLink() {
   const url = new URL("/tasks/all", window.location.origin);
   url.searchParams.set("task", task.publicId);
   try {
-    await navigator.clipboard.writeText(url.href);
+    await copyText(url.href);
     closeContext();
     message.success("任务链接已复制");
   } catch {
@@ -4177,7 +4178,7 @@ function openExportDialog() {
 }
 async function copyExportContent() {
   try {
-    await navigator.clipboard.writeText(exportContent.value);
+    await copyText(exportContent.value);
     message.success("已复制导出内容");
   } catch {
     message.error("复制失败，请手动选择内容复制");
@@ -4273,7 +4274,7 @@ async function copyDetailTaskLink() {
   try {
     const url = new URL("/tasks/all", window.location.origin);
     url.searchParams.set("task", task.publicId);
-    await navigator.clipboard.writeText(url.href);
+    await copyText(url.href);
     message.success("任务链接已复制");
   } catch {
     message.warning("复制失败，请检查浏览器剪贴板权限");
@@ -5101,7 +5102,7 @@ async function shareCurrentList() {
   if (!list) return;
   closeWorkspaceMenus();
   const url = new URL(`/tasks/list/${list.publicId}`, window.location.origin).href;
-  try { await navigator.clipboard.writeText(url); message.success("清单链接已复制"); }
+  try { await copyText(url); message.success("清单链接已复制"); }
   catch { window.prompt("复制清单链接", url); }
 }
 function printDescription(value) {
@@ -6895,7 +6896,7 @@ async function copyBatchTaskText() {
   const text = selectedTasks.value.map(task => task.title).filter(Boolean).join("\n");
   if (!text) return;
   try {
-    await navigator.clipboard.writeText(text);
+    await copyText(text);
     message.success(`已复制 ${selectedTasks.value.length} 项任务文本`);
   } catch {
     message.error("复制失败，请检查浏览器剪贴板权限");
@@ -7264,7 +7265,7 @@ function organizationPath(kind, item) {
 async function shareOrganization(kind) {
   const url = new URL(organizationPath(kind, organizationMenu.item), window.location.origin).href;
   organizationMenuOpen.value = false;
-  try { await navigator.clipboard.writeText(url); message.success("清单链接已复制"); }
+  try { await copyText(url); message.success("清单链接已复制"); }
   catch { window.prompt("复制清单链接", url); }
 }
 function editListGroup() { openOrganizationDialog("group", organizationMenu.item); organizationMenuOpen.value = false; }

@@ -248,6 +248,7 @@ import Button from '../components/ui/Button.vue'
 import Dialog from '../components/ui/Dialog.vue'
 import { useAppStore } from '../stores/app'
 import { CALC } from '../utils/calc'
+import { copyText } from '../utils/clipboard.js'
 import { apiCreateAgentModelConnection, apiCreateMcpToken, apiDeleteAgentModelConnection, apiDisconnectMcpOAuthClient, apiGetAgentOperationMetrics, apiGetAgentUsageBudget, apiGetMcpDiagnostics, apiListAgentModelConnections, apiListLedgerBooks, apiListMcpOAuthClients, apiListMcpOAuthGrants, apiListMcpProtocolEvents, apiListMcpTokens, apiPurgeMcpToken, apiRevokeMcpOAuthGrant, apiRevokeMcpToken, apiSaveAgentUsageBudget, apiSetDefaultAgentModelConnection, apiTestAgentModelConnection, apiUpdateAgentModelConnection } from '../../packages/api-client/src/index.js'
 
 const appStore = useAppStore()
@@ -359,7 +360,7 @@ async function createMcpToken() {
   } catch (error) { message.error(error?.response?.data?.detail || '创建 MCP Token 失败') }
   finally { creatingMcpToken.value = false }
 }
-async function copyMcpToken() { try { await navigator.clipboard.writeText(createdMcpToken.value); message.success('Token 已复制') } catch { message.warning('复制失败，请手动复制') } }
+async function copyMcpToken() { try { await copyText(createdMcpToken.value); message.success('Token 已复制') } catch { message.warning('复制失败，请手动复制') } }
 async function revokeMcpToken(token) { if (!window.confirm(`撤销“${token.name}”？已连接的外部 Agent 将立即失效。`)) return; try { await apiRevokeMcpToken(token.id); await loadMcpTokens(); message.success('Token 已撤销') } catch { message.error('撤销 Token 失败') } }
 async function purgeMcpToken(token) {
   if (!window.confirm(`永久删除已撤销的“${token.name}”？凭据无法恢复，但历史调用审计会保留。`)) return
@@ -372,7 +373,7 @@ async function purgeMcpToken(token) {
 }
 async function revokeMcpGrant(grant) { if (!window.confirm(`撤销“${grant.clientName}”的 OAuth 授权？该客户端需要重新授权才能连接。`)) return; try { await apiRevokeMcpOAuthGrant(grant.id); await loadMcpGrants(); message.success('OAuth 授权已撤销') } catch { message.error('撤销 OAuth 授权失败') } }
 async function disconnectMcpClient(client) { if (!window.confirm(`断开“${client.clientName}”？该客户端的全部授权和 Token 将立即失效。`)) return; try { await apiDisconnectMcpOAuthClient(client.clientId); await Promise.all([loadMcpGrants(), loadMcpOperations()]); message.success('OAuth 客户端已断开') } catch { message.error('断开 OAuth 客户端失败') } }
-async function copyMcpDiagnostics() { const report = { generatedAt: new Date().toISOString(), ...mcpDiagnostics.value, clients: mcpClients.value.map(({ clientId, clientName, lastUsedAt, lastUserAgent, revokedAt }) => ({ clientId, clientName, lastUsedAt, lastUserAgent, revokedAt })), recentEvents: mcpEvents.value }; try { await navigator.clipboard.writeText(JSON.stringify(report, null, 2)); message.success('脱敏诊断已复制') } catch { message.warning('复制失败') } }
+async function copyMcpDiagnostics() { const report = { generatedAt: new Date().toISOString(), ...mcpDiagnostics.value, clients: mcpClients.value.map(({ clientId, clientName, lastUsedAt, lastUserAgent, revokedAt }) => ({ clientId, clientName, lastUsedAt, lastUserAgent, revokedAt })), recentEvents: mcpEvents.value }; try { await copyText(JSON.stringify(report, null, 2)); message.success('脱敏诊断已复制') } catch { message.warning('复制失败') } }
 function formatDateTime(value) { return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
 function formatNumber(value) { return new Intl.NumberFormat('zh-CN').format(Number(value || 0)) }
 function formatDuration(value) { if (value == null) return '—'; const ms = Number(value || 0); return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s` }

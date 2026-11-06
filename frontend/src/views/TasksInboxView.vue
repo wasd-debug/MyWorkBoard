@@ -69,6 +69,7 @@ import TaskMilkdownEditor from '../components/tasks/TaskMilkdownEditor.vue'
 import TaskMarkdownPreview from '../components/tasks/TaskMarkdownPreview.vue'
 import { useAppStore } from '../stores/app.js'; import { useTasksStore } from '../stores/tasks.js'
 import { uuid } from '../utils/uuid.js'
+import { copyText } from '../utils/clipboard.js'
 import { todayKey } from '../components/habits/habitUtils.js'
 import { apiCreateTaskComment, apiCreateTaskReminder, apiDeleteTaskAttachment, apiDeleteTaskComment, apiDeleteTaskReminder, apiDownloadTaskAttachment, apiListTaskActivity, apiListTaskAttachments, apiListTaskComments, apiListTaskFilters, apiListTaskFilterTasks, apiListTaskReminders, apiUpdateTaskComment, apiUpdateTaskFilter, apiUpdateTaskReminder, apiUploadTaskAttachment } from '../../packages/api-client/src/index.js'
 
@@ -239,7 +240,7 @@ function openSubtask(task) { taskMenuId.value = ''; selectedTask.value = null; e
 async function moveTask(task, listId) { taskMenuId.value = ''; if (!listId || listId === task.listId) return; try { await store.update(task, { listId }) } catch (error) { store.error = detail(error, '移动任务失败') } }
 async function setTaskTag(task, tagId) { taskMenuId.value = ''; try { await store.update(task, { tagIds: tagId ? [tagId] : [] }) } catch (error) { store.error = detail(error, '设置标签失败') } }
 async function duplicateTask(task) { taskMenuId.value = ''; try { const copy = await store.create({ ...task, title: `${task.title} 副本`, publicId: undefined, status: 'OPEN', completedAt: null }); selectedTask.value = store.tasks.find(item => item.publicId === copy.publicId) || copy } catch (error) { store.error = detail(error, '创建副本失败') } }
-async function copyTaskLink(task) { taskMenuId.value = ''; try { await navigator.clipboard?.writeText(`${window.location.origin}/tasks/today#task-${task.publicId}`) } catch { store.error = '复制任务链接失败' } }
+async function copyTaskLink(task) { taskMenuId.value = ''; try { await copyText(`${window.location.origin}/tasks/today#task-${task.publicId}`) } catch { store.error = '复制任务链接失败' } }
 function openQuickAdd() { quickAddOpen.value = true; requestAnimationFrame(() => quickAddInput.value?.focus()) }
 function closeQuickAdd() { quickAddOpen.value = false; quickTitle.value = '' }
 function detailWidthKey() { return `task-detail-width:${store.accountScope || 'local'}` }
