@@ -657,7 +657,8 @@ public class TaskEfficiencyService {
             if (!group.builtinKey().isBlank()) byBuiltinKey.putIfAbsent(group.builtinKey(), group.publicId());
         }
         String anyGroup = groups.get(0).publicId();
-        for (BuiltinCountdowns.BuiltinCountdown builtin : BuiltinCountdowns.all(today)) {
+        Map<LocalDate, Boolean> holidayTable = holidayTable(today);
+        for (BuiltinCountdowns.BuiltinCountdown builtin : BuiltinCountdowns.all(today, holidayTable)) {
             Date target = Date.valueOf(builtin.targetDate());
             String groupId = byBuiltinKey.getOrDefault(builtin.kind(), anyGroup);
             Long existing = jdbc.queryForObject("SELECT COUNT(*) FROM countdown WHERE user_id=? AND builtin_key=?",
@@ -677,6 +678,27 @@ public class TaskEfficiencyService {
                     builtin.kind(), groupId, false, false, builtin.color(), "", "EMOJI", builtin.icon(), builtin.color(),
                     "IMAGE", "DAY", false, "", "", "NONE", "SMART", false, "SOLAR", builtin.key(), builtin.sortOrder());
         }
+    }
+
+    /**
+     * 发薪日要用「放假 / 调休补班」判断，这里从 holiday 表取本年与下一年。
+     * 表里还没有数据（当年公告未拉到）时返回空表，发薪日退化为只看周末。
+     */
+    private Map<LocalDate, Boolean> holidayTable(LocalDate today) {
+        Map<LocalDate, Boolean> table = new HashMap<>();
+        LocalDate nextMonth = today.plusMonths(1).withDayOfMonth(1);
+        List<Integer> years = new ArrayList<>();
+        years.add(today.getYear());
+        if (!years.contains(nextMonth.getYear())) years.add(nextMonth.getYear());
+        RowCallbackHandler collect = rs -> table.put(rs.getDate("date").toLocalDate(), rs.getBoolean("is_off"));
+        for (Integer year : years) {
+            try {
+                jdbc.query("SELECT date, is_off FROM holiday WHERE year_key=?", collect, year);
+            } catch (Exception e) {
+                // 节假日表缺失不影响其它内置项
+            }
+        }
+        return table;
     }
 
     @Transactional

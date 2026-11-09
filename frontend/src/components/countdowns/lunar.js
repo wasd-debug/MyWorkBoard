@@ -242,6 +242,7 @@ export function builtinTargetDate(key, today = new Date()) {
 export function builtinTitle(key, today = new Date()) {
   if (key === 'weekend') return '距离周末'
   if (key === 'holiday') return `距离${nextHoliday(today).name}`
+  if (key === 'payday') return '距离发薪日'
   if (key === 'month-end') return '距离本月结束'
   if (key === 'year-end') return '距离本年结束'
   return ''

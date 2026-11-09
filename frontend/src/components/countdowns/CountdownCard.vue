@@ -37,7 +37,8 @@
 
     <Teleport to="body">
       <div v-if="menuOpen" class="cdc-menu" :style="menuStyle" role="menu" @click.stop>
-        <button type="button" role="menuitem" @click="pick('edit')"><Pencil :size="15" />编辑</button>
+        <button v-if="!logicLocked" type="button" role="menuitem" @click="pick('edit')"><Pencil :size="15" />编辑</button>
+        <button v-else type="button" role="menuitem" class="is-locked" disabled title="内置发薪日：日期按每月 7 日遇非工作日提前，不可修改"><Lock :size="15" />编辑</button>
         <button type="button" role="menuitem" @click="pick('style')"><Palette :size="15" />样式</button>
         <button type="button" role="menuitem" @click="pick('note')"><NotebookPen :size="15" />备注</button>
         <button v-if="!item.archived" type="button" role="menuitem" @click="pick('archive')"><Archive :size="15" />归档</button>
@@ -63,7 +64,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Archive, ArchiveRestore, MoreHorizontal, NotebookPen, Palette, Pencil, Star, Trash2 } from 'lucide-vue-next'
+import { Archive, ArchiveRestore, Lock, MoreHorizontal, NotebookPen, Palette, Pencil, Star, Trash2 } from 'lucide-vue-next'
 import { useExclusivePanels } from '../../utils/exclusivePanels.js'
 import { cardTheme, countParts, footerText } from './countdownUtils.js'
 
@@ -89,6 +90,8 @@ const tone = computed(() => theme.value.tone)
 const parts = computed(() => countParts(props.item, props.today, new Date(props.now || Date.now())))
 const footText = computed(() => footerText(props.item, props.today))
 const showIcon = computed(() => ['ICON', 'EMOJI', 'TEXT'].includes(props.item.iconType) && props.item.cover !== 'IMAGE')
+/** 内置发薪日：日期由「每月 7 日遇非工作日提前」决定，服务端每次拉取都会回写，所以不给编辑入口 */
+const logicLocked = computed(() => props.item.builtinKey === 'payday')
 
 /** 菜单挂在 body 上：卡片为了圆角图片做了 overflow:hidden，内联菜单会被裁掉 */
 function placeMenu(left, top) {
@@ -236,6 +239,9 @@ onBeforeUnmount(() => {
 }
 .cdc-menu button:hover { background: var(--panel2, rgba(15, 23, 42, .06)); }
 .cdc-menu button.is-danger { color: #e05a4f; }
+/* 内置发薪日的「编辑」锁定：灰掉但仍显示，鼠标悬停给出原因 */
+.cdc-menu button.is-locked { color: var(--muted); cursor: not-allowed; }
+.cdc-menu button.is-locked:hover { background: transparent; }
 
 .cdc-head {
   display: flex;

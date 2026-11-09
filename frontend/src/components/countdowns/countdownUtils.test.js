@@ -98,10 +98,13 @@ test('内置倒数日：节假日标题是具体节日名，不是「下一个�
   assert.equal(builtinTitle('weekend', new Date(2026, 10, 2)), '距离周末')
   assert.equal(builtinTitle('month-end', new Date(2026, 10, 2)), '距离本月结束')
   assert.equal(builtinTitle('year-end', new Date(2026, 10, 2)), '距离本年结束')
+  assert.equal(builtinTitle('payday', new Date(2026, 10, 2)), '距离发薪日')
 })
 
 test('内置节假日：目标日信任服务端，避免标题与日期错配', () => {
   assert.equal(effectiveTarget({ builtinKey: 'holiday', targetDate: '2027-02-06' }, '2026-11-02'), '2027-02-06')
+  // 发薪日要靠放假表判断，前端不重算，一律以服务端写入的日期为准
+  assert.equal(effectiveTarget({ builtinKey: 'payday', targetDate: '2026-11-06' }, '2026-11-02'), '2026-11-06')
 })
 
 test('目标日期：非重复条目原样返回', () => {
