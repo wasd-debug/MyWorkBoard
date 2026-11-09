@@ -27,6 +27,15 @@
             </select>
           </div>
           <p class="cal-setting-hint">{{ hintOf(TASK_COLOR_MODES, settings.taskColorMode) }}</p>
+          <label class="cal-setting-item is-check cal-setting-check">
+            <span class="cal-setting-name">不显示已完成的任务</span>
+            <input
+              type="checkbox"
+              :checked="settings.hideCompleted === true"
+              aria-label="不显示已完成的任务"
+              @change="patch({ hideCompleted: $event.target.checked })"
+            />
+          </label>
           <div class="cal-setting-list">
             <div v-for="list in lists" :key="list.publicId" class="cal-setting-item">
               <span class="cal-setting-icon"><TaskOrganizationIcon :value="list.icon" :size="14" :style="{ color: list.color || 'var(--ink2)' }" /></span>
@@ -341,6 +350,9 @@ function applyColor(color) {
 }
 .cal-setting-item.is-check {
   cursor: pointer;
+}
+.cal-setting-check {
+  margin: 2px 0 6px;
 }
 .cal-setting-item.is-check input {
   width: 14px;

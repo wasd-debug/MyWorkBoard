@@ -738,9 +738,9 @@
               <ChevronDown :size="16" :class="{ rotated: collapsed.habits }" /><strong>习惯</strong><span>{{ todayHabits.length }}</span>
             </button>
             <div class="clone-collapse-panel" :class="{ 'is-collapsed': collapsed.habits }" :aria-hidden="collapsed.habits"><div class="clone-efficiency-rows clone-collapse-inner" :inert="collapsed.habits">
-              <article v-for="item in todayHabits" :key="item.publicId" class="clone-efficiency-row is-clickable habit-row" :style="{ '--efficiency-color': item.color || '#22c55e' }" role="button" tabindex="0" :aria-label="`打开习惯${item.name}`" @click="openHabitPane(item)" @keydown.enter.prevent="openHabitPane(item)">
-                <button type="button" class="clone-efficiency-check" :class="{ checked: habitDone(item) }" :aria-label="`${habitDone(item) ? '取消' : '完成'}习惯${item.name}`" @click.stop="toggleHabitToday(item)">{{ habitDone(item) ? '✓' : '' }}</button>
-                <span class="clone-efficiency-badge" :style="iconBadgeStyle(item.color)">{{ item.icon || '✓' }}</span><strong>{{ item.name }}</strong><span class="clone-efficiency-meta">{{ habitDone(item) ? '已完成' : '今天' }}</span>
+              <article v-for="item in todayHabits" :key="item.publicId" class="clone-efficiency-row is-clickable habit-row" :class="{ 'is-settled': habitSettled(item) }" :style="{ '--efficiency-color': item.color || '#22c55e' }" role="button" tabindex="0" :aria-label="`打开习惯${item.name}`" @click="openHabitPane(item)" @keydown.enter.prevent="openHabitPane(item)">
+                <button type="button" class="clone-efficiency-check" :class="{ checked: habitDone(item), 'is-missed': habitMissed(item), 'is-skipped': habitStateToday(item) === 'skip' }" :aria-label="`${habitDone(item) ? '取消' : '完成'}习惯${item.name}`" @click.stop="toggleHabitToday(item)"><span v-if="habitDone(item)">✓</span><span v-else-if="habitMissed(item)">✕</span><span v-else-if="habitStateToday(item) === 'skip'">–</span></button>
+                <span class="clone-efficiency-badge" :style="iconBadgeStyle(item.color)">{{ item.icon || '✓' }}</span><strong>{{ item.name }}</strong><span class="clone-efficiency-meta">{{ habitStateLabel(item) }}</span>
               </article>
             </div></div>
           </section>
@@ -829,7 +829,7 @@
         </div>
       </section>
       <template v-else>
-      <header v-if="selectedTask || editorOpen" class="clone-detail-toolbar" @pointerdown.stop>
+      <header v-if="selectedTask || editorOpen" class="clone-detail-toolbar" @click.stop>
         <div class="clone-detail-toolbar-main">
           <button v-if="!editorOpen && !isNoteSelected" type="button" class="clone-detail-status-tool" :class="{ completed: selectedTask?.status === 'COMPLETED', abandoned: selectedTask?.status === 'ABANDONED' }" :aria-label="selectedTask?.status === 'COMPLETED' ? '重新打开任务' : '标记任务完成'" @click="toggleComplete(selectedTask)"><Check v-if="selectedTask?.status === 'COMPLETED'" :size="14" /></button>
           <button v-else-if="editorOpen && !isNoteSelected" type="button" class="clone-detail-status-tool" :class="{ completed: draft.status === 'COMPLETED', abandoned: draft.status === 'ABANDONED' }" aria-label="任务完成状态" @click="draft.status = draft.status === 'COMPLETED' ? 'OPEN' : 'COMPLETED'"><Check v-if="draft.status === 'COMPLETED'" :size="14" /></button>
@@ -1578,7 +1578,7 @@ import { buildQuickRepeatRule, createQuickRepeatState, DAY_CODES, parseLunarLabe
 import { formatAttachmentSize, uploadQuickAttachments, validateQuickAttachmentFiles } from "./taskQuickAddAttachments.js";
 import { quickAddTokenAtCaret, replaceQuickAddToken } from "./taskQuickAddSuggestions.js";
 import { useTasksStore } from "../stores/tasks.js";
-import { todayKey } from "../components/habits/habitUtils.js";
+import { dayState, todayKey } from "../components/habits/habitUtils.js";
 import HabitDetailPane from "../components/habits/HabitDetailPane.vue";
 import SearchFilterSelect from "../components/tasks/SearchFilterSelect.vue";
 import {
@@ -2800,9 +2800,15 @@ const listGroups = computed(() => buildTaskListGroups(groups.value, openTasks.va
 const todayCountdowns = computed(() => (route.name === "tasks-today" && !route.query.date
   ? store.countdowns.filter((item) => countdownVisible(item, todayKey()))
   : []));
-const todayHabits = computed(() => route.name === "tasks-today" && !route.query.date
-  ? store.habits.filter((item) => !item.archived && !item.deleted && item.showInToday !== false)
-  : []);
+const todayHabits = computed(() => {
+  if (route.name !== "tasks-today" || route.query.date) return [];
+  const list = store.habits.filter((item) => !item.archived && !item.deleted && item.showInToday !== false);
+  // 已结算（完成/未完成/跳过）沉到组底，组内保持原有顺序，避免每次渲染都跳动
+  return list
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => Number(habitSettled(a.item)) - Number(habitSettled(b.item)) || a.index - b.index)
+    .map((entry) => entry.item);
+});
 // 搜索整页里习惯/倒数日也是搜索对象，单独成组
 const searchHabits = computed(() => (isSearchRoute.value
   ? (store.habits || []).filter((habit) => !habit.archived && matchHabit(habit, searchCriteria.value, {}))
@@ -2929,7 +2935,12 @@ function isTaskDueToday(task) {
   return new Date(task.dueAt).toDateString() === new Date().toDateString();
 }
 function isTaskOverdue(task) {
-  return Boolean(task.dueAt && new Date(task.dueAt) < new Date() && !isTaskDueToday(task) && task.status !== "COMPLETED");
+  if (!task?.dueAt || task.status === "COMPLETED") return false;
+  const due = new Date(task.dueAt);
+  if (Number.isNaN(due.getTime())) return false;
+  // 全天任务按自然日比较：当天到期不算逾期；有具体时刻的按时刻比较
+  if (task.allDay === false && (due.getHours() || due.getMinutes())) return due < new Date();
+  return startOfDay(due).getTime() < startOfDay(new Date()).getTime();
 }
 function shortDateLabel(value, allDay) {
   const date = new Date(value);
@@ -5679,6 +5690,8 @@ function closeAttributePopovers() {
   repeatPopoverOpen.value = false;
   priorityPopoverOpen.value = false;
 }
+// 换一条任务时把日期/优先级/重复浮层收掉，避免浮层跟着新任务悬在半空
+watch(() => selectedTask.value?.publicId || "", () => closeAttributePopovers());
 function closeAttributePopoversOnOutsidePointer(event) {
   // 日期/重复浮层整体（含浮层内的页签、日历、时间输入）都算「里面」，否则一点页签就自己关了。
   // .clone-quick-flyout 是日期面板里「提醒/重复/结束」的二级菜单，它被 teleport 到 body，
@@ -6824,6 +6837,24 @@ function habitDone(habit) {
   if (!item) return false;
   if (habit.targetType === "QUANTITY") return Number(item.amount || 0) >= Math.max(1, Number(habit.dailyTimes) || 1);
   return Number(item.count || 0) >= 1;
+}
+// 今天页的习惯状态统一走 dayState：done / missed / skip 视为「已结算」，整行压灰并沉到组底
+function habitStateToday(habit) {
+  if (!habit) return "none";
+  return dayState(habit, store.habitCheckins, todayKey(), todayKey());
+}
+function habitSettled(habit) {
+  return ["done", "missed", "skip"].includes(habitStateToday(habit));
+}
+function habitMissed(habit) {
+  return habitStateToday(habit) === "missed";
+}
+function habitStateLabel(habit) {
+  const state = habitStateToday(habit);
+  if (state === "done") return "已完成";
+  if (state === "missed") return "未完成";
+  if (state === "skip") return "已跳过";
+  return "今天";
 }
 async function toggleHabitToday(habit) {
   const done = habitDone(habit);
@@ -9024,15 +9055,15 @@ const SidebarSection = {
 .clone-task-indicator-action:hover { color: var(--accent); }
 .clone-task-indicator-action:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 65%, transparent); outline-offset: 2px; border-radius: 3px; }
 .clone-task-indicator small { font-size: 10px; }
-.clone-task-date { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--accent); }
+.clone-task-date { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--ink2); }
 .clone-task-date { padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; }
 .clone-task-date.overdue { color: var(--down); }
 .clone-task-date.is-completed { color: var(--muted); cursor: default; }
 .clone-task-date.is-range { color: var(--muted); cursor: default; }
-.clone-task-date.today { color: var(--accent); }
+.clone-task-date.today { color: var(--ink2); }
 .clone-task-row.is-note { min-height: 54px; }
 .clone-task-row.is-note .clone-task-content { min-height: 44px; }
-.clone-task-content input { min-width: 0; width: 100%; padding: 4px 6px; border: 1px solid var(--accent); border-radius: 4px; outline: 0; background: var(--card); color: var(--ink); font: inherit; }
+.clone-task-content input { min-width: 0; width: 100%; padding: 4px 6px; border: 0; border-radius: 4px; outline: 0; box-shadow: none; background: transparent; color: var(--ink); font: inherit; }
 .clone-row-date-panel { position: fixed; z-index: 60; }
 
 .clone-task-list-link { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 120px; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--ink2); font: inherit; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
@@ -9170,6 +9201,14 @@ const SidebarSection = {
 .clone-efficiency-meta { color: var(--muted); font-size: 11px; }
 .clone-efficiency-check { display: grid; width: 21px; height: 21px; place-items: center; border: 1.5px solid var(--line2); border-radius: 6px; background: transparent; color: var(--accent); cursor: pointer; }
 .clone-efficiency-check.checked { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast, #fff); }
+.clone-efficiency-check > span { font-size: 12px; line-height: 1; }
+.clone-efficiency-check.is-missed { border-color: color-mix(in srgb, #e34d59 42%, var(--line2)); color: #e34d59; }
+.clone-efficiency-check.is-skipped { color: var(--muted); }
+/* 今天页习惯行：已结算的整行压灰、图标去饱和、沉到组底 */
+.clone-efficiency-row.habit-row.is-settled { background: color-mix(in srgb, var(--paper) 45%, transparent); }
+.clone-efficiency-row.habit-row.is-settled strong { color: var(--muted); font-weight: 400; }
+.clone-efficiency-row.habit-row.is-settled .clone-efficiency-badge { filter: grayscale(1); opacity: .5; }
+.clone-efficiency-row.habit-row.is-settled .clone-efficiency-meta { opacity: .6; }
 /* 今天页/搜索页的倒数日与习惯行：图标徽标 + 名字，整行可点 */
 .clone-efficiency-row.is-clickable {
   width: 100%;
@@ -9790,6 +9829,42 @@ const SidebarSection = {
 .clone-detail-title h2 button svg { flex: 0 0 auto; margin-top: 5px; color: var(--muted); opacity: 0; }
 .clone-detail-title h2 button:hover svg, .clone-detail-title h2 button:focus-visible svg { opacity: 1; }
 .clone-inline-title-input { min-width: 0; flex: 1; padding: 2px 5px; border: 1px solid var(--accent); border-radius: 4px; background: var(--card); color: var(--ink); font: inherit; font-size: 19px; }
+/* 内联编辑（标题 / 检查项 / 子任务）：不要外框也不要聚焦阴影，保持和正文同样的排版 */
+.clone-inline-title-input,
+.clone-detail-subtask-title-input {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 2px 0;
+  outline: 0;
+  box-shadow: none;
+}
+.clone-inline-title-input:focus,
+.clone-inline-title-input:focus-visible,
+.clone-detail-subtask-title-input:focus,
+.clone-detail-subtask-title-input:focus-visible,
+.clone-checklist-row > input:focus,
+.clone-checklist-row > input:focus-visible,
+.clone-checklist-draft input:focus,
+.clone-checklist-draft input:focus-visible,
+.clone-detail-subtask-row > input:focus,
+.clone-detail-subtask-row > input:focus-visible,
+.clone-detail-subtask-draft > input:focus,
+.clone-detail-subtask-draft > input:focus-visible,
+.clone-detail-form input:focus,
+.clone-detail-form input:focus-visible,
+.clone-detail-form textarea:focus,
+.clone-detail-form textarea:focus-visible {
+  outline: 0;
+  box-shadow: none;
+}
+.clone-checklist-row > input,
+.clone-checklist-draft input,
+.clone-detail-subtask-row > input,
+.clone-detail-subtask-draft > input {
+  border: 0;
+  background: transparent;
+}
 .clone-detail-description-block { position: relative; min-width: 0; padding: 2px 0; }
 .clone-detail-block-add { position: absolute; z-index: 7; top: 0; left: -24px; }
 .clone-detail-block-add-trigger { display: grid; width: 20px; height: 20px; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); opacity: .55; cursor: pointer; }

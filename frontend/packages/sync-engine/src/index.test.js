@@ -318,3 +318,22 @@ test('同一字段被两边改动时保留冲突交给人工处理', async () =>
   assert.equal(conflicts.length, 1)
   assert.equal(conflicts[0].operation.payload.title, '本地标题')
 })
+
+test('远端推回的实体是投影时保留本地已有字段（createdAt 不能丢）', async () => {
+  const { createTaskSyncEngine } = await import('./index.js')
+  const engine = createTaskSyncEngine({ dbName: 'tasks:pull-prj' })
+  await engine.put('task', {
+    id: 't1', title: '甲', createdAt: '2026-01-01T00:00:00.000Z', abandonedAt: null, itemKind: 'TASK'
+  }, { bookId: 'tasks', recordOp: false })
+
+  // 服务端任务实体的 oplog 快照不带 createdAt / itemKind，整条覆盖会把本地实体削成残片
+  await engine.mergeBatch([{
+    entityType: 'task', entityId: 't1', operation: 'UPSERT', revision: 2,
+    payload: { id: 't1', title: '甲改', revision: 2, extra: {} }
+  }], 'tasks')
+
+  const [task] = await engine.list('task', { bookId: 'tasks' })
+  assert.equal(task.title, '甲改')
+  assert.equal(task.createdAt, '2026-01-01T00:00:00.000Z')
+  assert.equal(task.itemKind, 'TASK')
+})

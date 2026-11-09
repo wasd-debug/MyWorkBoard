@@ -16,6 +16,8 @@ export function sortTaskItems(tasks, { sortBy = 'time', direction = 'asc' } = {}
     else if (sortBy === 'priority') order = priorityRank(left.priority) - priorityRank(right.priority)
     else order = dateValue(sortValue(left, sortBy)) - dateValue(sortValue(right, sortBy))
     return order * directionFactor || Number(left.sortOrder || 0) - Number(right.sortOrder || 0)
+      || (Date.parse(left.createdAt) || 0) - (Date.parse(right.createdAt) || 0)
+      || String(left.publicId || '').localeCompare(String(right.publicId || ''))
   })
 }
 

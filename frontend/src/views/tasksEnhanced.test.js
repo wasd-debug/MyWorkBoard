@@ -372,8 +372,10 @@ test('middle task workspace matches the note-row, date, view, display, and print
   for (const token of [':has(> .clone-task-tag-wrap:nth-child(5)) .clone-task-tag-count', 'content: "+" attr(data-h4)', 'content: "+" attr(data-h2)', 'content: "+" attr(data-h1)', 'content: attr(data-total)']) assert.ok(workspaceView.includes(token), `missing tag tier rule ${token}`)
   // 档位隐藏/判定限定直接子元素：+N 悬浮浮层里的 chips 不参与分档
   assert.ok(workspaceView.includes('.clone-task-tags > .clone-task-tag-wrap:nth-child(n + 3) { display: none; }'), 'tier hide must target direct children only')
-  // store hydrate 按 sortOrder 排序，保证手动排序刷新后不回退
-  assert.match(tasksStore, /this\.tasks = tasks\.map\(localTask\)\.sort\(\(a, b\) => Number\(a\.sortOrder \|\| 0\) - Number\(b\.sortOrder \|\| 0\)\)/)
+  // store hydrate 按 sortOrder + createdAt 基序排序，保证手动排序刷新后不回退、
+  // 也不会因为某次写操作把条目顶到最前面
+  assert.match(tasksStore, /this\.tasks = tasks\.map\(localTask\)\.sort\(taskBaseOrder\)/)
+  assert.match(tasksStore, /function taskBaseOrder\(left, right\) \{[\s\S]{0,400}createdAt[\s\S]{0,200}publicId/)
   assert.match(workspaceView, /clone-task-tag-remove/)
   // 紧凑行（看板卡片/已完成行）使用的 visibleTaskTagIds 必须有函数定义：删函数留引用会导致渲染崩溃（已完成分组白屏）
   assert.match(workspaceView, /function visibleTaskTagIds\(task\) \{\n  return \(task\.tagIds \|\| \[\]\)\.slice\(0, 2\);\n\}/)

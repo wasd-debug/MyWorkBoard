@@ -197,11 +197,13 @@ const COLUMN_MIN_WIDTH = 88
 const minWidth = computed(() => GUTTER + props.days.length * COLUMN_MIN_WIDTH)
 const weekLabel = computed(() => (props.days.length ? `${isoWeekNumber(props.days[0])}周` : ''))
 // 全天区按内容自适应：条目少时不占满用户设定的高度，超出时以设定值为上限
-// 跨日横条固定不滚动，单日条目在下方滚动，所以只需要给 3 行留高度，超出的靠滚动看
+// 跨日横条固定不滚动，单日条目在下方滚动；两边都有内容时各占一半，谁多谁靠滚动/折叠
+const singleItemCount = computed(() => Math.max(0, ...props.days.map(day => allDayOf(day).length)))
 const bandHeight = computed(() => {
-  const maxItems = Math.max(0, ...props.days.map(day => allDayOf(day).length))
   const laneRowsUsed = displayLanes.value.length + (hiddenLaneRows.value > 0 ? 1 : 0)
-  const needed = laneRowsUsed * LANE_ROW_HEIGHT + Math.min(maxItems, 3) * 21 + 10
+  const laneNeed = laneRowsUsed * LANE_ROW_HEIGHT + 4
+  const singleNeed = singleItemCount.value ? Math.min(singleItemCount.value, 3) * 21 + 6 : 0
+  const needed = laneNeed + singleNeed + (laneRowsUsed && singleNeed ? 2 : 0)
   // 跨日条目多到被裁时用满用户设定的高度，剩下的空间全部留给可滚动的单日区
   return Math.min(props.allDayHeight, Math.max(26, lanesOverflow.value ? props.allDayHeight : needed))
 })
@@ -216,12 +218,30 @@ const buckets = computed(() => props.days.map(day => props.byDay.get(toDateKey(d
 const lanePack = computed(() => packWeekLanes(props.days, props.byDay))
 const laneRows = computed(() => lanePack.value.lanes)
 
-// 跨日泳道固定在顶部不滚动，所以必须先按全天区高度裁剪，至少留 2 行给单日条目的滚动区
+// 跨日泳道固定在顶部不滚动，所以必须先按全天区高度裁剪；与单日条目同时存在时两边平分，
+// 由下面的滚动区兜住单日条目，不让跨日横条把整块空间吃掉
 const LANE_ROW_HEIGHT = 20
-const laneBudget = computed(() => Math.max(1, Math.floor((props.allDayHeight - 10) / LANE_ROW_HEIGHT) - 2))
+const MORE_ROW_HEIGHT = 18
+// 跨日区至少要放得下 2 行泳道 + 提示行，否则「平分」会退化成只剩一条横条
+const MIN_LANE_ROWS = 2
+const MIN_SINGLE_HEIGHT = 26
+const laneSlotHeight = computed(() => {
+  const total = Math.max(0, props.allDayHeight - 6)
+  if (!laneRows.value.length || !singleItemCount.value) return total
+  const minLanes = MIN_LANE_ROWS * LANE_ROW_HEIGHT + MORE_ROW_HEIGHT + 2
+  return Math.max(0, Math.min(total - MIN_SINGLE_HEIGHT, Math.max(Math.floor(total / 2), minLanes)))
+})
+const laneBudget = computed(() => Math.max(1, Math.floor((laneSlotHeight.value - 4) / LANE_ROW_HEIGHT)))
 const lanesOverflow = computed(() => laneRows.value.length > laneBudget.value)
+// 溢出时要留一行给「还有 N 项」提示；放得下就照满额显示，放不下才让出一行
+const laneDisplayRows = computed(() => {
+  const budget = laneBudget.value
+  if (!lanesOverflow.value) return budget
+  const withMore = budget * LANE_ROW_HEIGHT + 2 + MORE_ROW_HEIGHT
+  return withMore <= laneSlotHeight.value ? budget : Math.max(1, budget - 1)
+})
 const displayLanes = computed(() => (lanesOverflow.value
-  ? laneRows.value.slice(0, Math.max(1, laneBudget.value - 1))
+  ? laneRows.value.slice(0, laneDisplayRows.value)
   : laneRows.value))
 const hiddenLaneRows = computed(() => laneRows.value.length - displayLanes.value.length)
 const hiddenLaneSegments = computed(() => laneRows.value.slice(displayLanes.value.length).flat())

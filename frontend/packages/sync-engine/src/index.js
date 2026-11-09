@@ -267,14 +267,19 @@ export class SyncEngine {
       for (const { operation, index } of entries) {
         const entityId = String(operation.entityId ?? operation.payload?.id)
         const scope = String(bookId || operation.bookId || operation.payload?.bookId || 'default')
-        const payload = {
+        const key = entityKey(scope, entityId)
+        const current = cache.get(key)
+        const incoming = {
           ...(operation.payload || {}),
           ...(this.entityPrefix === 'task' ? operation.payload?.extra || {} : {}),
           id: entityId,
           bookId: scope,
-          key: entityKey(scope, entityId)
+          key
         }
-        const current = cache.get(payload.key)
+        // 服务端 oplog 快照是投影，可能缺字段（任务实体就没有 createdAt / abandonedAt /
+        // itemKind）。整条覆盖会让本地实体变成残缺对象——排序兜底字段一丢，刚编辑过的
+        // 任务就会跳到列表最前面。这里以本地已有值为底，服务端下发的字段覆盖上去。
+        const payload = current ? { ...stripLocal(current), ...incoming } : incoming
         if (operation.operation === 'PURGE') {
           cache.delete(payload.key)
           writes.delete(payload.key)

@@ -123,6 +123,7 @@ export function buildCalendarEvents(options = {}) {
   for (const task of tasks) {
     if (!task || task.deleted || task.itemKind === 'NOTE') continue
     if (task.status === 'ABANDONED') continue
+    if (settings.hideCompleted && task.status === 'COMPLETED') continue
     if (taskFilter && !taskFilter(task)) continue
     const window = taskWindow(task)
     if (!window) continue

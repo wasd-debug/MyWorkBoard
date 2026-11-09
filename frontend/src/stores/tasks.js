@@ -53,6 +53,27 @@ function localTask(value) {
   return { ...rest, id, publicId: id }
 }
 
+/** 只保留有值的键：调用方把字段显式写成 undefined 时，不应该覆盖库里的真实值 */
+function definedOnly(source) {
+  const out = {}
+  for (const [key, value] of Object.entries(source || {})) if (value !== undefined) out[key] = value
+  return out
+}
+
+/**
+ * 列表基序：sortOrder 相同（导入/同步来的任务大量是 0）时，不能退化成
+ * 「谁刚被写过谁在前」——那样编辑一次属性就会看到任务跳到最前面再弹回去。
+ * 这里用 createdAt + publicId 兜底，保证同一批数据每次都排成同一个顺序。
+ */
+function taskBaseOrder(left, right) {
+  const bySort = Number(left.sortOrder || 0) - Number(right.sortOrder || 0)
+  if (bySort) return bySort
+  const leftCreated = left.createdAt ? Date.parse(left.createdAt) || 0 : 0
+  const rightCreated = right.createdAt ? Date.parse(right.createdAt) || 0 : 0
+  if (leftCreated !== rightCreated) return leftCreated - rightCreated
+  return String(left.publicId || '').localeCompare(String(right.publicId || ''))
+}
+
 async function replaceRemoteCollection(scoped, type, records) {
   const pending = new Set((await scoped.pendingOperations(SCOPE))
     .filter(item => item.entityType === type).map(item => item.entityId))
@@ -226,7 +247,7 @@ export const useTasksStore = defineStore('tasks', {
       this.deletedLists = lists.filter(item => item.deleted).map(item => ({ ...item, publicId: item.id }))
       this.tags = tags.map(item => ({ ...item, publicId: item.id })).sort((a, b) => a.sortOrder - b.sortOrder)
       // 手动排序视图依赖基序即 sortOrder 序：hydrate 必须稳定排序，否则刷新后拖动顺序回退
-      this.tasks = tasks.map(localTask).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+      this.tasks = tasks.map(localTask).sort(taskBaseOrder)
       this.habits = habits.filter(item => !item.deleted).map(localTask).sort((a, b) => a.sortOrder - b.sortOrder)
       this.habitCheckins = habitCheckins.filter(item => !item.deleted).map(localTask)
       this.countdowns = countdowns.filter(item => !item.deleted).map(localTask)
@@ -298,17 +319,22 @@ export const useTasksStore = defineStore('tasks', {
     },
     async saveLocal(value, operation = 'UPSERT') {
       const id = value.publicId || value.id || createClientId()
+      // 详情面板/行数据有时只带「视图用到的那些字段」推回来，直接覆盖会把 createdAt
+      // 这类排序依赖的字段抹成 undefined——表现就是改一次属性，任务跳到列表最前面。
+      // 这里改成与库内既有实体合并，undefined 不参与覆盖（空串/空数组仍然生效）。
+      const existing = this.tasks.find(item => item.publicId === id)
+      const merged = existing ? { ...existing, ...definedOnly(value) } : value
       const pending = (await engine.pendingOperations(SCOPE)).find(item => item.entityId === id)
       if (operation === 'DELETE' && pending && Number(pending.baseRevision || 0) === 0) {
         await engine.removeStore('oplog', pending.opId)
         await engine.removeStore('tasks', `${SCOPE}:${id}`)
         await this.hydrate()
-        return { ...value, deleted: true }
+        return { ...merged, deleted: true }
       }
-      const options = { bookId: SCOPE, opId: pending?.opId, baseRevision: value.revision || 0 }
+      const options = { bookId: SCOPE, opId: pending?.opId, baseRevision: merged.revision || 0 }
       const record = operation === 'DELETE'
         ? await engine.remove('task', id, options)
-        : await engine.put('task', { ...value, id, publicId: undefined }, options)
+        : await engine.put('task', { ...merged, id, publicId: undefined }, options)
       await this.hydrate()
       this.scheduleSync()
       return localTask(record)

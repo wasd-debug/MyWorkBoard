@@ -21,6 +21,8 @@ export const COUNTDOWN_COLOR_MODES = [
 ]
 
 export const DEFAULT_COLOR_SETTINGS = {
+  // 日历里是否隐藏已完成任务（只影响任务，不影响习惯/纪念日等其它层）
+  hideCompleted: false,
   taskColorMode: 'list',
   habitColorMode: 'theme',
   habitFixedColor: '#f0b429',
