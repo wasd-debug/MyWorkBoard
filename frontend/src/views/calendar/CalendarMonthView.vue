@@ -4,7 +4,7 @@
       <span v-if="showWeekNumber" class="cal-week-gutter"></span>
       <span v-for="(label, index) in dowLabels" :key="`${label}-${index}`">{{ label }}</span>
     </div>
-    <div class="cal-month-body" :class="{ 'is-no-wn': !showWeekNumber }" :style="{ gridTemplateRows: `repeat(${weeks.length}, minmax(0, 1fr))` }">
+    <div class="cal-month-body" :class="{ 'is-no-wn': !showWeekNumber }" :style="{ gridTemplateRows: `repeat(${weeks.length}, minmax(${cellHeight}px, 1fr))` }">
       <div
         v-for="(week, index) in weeks"
         :key="`week-${index}`"
@@ -68,9 +68,9 @@
             >+{{ hiddenCount(index, day) }}</button>
           </div>
         </div>
-        <div class="cal-lanes" :style="{ gridTemplateRows: `repeat(${Math.max(weekViews[index].lanes.length, 1)}, 18px)` }">
+        <div class="cal-lanes" :style="{ gridTemplateRows: `repeat(${weekViews[index].lanes.length + (weekViews[index].hiddenCount ? 1 : 0)}, 18px)` }">
           <button
-            v-for="segment in weekViews[index].segments"
+            v-for="segment in weekViews[index].visibleSegments"
             :key="`lane-${segment.id}-${index}`"
             type="button"
             class="cal-lane"
@@ -87,6 +87,14 @@
             <span class="cal-ev-title">{{ segment.event.title }}</span>
             <span v-if="segment.event.openChecklist" class="cal-ev-extra">+{{ segment.event.openChecklist }}</span>
           </button>
+          <button
+            v-if="weekViews[index].hiddenCount"
+            type="button"
+            class="cal-lane cal-lane-more"
+            :style="{ gridRow: weekViews[index].lanes.length + 1, gridColumn: '1 / -1' }"
+            :title="weekViews[index].hiddenTitles"
+            @click.stop="$emit('select-day', week[0], $event)"
+          >还有 {{ weekViews[index].hiddenCount }} 项跨日任务</button>
         </div>
       </div>
     </div>
@@ -188,17 +196,29 @@ function isInRange(day) {
   return key >= from && key <= to
 }
 
+const LANE_ROW_HEIGHT = 20
+
+// 跨日泳道行数必须落在格子高度内，否则会压到下一周的日期上；被裁的用「还有 N 项」提示
+const laneBudget = computed(() => Math.max(1, Math.floor((props.cellHeight - 22 - 10) / LANE_ROW_HEIGHT)))
+
 const weekViews = computed(() => props.weeks.map(week => {
   const packed = packWeekLanes(week, props.byDay)
+  const overflow = packed.lanes.length > laneBudget.value
+  const lanes = overflow ? packed.lanes.slice(0, Math.max(1, laneBudget.value - 1)) : packed.lanes
+  const visibleIds = new Set(lanes.flat().map(item => item.id))
   const laneIndex = {}
-  packed.lanes.forEach((lane, index) => lane.forEach(item => { laneIndex[item.id] = index }))
+  lanes.forEach((lane, index) => lane.forEach(item => { laneIndex[item.id] = index }))
+  const hiddenSegments = packed.segments.filter(segment => !visibleIds.has(segment.id))
+  const laneRowsUsed = lanes.length + (hiddenSegments.length ? 1 : 0)
   return {
-    lanes: packed.lanes,
-    segments: packed.segments,
+    lanes,
+    visibleSegments: packed.segments.filter(segment => visibleIds.has(segment.id)),
     laneIds: packed.laneIds,
-    laneHeight: packed.laneHeight,
+    laneHeight: laneRowsUsed * LANE_ROW_HEIGHT,
     laneIndex,
-    limit: visibleRowCount(props.cellHeight, packed.lanes.length)
+    hiddenCount: hiddenSegments.length,
+    hiddenTitles: hiddenSegments.map(segment => segment.event.title).join('、'),
+    limit: visibleRowCount(props.cellHeight, laneRowsUsed)
   }
 }))
 
@@ -277,6 +297,7 @@ function eventTitle(event) {
   display: grid;
   grid-template-columns: 36px repeat(7, minmax(0, 1fr));
   min-height: 0;
+  overflow: hidden;
   border-bottom: 1px solid var(--line);
 }
 .cal-week:last-child {
@@ -406,6 +427,17 @@ function eventTitle(event) {
 }
 .cal-lane:hover {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 14%, transparent);
+}
+/* 跨日泳道超出格子高度时的提示条 */
+.cal-lane-more {
+  border: 1px dashed var(--line2);
+  background: transparent;
+  color: var(--muted);
+  font-size: 9.5px;
+}
+.cal-lane-more:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .cal-lane.continues-before {
   margin-left: 0;

@@ -25,18 +25,18 @@
       <div v-show="!allDayCollapsed" class="cal-allday-body">
         <!-- 跨日任务：跨列横条，固定在上方，不随单日条目滚动 -->
         <div
-          v-if="laneRows.length"
+          v-if="displayLanes.length"
           class="cal-allday-lanes"
-          :style="{ ...colsStyle, gridTemplateRows: `repeat(${laneRows.length}, 19px)` }"
+          :style="{ ...colsStyle, gridTemplateRows: `repeat(${displayLanes.length}, 18px)` }"
         >
           <button
-            v-for="segment in laneSegments"
+            v-for="segment in displaySegments"
             :key="`lane-${segment.id}`"
             type="button"
             class="cal-allday-lane"
             :class="{ 'is-done': segment.event.done, 'continues-before': segment.continuesBefore, 'continues-after': segment.continuesAfter }"
             :style="{
-              gridRow: laneIndex[segment.id] + 1,
+              gridRow: displayLaneIndex[segment.id] + 1,
               gridColumn: `${segment.startCol + 1} / ${segment.endCol + 2}`,
               ...tintStyle(segment.event.color, 16)
             }"
@@ -49,6 +49,13 @@
             <span v-if="segment.continuesAfter" class="cal-ev-extra">→</span>
           </button>
         </div>
+        <button
+          v-if="hiddenLaneRows"
+          type="button"
+          class="cal-allday-lane-more"
+          :title="hiddenLaneTitles"
+          @click.stop="$emit('select-day', props.days[0], $event)"
+        >还有 {{ hiddenLaneCount }} 项跨日任务</button>
         <!-- 单日条目（任务/习惯/专注）：内容过多时在这里滚动 -->
         <div class="cal-allday-scroll">
           <div class="cal-allday-cols" :style="colsStyle">
@@ -193,8 +200,10 @@ const weekLabel = computed(() => (props.days.length ? `${isoWeekNumber(props.day
 // 跨日横条固定不滚动，单日条目在下方滚动，所以只需要给 3 行留高度，超出的靠滚动看
 const bandHeight = computed(() => {
   const maxItems = Math.max(0, ...props.days.map(day => allDayOf(day).length))
-  const needed = laneHeight.value + Math.min(maxItems, 3) * 21 + 10
-  return Math.min(props.allDayHeight, Math.max(26, needed))
+  const laneRowsUsed = displayLanes.value.length + (hiddenLaneRows.value > 0 ? 1 : 0)
+  const needed = laneRowsUsed * LANE_ROW_HEIGHT + Math.min(maxItems, 3) * 21 + 10
+  // 跨日条目多到被裁时用满用户设定的高度，剩下的空间全部留给可滚动的单日区
+  return Math.min(props.allDayHeight, Math.max(26, lanesOverflow.value ? props.allDayHeight : needed))
 })
 const viewWindow = computed(() => visibleWindow(props.hiddenTop, props.hiddenBottom))
 const gridHeight = computed(() => ((viewWindow.value.minutes / 60) * props.hourHeight))
@@ -206,11 +215,23 @@ const nowTop = computed(() => ((nowMinutes.value - viewWindow.value.start) / 60)
 const buckets = computed(() => props.days.map(day => props.byDay.get(toDateKey(day)) || { allDay: [], timed: [] }))
 const lanePack = computed(() => packWeekLanes(props.days, props.byDay))
 const laneRows = computed(() => lanePack.value.lanes)
-const laneSegments = computed(() => lanePack.value.segments)
-const laneHeight = computed(() => lanePack.value.laneHeight)
-const laneIndex = computed(() => {
+
+// 跨日泳道固定在顶部不滚动，所以必须先按全天区高度裁剪，至少留 2 行给单日条目的滚动区
+const LANE_ROW_HEIGHT = 20
+const laneBudget = computed(() => Math.max(1, Math.floor((props.allDayHeight - 10) / LANE_ROW_HEIGHT) - 2))
+const lanesOverflow = computed(() => laneRows.value.length > laneBudget.value)
+const displayLanes = computed(() => (lanesOverflow.value
+  ? laneRows.value.slice(0, Math.max(1, laneBudget.value - 1))
+  : laneRows.value))
+const hiddenLaneRows = computed(() => laneRows.value.length - displayLanes.value.length)
+const hiddenLaneSegments = computed(() => laneRows.value.slice(displayLanes.value.length).flat())
+const hiddenLaneCount = computed(() => hiddenLaneSegments.value.length)
+const displaySegments = computed(() => displayLanes.value.flat())
+const hiddenLaneTitles = computed(() => hiddenLaneSegments.value
+  .map(segment => segment.event.title).join('、'))
+const displayLaneIndex = computed(() => {
   const map = {}
-  laneRows.value.forEach((lane, index) => lane.forEach(item => { map[item.id] = index }))
+  displayLanes.value.forEach((lane, index) => lane.forEach(item => { map[item.id] = index }))
   return map
 })
 const layouts = computed(() => buckets.value.map(bucket => layoutColumns(bucket.timed)))
@@ -540,6 +561,25 @@ onBeforeUnmount(() => { window.clearInterval(ticker) })
   gap: 2px 0;
   padding: 2px 0;
   pointer-events: none;
+}
+/* 跨日横条被裁时的提示，固定在全天区上方，不参与单日区滚动 */
+.cal-allday-lane-more {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  height: 18px;
+  margin: 0 4px;
+  padding: 0 5px;
+  border: 1px dashed var(--line2);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: left;
+}
+.cal-allday-lane-more:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 /* 只涉及单日的条目在这里纵向滚动 */
 .cal-allday-scroll {
