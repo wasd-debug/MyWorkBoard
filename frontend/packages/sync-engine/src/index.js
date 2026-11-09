@@ -57,6 +57,11 @@ export class SyncEngine {
       key: entityKey(bookId, entityId),
       updatedAt: safeValue.updatedAt ?? new Date().toISOString()
     }
+    // base 是「这次改动之前、最后一次与服务端对齐的状态」，冲突时用它做三段合并：
+    // 只把本地真正改过的字段盖到服务端版本上，服务端另改的字段保留，能合就自动重推。
+    const pending = options.recordOp === false ? null : await this.read('oplog', opId)
+    const previous = pending ? null : await this.read(entityStore, record.key)
+    const base = pending?.base ?? (previous ? stripLocal(previous) : null)
     await this.write(entityStore, record)
     if (options.recordOp !== false) {
       await this.write('oplog', {
@@ -68,8 +73,9 @@ export class SyncEngine {
         entityId,
         operation: options.operation || 'UPSERT',
         baseRevision: Number(options.baseRevision ?? safeValue.revision ?? 0),
+        base,
         payload: stripLocal(record),
-        createdAt: new Date().toISOString()
+        createdAt: pending?.createdAt || new Date().toISOString()
       })
     }
     return stripLocal(record)
@@ -136,8 +142,15 @@ export class SyncEngine {
   async sync(bookId) {
     if (!bookId) throw new Error('bookId is required')
     let pushed = 0
-    const pending = await this.pendingOperations(bookId)
-    if (pending.length && this.transport.push) {
+    let rebuildAttempts = 0
+    // 旧版本留下的存量冲突也先试着自动修复，能合的直接放回队列重推
+    await this.rebaseStoredConflicts(bookId)
+    let pending = await this.pendingOperations(bookId)
+    // 冲突优先自动重推一次：把本地改动的字段合到服务端新版本上，多数「版本已变化」能被吃掉，
+    // 用户不再看到冲突；真的同字段互相覆盖时才留冲突记录交给人工处理。
+    while (pending.length && this.transport.push && rebuildAttempts < 2) {
+      rebuildAttempts += 1
+      let retried = false
       const response = await this.transport.push(bookId, pending)
       const byId = new Map(pending.map(operation => [operation.opId, operation]))
       for (const result of response?.results || []) {
@@ -147,10 +160,26 @@ export class SyncEngine {
           await this.removeStore('oplog', operation.opId)
           await this.removeStore('conflicts', operation.opId)
           if (result.entity) {
-            await this.merge({ ...result, operation: 'UPSERT', payload: result.entity }, bookId)
+            // 服务端结果里若没带 entityType/entityId，用本地操作补齐，避免写错存储
+            await this.merge({
+              ...result,
+              entityType: result.entityType || operation.entityType,
+              entityId: result.entityId || operation.entityId,
+              operation: 'UPSERT',
+              payload: result.entity
+            }, bookId)
           }
           pushed++
         } else if (result.status === 'CONFLICT') {
+          const rebase = await this.tryRebase(operation, result, bookId)
+          if (rebase === 'retry') {
+            retried = true
+            continue
+          }
+          if (rebase === 'resolved') {
+            pushed++
+            continue
+          }
           await this.write('conflicts', {
             key: operation.opId,
             id: operation.opId,
@@ -171,6 +200,8 @@ export class SyncEngine {
           await this.removeStore('oplog', operation.opId)
         }
       }
+      if (!retried) break
+      pending = await this.pendingOperations(bookId)
     }
 
     let pulled = 0
@@ -263,6 +294,68 @@ export class SyncEngine {
       await this.writeMany(store, [...writes.values()])
     }))
     return results
+  }
+
+  /**
+   * 冲突自动修复：服务端版本变了，但本地改动和服务端改动不落在同一批字段上时，
+   * 直接把本地改动的字段合到服务端最新版本、用新 revision 重推，不再打扰用户。
+   * 返回 'retry' 表示已改写 oplog（下次 push 会重试），'resolved' 表示已采纳服务端并清理，
+   * false 表示只能留冲突。
+   */
+  async tryRebase(operation, result, bookId) {
+    const server = result?.serverEntity
+    const serverRevision = Number(result?.serverRevision ?? server?.revision ?? 0)
+    if (!server || !serverRevision) return false
+    if (operation.operation === 'DELETE') {
+      // 删除是意图明确的整体操作，直接把基线挪到服务端最新版本再删一次即可
+      await this.write('oplog', { ...operation, baseRevision: serverRevision })
+      return 'retry'
+    }
+    const local = operation.payload || {}
+    if (!local || !Object.keys(local).length) return false
+    const serverFlat = this.flattenEntity(server)
+    const merged = rebasePayload(operation.base || null, local, serverFlat)
+    if (!merged) return false
+    if (!merged.touched) {
+      // 本地没有实质改动，只是拿着旧 revision：直接采纳服务端版本，不再重推
+      await this.put(operation.entityType, { ...serverFlat, bookId: operation.bookId }, {
+        bookId: operation.bookId,
+        recordOp: false
+      })
+      await this.removeStore('oplog', operation.opId)
+      return 'resolved'
+    }
+    const payload = { ...merged.merged, id: operation.entityId, revision: serverRevision }
+    await this.put(operation.entityType, { ...payload, bookId: operation.bookId }, {
+      bookId: operation.bookId,
+      recordOp: false
+    })
+    await this.write('oplog', { ...operation, payload, baseRevision: serverRevision })
+    return 'retry'
+  }
+
+  /** 服务端实体在任务域是「扁平字段 + extra」，统一摊平成一份便于逐字段比较 */
+  flattenEntity(entity) {
+    if (!entity) return {}
+    if (this.entityPrefix === 'task' && entity.extra && typeof entity.extra === 'object') {
+      return { ...entity, ...entity.extra }
+    }
+    return { ...entity }
+  }
+
+  /** 把库里已经存在的冲突挨个尝试自动合并，能合的直接回到待推送队列 */
+  async rebaseStoredConflicts(bookId) {
+    const stored = await this.conflicts(bookId)
+    for (const conflict of stored) {
+      const operation = conflict.operation
+      if (!operation?.opId) continue
+      try {
+        const rebase = await this.tryRebase(operation, conflict.result, conflict.bookId || bookId)
+        if (rebase) await this.removeStore('conflicts', operation.opId)
+      } catch {
+        // 合不了就保留，交给用户按原有流程处理
+      }
+    }
   }
 
   async resolveConflict(opId, strategy, mergedPayload) {
@@ -440,6 +533,36 @@ function singular(entityType) {
 
 function entityKey(bookId, id) {
   return `${bookId}:${id}`
+}
+
+/** 合并时忽略的元字段：它们由引擎/服务端自己维护 */
+const META_FIELDS = new Set(['id', 'key', 'bookId', 'updatedAt', 'revision', 'deleted', 'deletedAt'])
+
+function sameValue(left, right) {
+  if (left === right) return true
+  if (left == null || right == null) return left == null && right == null
+  if (typeof left !== 'object' || typeof right !== 'object') return false
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
+/**
+ * 三段合并：base=上次与服务端对齐的状态，local=本地快照，server=服务端新版本。
+ * 只把本地真正改过、且服务端没动过的字段写回；两边都改了同一个字段就放弃（返回 null）。
+ * 返回 { merged, touched }，touched=0 表示本地其实什么也没改（只是 revision 过期）。
+ */
+function rebasePayload(base, local, server) {
+  if (!base || !server) return null
+  const merged = { ...server }
+  let touched = 0
+  for (const [key, value] of Object.entries(local)) {
+    if (META_FIELDS.has(key)) continue
+    if (sameValue(value, base[key])) continue
+    // 服务端把这个字段改成了第三个值 → 真冲突，交给人工
+    if (!sameValue(server[key], base[key]) && !sameValue(server[key], value)) return null
+    merged[key] = value
+    touched += 1
+  }
+  return { merged, touched }
 }
 
 function stripLocal(value) {

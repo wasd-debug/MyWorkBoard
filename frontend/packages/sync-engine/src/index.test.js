@@ -248,3 +248,73 @@ test('冲突操作后续应用成功会清理旧冲突记录', async () => {
   await engine.sync('book-a')
   assert.equal((await engine.conflicts('book-a')).length, 0)
 })
+
+test('版本过期但改动字段不重叠时自动合并重推，不产生冲突', async () => {
+  const batches = []
+  let round = 0
+  const engine = new SyncEngine({
+    transport: {
+      push: async (bookId, operations) => {
+        batches.push(operations)
+        round += 1
+        if (round === 1) {
+          return {
+            results: operations.map(operation => ({
+              opId: operation.opId,
+              status: 'CONFLICT',
+              serverRevision: 4,
+              // 服务端改了 note，本地改的是 title，两者可以无痛合并
+              serverEntity: { id: 't1', title: '旧标题', note: '服务端新备注', revision: 4 }
+            }))
+          }
+        }
+        return {
+          results: operations.map(operation => ({
+            opId: operation.opId,
+            status: 'APPLIED',
+            entity: { ...operation.payload, revision: 5 }
+          }))
+        }
+      },
+      pull: async (_bookId, cursor) => ({ cursor, operations: [] })
+    }
+  })
+  await engine.put('task', { id: 't1', title: '旧标题', note: '旧备注', revision: 3 }, { bookId: 'tasks', recordOp: false })
+  await engine.put('task', { id: 't1', title: '新标题', note: '旧备注', revision: 3 }, { bookId: 'tasks' })
+
+  const result = await engine.sync('tasks')
+
+  assert.equal(batches.length, 2)
+  assert.equal(batches[1][0].payload.title, '新标题')
+  assert.equal(batches[1][0].payload.note, '服务端新备注')
+  assert.equal(batches[1][0].baseRevision, 4)
+  assert.equal(result.pushed, 1)
+  assert.deepEqual(await engine.conflicts('tasks'), [])
+  const stored = await engine.get('task', 't1', { bookId: 'tasks' })
+  assert.equal(stored.note, '服务端新备注')
+  assert.equal(stored.revision, 5)
+})
+
+test('同一字段被两边改动时保留冲突交给人工处理', async () => {
+  const engine = new SyncEngine({
+    transport: {
+      push: async (bookId, operations) => ({
+        results: operations.map(operation => ({
+          opId: operation.opId,
+          status: 'CONFLICT',
+          serverRevision: 4,
+          serverEntity: { id: 't1', title: '服务端标题', note: '旧备注', revision: 4 }
+        }))
+      }),
+      pull: async (_bookId, cursor) => ({ cursor, operations: [] })
+    }
+  })
+  await engine.put('task', { id: 't1', title: '旧标题', note: '旧备注', revision: 3 }, { bookId: 'tasks', recordOp: false })
+  await engine.put('task', { id: 't1', title: '本地标题', note: '旧备注', revision: 3 }, { bookId: 'tasks' })
+
+  await engine.sync('tasks')
+
+  const conflicts = await engine.conflicts('tasks')
+  assert.equal(conflicts.length, 1)
+  assert.equal(conflicts[0].operation.payload.title, '本地标题')
+})
