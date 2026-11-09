@@ -1202,8 +1202,22 @@ public class TaskService {
         Long sourceId = jdbcTemplate.queryForObject("SELECT id FROM task WHERE public_id=?", Long.class, current.publicId());
         Long targetId = jdbcTemplate.queryForObject("SELECT id FROM task WHERE public_id=?", Long.class, nextId);
         jdbcTemplate.update("INSERT INTO task_tag_link(task_id,tag_id) SELECT ?,tag_id FROM task_tag_link WHERE task_id=?", targetId, sourceId);
-        jdbcTemplate.update("INSERT INTO task_checklist_item(public_id,user_id,task_id,title,completed,sort_order) " +
+        int copiedChecklist = jdbcTemplate.update("INSERT INTO task_checklist_item(public_id,user_id,task_id,title,completed,sort_order) " +
                 "SELECT UUID(),user_id,?,title,FALSE,sort_order FROM task_checklist_item WHERE task_id=? AND deleted=FALSE", targetId, sourceId);
+        // 兜底：完成请求里若带了空的 checklist，会先把源任务的检查项软删掉，导致上面复制到 0 条。
+        // 这时用更新前的快照补上，保证新实例一定拿到检查事项。
+        if (copiedChecklist == 0 && current.checklist() != null && !current.checklist().isEmpty()) {
+            for (TaskModels.ChecklistItem item : current.checklist()) {
+                jdbcTemplate.update("INSERT INTO task_checklist_item(public_id,user_id,task_id,title,completed,sort_order) " +
+                        "VALUES(UUID(),?,?,?,FALSE,?)", userId, targetId, item.title(), item.sortOrder());
+            }
+        }
+        // 描述同理：客户端若在这次更新里把 description 写成空串，新实例会跟着变空，用快照补回
+        String snapshotDescription = current.description();
+        if (snapshotDescription != null && !snapshotDescription.isBlank()) {
+            jdbcTemplate.update("UPDATE task SET description=? WHERE public_id=? AND (description IS NULL OR description='')",
+                    snapshotDescription, nextId);
+        }
         jdbcTemplate.update("INSERT INTO task_reminder(public_id,user_id,task_id,kind,offset_minutes,remind_at,channel,daily_until_done) " +
                 "SELECT UUID(),user_id,?,kind,offset_minutes,CASE WHEN kind='RELATIVE' THEN TIMESTAMPADD(MINUTE,-offset_minutes,?) ELSE remind_at END,channel,daily_until_done " +
                 "FROM task_reminder WHERE task_id=? AND cancelled_at IS NULL", targetId, Timestamp.from(next), sourceId);
