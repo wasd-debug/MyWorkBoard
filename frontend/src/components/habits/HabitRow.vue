@@ -1,7 +1,7 @@
 <template>
   <li
     class="hr"
-    :class="{ 'is-active': active, 'is-grid': layout === 'grid', 'is-selectable': selectable, 'is-picked': selected }"
+    :class="{ 'is-active': active, 'is-grid': layout === 'grid', 'is-selectable': selectable, 'is-picked': selected, 'is-settled': settled }"
     role="button"
     tabindex="0"
     :aria-label="`${habit.name}，${ariaSummary}`"
@@ -64,6 +64,8 @@ const emit = defineEmits(['open', 'toggle', 'select', 'menu'])
 
 const total = computed(() => totalDone(props.habit, props.checkins))
 const streak = computed(() => currentStreak(props.habit, props.checkins, props.today))
+// 当天已处理（完成 / 未完成 / 跳过）→ 整行变灰，并由列表把它排到分组最下面
+const settled = computed(() => ['done', 'missed', 'skip'].includes(stateOf(props.today)))
 const ariaSummary = computed(() => `${goalLabel(props.habit, total.value)}，连续 ${streak.value} 天`)
 const iconStyle = computed(() => ({
   background: backgroundOf(props.habit.color),
@@ -102,11 +104,21 @@ void dayLabel
   transition: background .14s ease, border-color .14s ease, box-shadow .14s ease;
 }
 .hr:hover { background: color-mix(in srgb, var(--paper) 55%, var(--card)); }
-.hr.is-active {
-  border-color: #3d8fce;
-  background: var(--card);
-  box-shadow: 0 2px 10px rgb(61 143 206 / 12%);
+/* 已完成 / 未完成 / 跳过：整行压灰，位置由列表排序沉到分组底部 */
+.hr.is-settled {
+  background: color-mix(in srgb, var(--paper) 42%, var(--card));
+  box-shadow: 0 0 0 1px rgb(35 43 57 / 3%);
 }
+.hr.is-settled .hr-name { color: var(--muted); font-weight: 500; }
+.hr.is-settled .hr-icon { filter: grayscale(1); opacity: .55; }
+.hr.is-settled .hr-meta { opacity: .65; }
+.hr.is-settled .hr-check.is-done {
+  border-color: transparent;
+  background: color-mix(in srgb, #3d8fce 48%, var(--card));
+}
+.hr.is-settled .hr-check.is-missed { color: color-mix(in srgb, #e34d59 55%, var(--muted)); }
+.hr.is-active { border-color: #3d8fce; background: var(--card); box-shadow: 0 2px 10px rgb(61 143 206 / 12%); }
+.hr.is-active.is-settled { background: var(--card); }
 .hr.is-selectable { background: color-mix(in srgb, var(--paper) 45%, var(--card)); }
 .hr.is-picked { border-color: color-mix(in srgb, #3d8fce 55%, transparent); }
 .hr-pick { margin: 0; accent-color: #3d8fce; }

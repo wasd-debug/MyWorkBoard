@@ -282,7 +282,13 @@ const allHabits = computed(() => store.habits || [])
 const checkins = computed(() => store.habitCheckins || [])
 const habits = computed(() => allHabits.value.filter(habit => !habit.archived))
 const archivedHabits = computed(() => allHabits.value.filter(habit => habit.archived))
-const groups = computed(() => groupHabits(habits.value, customGroups.value))
+// 已完成 / 未完成 / 跳过的习惯沉到分组底部；同组内保持原有顺序（Array#sort 稳定）
+const SETTLED_STATES = new Set(['done', 'missed', 'skip'])
+const isSettled = habit => SETTLED_STATES.has(dayState(habit, checkins.value, activeDate.value, today.value))
+const groups = computed(() => groupHabits(habits.value, customGroups.value).map(group => ({
+  ...group,
+  items: [...group.items].sort((left, right) => Number(isSettled(left)) - Number(isSettled(right)))
+})))
 const selected = computed(() => allHabits.value.find(habit => habit.publicId === selectedId.value) || null)
 // 容器太窄时右侧详情栏自动收起，点习惯改成进入整页详情
 const autoCollapsed = computed(() => !narrow.value && containerWidth.value > 0 && containerWidth.value - sideWidth.value < 340)
