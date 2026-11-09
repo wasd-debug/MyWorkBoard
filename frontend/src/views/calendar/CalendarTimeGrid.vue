@@ -17,40 +17,18 @@
       </div>
     </div>
 
-    <div class="cal-allday" :class="{ 'is-collapsed': allDayCollapsed }" :style="{ height: `${allDayCollapsed ? 26 : bandHeight}px` }">
+    <div class="cal-allday" :class="{ 'is-collapsed': allDayCollapsed }" :style="{ height: `${allDayCollapsed ? 26 : bandHeight}px`, minWidth: `${minWidth}px` }">
       <button type="button" class="cal-allday-toggle" :aria-expanded="!allDayCollapsed" @click="$emit('update:allDayCollapsed', !allDayCollapsed)">
         <span>全天</span>
         <ChevronDown v-if="allDayCollapsed" :size="13" /><ChevronUp v-else :size="13" />
       </button>
       <div v-show="!allDayCollapsed" class="cal-allday-body">
-        <div class="cal-allday-cols" :style="colsStyle">
-          <div
-            v-for="day in days"
-            :key="`allday-${toDateKey(day)}`"
-            class="cal-allday-col"
-            :style="{ paddingTop: `${laneHeight}px` }"
-            :title="`在 ${day.getMonth() + 1}月${day.getDate()}日 新建全天任务`"
-            @click="$emit('create-allday', day)"
-          >
-            <button
-              v-for="event in allDayOf(day)"
-              :key="event.id"
-              type="button"
-              class="cal-allday-item"
-              :class="[`kind-${event.kind}`, { 'is-done': event.done }]"
-              :style="tintStyle(event.color, 16)"
-              :title="event.title"
-              @click.stop="$emit('open-event', event, $event)"
-            >
-              <span v-if="event.kind === 'habit' && event.habit?.icon" class="cal-ev-mark" :style="{ background: event.color }"><TaskOrganizationIcon :value="event.habit.icon" :size="9" /></span>
-              <span v-else class="cal-ev-dot" :class="{ 'is-done': event.done }" :style="{ borderColor: event.color }"></span>
-              <span class="cal-ev-title">{{ event.title }}</span>
-              <span v-if="event.openChecklist" class="cal-ev-extra">+{{ event.openChecklist }}</span>
-            </button>
-            <p v-if="!allDayOf(day).length && !laneRows.length" class="cal-allday-empty">—</p>
-          </div>
-        </div>
-        <div class="cal-allday-lanes" :style="{ gridTemplateRows: `repeat(${Math.max(laneRows.length, 1)}, 19px)` }">
+        <!-- 跨日任务：跨列横条，固定在上方，不随单日条目滚动 -->
+        <div
+          v-if="laneRows.length"
+          class="cal-allday-lanes"
+          :style="{ ...colsStyle, gridTemplateRows: `repeat(${laneRows.length}, 19px)` }"
+        >
           <button
             v-for="segment in laneSegments"
             :key="`lane-${segment.id}`"
@@ -70,6 +48,35 @@
             <span class="cal-ev-title">{{ segment.event.title }}</span>
             <span v-if="segment.continuesAfter" class="cal-ev-extra">→</span>
           </button>
+        </div>
+        <!-- 单日条目（任务/习惯/专注）：内容过多时在这里滚动 -->
+        <div class="cal-allday-scroll">
+          <div class="cal-allday-cols" :style="colsStyle">
+            <div
+              v-for="day in days"
+              :key="`allday-${toDateKey(day)}`"
+              class="cal-allday-col"
+              :title="`在 ${day.getMonth() + 1}月${day.getDate()}日 新建全天任务`"
+              @click="$emit('create-allday', day)"
+            >
+              <button
+                v-for="event in allDayOf(day)"
+                :key="event.id"
+                type="button"
+                class="cal-allday-item"
+                :class="[`kind-${event.kind}`, { 'is-done': event.done }]"
+                :style="tintStyle(event.color, 16)"
+                :title="event.title"
+                @click.stop="$emit('open-event', event, $event)"
+              >
+                <span v-if="event.kind === 'habit' && event.habit?.icon" class="cal-ev-mark" :style="{ background: event.color }"><TaskOrganizationIcon :value="event.habit.icon" :size="9" /></span>
+                <span v-else class="cal-ev-dot" :class="{ 'is-done': event.done }" :style="{ borderColor: event.color }"></span>
+                <span class="cal-ev-title">{{ event.title }}</span>
+                <span v-if="event.openChecklist" class="cal-ev-extra">+{{ event.openChecklist }}</span>
+              </button>
+              <p v-if="!allDayOf(day).length && !laneRows.length" class="cal-allday-empty">—</p>
+            </div>
+          </div>
         </div>
       </div>
       <div v-if="!allDayCollapsed" class="cal-allday-resize" role="separator" aria-label="拖动调整全天区高度" @pointerdown="startResizeAllDay"></div>
@@ -183,9 +190,10 @@ const COLUMN_MIN_WIDTH = 88
 const minWidth = computed(() => GUTTER + props.days.length * COLUMN_MIN_WIDTH)
 const weekLabel = computed(() => (props.days.length ? `${isoWeekNumber(props.days[0])}周` : ''))
 // 全天区按内容自适应：条目少时不占满用户设定的高度，超出时以设定值为上限
+// 跨日横条固定不滚动，单日条目在下方滚动，所以只需要给 3 行留高度，超出的靠滚动看
 const bandHeight = computed(() => {
   const maxItems = Math.max(0, ...props.days.map(day => allDayOf(day).length))
-  const needed = laneHeight.value + maxItems * 21 + 10
+  const needed = laneHeight.value + Math.min(maxItems, 3) * 21 + 10
   return Math.min(props.allDayHeight, Math.max(26, needed))
 })
 const viewWindow = computed(() => visibleWindow(props.hiddenTop, props.hiddenBottom))
@@ -444,20 +452,10 @@ onBeforeUnmount(() => { window.clearInterval(ticker) })
 }
 .cal-time-week {
   color: var(--muted);
-  font-size: 9.5px;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
-  writing-mode: vertical-rl;
-}
-.cal-time-gutter {
-  display: grid;
-  place-items: center;
-  border-right: 1px solid var(--line);
-}
-.cal-time-week {
-  color: var(--muted);
-  font-size: 9.5px;
-  font-variant-numeric: tabular-nums;
-  writing-mode: vertical-rl;
+  white-space: nowrap;
+  letter-spacing: .2px;
 }
 .cal-time-dow {
   display: flex;
@@ -528,13 +526,33 @@ onBeforeUnmount(() => { window.clearInterval(ticker) })
 }
 .cal-allday-body {
   position: relative;
+  display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
+}
+/* 跨日横条固定在上方，不参与下方滚动 */
+.cal-allday-lanes {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 2px 0;
+  padding: 2px 0;
+  pointer-events: none;
+}
+/* 只涉及单日的条目在这里纵向滚动 */
+.cal-allday-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .cal-allday-cols {
   display: grid;
-  height: 100%;
+  align-content: start;
+  min-height: 100%;
 }
 .cal-allday-col {
   display: flex;
@@ -543,14 +561,6 @@ onBeforeUnmount(() => { window.clearInterval(ticker) })
   gap: 2px;
   padding: 4px 4px 2px;
   border-right: 1px solid var(--line);
-  overflow: hidden;
-}
-.cal-allday-lanes {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  gap: 2px 0;
-  pointer-events: none;
 }
 .cal-allday-lane {
   display: flex;
