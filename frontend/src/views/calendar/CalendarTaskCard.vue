@@ -312,13 +312,10 @@ const isOverdue = computed(() => {
   if (!raw || isDone.value) return false
   const date = new Date(raw)
   if (Number.isNaN(date.getTime())) return false
-  if (props.task.allDay) {
-    const today = new Date()
-    return date.getFullYear() < today.getFullYear()
-      || (date.getFullYear() === today.getFullYear() && date.getMonth() < today.getMonth())
-      || (date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth() && date.getDate() < today.getDate())
-  }
-  return date.getTime() < Date.now()
+  // 与任务列表同一口径：只看结束日期。当天到期、跨日任务还没到结束日都不标红
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+  return date.getTime() < startOfToday.getTime()
 })
 
 const dateMonthLabel = computed(() => `${dateMonth.value.getFullYear()}年${dateMonth.value.getMonth() + 1}月`)

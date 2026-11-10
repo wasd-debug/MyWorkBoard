@@ -833,7 +833,7 @@
         <div class="clone-detail-toolbar-main">
           <button v-if="!editorOpen && !isNoteSelected" type="button" class="clone-detail-status-tool" :class="{ completed: selectedTask?.status === 'COMPLETED', abandoned: selectedTask?.status === 'ABANDONED' }" :aria-label="selectedTask?.status === 'COMPLETED' ? '重新打开任务' : '标记任务完成'" @click="toggleComplete(selectedTask)"><Check v-if="selectedTask?.status === 'COMPLETED'" :size="14" /></button>
           <button v-else-if="editorOpen && !isNoteSelected" type="button" class="clone-detail-status-tool" :class="{ completed: draft.status === 'COMPLETED', abandoned: draft.status === 'ABANDONED' }" aria-label="任务完成状态" @click="draft.status = draft.status === 'COMPLETED' ? 'OPEN' : 'COMPLETED'"><Check v-if="draft.status === 'COMPLETED'" :size="14" /></button>
-          <button ref="datePopoverAnchor" type="button" class="clone-detail-tool" aria-label="设置日期" :aria-expanded="datePopoverOpen" @click.stop="toggleDatePopover">
+          <button ref="datePopoverAnchor" type="button" class="clone-detail-tool" :class="{ overdue: detailDateOverdue }" aria-label="设置日期" :aria-expanded="datePopoverOpen" @click.stop="toggleDatePopover">
             <CalendarClock :size="15" /><span>{{ dateToolbarLabel }}</span>
           </button>
           <span v-if="editorOpen ? (draft.rrule === 'CUSTOM' ? draft.customRrule : draft.rrule) : selectedTask?.rrule" class="clone-detail-repeat-indicator" role="img" aria-label="重复任务" title="重复任务">
@@ -2508,6 +2508,11 @@ const dateToolbarLabel = computed(() => {
   if (isRangeValue(startValue, dueValue)) return `${compactDateText(startValue, allDay)} - ${compactDateText(dueValue, allDay)}`;
   return compactDateText(dueValue, allDay);
 });
+// 详情栏顶部的日期：只有真的逾期才标红。当天到期、跨日任务还没到结束日都不算逾期，
+// 所以不能像以前那样无条件用 --down 染色
+const detailDateOverdue = computed(() => isTaskOverdue(editorOpen.value
+  ? { dueAt: draft.dueAt, allDay: draft.allDay, status: draft.status }
+  : selectedTask.value));
 const detailRangeStartKey = computed(() => detailStartModel.value ? dateKey(new Date(detailStartModel.value)) : "");
 const detailRangeEndKey = computed(() => detailDueModel.value ? dateKey(new Date(detailDueModel.value)) : "");
 const detailRangeStartTime = computed(() => detailStartModel.value ? toLocal(detailStartModel.value).slice(11, 16) : "09:00");
@@ -2938,8 +2943,8 @@ function isTaskOverdue(task) {
   if (!task?.dueAt || task.status === "COMPLETED") return false;
   const due = new Date(task.dueAt);
   if (Number.isNaN(due.getTime())) return false;
-  // 全天任务按自然日比较：当天到期不算逾期；有具体时刻的按时刻比较
-  if (task.allDay === false && (due.getHours() || due.getMinutes())) return due < new Date();
+  // 一律按结束日期与今天比较：当天到期、跨日任务还没到结束日都不算逾期。
+  // 即使具体时刻已经过去也不标红——界面显示的就是「今天」，标红会自相矛盾。
   return startOfDay(due).getTime() < startOfDay(new Date()).getTime();
 }
 function shortDateLabel(value, allDay) {
@@ -9540,8 +9545,10 @@ const SidebarSection = {
 }
 .clone-detail-tool span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clone-detail-tool:hover { background: var(--accent-soft); color: var(--accent); }
-.clone-detail-toolbar-main > .clone-detail-tool[aria-label="设置日期"] { color: var(--down); }
-.clone-detail-toolbar-main > .clone-detail-tool[aria-label="设置日期"]:hover { color: var(--down); background: color-mix(in srgb, var(--down) 9%, transparent); }
+.clone-detail-toolbar-main > .clone-detail-tool[aria-label="设置日期"] { color: var(--ink2); }
+.clone-detail-toolbar-main > .clone-detail-tool[aria-label="设置日期"]:hover { color: var(--accent); background: var(--accent-soft); }
+.clone-detail-toolbar-main > .clone-detail-tool[aria-label="设置日期"].overdue { color: var(--down); }
+.clone-detail-toolbar-main > .clone-detail-tool[aria-label="设置日期"].overdue:hover { color: var(--down); background: color-mix(in srgb, var(--down) 9%, transparent); }
 .clone-detail-list-tool { width: 28px; padding-inline: 6px; color: var(--ink2); font-weight: 600; }
 .clone-detail-list-tool span { display: none; }
 .clone-detail-toolbar-main > .clone-detail-tool[aria-label="设置日期"] { max-width: 150px; }
