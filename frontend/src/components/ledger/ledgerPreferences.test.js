@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { currentMemberName, ledgerTransactionDraft, rankLedgerOptions, recentLedgerTransactions, selectedResourceId } from './ledgerPreferences.js'
+import { currentMemberName, ledgerTransactionDraft, preferredDraftAccountId, rankLedgerOptions, recentLedgerTransactions, selectedResourceId } from './ledgerPreferences.js'
 import { accountBalancesAt, totalLedgerAssets } from './ledgerAccounting.js'
 
 test('recent frequent accounts and categories lead without removing unused choices', () => {
@@ -20,6 +20,18 @@ test('default member resolves to the logged-in user and selected names resolve t
   assert.equal(currentMemberName(members, { id: 3 }), '我')
   assert.equal(selectedResourceId(members, '我', 'displayName'), 'member-1')
   assert.equal(selectedResourceId(members, 'member-1', 'displayName'), 'member-1')
+})
+
+test('new transactions inherit the account that is currently filtered', () => {
+  const accounts = [{ id: 'cash' }, { id: 'bank' }, { id: 'wallet' }]
+  const recent = [{ accountId: 'cash', targetAccountId: '' }, { accountId: 'cash', targetAccountId: '' }]
+  assert.equal(preferredDraftAccountId(accounts, recent, ''), 'cash')
+  assert.equal(preferredDraftAccountId(accounts, recent, 'bank'), 'bank')
+  assert.equal(preferredDraftAccountId(accounts, recent, 'bank'), 'bank')
+  // 账户被删除或属于其他账本时回退到最近最常用账户
+  assert.equal(preferredDraftAccountId(accounts, recent, 'gone'), 'cash')
+  assert.equal(preferredDraftAccountId(accounts, recent, null), 'cash')
+  assert.equal(preferredDraftAccountId([], recent, 'bank'), '')
 })
 
 test('borrowed cash remains in assets and lent principal remains a receivable until settled', () => {

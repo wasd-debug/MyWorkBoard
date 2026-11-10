@@ -30,6 +30,19 @@ export function currentMemberName(members, user) {
   return member?.displayName || member?.username || ''
 }
 
+/**
+ * 新建流水时默认带出的账户。
+ * 从账户页跳转过来（或页面内按账户筛选）时，筛选中的账户就是用户当前的关注对象，
+ * 优先级高于「最近最常用账户」的推断结果；账户已被删除或不在当前账本时回退到推断。
+ */
+export function preferredDraftAccountId(accounts, recentTransactions, filterAccountId) {
+  const options = accounts || []
+  const filtered = String(filterAccountId ?? '').trim()
+  if (filtered && options.some(item => String(item.id) === filtered)) return filtered
+  const ranked = rankLedgerOptions(options, recentTransactions || [], item => [item.accountId, item.targetAccountId])[0]
+  return ranked ? String(ranked.id) : ''
+}
+
 export function selectedResourceId(options, selected, nameKey = 'name') {
   if (!selected) return null
   return options.find(item => String(item.id) === String(selected)

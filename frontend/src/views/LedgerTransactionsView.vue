@@ -59,7 +59,7 @@
           <template v-else>
             <div class="flow-desktop-table">
               <Table>
-                <colgroup><col v-for="column in visibleColumns" :key="column.key" :style="{width:`${columnWidths[column.key]}px`}"><col style="width:108px"></colgroup>
+                <colgroup><col v-for="column in visibleColumns" :key="column.key" :style="{width:`${columnWidths[column.key]}px`}"><col :style="{width:`${actionsColumnWidth}px`}"></colgroup>
                 <thead><tr>
                   <th v-for="column in visibleColumns" :key="column.key" :class="columnClass(column)" :style="columnStickyStyle(column)">
                     <button class="flow-sort-button" type="button" @click="sortBy(column)"><span>{{ column.label }}</span><SortUp v-if="sort.key===column.sortKey&&sort.direction==='asc'" aria-hidden="true" /><SortDown v-else-if="sort.key===column.sortKey" aria-hidden="true" /></button>
@@ -80,15 +80,15 @@
                     <template v-else-if="column.key==='note'"><span class="flow-note" :title="item.note||''">{{ item.note||'—' }}</span></template>
                     <template v-else-if="column.key==='amount'"><b :class="amountClass(item)">{{ amountPrefix(item) }}¥{{ money(item.amount) }}</b></template>
                   </td>
-                  <td class="flow-row-actions fixed-actions"><LedgerActionIcon v-if="canWriteOwn" action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon v-if="canWrite(item)" action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon v-if="canWrite(item)" action="delete" label="删除流水" @click="deleteTarget=item" /></td>
+                  <td class="flow-row-actions fixed-actions"><span class="flow-row-actions-inner"><LedgerActionIcon v-if="canWriteOwn" action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon v-if="canWrite(item)" action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon v-if="canWrite(item)" action="delete" label="删除流水" @click="deleteTarget=item" /></span></td>
                 </tr></tbody>
-                <tbody v-else><template v-for="group in transactionGroups" :key="group.date"><tr class="flow-day-divider"><td :colspan="visibleColumns.length + 1"><b>{{ formatDate(group.date) }}</b><span>收入 ¥{{ money(group.income) }} · 支出 ¥{{ money(group.expense) }} · {{ group.items.length }} 笔</span></td></tr><tr v-for="item in group.items" :key="item.id">
+                <tbody v-else><template v-for="group in transactionGroups" :key="group.date"><tr class="flow-day-divider"><td :colspan="visibleColumns.length + 1"><div class="flow-day-divider-label"><b>{{ formatDate(group.date) }}</b><span>收入 ¥{{ money(group.income) }} · 支出 ¥{{ money(group.expense) }} · {{ group.items.length }} 笔</span></div></td></tr><tr v-for="item in group.items" :key="item.id">
                   <td v-for="column in visibleColumns" :key="column.key" :class="columnClass(column)" :style="columnStickyStyle(column)">
                     <template v-if="column.key==='date'"><span class="flow-date">{{ formatDate(item.occurredOn) }}</span></template>
                     <template v-else-if="column.key==='kind'"><span class="flow-kind" :class="`tone-${kindMeta(item.kind).tone}`">{{ kindMeta(item.kind).label }}</span></template>
                     <template v-else-if="column.key==='category'"><span class="flow-resource"><LedgerResourceIcon :icon="item.categoryIcon || item.parentCategoryIcon" type="category" :color="item.categoryColor || item.parentCategoryColor" compact /><span><b class="flow-category">{{ item.parentCategoryName || item.categoryName || (item.kind==='TRANSFER'?'账户互转':'未分类') }}</b><small v-if="item.parentCategoryName && item.categoryName">{{ item.categoryName }}</small></span></span></template>
                     <template v-else-if="column.key==='account'"><span>{{ item.accountName }}</span></template><template v-else-if="column.key==='targetAccount'"><span>{{ item.targetAccountName||'—' }}</span></template><template v-else-if="column.key==='payee'"><span>{{ item.payee||'—' }}</span></template><template v-else-if="column.key==='member'"><span>{{ item.member||'—' }}</span></template><template v-else-if="column.key==='project'"><span v-if="item.project" class="flow-resource"><LedgerResourceIcon :icon="item.projectIcon" type="project" :color="item.projectColor" compact /><span>{{ item.project }}</span></span><span v-else>—</span></template><template v-else-if="column.key==='note'"><span class="flow-note" :title="item.note||''">{{ item.note||'—' }}</span></template><template v-else-if="column.key==='amount'"><b :class="amountClass(item)">{{ amountPrefix(item) }}¥{{ money(item.amount) }}</b></template>
-                  </td><td class="flow-row-actions fixed-actions"><LedgerActionIcon v-if="canWriteOwn" action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon v-if="canWrite(item)" action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon v-if="canWrite(item)" action="delete" label="删除流水" @click="deleteTarget=item" /></td>
+                  </td><td class="flow-row-actions fixed-actions"><span class="flow-row-actions-inner"><LedgerActionIcon v-if="canWriteOwn" action="copy" label="复制流水" @click="openCopy(item)" /><LedgerActionIcon v-if="canWrite(item)" action="edit" label="编辑流水" @click="openEdit(item)" /><LedgerActionIcon v-if="canWrite(item)" action="delete" label="删除流水" @click="deleteTarget=item" /></span></td>
                 </tr></template></tbody>
               </Table>
             </div>
@@ -147,7 +147,7 @@ import LedgerTransactionFilters from '../components/ledger/LedgerTransactionFilt
 import LedgerResourceIcon from '../components/ledger/LedgerResourceIcon.vue'
 import LedgerActionIcon from '../components/ledger/LedgerActionIcon.vue'
 import LoadingOverlay from '../components/ledger/LoadingOverlay.vue'
-import { currentMemberName, ledgerTransactionDraft, rankLedgerOptions, recentLedgerTransactions } from '../components/ledger/ledgerPreferences'
+import { currentMemberName, ledgerTransactionDraft, preferredDraftAccountId, recentLedgerTransactions } from '../components/ledger/ledgerPreferences'
 import { useAppStore } from '../stores/app'
 import { useLedgerStore } from '../stores/ledger'
 import Card from '../components/ui/Card.vue'
@@ -185,6 +185,7 @@ const accounts = ref([]), categories = ref([]), transactions = ref([]), loading 
 const serverTotal = ref(0)
 const serverSummary = ref(null)
 const pageSizeOptions = [10, 20, 50, 100]
+const actionsColumnWidth = 108
 const pageSize = ref(20)
 const displayMode = ref(localStorage.getItem('ledger-transactions-display-mode') === 'day' ? 'day' : 'flat')
 const currentPage = ref(1)
@@ -315,12 +316,12 @@ function formatDate(value) { return String(value || '').replaceAll('-', '/') }
 function columnClass(column) { return { 'fixed-column': isColumnPinned(column), 'fixed-category': column.sticky === 'category' && isColumnPinned(column), 'fixed-amount': column.sticky === 'amount' && isColumnPinned(column), 'amount-column': column.key === 'amount', 'note-column': column.key === 'note' } }
 function columnStickyStyle(column) {
   if (!isColumnPinned(column)) return undefined
-  if (column.sticky === 'amount') return { position: 'sticky', right: '108px', zIndex: 3 }
+  if (column.sticky === 'amount') return { position: 'sticky', right: `${actionsColumnWidth}px` }
   const index = visibleColumns.value.findIndex(item => item.key === column.key)
   const left = visibleColumns.value.slice(0, index)
     .filter(item => isColumnPinned(item) && item.sticky !== 'amount')
     .reduce((total, item) => total + Number(columnWidths[item.key] || item.width || 0), 0)
-  return { position: 'sticky', left: `${left}px`, zIndex: 3 }
+  return { position: 'sticky', left: `${left}px` }
 }
 function openFilters() { if (window.matchMedia('(max-width: 767px)').matches) mobileFilterOpen.value = true; else filterOpen.value = true }
 function updateFilter({ key, value }) { filters[key] = value }
@@ -354,10 +355,9 @@ function handleColumnDragEnd() { draggingColumnKey.value = ''; dragOverColumnKey
 function sortBy(column) { if (!column.sortKey) return; if (sort.key === column.sortKey) sort.direction = sort.direction === 'asc' ? 'desc' : 'asc'; else { sort.key = column.sortKey; sort.direction = column.sortKey === 'occurredOn' ? 'desc' : 'asc' }; currentPage.value = 1 }
 function startResize(event, key) { const startX = event.clientX, startWidth = columnWidths[key], maxWidth = key === 'note' ? 120 : 360; const move = current => { columnWidths[key] = Math.max(82, Math.min(maxWidth, startWidth + current.clientX - startX)) }; const stop = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop) }; window.addEventListener('pointermove', move); window.addEventListener('pointerup', stop) }
 function blankForm() {
-  const account = rankLedgerOptions(accounts.value, recentLedgerTransactions(ledgerStore.transactions),
-    item => [item.accountId, item.targetAccountId])[0]
   Object.assign(form, { kind: 'EXPENSE', amount: '', occurredOn: new Date().toLocaleDateString('en-CA'),
-    accountId: account ? String(account.id) : '', targetAccountId: '', categoryId: '', payee: '',
+    accountId: preferredDraftAccountId(accounts.value, recentLedgerTransactions(ledgerStore.transactions), filters.accountId),
+    targetAccountId: '', categoryId: '', payee: '',
     member: currentMemberName(ledgerStore.activeMembers, appStore.authUser), project: '', note: '' })
 }
 function openCreate(date = '') { editing.value = null; blankForm(); if (/^\d{4}-\d{2}-\d{2}$/.test(date)) form.occurredOn = date; editorOpen.value = true }
@@ -601,18 +601,20 @@ onBeforeUnmount(() => {
 .flow-desktop-table :deep(tr:hover td) { background: var(--accent-soft) }
 .flow-sort-button { display: inline-flex; align-items: center; gap: 4px; width: 100%; padding: 0; border: 0; background: transparent; color: var(--muted); font-size:12px; font-weight: 650; letter-spacing: .08em; text-align: left }
 .flow-sort-button svg { width: 12px; height: 12px; color: var(--accent) }
-.flow-day-divider td { height:36px!important; padding:7px 12px!important; background:var(--paper)!important; border-bottom:1px solid var(--line); color:var(--ink2); font-size:12px }
-.flow-day-divider td span { margin-left:12px; color:var(--muted); font-size:12px }
+.flow-day-divider td { height:36px!important; padding:7px 12px!important; overflow:visible!important; background:var(--paper)!important; border-bottom:1px solid var(--line); color:var(--ink2); font-size:12px }
+.flow-day-divider-label { position:sticky; left:12px; z-index:4; display:flex; width:max-content; align-items:baseline; gap:12px }
+.flow-day-divider-label>span { color:var(--muted); font-size:12px; white-space:nowrap }
 .flow-resize-handle { position: absolute; top: 8px; right: -2px; width: 5px; height: 26px; cursor: col-resize; z-index: 7 }
 .flow-resize-handle::after { content: ''; position: absolute; left: 2px; top: 5px; width: 1px; height: 16px; background: var(--line2) }
-.flow-desktop-table :deep(.fixed-category) { position: sticky; left: 0; z-index: 3; box-shadow: 1px 0 0 var(--line) }
-.flow-desktop-table :deep(th.fixed-category) { z-index: 6 }
-.flow-desktop-table :deep(.fixed-amount) { position: sticky; right: 108px; z-index: 3; box-shadow: -1px 0 0 var(--line) }
-.flow-desktop-table :deep(th.fixed-amount) { z-index: 6 }
+/* 固定列：表头始终压在滚动中的表头之上（同层会被后绘制的内容盖住） */
+.flow-desktop-table :deep(td.fixed-column),.flow-desktop-table :deep(td.fixed-actions) { z-index: 3 }
+.flow-desktop-table :deep(th.fixed-column),.flow-desktop-table :deep(th.fixed-actions) { z-index: 6 }
+.flow-desktop-table :deep(.fixed-category) { position: sticky; left: 0; box-shadow: 1px 0 0 var(--line) }
+.flow-desktop-table :deep(.fixed-amount) { position: sticky; box-shadow: -1px 0 0 var(--line) }
 .flow-desktop-table :deep(td.fixed-column) { background: var(--card) }
 .flow-desktop-table :deep(th.fixed-column) { background: var(--paper) }
-.flow-desktop-table :deep(.fixed-actions) { position: sticky; right: 0; z-index: 3; background: var(--card) }
-.flow-desktop-table :deep(th.fixed-actions) { z-index: 6; background: var(--paper) }
+.flow-desktop-table :deep(.fixed-actions) { position: sticky; right: 0; background: var(--card) }
+.flow-desktop-table :deep(th.fixed-actions) { background: var(--paper) }
 .amount-column { text-align: right }.amount-column .flow-sort-button { justify-content: flex-end }
 .flow-category { color: var(--ink); font-weight: 650 }
 .flow-resource { display: inline-flex; min-width: 0; align-items: center; gap: 7px; vertical-align: middle }
@@ -625,7 +627,9 @@ onBeforeUnmount(() => {
 .note-column { width: 120px; max-width: 120px }
 .flow-note { display: block; width: 8em; max-width: 100%; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap }
 .flow-actions-column { width: 108px; text-align: center }
-.flow-row-actions { display: flex; align-items: center; justify-content: center; gap: 4px }
+/* 操作列保持 table-cell 语义：td 一旦改成 flex，单元格高度与背景会脱离行，按钮下方会出现错位的浅色条 */
+.flow-row-actions { text-align: center; white-space: nowrap }
+.flow-row-actions-inner { display: inline-flex; align-items: center; justify-content: center; gap: 4px; vertical-align: middle }
 .flow-row-actions button { display: inline-flex; align-items: center; justify-content: center; width: 27px; height: 27px; padding: 0; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--muted) }
 .flow-row-actions button:hover { border-color: var(--line2); color: var(--ink) }.flow-row-actions button.danger:hover { color: var(--down); border-color: color-mix(in srgb,var(--down) 35%,var(--line)) }
 .flow-row-actions svg { width: 14px; height: 14px }
@@ -661,7 +665,9 @@ onBeforeUnmount(() => {
 .flow-column-drag:hover,.flow-column-pin:hover,.flow-column-pin.active { border-color: var(--line2); background: var(--card); color: var(--accent) }
 .flow-column-drag svg,.flow-column-pin svg { width: 15px; height: 15px }
 .flow-column-setting :deep(.ui-toggle) { flex: 0 0 auto }
-@media(max-width:1023px){.flow-workspace{grid-template-columns:220px minmax(0,1fr)}.flow-sidebar{position:static}.flow-desktop-table :deep(.ui-table-wrap){max-height:none}}
+@media(max-width:1023px){.flow-workspace{grid-template-columns:220px minmax(0,1fr)}.flow-sidebar{position:static}}
+/* 表头吸顶：表格区内部纵向滚动，滚动时列头始终可见（此前 sticky top 绑在从不纵向滚动的容器上，翻页后表头会随页面滚走） */
+@media(min-width:768px){.flow-desktop-table :deep(.ui-table-wrap){max-height:calc(100vh - 430px);min-height:200px}}
 @media(max-width:767px){.ledger-flow-page,.flow-main,.flow-table-card{min-width:0;max-width:100%}.flow-heading{align-items:flex-start}.flow-heading-actions{width:100%;min-width:0}.flow-heading-actions .ui-button{min-width:0;flex:1;padding:0 7px}.flow-sync-status{margin-top:-9px}.flow-sync-summary{gap:7px 10px}.flow-sync-export{margin-left:0}.flow-sync-issue{align-items:stretch;flex-direction:column;gap:8px}.flow-sync-issue>div{width:100%}.flow-sync-issue button{flex:1;min-width:0;white-space:normal}.flow-workspace{display:block;min-width:0}.flow-sidebar{display:none}.flow-table-card{width:100%;margin:0 auto;box-sizing:border-box}.flow-table-card :deep(> header){padding:13px 16px}.flow-table-head{min-width:0;align-items:flex-start;flex-direction:column;gap:10px}.flow-table-tools{width:100%;justify-content:stretch;flex-direction:column;align-items:stretch;gap:8px}.flow-view-switch{align-self:flex-start}.flow-search{width:100%;max-width:100%}.flow-desktop-table{display:none}.flow-mobile-list{display:flex;min-width:0;flex-direction:column}.flow-mobile-item{min-width:0;max-width:100%;padding:11px 12px;border-bottom:1px solid var(--line);background:var(--card)}.flow-mobile-item:last-child{border-bottom:0}.flow-mobile-top,.flow-mobile-title,.flow-mobile-actions{display:flex;min-width:0;max-width:100%;align-items:center;justify-content:space-between;gap:8px}.flow-mobile-top>b{min-width:0;font-size:14px}.flow-mobile-title{margin-top:8px}.flow-mobile-title strong{min-width:0;overflow:hidden;color:var(--ink);font-size:13px;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-title span{flex:0 0 auto;color:var(--muted);font-size:12px}.flow-mobile-meta{display:flex;min-width:0;max-width:100%;flex-wrap:wrap;gap:3px 9px;margin-top:5px;color:var(--ink2);font-size:12px}.flow-mobile-meta span{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-resource{display:inline-flex;align-items:center;gap:4px}.flow-mobile-resource i{flex:0 0 6px;width:6px;height:6px;border-radius:50%}.flow-mobile-note{display:block;max-width:100%;margin:6px 0 0;overflow:hidden;color:var(--muted);font-size:12px;text-overflow:ellipsis;white-space:nowrap}.flow-mobile-actions{justify-content:flex-end;margin-top:7px}.flow-mobile-actions button{display:inline-flex;min-width:0;align-items:center;gap:3px;padding:3px 5px;border:0;background:transparent;color:var(--ink2);font-size:12px}.flow-mobile-actions button.danger{color:var(--down)}.flow-mobile-actions svg{width:12px;height:12px}.flow-table-footer{min-height:42px;padding:8px 12px;align-items:flex-start;flex-direction:column;font-size:12px}.flow-table-totals,.flow-pagination{width:100%;justify-content:space-between;gap:6px}.flow-pagination label{gap:4px}.flow-pagination button{min-width:46px;padding:0 5px}.flow-pagination>b{display:none}}
 .flow-filter-action{position:relative;display:inline-flex}
 .flow-filter-action i{position:absolute;top:-5px;right:-5px;display:grid;place-items:center;min-width:15px;height:15px;padding:0 2px;border-radius:999px;background:var(--accent);color:var(--card);font-size:12px;font-style:normal}
