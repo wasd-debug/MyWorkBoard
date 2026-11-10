@@ -1,857 +1,250 @@
 <template>
-  <main class="ai-chat-home" :class="{ 'sidebar-collapsed': !sidebarOpen }">
-    <button v-if="sidebarOpen" class="chat-sidebar-backdrop" type="button" aria-label="关闭会话侧栏" @click="sidebarOpen = false"></button>
-    <aside class="chat-sidebar" aria-label="历史会话">
-      <div class="chat-sidebar-head">
-        <strong>历史会话</strong>
-        <button class="chat-icon-button" type="button" title="收起侧栏" aria-label="收起侧栏" @click="sidebarOpen = false"><PanelLeftClose /></button>
+  <main class="home-canvas">
+    <header class="home-head">
+      <div class="home-head-copy">
+        <p class="home-eyebrow">PERSONAL DASHBOARD</p>
+        <h1>{{ greeting }}，{{ displayName }}</h1>
+        <p class="home-sub">{{ dateLabel }} · {{ headline }}</p>
       </div>
-      <div class="conversation-create-actions">
-        <button class="new-chat-button" type="button" @click="newConversation"><SquarePen /><span>新对话</span></button>
-        <button type="button" title="新建分组" aria-label="新建会话分组" @click="showGroupDialog('create')"><FolderPlus /></button>
+      <div class="home-head-actions">
+        <button class="home-edit" type="button" :aria-pressed="editing" @click="toggleEditing">
+          <SlidersHorizontal :size="14" />{{ editing ? '完成' : '自定义' }}
+        </button>
       </div>
-      <nav class="conversation-list" aria-label="会话列表">
-        <p v-if="!conversations.length" class="conversation-empty">还没有历史会话</p>
-        <section
-          v-for="section in conversationSections"
-          :key="section.id"
-          class="conversation-group"
-          :class="{ 'conversation-drop-target': conversationDropTarget === section.id }"
-          :data-group-id="section.id"
-          @dragover.prevent="handleConversationDragOver($event, section)"
-          @dragleave="handleConversationDragLeave($event, section)"
-          @drop.prevent="dropConversation(section)"
-        >
-          <header>
-            <button type="button" :aria-label="`${section.name}${collapsedGroups[section.id] ? '展开' : '收起'}`" :aria-expanded="!collapsedGroups[section.id]" @click="toggleGroup(section.id)"><ChevronDown :class="{ collapsed: collapsedGroups[section.id] }" />{{ section.name }}<small>{{ section.items.length }}</small></button>
-            <button v-if="section.group" class="conversation-group-actions" type="button" :aria-label="`${section.name}分组操作`" @click="openGroupMenu($event, section.group)"><Ellipsis /></button>
-          </header>
-          <Transition name="conversation-group-collapse">
-            <div v-if="!collapsedGroups[section.id]" class="conversation-group-body">
-              <div
-                v-for="item in section.items"
-                :key="item.id"
-                :class="{ active: item.id === activeId, dragging: draggedConversationId === item.id }"
-                draggable="true"
-                :data-session-id="item.id"
-                @dragstart="startConversationDrag($event, item)"
-                @dragend="endConversationDrag"
-                @contextmenu.prevent="openConversationMenu($event, item)"
-              >
-                <button class="conversation-open" type="button" :aria-current="item.id === activeId ? 'page' : undefined" @click="openConversation(item.id)">
-                  <Pin v-if="item.pinnedAt" aria-hidden="true" />
-                  <MessageSquareText v-else aria-hidden="true" />
-                  <span><b>{{ item.title }}</b><small>{{ formatTime(item.updatedAt) }}</small></span>
-                </button>
-                <button type="button" title="更多会话操作" :aria-label="`${item.title}的更多操作`" aria-haspopup="menu" :aria-expanded="conversationMenu.item?.id === item.id" @click.stop="openConversationMenu($event, item, true)"><Ellipsis /></button>
-              </div>
-              <p v-if="!section.items.length" class="conversation-group-empty">拖入会话</p>
-            </div>
-          </Transition>
-        </section>
-      </nav>
-      <div class="chat-sidebar-foot"><span class="status-dot" :class="{ online: store.dbMode }"></span>{{ store.dbMode ? '数据已同步' : '本地会话' }}</div>
-    </aside>
+    </header>
 
-    <div v-if="conversationMenu.item" ref="conversationMenuEl" class="conversation-context-menu" :style="conversationMenuStyle" role="menu" :aria-label="`${conversationMenu.item.title}的会话操作`" @keydown="handleConversationMenuKeydown">
-      <button type="button" role="menuitem" @click="togglePinned(conversationMenu.item)"><PinOff v-if="conversationMenu.item.pinnedAt" /><Pin v-else /><span>{{ conversationMenu.item.pinnedAt ? '取消置顶' : '置顶' }}</span></button>
-      <button type="button" role="menuitem" @click="showRenameDialog(conversationMenu.item)"><Pencil /><span>重命名</span></button>
-      <details class="conversation-move-menu">
-        <summary><FolderInput /><span>移动到分组</span><ChevronRight /></summary>
-        <div>
-          <button type="button" role="menuitem" @click="moveConversation(conversationMenu.item, null)"><Inbox /><span>未分组</span></button>
-          <button v-for="group in sessionGroups" :key="group.id" type="button" role="menuitem" @click="moveConversation(conversationMenu.item, group.id)"><Folder /><span>{{ group.name }}</span></button>
-        </div>
-      </details>
-      <button type="button" role="menuitem" @click="archiveConversation(conversationMenu.item)"><Archive /><span>归档</span></button>
-      <hr />
-      <button class="danger" type="button" role="menuitem" @click="showDeleteDialog(conversationMenu.item)"><Trash2 /><span>删除</span></button>
+    <div v-if="editing" class="home-edit-bar">
+      <span>拖动卡片调整顺序，点右上角 × 收起不需要的卡片。</span>
+      <button type="button" @click="resetLayout">恢复默认布局</button>
     </div>
 
-    <div v-if="groupMenu.item" ref="groupMenuEl" class="conversation-context-menu" :style="groupMenuStyle" role="menu" :aria-label="`${groupMenu.item.name}分组操作菜单`">
-      <button type="button" role="menuitem" @click="showGroupDialog('rename', groupMenu.item)"><Pencil /><span>重命名分组</span></button>
-      <button class="danger" type="button" role="menuitem" @click="deleteSessionGroup(groupMenu.item)"><Trash2 /><span>删除分组</span></button>
+    <div v-if="editing && hiddenWidgets.length" class="home-hidden-bar">
+      <span>已收起：</span>
+      <button v-for="widget in hiddenWidgets" :key="widget.key" type="button" @click="restore(widget.key)">＋ {{ titleOf(widget.key) }}</button>
     </div>
 
-    <div v-if="conversationDialog.type" class="conversation-dialog-backdrop" role="presentation" @pointerdown.self="closeConversationDialog">
-      <section class="conversation-dialog" role="dialog" aria-modal="true" :aria-labelledby="`conversation-${conversationDialog.type}-title`" @keydown.esc="closeConversationDialog">
-        <template v-if="conversationDialog.type === 'rename'">
-          <header><h2 id="conversation-rename-title">重命名会话</h2><button type="button" aria-label="关闭" @click="closeConversationDialog"><X /></button></header>
-          <form @submit.prevent="renameConversation">
-            <label for="conversation-title">会话名称</label>
-            <input id="conversation-title" ref="renameInput" v-model="renameTitle" maxlength="120" autocomplete="off" />
-            <footer><button type="button" @click="closeConversationDialog">取消</button><button class="primary" type="submit" :disabled="!renameTitle.trim()">保存</button></footer>
-          </form>
-        </template>
-        <template v-else-if="conversationDialog.type === 'delete'">
-          <header><h2 id="conversation-delete-title">删除会话？</h2><button type="button" aria-label="关闭" @click="closeConversationDialog"><X /></button></header>
-          <p>“{{ conversationDialog.item?.title }}”将被永久删除，此操作无法撤销。</p>
-          <footer><button type="button" @click="closeConversationDialog">取消</button><button class="danger" type="button" @click="deleteConversation(conversationDialog.item?.id)">删除</button></footer>
-        </template>
-        <template v-else>
-          <header><h2 :id="`conversation-${conversationDialog.type}-title`">{{ conversationDialog.type === 'group-create' ? '新建分组' : '重命名分组' }}</h2><button type="button" aria-label="关闭" @click="closeConversationDialog"><X /></button></header>
-          <form @submit.prevent="saveSessionGroup">
-            <label for="conversation-group-name">分组名称</label>
-            <input id="conversation-group-name" ref="groupNameInput" v-model="groupName" maxlength="80" autocomplete="off" />
-            <footer><button type="button" @click="closeConversationDialog">取消</button><button class="primary" type="submit" :disabled="!groupName.trim()">保存</button></footer>
-          </form>
-        </template>
-      </section>
+    <div class="home-grid">
+      <div
+        v-for="widget in visibleLayout"
+        :key="widget.key"
+        class="home-cell"
+        :class="[`span-${widgetSpan(widget.key)}`, `hw-key-${widget.key}`, { 'is-editing': editing, 'is-dragging': dragKey === widget.key, 'is-drop-target': dropKey === widget.key && dragKey !== widget.key }]"
+        :draggable="editing"
+        @dragstart="onDragStart(widget.key, $event)"
+        @dragend="onDragEnd"
+        @dragover.prevent="onDragOver(widget.key)"
+        @dragleave="onDragLeave(widget.key)"
+        @drop.prevent="onDrop(widget.key)"
+      >
+        <button v-if="editing" class="home-cell-hide" type="button" :aria-label="`收起${titleOf(widget.key)}`" title="收起这张卡片" @click.stop="hide(widget.key)">×</button>
+        <component :is="widgetMap[widget.key]" :editing="editing" />
+      </div>
     </div>
-
-    <section class="chat-workspace" :style="{ '--chat-composer-height': `${composerHeight}px` }">
-      <header class="chat-workspace-head">
-        <button v-if="!sidebarOpen" class="chat-icon-button" type="button" title="展开历史会话" aria-label="展开历史会话" @click="sidebarOpen = true"><PanelLeftOpen /></button>
-        <div><b>{{ activeConversation?.title || '新对话' }}</b><small>AI 个人工作台</small></div>
-      </header>
-
-      <div ref="messageViewport" class="chat-message-viewport" @scroll.passive="handleMessageScroll" @wheel.passive="handleMessageWheel">
-        <div v-if="!activeMessages.length" class="chat-empty-state">
-          <div class="chat-empty-copy">
-            <span class="chat-ai-mark"><Sparkles /></span>
-            <h1>下午好，{{ displayName }}</h1>
-            <p>今天想从哪里开始？</p>
-          </div>
-          <div class="chat-module-grid" aria-label="工作模块">
-            <button v-for="card in cards" :key="card.key" type="button" :class="`tone-${card.tone}`" @click="openCard(card)">
-              <span><component :is="card.icon" aria-hidden="true" /></span>
-              <div><b>{{ card.title }}</b><small>{{ card.description }}</small></div>
-              <ArrowUpRight aria-hidden="true" />
-            </button>
-          </div>
-        </div>
-
-        <div v-else class="chat-thread">
-          <article v-for="item in activeMessages" :key="item.id" class="chat-message" :class="[item.role, { 'message-failed': ['FAILED', 'CANCELLED'].includes(item.status) }]">
-            <span v-if="item.role === 'assistant'" class="message-avatar"><Sparkles /></span>
-            <div class="message-content">
-              <template v-if="item.role === 'assistant'">
-                <details v-if="item.reasoningContent" class="message-reasoning">
-                  <summary><Sparkles />深度思考<ChevronDown /></summary>
-                  <div class="message-markdown" v-html="renderMarkdown(item.reasoningContent)"></div>
-                </details>
-                <div class="message-markdown" v-html="renderMarkdown(item.content)"></div>
-                <span v-if="item.typing" class="typing-cursor" aria-label="正在输入">▍</span>
-                <p v-if="missingActionCard(item)" class="agent-card-recovery-notice" role="status">这条回复提到了待处理卡片，但没有可恢复的操作数据。文字预览不代表已保存，请重新发送原始请求生成新的卡片。</p>
-                <div v-if="pendingLedgerActions(item).length > 1" class="agent-action-batch">
-                  <span><b>{{ pendingLedgerActions(item).length }} 笔待处理</b><small>支出合计 {{ batchAmount(item, 'EXPENSE') }} · 收入合计 {{ batchAmount(item, 'INCOME') }}</small></span>
-                  <div><button type="button" :disabled="item.batchBusy" @click="rejectAllActions(item)">全部取消</button><button class="primary" type="button" :disabled="item.batchBusy || !allLedgerActionsConfirmable(item)" @click="confirmAllActions(item)">{{ item.batchBusy ? '正在处理…' : '全部确认' }}</button></div>
-                </div>
-                <section v-for="action in item.actions || []" :key="action.actionId" class="agent-action-card" :class="[`state-${action.uiStatus || action.status}`, { destructive: actionIsDelete(action) }]">
-                  <header>
-                    <span><Trash2 v-if="actionIsDelete(action)" /><ClipboardCheck v-else /></span>
-                    <div><b>{{ action.summary }}</b><small>{{ actionTypeLabel(action) }}</small></div>
-                    <em>{{ actionStatusLabel(action) }}</em>
-                  </header>
-                  <form v-if="actionEditable(action) && actionIsBatchCreate(action)" class="agent-action-form agent-batch-form" @submit.prevent="answerAction(item, action)">
-                    <div class="agent-batch-overview">
-                      <span><b>{{ action.form?.items?.length || 0 }} 笔流水</b><small>整批校验、整批保存，任一笔失败均不会写入</small></span>
-                      <em>最多 50 笔</em>
-                    </div>
-                    <article v-for="(batchItem, batchIndex) in action.form?.items || []" :key="`${action.actionId}-${batchIndex}`" class="agent-batch-item">
-                      <header><span>第 {{ batchIndex + 1 }} 笔</span><b>{{ transactionKindLabel(batchItem.kind) }} · {{ formatMoney(batchItem.amount) }}</b><button v-if="action.form.items.length > 1" type="button" :aria-label="`移除第 ${batchIndex + 1} 笔`" @click="removeBatchItem(action, batchIndex)"><Trash2 /></button></header>
-                      <div class="agent-batch-fields">
-                        <label v-for="field in batchItemFields(action, batchIndex)" :key="field.name" :class="{ 'entity-picker-field': field.type === 'entity-picker' }">
-                          <span>{{ field.label }}<i v-if="field.required">必填</i><i v-if="actionFieldAmbiguous(batchItemAction(action, batchIndex), field.name)" class="ambiguous">多个候选 · 请选择</i><i v-else-if="actionFieldSuggested(batchItemAction(action, batchIndex), field.name)" class="suggested">智能匹配</i></span>
-                          <select v-if="field.type === 'select'" :value="actionFieldValue(batchItemAction(action, batchIndex), field.name)" :required="field.required" @change="setActionField(batchItemAction(action, batchIndex), field.name, $event.target.value)">
-                            <option value="">请选择</option><option v-for="option in field.options || []" :key="option.value" :value="option.value">{{ option.label }}</option>
-                          </select>
-                          <div v-else-if="field.type === 'entity-picker'" class="agent-entity-picker" @keydown.esc="closeEntityPicker(batchItemAction(action, batchIndex), field)">
-                            <input type="search" autocomplete="off" :placeholder="`输入${field.label}名称筛选`" :value="entityPickerText(batchItemAction(action, batchIndex), field)" :required="field.required && !actionFieldValue(batchItemAction(action, batchIndex), field.name)" role="combobox" :aria-label="`${field.label}筛选`" aria-autocomplete="list" :aria-expanded="isEntityPickerOpen(batchItemAction(action, batchIndex), field)" @focus="openEntityPicker(batchItemAction(action, batchIndex), field)" @input="searchEntityPicker(batchItemAction(action, batchIndex), field, $event.target.value)" />
-                            <button v-if="actionFieldValue(batchItemAction(action, batchIndex), field.name)" type="button" :aria-label="`清除${field.label}`" @click="clearEntityPicker(batchItemAction(action, batchIndex), field)"><X /></button>
-                            <div v-if="isEntityPickerOpen(batchItemAction(action, batchIndex), field)" class="agent-entity-options" role="listbox" :aria-label="`${field.label}候选项`">
-                              <button v-for="option in filteredEntityOptions(batchItemAction(action, batchIndex), field)" :key="option.value" type="button" role="option" :aria-selected="actionFieldValue(batchItemAction(action, batchIndex), field.name) === option.value" @pointerdown.prevent="selectEntityOption(batchItemAction(action, batchIndex), field, option)"><Check v-if="actionFieldValue(batchItemAction(action, batchIndex), field.name) === option.value" /><span><b>{{ option.label }}</b><small v-if="option.description">{{ option.description }}</small></span></button>
-                              <p v-if="!filteredEntityOptions(batchItemAction(action, batchIndex), field).length">没有匹配项</p>
-                            </div>
-                          </div>
-                          <textarea v-else-if="field.type === 'textarea'" :value="actionFieldValue(batchItemAction(action, batchIndex), field.name)" rows="2" :required="field.required" @input="setActionField(batchItemAction(action, batchIndex), field.name, $event.target.value)"></textarea>
-                          <input v-else :type="actionInputType(field.type)" :step="field.type === 'money' ? '0.01' : field.type === 'number' ? '1' : undefined" :min="field.type === 'money' ? '0.01' : undefined" :value="actionFieldValue(batchItemAction(action, batchIndex), field.name)" :required="field.required" @input="setActionField(batchItemAction(action, batchIndex), field.name, $event.target.value)" />
-                        </label>
-                      </div>
-                    </article>
-                    <footer><button type="button" @click="rejectAction(action)">全部取消</button><button class="primary" type="submit" :disabled="action.busy || !batchActionFormComplete(action)">{{ action.busy ? '正在生成批量预览…' : '生成批量预览' }}</button></footer>
-                  </form>
-                  <form v-else-if="actionEditable(action)" class="agent-action-form" @submit.prevent="answerAction(item, action)">
-                    <label v-for="field in action.structuredContent?.fields || []" :key="field.name" :class="{ 'entity-picker-field': field.type === 'entity-picker' }">
-                      <span>{{ field.label }}<i v-if="field.required">必填</i><i v-if="actionFieldAmbiguous(action, field.name)" class="ambiguous">多个候选 · 请选择</i><i v-else-if="actionFieldSuggested(action, field.name)" class="suggested">智能匹配</i></span>
-                      <select v-if="field.type === 'select'" :value="actionFieldValue(action, field.name)" :required="field.required" @change="setActionField(action, field.name, $event.target.value)">
-                        <option value="">请选择</option>
-                        <option v-for="option in field.options || []" :key="option.value" :value="option.value">{{ option.label }}</option>
-                      </select>
-                      <div v-else-if="field.type === 'entity-picker'" class="agent-entity-picker" @keydown.esc="closeEntityPicker(action, field)">
-                        <input type="search" autocomplete="off" :placeholder="`输入${field.label}名称筛选`" :value="entityPickerText(action, field)" :required="field.required && !actionFieldValue(action, field.name)" role="combobox" :aria-label="`${field.label}筛选`" aria-autocomplete="list" :aria-expanded="isEntityPickerOpen(action, field)" @focus="openEntityPicker(action, field)" @input="searchEntityPicker(action, field, $event.target.value)" />
-                        <button v-if="actionFieldValue(action, field.name)" type="button" :aria-label="`清除${field.label}`" @click="clearEntityPicker(action, field)"><X /></button>
-                        <div v-if="isEntityPickerOpen(action, field)" class="agent-entity-options" role="listbox" :aria-label="`${field.label}候选项`">
-                          <button v-for="option in filteredEntityOptions(action, field)" :key="option.value" type="button" role="option" :aria-selected="actionFieldValue(action, field.name) === option.value" @pointerdown.prevent="selectEntityOption(action, field, option)"><Check v-if="actionFieldValue(action, field.name) === option.value" /><span><b>{{ option.label }}</b><small v-if="option.description">{{ option.description }}</small></span></button>
-                          <p v-if="!filteredEntityOptions(action, field).length">没有匹配项</p>
-                        </div>
-                      </div>
-                      <input v-else-if="field.type === 'file'" type="file" :accept="field.accept || '.csv,.xls,.xlsx'" :required="field.required" @change="setActionFile(action, field.name, $event)" />
-                      <textarea v-else-if="field.type === 'textarea'" :value="actionFieldValue(action, field.name)" rows="2" :required="field.required" @input="setActionField(action, field.name, $event.target.value)"></textarea>
-                      <input v-else :type="actionInputType(field.type)" :step="field.type === 'money' ? '0.01' : field.type === 'number' ? '1' : undefined" :min="field.type === 'money' ? '0.01' : undefined" :value="actionFieldValue(action, field.name)" :required="field.required" @input="setActionField(action, field.name, $event.target.value)" />
-                    </label>
-                    <footer><button type="button" @click="rejectAction(action)">取消</button><button class="primary" type="submit" :disabled="action.busy || !actionFormComplete(action)">{{ action.busy ? '正在生成预览…' : '生成预览' }}</button></footer>
-                  </form>
-                  <div v-else-if="action.status === 'NEEDS_CONFIRMATION' && !action.uiStatus && actionIsBatch(action)" class="agent-confirmation-summary agent-batch-confirmation">
-                    <div class="agent-batch-overview">
-                      <span><b>{{ action.structuredContent?.totals?.count || action.structuredContent?.items?.length || 0 }} 笔{{ actionIsDelete(action) ? '待删除流水' : '待保存流水' }}</b><small>{{ batchTotalsLabel(action) }}</small></span>
-                      <em>{{ actionIsDelete(action) ? '整批强确认' : '原子提交' }}</em>
-                    </div>
-                    <details v-for="(batchItem, batchIndex) in action.structuredContent?.items || []" :key="`${action.actionId}-preview-${batchIndex}`" class="agent-batch-preview" :open="batchIndex === 0">
-                      <summary><span>第 {{ batchIndex + 1 }} 笔 · {{ transactionKindLabel(batchPreview(batchItem).kind) }}</span><b>{{ formatMoney(batchPreview(batchItem).amount) }}</b><ChevronDown /></summary>
-                      <dl><template v-for="row in transactionPreviewRows(batchPreview(batchItem))" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template></dl>
-                    </details>
-                    <div v-if="action.structuredContent?.effects?.length" class="agent-action-effects" aria-label="操作影响"><strong>批量删除影响</strong><ul><li v-for="effect in action.structuredContent.effects" :key="effect">{{ effect }}</li></ul></div>
-                    <p><ShieldCheck />{{ actionIsDelete(action) ? '确认后才会整批删除；任意一笔版本变化时全部不执行。' : '确认后整批写入；任意一笔失败时全部回滚，重复点击不会重复创建。' }}</p>
-                    <footer><button v-if="actionIsBatchCreate(action)" type="button" @click="editAction(action)">返回编辑</button><button type="button" @click="rejectAction(action)">全部取消</button><button :class="actionIsDelete(action) ? 'danger' : 'primary'" type="button" :disabled="action.busy" @click="confirmAction(item, action)">{{ action.busy ? (actionIsDelete(action) ? '正在整批删除…' : '正在整批保存…') : (actionIsDelete(action) ? '确认删除全部' : '确认并保存全部') }}</button></footer>
-                  </div>
-                  <div v-else-if="action.status === 'NEEDS_CONFIRMATION' && !action.uiStatus" class="agent-confirmation-summary">
-                    <div v-if="action.structuredContent?.diff?.length" class="agent-action-diff" aria-label="修改差异">
-                      <strong>本次修改</strong>
-                      <dl><template v-for="row in action.structuredContent.diff" :key="row.label"><dt>{{ row.label }}</dt><dd><del>{{ row.before || '未填写' }}</del><ArrowRight /><ins>{{ row.after || '未填写' }}</ins></dd></template></dl>
-                    </div>
-                    <dl>
-                      <template v-for="row in actionPreviewRows(action)" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template>
-                    </dl>
-                    <div v-if="actionIsImportPreview(action)" class="agent-import-preview" aria-label="导入预览结果">
-                      <div><span><b>{{ action.structuredContent?.preview?.validCount || 0 }}</b><small>有效</small></span><span><b>{{ action.structuredContent?.preview?.duplicateCount || 0 }}</b><small>重复</small></span><span><b>{{ action.structuredContent?.preview?.errorCount || 0 }}</b><small>错误</small></span></div>
-                      <details v-if="action.structuredContent?.preview?.rows?.length"><summary>查看解析明细<ChevronDown /></summary><ul><li v-for="row in action.structuredContent.preview.rows.slice(0, 20)" :key="`${row.sheet}-${row.rowNumber}`"><span>{{ row.sheet }} · 第 {{ row.rowNumber }} 行</span><b :class="`status-${String(row.status || '').toLowerCase()}`">{{ importRowStatus(row.status) }}</b><small>{{ row.errors?.join('；') || `${transactionKindLabel(row.kind)} ${formatMoney(row.amount)}` }}</small></li></ul></details>
-                    </div>
-                    <div v-if="action.structuredContent?.effects?.length" class="agent-action-effects" aria-label="操作影响"><strong>删除影响</strong><ul><li v-for="effect in action.structuredContent.effects" :key="effect">{{ effect }}</li></ul></div>
-                    <p><ShieldCheck />{{ actionIsDelete(action) ? '确认后才会执行删除；提交前会再次校验记录版本。' : actionIsRun(action) ? '确认后将立即生成真实流水；相同到期日不会重复记账。' : '确认后才会写入业务数据；重复点击不会重复创建。' }}</p>
-                    <footer><button v-if="action.structuredContent?.fields?.length" type="button" @click="editAction(action)">返回编辑</button><button type="button" @click="rejectAction(action)">取消</button><button v-if="actionIsImportPreview(action)" class="danger" type="button" :disabled="action.busy" @click="requestImportApproval(action)">{{ action.busy ? '正在创建审批…' : '提交站内审批' }}</button><button v-else-if="actionRequiresWebApproval(action)" class="danger" type="button" disabled>{{ webApprovalLabel(action) }}</button><button v-else :class="actionIsDelete(action) ? 'danger' : 'primary'" type="button" :disabled="action.busy" @click="confirmAction(item, action)">{{ action.busy ? confirmBusyLabel(action) : confirmButtonLabel(action) }}</button></footer>
-                  </div>
-                  <div v-else class="agent-action-result">
-                    <CheckCircle2 v-if="action.uiStatus === 'COMPLETED'" />
-                    <CircleX v-else />
-                    <div><b>{{ action.resultSummary || actionStatusLabel(action) }}</b><small v-if="action.uiStatus === 'COMPLETED'">已通过现有业务服务保存，可前往对应页面查看。</small></div>
-                  </div>
-                </section>
-              </template>
-              <p v-else>{{ item.content }}</p>
-              <div v-if="item.attachments?.length" class="message-attachments">
-                <span v-for="file in item.attachments" :key="file.id"><ImageIcon v-if="file.type === 'image'" /><Mic v-else-if="file.type === 'audio'" /><Paperclip v-else />{{ file.name }}</span>
-              </div>
-              <button v-if="item.role === 'assistant' && item.route && !item.typing" class="message-route" type="button" @click="router.push(item.route)">进入{{ item.routeLabel }}<ArrowUpRight /></button>
-              <div v-if="!item.typing" class="message-meta">
-                <time v-if="item.createdAt" :datetime="new Date(item.createdAt).toISOString()"><Clock3 />{{ formatMessageTime(item.createdAt) }}</time>
-                <details v-if="item.role === 'assistant' && item.toolExecutions?.length" class="tool-call-details" @toggle="handleMetaToggle">
-                  <summary><Wrench />已调用 {{ item.toolExecutions.length }} 个工具</summary>
-                  <div class="tool-call-list">
-                    <div v-for="tool in item.toolExecutions" :key="`${tool.name}-${tool.durationMs}`" class="tool-call-item">
-                      <span class="tool-status" :class="tool.status?.toLowerCase()"><Check v-if="tool.status === 'COMPLETED'" /><X v-else /></span>
-                      <div><b>{{ toolLabel(tool.name) }}</b><small>{{ tool.summary }}</small></div>
-                      <em>{{ formatDuration(tool.durationMs) }}</em>
-                    </div>
-                  </div>
-                </details>
-                <details v-if="item.role === 'assistant' && item.usage?.totalTokens" class="token-details" @toggle="handleMetaToggle">
-                  <summary><Database />{{ formatNumber(item.usage.totalTokens) }} Tokens</summary>
-                  <div class="token-popover">
-                    <header><span>Token 用量</span><b>{{ formatNumber(item.usage.totalTokens) }}</b></header>
-                    <p><span>输入</span><b>{{ formatNumber(item.usage.inputTokens) }}</b></p>
-                    <p><span>缓存命中</span><b>{{ formatNumber(item.usage.cacheHitTokens) }}</b></p>
-                    <p><span>缓存未命中</span><b>{{ formatNumber(item.usage.cacheMissTokens) }}</b></p>
-                    <p><span>输出</span><b>{{ formatNumber(item.usage.outputTokens) }}</b></p>
-                    <p><span>思考过程</span><b>{{ formatNumber(item.usage.reasoningTokens) }}</b></p>
-                    <p><span>回复内容</span><b>{{ formatNumber(replyTokens(item.usage)) }}</b></p>
-                    <div class="token-cache-bar"><i :style="{ width: `${cacheHitRate(item.usage)}%` }"></i></div>
-                    <small>输入缓存命中率 {{ cacheHitRate(item.usage) }}%</small>
-                  </div>
-                </details>
-                <span v-if="item.role === 'assistant' && item.modelName" class="message-model"><Sparkles />{{ item.modelName }}</span>
-                <details v-if="item.role === 'assistant' && item.estimatedCost != null" class="cost-details" @toggle="handleMetaToggle">
-                  <summary><Coins />费用 {{ formatCost(item.estimatedCost, item.currency) }}</summary>
-                  <div class="cost-popover">
-                    <header><span>本次估算费用</span><b>{{ formatCost(item.estimatedCost, item.currency) }}</b></header>
-                    <p v-for="model in item.modelExecutions || []" :key="`cost-${model.round}`"><span>模型调用 {{ model.round }} · {{ pricingTierLabel(model.pricingTier) }}</span><b>{{ formatCost(model.estimatedCost, model.currency || item.currency) }}</b></p>
-                    <small>按请求开始时刻和当前模型价格配置估算，最终扣费以供应商账单为准。</small>
-                  </div>
-                </details>
-                <details v-if="item.role === 'assistant' && item.durationMs != null" class="timing-details" @toggle="handleMetaToggle">
-                  <summary><TimerReset />{{ formatDuration(item.durationMs) }}</summary>
-                  <div class="timing-popover">
-                    <header><span>总耗时</span><b>{{ formatDuration(item.durationMs) }}</b></header>
-                    <p><span>首字时延</span><b>{{ item.firstTokenMs > 0 ? formatDuration(item.firstTokenMs) : '未采集' }}</b></p>
-                    <template v-for="model in item.modelExecutions || []" :key="`model-${model.round}`">
-                      <p><span>模型调用 {{ model.round }}</span><b>{{ formatDuration(model.durationMs) }}</b></p>
-                      <p class="timing-sub"><span>首字</span><b>{{ model.firstTokenMs > 0 ? formatDuration(model.firstTokenMs) : '未采集' }}</b></p>
-                    </template>
-                    <p v-for="(tool, index) in item.toolExecutions || []" :key="`timing-${tool.name}-${index}`"><span>{{ toolLabel(tool.name) }}</span><b>{{ formatDuration(tool.durationMs) }}</b></p>
-                  </div>
-                </details>
-                <button type="button" :title="copiedId === item.id ? '已复制' : '复制消息'" :aria-label="copiedId === item.id ? '消息已复制' : '复制消息'" @click="copyMessage(item)"><Check v-if="copiedId === item.id" /><Copy v-else />{{ copiedId === item.id ? '已复制' : '复制' }}</button>
-                <button v-if="item.role === 'assistant' && ['FAILED', 'CANCELLED'].includes(item.status) && item.turnId" type="button" aria-label="重试这条消息" @click="retryTurn(item)"><RefreshCw />重试</button>
-              </div>
-            </div>
-          </article>
-        </div>
-      </div>
-
-      <button v-if="activeMessages.length && !autoFollow" class="scroll-to-bottom" type="button" title="滚动到底部并继续跟随" aria-label="滚动到底部并继续跟随" @click="scrollToBottom(true)"><ArrowDown /></button>
-
-      <div ref="composerWrap" class="chat-composer-wrap">
-        <section v-if="activeQueuedPrompts.length" class="prompt-queue" aria-label="消息处理队列">
-          <header><span><ListOrdered />队列 {{ activeQueuedPrompts.length }} 条</span><button v-if="activeQueuedPrompts.some(item => item.status === 'QUEUED')" type="button" @click="clearPromptQueue(activeId)">清空等待项</button></header>
-          <ol>
-            <li v-for="(item, index) in activeQueuedPrompts" :key="item.id" :class="{ dragging: draggedQueueId === item.id, 'drag-over': queueDropIndex === index, running: item.status !== 'QUEUED' }" :draggable="item.status === 'QUEUED'" @dragstart="startQueueDrag($event, item)" @dragover.prevent="item.status === 'QUEUED' && (queueDropIndex = index)" @drop.prevent="dropQueuedPrompt(index)" @dragend="endQueueDrag">
-              <GripVertical v-if="item.status === 'QUEUED'" aria-label="拖拽排序" /><span v-else class="queue-running-dot" aria-hidden="true"></span><span>{{ item.status === 'QUEUED' ? index + 1 : '执行' }}</span><p><b>{{ queueStatusLabel(item.status) }}</b>{{ item.text }}</p><button type="button" :aria-label="item.status === 'QUEUED' ? `移除队列消息：${item.text}` : '停止生成'" @click="item.status === 'QUEUED' ? removeQueuedPrompt(item.id) : cancelTurn(item.id)"><X /></button>
-            </li>
-          </ol>
-        </section>
-        <div v-if="attachments.length" class="composer-attachments">
-          <span v-for="file in attachments" :key="file.id"><ImageIcon v-if="file.type === 'image'" /><Mic v-else-if="file.type === 'audio'" /><Paperclip v-else />{{ file.name }}<button type="button" :aria-label="`移除 ${file.name}`" @click="removeAttachment(file.id)"><X /></button></span>
-        </div>
-        <form class="chat-composer" @submit.prevent="submitPrompt">
-          <label class="sr-only" for="workspace-prompt">给 AI 发送消息</label>
-          <textarea id="workspace-prompt" v-model="prompt" v-auto-grow="150" rows="1" placeholder="给个人工作台发送消息" @keydown.enter.exact.prevent="submitPrompt"></textarea>
-          <div class="composer-toolbar">
-            <button class="chat-icon-button" type="button" title="上传文件" aria-label="上传文件" @click="fileInput?.click()"><Paperclip /></button>
-            <button class="chat-icon-button" type="button" title="上传图片" aria-label="上传图片" @click="imageInput?.click()"><ImageIcon /></button>
-            <button class="chat-icon-button" :class="{ recording }" type="button" :title="recording ? '停止录音' : '语音输入'" :aria-label="recording ? '停止录音' : '语音输入'" @click="toggleRecording"><Square v-if="recording" /><Mic v-else /></button>
-            <span v-if="recording" class="recording-label"><i></i>正在录音</span>
-            <label v-if="store.authUser && !store.offlineSession" class="composer-model-picker" :title="turnRunning || activeQueuedPrompts.length ? '队列非空时不能切换模型' : `当前模型：${activeModelName}`">
-              <Sparkles aria-hidden="true" />
-              <span aria-hidden="true">{{ compactModelName(activeModelName) }}</span>
-              <select :value="activeConversation?.modelConnectionId || defaultModelId" aria-label="当前会话模型" :disabled="turnRunning || activeQueuedPrompts.length > 0" @change="changeConversationModel">
-                <option v-for="item in modelConnections" :key="item.id" :value="item.id">{{ item.displayName }}{{ item.isDefault ? ' · 默认' : '' }}</option>
-              </select>
-              <ChevronDown aria-hidden="true" />
-            </label>
-            <button v-if="deepThinkingSupported" class="deep-thinking-toggle" :class="{ active: deepThinking }" type="button" :aria-pressed="deepThinking" :title="deepThinking ? '关闭深度思考' : '开启深度思考'" @click="toggleDeepThinking"><Sparkles /><span>深度思考</span></button>
-            <button class="composer-send" type="submit" title="发送" aria-label="发送" :disabled="!canSubmit"><ArrowUp /></button>
-          </div>
-          <input ref="fileInput" class="sr-only" type="file" multiple @change="event => addFiles(event, 'file')" />
-          <input ref="imageInput" class="sr-only" type="file" accept="image/*" multiple @change="event => addFiles(event, 'image')" />
-        </form>
-        <p>AI 可能会出错，请核对重要信息。</p>
-      </div>
-    </section>
   </main>
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import DOMPurify from 'dompurify'
-import { marked } from 'marked'
-import { Archive, ArrowDown, ArrowRight, ArrowUp, ArrowUpRight, Check, CheckCircle2, ChevronDown, ChevronRight, CircleX, ClipboardCheck, Clock3, Coins, Copy, Database, Ellipsis, Folder, FolderInput, FolderPlus, GripVertical, Image as ImageIcon, Inbox, ListOrdered, MessageSquareText, Mic, PanelLeftClose, PanelLeftOpen, Paperclip, Pencil, Pin, PinOff, RefreshCw, ShieldCheck, Sparkles, Square, SquarePen, TimerReset, Trash2, Wrench, X } from 'lucide-vue-next'
-import { Calendar, List, Timer, Wallet } from '../icons.js'
-import { message } from '../services/message.js'
-import { autoGrowTextarea } from '../directives/autoGrowTextarea.js'
-import { parseAgentMetadata, normalizeAgentActions, recoverAgentMetadata, missingActionCard } from '../utils/agentMessageRecovery.js'
-import { copyText } from '../utils/clipboard.js'
-import { useAppStore } from '../stores/app'
-import { useLedgerStore } from '../stores/ledger'
-import { useWorktimeStore } from '../stores/worktime'
-import { apiAnswerAgentAction, apiApproveAgentAction, apiArchiveAgentSession, apiCancelAgentTurn, apiChangeAgentSessionModel, apiChatWithAssistant, apiCommitAgentAction, apiCreateAgentSession, apiCreateAgentSessionGroup, apiDeleteAgentSession, apiDeleteAgentSessionGroup, apiDownloadLedgerExport, apiEnqueueAgentTurn, apiGetAgentAction, apiGetAgentTrace, apiGetAgentTurn, apiImportLedgerPreview, apiInvokeAgentTool, apiListAgentMessages, apiListAgentModelConnections, apiListAgentQueue, apiListAgentSessionGroups, apiListAgentSessions, apiMoveAgentSession, apiRejectAgentAction, apiRemoveQueuedAgentTurn, apiRenameAgentSessionGroup, apiReorderAgentQueue, apiRetryAgentTurn, apiStreamAgentTurn, apiUpdateAgentSession } from '../../packages/api-client/src/index.js'
+import { computed, onMounted, ref } from 'vue'
+import { SlidersHorizontal } from 'lucide-vue-next'
+import HomeTasksWidget from '../components/home/HomeTasksWidget.vue'
+import HomeCalendarWidget from '../components/home/HomeCalendarWidget.vue'
+import HomeLedgerWidget from '../components/home/HomeLedgerWidget.vue'
+import HomeCashflowWidget from '../components/home/HomeCashflowWidget.vue'
+import HomeBudgetWidget from '../components/home/HomeBudgetWidget.vue'
+import HomeCategoryWidget from '../components/home/HomeCategoryWidget.vue'
+import HomeWorktimeWidget from '../components/home/HomeWorktimeWidget.vue'
+import HomeAiWidget from '../components/home/HomeAiWidget.vue'
+import {
+  defaultLayout, HOME_WIDGETS, layoutStorageKey, moveWidget, normalizeLayout, readLayout,
+  toggleWidget, visibleWidgets, widgetSpan, writeLayout
+} from '../components/home/homeLayout.js'
+import { dateKeyOf, monthKeyOf, periodSummary, taskBuckets } from '../components/home/homeMetrics.js'
+import { scheduledOn, dayState } from '../components/habits/habitUtils.js'
+import { useAppStore } from '../stores/app.js'
+import { useTasksStore } from '../stores/tasks.js'
+import { useLedgerStore } from '../stores/ledger.js'
+import { useWorktimeStore } from '../stores/worktime.js'
 
-const router = useRouter(), route = useRoute(), store = useAppStore(), ledgerStore = useLedgerStore(), worktimeStore = useWorktimeStore()
-const vAutoGrow = autoGrowTextarea
-const sidebarOpen = ref(true), conversations = ref([]), activeId = ref(''), prompt = ref(''), attachments = ref([])
-const fileInput = ref(null), imageInput = ref(null), messageViewport = ref(null), composerWrap = ref(null), composerHeight = ref(0), recording = ref(false), autoFollow = ref(true), copiedId = ref('')
-const conversationMenu = ref({ item: null, x: 0, y: 0 }), conversationMenuEl = ref(null)
-const groupMenu = ref({ item: null, x: 0, y: 0 }), groupMenuEl = ref(null)
-const conversationDialog = ref({ type: '', item: null }), renameTitle = ref(''), renameInput = ref(null)
-const sessionGroups = ref([]), collapsedGroups = ref({}), groupName = ref(''), groupNameInput = ref(null)
-const queuedPrompts = ref([]), queueRevisions = ref({}), turnRunning = ref(false), draggedQueueId = ref(''), queueDropIndex = ref(-1)
-const modelConnections = ref([])
-const deepThinking = ref(localStorage.getItem(`workspace_deep_thinking:${store.accountScope || 'local'}`) === 'true')
-const draggedConversationId = ref(''), conversationDropTarget = ref('')
-const entityPickerState = ref({})
-let mediaRecorder = null, mediaStream = null, recordingStartedAt = 0, activeTurnController = null, conversationCreationPromise = null, queuePollTimer = null, composerResizeObserver = null, lastMessageScrollTop = 0, programmaticScroll = false, userPausedFollow = false
-const queuePresence = new Map()
-const historyKey = computed(() => `workspace_ai_conversations_v1:${store.accountScope || 'local'}`)
-const displayName = computed(() => store.authUser?.nickname || store.authUser?.username || '建胜')
-const activeConversation = computed(() => conversations.value.find(item => item.id === activeId.value) || null)
-const activeMessages = computed(() => activeConversation.value?.messages || [])
-const canSubmit = computed(() => Boolean(prompt.value.trim() || attachments.value.length))
-const activeQueuedPrompts = computed(() => queuedPrompts.value.filter(item => item.conversationId === activeId.value))
-const defaultModelId = computed(() => modelConnections.value.find(item => item.isDefault)?.id || modelConnections.value[0]?.id || '')
-const activeModelName = computed(() => modelConnections.value.find(item => item.id === (activeConversation.value?.modelConnectionId || defaultModelId.value))?.displayName || '选择模型')
-const activeModel = computed(() => modelConnections.value.find(item => item.id === (activeConversation.value?.modelConnectionId || defaultModelId.value)))
-const deepThinkingSupported = computed(() => activeModel.value?.providerType === 'DEEPSEEK')
-const conversationMenuStyle = computed(() => ({ left: `${conversationMenu.value.x}px`, top: `${conversationMenu.value.y}px` }))
-const groupMenuStyle = computed(() => ({ left: `${groupMenu.value.x}px`, top: `${groupMenu.value.y}px` }))
-const conversationSections = computed(() => {
-  const pinned = conversations.value.filter(item => item.pinnedAt)
-  const normal = conversations.value.filter(item => !item.pinnedAt)
-  const sections = []
-  if (pinned.length) sections.push({ id: 'pinned', name: '置顶', items: pinned, group: null })
-  for (const group of sessionGroups.value) sections.push({ id: group.id, name: group.name, items: normal.filter(item => item.groupId === group.id), group })
-  const ungrouped = normal.filter(item => !item.groupId || !sessionGroups.value.some(group => group.id === item.groupId))
-  sections.push({ id: 'ungrouped', name: '未分组', items: ungrouped, group: null })
-  return sections
+const widgetMap = {
+  tasks: HomeTasksWidget,
+  calendar: HomeCalendarWidget,
+  ledger: HomeLedgerWidget,
+  cashflow: HomeCashflowWidget,
+  budget: HomeBudgetWidget,
+  category: HomeCategoryWidget,
+  worktime: HomeWorktimeWidget,
+  ai: HomeAiWidget
+}
+
+const store = useAppStore()
+const tasksStore = useTasksStore()
+const ledgerStore = useLedgerStore()
+const worktimeStore = useWorktimeStore()
+
+const editing = ref(false)
+const layout = ref(readLayout(layoutStorageKey(store.accountScope)))
+const dragKey = ref('')
+const dropKey = ref('')
+
+const visibleLayout = computed(() => visibleWidgets(layout.value))
+const hiddenWidgets = computed(() => normalizeLayout(layout.value).filter(item => item.hidden))
+const displayName = computed(() => store.authUser?.nickname || store.authUser?.username || '你')
+
+const greeting = computed(() => {
+  const hour = new Date().getHours()
+  if (hour < 6) return '夜深了'
+  if (hour < 11) return '早上好'
+  if (hour < 13) return '中午好'
+  if (hour < 18) return '下午好'
+  return '晚上好'
 })
-const cards = [
-  { key: 'ledger', title: '账本', description: '记账、流水与报表', route: '/ledger', icon: Wallet, tone: 'yellow' },
-  { key: 'calendar', title: '日历', description: '任务、流水与工时', route: '/calendar', icon: Calendar, tone: 'cyan' },
-  { key: 'worktime', title: '工时', description: '打卡、补录与统计', route: '/punch', icon: Timer, tone: 'pink' },
-  { key: 'tasks', title: '任务', description: '拆解与推进计划', route: '/tasks/inbox', icon: List, tone: 'peach' }
-]
 
-function uid() { return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}` }
-function persist() { localStorage.setItem(historyKey.value, JSON.stringify(conversations.value.slice(0, 60))) }
-function parseMetadata(value) { return parseAgentMetadata(value) }
-function cloneValue(value) { return value == null ? value : JSON.parse(JSON.stringify(value)) }
-function normalizeActions(actions = []) { return normalizeAgentActions(actions) }
-function responseFields(value = {}) { return { usage: value.usage, durationMs: value.durationMs, firstTokenMs: value.firstTokenMs, modelExecutions: value.modelExecutions || [], toolExecutions: value.toolExecutions || [], actions: normalizeActions(value.actions || []), reasoningContent: value.reasoningContent || '', deepThinking: Boolean(value.deepThinking) } }
-function inferRoute(text) { if (/工时|打卡|上班|下班/.test(text)) return { route: '/punch', routeLabel: '工时' }; if (/报表/.test(text)) return { route: '/ledger/reports', routeLabel: '账本报表' }; if (/流水/.test(text)) return { route: '/ledger/transactions', routeLabel: '账本流水' }; if (/记账|支出|收入|账本/.test(text)) return { route: '/ledger', routeLabel: '账本' }; return {} }
-function assistantRoute(role, text) { return role === 'assistant' ? inferRoute(text) : {} }
-function loadLocalConversations() { try { conversations.value = JSON.parse(localStorage.getItem(historyKey.value) || '[]').map(item => ({ ...item, messages: (item.messages || []).map(row => { const normalized = { ...row, typing: false }; if (row.role !== 'assistant') { delete normalized.route; delete normalized.routeLabel } return normalized }) })) } catch { conversations.value = [] }; activeId.value = conversations.value[0]?.id || '' }
-async function loadMessages(id, forceScroll = false) {
-  const target = conversations.value.find(item => item.id === id)
-  if (!target) return
-  const rows = await apiListAgentMessages(id)
-  const current = target.messages || [], claimed = new Set()
-  const restored = (rows || []).map(row => {
-    const existing = current.find(item => !claimed.has(item) && item.role === row.role && (
-      (row.turnId && item.turnId === row.turnId)
-      || (!row.turnId && item.content === row.content)
-      || (row.role === 'user' && item.content === row.content)
-    ))
-    if (existing) claimed.add(existing)
-    const metadata = row.role === 'assistant' ? recoverAgentMetadata(row.metadataJson, existing) : {}
-    return { id: existing?.id || `server-${row.id}`, turnId: row.turnId, role: row.role, content: row.content, createdAt: row.createdAt, typing: false, status: metadata.status || 'COMPLETED', ...responseFields(metadata), ...assistantRoute(row.role, row.content) }
-  })
-  await reconcileActionStates(restored)
-  await hydrateMessageTraces(restored, false)
-  target.messages = restored
+const dateLabel = computed(() => {
+  const now = new Date()
+  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  return `${now.getFullYear()} 年 ${now.getMonth() + 1} 月 ${now.getDate()} 日 ${weekdays[now.getDay()]}`
+})
+
+const headline = computed(() => {
+  const todayKey = dateKeyOf(new Date())
+  const buckets = taskBuckets(tasksStore.tasks, new Date())
+  const habits = tasksStore.habits.filter(habit => !habit.deleted && scheduledOn(habit, todayKey))
+  const habitLeft = habits.filter(habit => !['done', 'skip', 'none'].includes(dayState(habit, tasksStore.habitCheckins, todayKey, todayKey))).length
+  const monthKey = monthKeyOf(new Date())
+  const spent = periodSummary(ledgerStore.transactions, `${monthKey}-01`, `${monthKey}-31`).expense
+  const parts = []
+  parts.push(buckets.today.length ? `${buckets.today.length} 个任务到期` : '今天没有到期任务')
+  if (buckets.overdue.length) parts.push(`${buckets.overdue.length} 个逾期`)
+  if (habits.length) parts.push(`习惯还差 ${habitLeft} 个`)
+  if (spent > 0) parts.push(`本月已支出 ¥${Math.round(spent).toLocaleString('zh-CN')}`)
+  return parts.join(' · ')
+})
+
+function titleOf(key) {
+  return HOME_WIDGETS.find(item => item.key === key)?.title || key
+}
+
+function persist() {
+  writeLayout(layoutStorageKey(store.accountScope), layout.value)
+}
+
+function toggleEditing() {
+  editing.value = !editing.value
+  dragKey.value = ''
+  dropKey.value = ''
+}
+
+function hide(key) {
+  layout.value = toggleWidget(layout.value, key)
   persist()
-  if (forceScroll) await scrollToBottom(true)
-  else await scrollToBottom()
 }
-async function reconcileActionStates(messages) { const actions = messages.flatMap(item => item.actions || []); await Promise.all(actions.map(async action => { try { const state = await apiGetAgentAction(action.actionId); if (!['WAITING_INPUT', 'WAITING_CONFIRMATION', 'APPROVED'].includes(state.status)) action.uiStatus = state.status } catch { action.uiStatus ||= 'EXPIRED' } })) }
-function normalizeQueueItem(item) { return { id: item.id, conversationId: item.sessionId, text: item.userMessage, status: item.status, createdAt: item.createdAt, retryOfTurnId: item.retryOfTurnId, deepThinking: Boolean(item.deepThinking) } }
-async function loadQueue(id) { if (!id || !store.authUser || store.offlineSession) return; const queue = await apiListAgentQueue(id); queueRevisions.value = { ...queueRevisions.value, [id]: Number(queue?.revision || 0) }; const others = queuedPrompts.value.filter(item => item.conversationId !== id); queuedPrompts.value = [...others, ...(queue?.items || []).map(normalizeQueueItem)]; if (id === activeId.value) turnRunning.value = activeQueuedPrompts.value.some(item => item.status !== 'QUEUED') }
-async function loadConversations() { if (!store.authUser || store.offlineSession) return loadLocalConversations(); try { const [sessions, groups, models] = await Promise.all([apiListAgentSessions(), apiListAgentSessionGroups(), apiListAgentModelConnections()]); conversations.value = (sessions || []).map(item => ({ ...item, messages: [] })); sessionGroups.value = groups || []; modelConnections.value = models || []; const requested = route.query.session; activeId.value = conversations.value.find(item => item.id === requested)?.id || conversations.value[0]?.id || ''; if (activeId.value) await Promise.all([loadMessages(activeId.value, true), loadQueue(activeId.value)]) } catch { loadLocalConversations() } }
-async function changeConversationModel(event) { const id = event.target.value; if (!activeConversation.value || !id) return; try { const updated = await apiChangeAgentSessionModel(activeConversation.value.id, id); Object.assign(activeConversation.value, updated); message.success('当前会话模型已切换') } catch (error) { event.target.value = activeConversation.value.modelConnectionId || defaultModelId.value; message.error(error?.response?.data?.detail || '切换模型失败') } }
-function toggleDeepThinking() { deepThinking.value = !deepThinking.value; localStorage.setItem(`workspace_deep_thinking:${store.accountScope || 'local'}`, String(deepThinking.value)) }
-function closeConversationMenu() { conversationMenu.value = { item: null, x: 0, y: 0 } }
-function closeGroupMenu() { groupMenu.value = { item: null, x: 0, y: 0 } }
-async function openConversationMenu(event, item, fromButton = false) {
-  const width = 190, height = 146, margin = 8
-  const anchor = fromButton ? event.currentTarget.getBoundingClientRect() : null
-  const rawX = anchor ? anchor.right - width : event.clientX
-  const rawY = anchor ? anchor.bottom + 6 : event.clientY
-  conversationMenu.value = { item, x: Math.max(margin, Math.min(rawX, window.innerWidth - width - margin)), y: Math.max(margin, Math.min(rawY, window.innerHeight - height - margin)) }
-  await nextTick()
-  conversationMenuEl.value?.querySelector('button')?.focus()
+
+function restore(key) {
+  layout.value = toggleWidget(layout.value, key)
+  persist()
 }
-function openGroupMenu(event, item) { closeConversationMenu(); const rect = event.currentTarget.getBoundingClientRect(); groupMenu.value = { item, x: Math.max(8, Math.min(rect.right - 190, window.innerWidth - 198)), y: Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 112)) } }
-function toggleGroup(id) { collapsedGroups.value = { ...collapsedGroups.value, [id]: !collapsedGroups.value[id] } }
-function handleConversationMenuKeydown(event) {
-  if (event.key === 'Escape') { event.preventDefault(); closeConversationMenu(); return }
-  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
-  event.preventDefault()
-  const items = Array.from(conversationMenuEl.value?.querySelectorAll('[role="menuitem"]') || [])
-  if (!items.length) return
-  const current = Math.max(0, items.indexOf(document.activeElement))
-  const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
-  items[next].focus()
+
+function resetLayout() {
+  layout.value = defaultLayout()
+  persist()
 }
-function closeConversationDialog() { conversationDialog.value = { type: '', item: null }; renameTitle.value = ''; groupName.value = '' }
-async function showRenameDialog(item) { closeConversationMenu(); conversationDialog.value = { type: 'rename', item }; renameTitle.value = item.title; await nextTick(); renameInput.value?.focus(); renameInput.value?.select() }
-function showDeleteDialog(item) { closeConversationMenu(); conversationDialog.value = { type: 'delete', item } }
-async function showGroupDialog(mode, item = null) { closeGroupMenu(); conversationDialog.value = { type: mode === 'create' ? 'group-create' : 'group-rename', item }; groupName.value = item?.name || ''; await nextTick(); groupNameInput.value?.focus(); groupNameInput.value?.select() }
-function removeConversationFromList(id) { conversations.value = conversations.value.filter(item => item.id !== id); if (activeId.value === id) activeId.value = conversations.value[0]?.id || ''; persist() }
-function newConversation() { closeConversationMenu(); activeId.value = ''; prompt.value = ''; attachments.value = []; autoFollow.value = true; if (window.innerWidth < 900) sidebarOpen.value = false }
-async function openConversation(id) { closeConversationMenu(); activeId.value = id; autoFollow.value = true; const target = activeConversation.value; if (store.authUser && !store.offlineSession && target) try { await Promise.all([target.messages?.length ? Promise.resolve() : loadMessages(id), loadQueue(id)]) } catch { message.error('会话状态加载失败') }; if (window.innerWidth < 900) sidebarOpen.value = false; scrollToBottom(true) }
-async function archiveConversation(item) { closeConversationMenu(); if (!store.authUser || store.offlineSession) return message.warning('本地会话暂不支持归档'); try { await apiArchiveAgentSession(item.id); removeConversationFromList(item.id); message.success('会话已归档') } catch { message.error('归档会话失败') } }
-async function deleteConversation(id) { if (!id) return; if (store.authUser && !store.offlineSession) try { await apiDeleteAgentSession(id) } catch { return message.error('删除会话失败') }; removeConversationFromList(id); closeConversationDialog(); message.success('会话已删除') }
-async function renameConversation() { const item = conversationDialog.value.item, title = renameTitle.value.trim(); if (!item || !title || title === item.title) return closeConversationDialog(); try { const updated = store.authUser && !store.offlineSession ? await apiUpdateAgentSession(item.id, { title }) : { title }; item.title = updated?.title || title; item.updatedAt = updated?.updatedAt || item.updatedAt; persist(); closeConversationDialog(); message.success('会话已重命名') } catch { message.error('修改标题失败') } }
-async function togglePinned(item) { closeConversationMenu(); try { const updated = await apiUpdateAgentSession(item.id, { pinned: !item.pinnedAt }); Object.assign(item, updated); message.success(item.pinnedAt ? '会话已置顶' : '已取消置顶') } catch { message.error('更新置顶状态失败') } }
-async function moveConversation(item, groupId) { closeConversationMenu(); try { const updated = await apiMoveAgentSession(item.id, groupId); Object.assign(item, updated); message.success(groupId ? '会话已移动' : '会话已移至未分组') } catch { message.error('移动会话失败') } }
-function startConversationDrag(event, item) { draggedConversationId.value = item.id; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', item.id) }
-function handleConversationDragOver(event, section) { if (!draggedConversationId.value || section.id === 'pinned') return; event.dataTransfer.dropEffect = 'move'; conversationDropTarget.value = section.id }
-function handleConversationDragLeave(event, section) { if (!event.currentTarget.contains(event.relatedTarget) && conversationDropTarget.value === section.id) conversationDropTarget.value = '' }
-async function dropConversation(section) {
-  const item = conversations.value.find(session => session.id === draggedConversationId.value)
-  const groupId = section.id === 'ungrouped' ? null : section.group?.id
-  if (!item || section.id === 'pinned' || item.groupId === groupId) return endConversationDrag()
-  try {
-    const updated = await apiMoveAgentSession(item.id, groupId)
-    Object.assign(item, updated)
-    if (item.pinnedAt) Object.assign(item, await apiUpdateAgentSession(item.id, { pinned: false }))
-    message.success(groupId ? `已移入“${section.name}”` : '已移出分组')
-  }
-  catch { message.error('移动会话失败') }
-  finally { endConversationDrag() }
+
+function onDragStart(key, event) {
+  if (!editing.value) return
+  dragKey.value = key
+  event.dataTransfer?.setData('text/plain', key)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
 }
-function endConversationDrag() { draggedConversationId.value = ''; conversationDropTarget.value = '' }
-async function saveSessionGroup() { const name = groupName.value.trim(), item = conversationDialog.value.item; if (!name) return; try { if (conversationDialog.value.type === 'group-create') sessionGroups.value.push(await apiCreateAgentSessionGroup({ id: uid(), name })); else Object.assign(item, await apiRenameAgentSessionGroup(item.id, { name })); closeConversationDialog(); message.success('分组已保存') } catch { message.error('保存分组失败') } }
-async function deleteSessionGroup(item) { closeGroupMenu(); if (!window.confirm(`删除分组“${item.name}”？其中的会话会移到未分组。`)) return; try { await apiDeleteAgentSessionGroup(item.id); conversations.value.forEach(session => { if (session.groupId === item.id) session.groupId = null }); sessionGroups.value = sessionGroups.value.filter(group => group.id !== item.id); message.success('分组已删除') } catch { message.error('删除分组失败') } }
-function formatTime(value) { return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) }
-function formatMessageTime(value) { return new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(new Date(value)) }
-function formatNumber(value) { return new Intl.NumberFormat('zh-CN').format(Number(value || 0)) }
-function formatDuration(value) { const ms = Math.max(0, Number(value || 0)); if (ms < 1000) return `${ms}ms`; if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`; return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s` }
-function formatCost(value, currency = 'CNY') { const amount = Number(value || 0); return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: currency || 'CNY', minimumFractionDigits: amount < 0.01 ? 6 : 2, maximumFractionDigits: 8 }).format(amount) }
-function formatMoney(value) { const amount = Number(value); return Number.isFinite(amount) && value !== '' && value != null ? `¥${amount.toFixed(2)}` : '金额待补充' }
-function compactModelName(value) { const name = String(value || '模型').trim(); if (name === '系统环境配置') return '环境模型'; return name.length > 7 ? `${name.slice(0, 7)}…` : name }
-function pricingTierLabel(value) { return value === 'PEAK' ? '高峰' : value === 'OFF_PEAK' ? '空闲' : '固定价' }
-function replyTokens(usage) { return Math.max(0, Number(usage?.outputTokens || 0) - Number(usage?.reasoningTokens || 0)) }
-function cacheHitRate(usage) { const hit = Number(usage?.cacheHitTokens || 0), miss = Number(usage?.cacheMissTokens || 0); return hit + miss ? Math.round(hit / (hit + miss) * 100) : 0 }
-function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledger.book.create.prepare': '准备新增账本', 'ledger.book.update.prepare': '准备修改账本', 'ledger.account.list': '查询账户', 'ledger.account.create.prepare': '准备新增账户', 'ledger.account.update.prepare': '准备修改账户', 'ledger.account.delete.prepare': '准备删除账户', 'ledger.category.list': '查询分类', 'ledger.category.create.prepare': '准备新增分类', 'ledger.category.update.prepare': '准备修改分类', 'ledger.category.delete.prepare': '准备删除分类', 'ledger.merchant.list': '查询商家', 'ledger.merchant.create.prepare': '准备新增商家', 'ledger.merchant.update.prepare': '准备修改商家', 'ledger.merchant.delete.prepare': '准备删除商家', 'ledger.project.list': '查询项目', 'ledger.project.create.prepare': '准备新增项目', 'ledger.project.update.prepare': '准备修改项目', 'ledger.project.delete.prepare': '准备删除项目', 'ledger.budget.upsert.prepare': '准备设置预算', 'ledger.budget.delete.prepare': '准备删除预算', 'ledger.schedule.list': '查询周期任务', 'ledger.schedule.create.prepare': '准备创建周期任务', 'ledger.schedule.update.prepare': '准备修改周期任务', 'ledger.schedule.delete.prepare': '准备删除周期任务', 'ledger.schedule.run.prepare': '准备执行周期任务', 'ledger.recycle.list': '查询回收站', 'ledger.recycle.restore.prepare': '准备恢复回收站项目', 'ledger.export.prepare': '准备导出流水', 'ledger.import.preview.prepare': '准备导入预览', 'ledger.import.confirm.prepare': '创建导入审批', 'ledger.overview': '查询账本概览', 'ledger.transactions.search': '查询账本流水', 'ledger.transaction.history': '查询流水历史', 'ledger.transaction.create.prepare': '准备新增流水', 'ledger.transaction.update.prepare': '准备修改流水', 'ledger.transaction.delete.prepare': '准备删除流水', 'ledger.transactions.batch.create.prepare': '准备批量记账', 'ledger.transactions.batch.delete.prepare': '准备批量删除', 'ledger.reports.summary': '生成账本报表', 'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置', 'worktime.settings.update.prepare': '准备修改工时设置', 'worktime.records.search': '查询工时记录', 'worktime.record.create.prepare': '准备新增工时', 'worktime.record.update.prepare': '准备修改工时', 'worktime.record.delete.prepare': '准备删除工时' })[name] || name }
-function actionTypeLabel(action) { return ({ 'worktime.settings.update': '修改工时设置', 'worktime.record.create': '新增工时', 'worktime.record.update': '修改工时', 'worktime.record.delete': '删除工时', 'ledger.book.create': '新增账本', 'ledger.book.update': '修改账本', 'ledger.book.delete': '删除账本', 'ledger.account.create': '新增账户', 'ledger.account.update': '修改账户', 'ledger.account.delete': '删除账户', 'ledger.category.create': '新增分类', 'ledger.category.update': '修改分类', 'ledger.category.delete': '删除分类', 'ledger.merchant.create': '新增商家', 'ledger.merchant.update': '修改商家', 'ledger.merchant.delete': '删除商家', 'ledger.project.create': '新增项目', 'ledger.project.update': '修改项目', 'ledger.project.delete': '删除项目', 'ledger.budget.upsert': '设置预算', 'ledger.budget.delete': '删除预算', 'ledger.schedule.create': '创建周期任务', 'ledger.schedule.update': '修改周期任务', 'ledger.schedule.delete': '删除周期任务', 'ledger.schedule.run': '立即执行周期任务', 'ledger.recycle.restore': '恢复回收站项目', 'ledger.recycle.purge': '永久清除回收站项目', 'ledger.export': '导出流水', 'ledger.import.preview': '导入文件预览', 'ledger.transaction.create': '单笔记账', 'ledger.transaction.update': '修改流水', 'ledger.transaction.delete': '删除流水', 'ledger.transactions.batch.create': '批量记账', 'ledger.transactions.batch.delete': '批量删除流水' })[action.structuredContent?.actionType] || '待确认操作' }
-function actionIsDelete(action) { return action.structuredContent?.actionType?.endsWith('.delete') }
-function actionIsRun(action) { return action.structuredContent?.actionType === 'ledger.schedule.run' }
-function actionIsRestore(action) { return action.structuredContent?.actionType === 'ledger.recycle.restore' }
-function actionIsExport(action) { return action.structuredContent?.actionType === 'ledger.export' }
-function actionIsImportPreview(action) { return action.structuredContent?.actionType === 'ledger.import.preview' }
-function actionRequiresWebApproval(action) { return action.structuredContent?.webApprovalRequired === true || action.structuredContent?.commitAvailable === false }
-function webApprovalLabel() { return '需要站内高风险审批' }
-function confirmButtonLabel(action) { if (actionIsDelete(action)) return '确认删除'; if (actionIsRun(action)) return '确认并立即执行'; if (actionIsRestore(action)) return '确认并恢复'; if (actionIsExport(action)) return '确认并下载'; return '确认并保存' }
-function confirmBusyLabel(action) { if (actionIsDelete(action)) return '正在删除…'; if (actionIsRun(action)) return '正在执行…'; if (actionIsRestore(action)) return '正在恢复…'; if (actionIsExport(action)) return '正在生成文件…'; return '正在保存…' }
-function importRowStatus(value) { return ({ VALID: '有效', DUPLICATE: '重复', ERROR: '错误' })[value] || value }
-function actionIsBatchCreate(action) { return action.structuredContent?.actionType === 'ledger.transactions.batch.create' }
-function actionIsBatch(action) { return action.structuredContent?.actionType?.startsWith('ledger.transactions.batch.') }
-function actionStatusLabel(action) { return ({ NEEDS_INPUT: '待补充', NEEDS_CONFIRMATION: '待确认', COMPLETED: '已完成', DENIED: '已拒绝', CONFLICT: '有冲突', FAILED: '失败', EXPIRED: '已过期' })[action.uiStatus || action.status] || action.uiStatus || action.status }
-function actionFieldValue(action, name) { const value = action.form?.[name]; return value == null ? '' : value }
-function setActionField(action, name, value) {
-  action.form ||= {}; action.form[name] = value
-  if (name === 'kind') {
-    const field = (action.structuredContent?.fields || []).find(item => item.name === 'categoryId')
-    const selected = (field?.options || []).find(option => option.value === action.form.categoryId)
-    if (selected?.kind && selected.kind !== value) {
-      action.form.categoryId = ''
-      if (field) updateEntityPicker(action, field, { query: '', open: false })
-    }
-  }
+
+function onDragOver(key) {
+  if (!editing.value || !dragKey.value) return
+  dropKey.value = key
 }
-function setActionFile(action, name, event) { action.form ||= {}; action.form[name] = event.target.files?.[0] || null }
-function actionInputType(type) { return ({ money: 'number', number: 'number', date: 'date', time: 'time', month: 'month' })[type] || 'text' }
-function actionFormComplete(action) { return (action.structuredContent?.fields || []).every(field => !field.required || String(actionFieldValue(action, field.name)).trim()) }
-function actionEditable(action) { return !action.uiStatus && (action.status === 'NEEDS_INPUT' || (action.status === 'NEEDS_CONFIRMATION' && action.editing)) }
-function actionFieldSuggested(action, name) { return (action.structuredContent?.suggestedFields || []).includes(name) }
-function actionFieldAmbiguous(action, name) { return action.structuredContent?.entityMatches?.[name]?.status === 'ambiguous' && !actionFieldValue(action, name) }
-function editAction(action) { action.editing = true; action.form = { ...cloneValue(action.structuredContent?.input || {}), ...cloneValue(action.form || {}) }; persist() }
-function pendingLedgerActions(item) { return (item.actions || []).filter(action => action.structuredContent?.actionType === 'ledger.transaction.create' && !action.uiStatus && ['NEEDS_INPUT', 'NEEDS_CONFIRMATION'].includes(action.status)) }
-function batchAmount(item, kind) { const total = pendingLedgerActions(item).filter(action => action.structuredContent?.input?.kind === kind).reduce((sum, action) => sum + Number(action.structuredContent?.input?.amount || 0), 0); return `¥${total.toFixed(2)}` }
-function allLedgerActionsConfirmable(item) { const actions = pendingLedgerActions(item); return actions.length > 1 && actions.every(action => action.status === 'NEEDS_CONFIRMATION' && !action.editing) }
-function entityPickerKey(action, field) { return `${action.actionId}:${field.name}` }
-function entityPickerEntry(action, field) { const key = entityPickerKey(action, field), selected = (field.options || []).find(option => option.value === actionFieldValue(action, field.name)), match = action.structuredContent?.entityMatches?.[field.name]; return entityPickerState.value[key] || { query: selected?.label || match?.query || '', open: false } }
-function updateEntityPicker(action, field, patch) { const key = entityPickerKey(action, field); entityPickerState.value = { ...entityPickerState.value, [key]: { ...entityPickerEntry(action, field), ...patch } } }
-function entityPickerText(action, field) { return entityPickerEntry(action, field).query }
-function isEntityPickerOpen(action, field) { return entityPickerEntry(action, field).open }
-function openEntityPicker(action, field) { updateEntityPicker(action, field, { open: true }) }
-function closeEntityPicker(action, field) { updateEntityPicker(action, field, { open: false }) }
-function searchEntityPicker(action, field, query) { setActionField(action, field.name, ''); updateEntityPicker(action, field, { query, open: true }) }
-function selectEntityOption(action, field, option) { setActionField(action, field.name, option.value); updateEntityPicker(action, field, { query: option.label, open: false }) }
-function clearEntityPicker(action, field) { setActionField(action, field.name, ''); updateEntityPicker(action, field, { query: '', open: true }) }
-function filteredEntityOptions(action, field) { const query = entityPickerText(action, field).trim().toLocaleLowerCase(), kind = actionFieldValue(action, 'kind'); return (field.options || []).filter(option => !['categoryId', 'parentId'].includes(field.name) || !option.kind || !kind || option.kind === kind).filter(option => !query || String(option.label || '').toLocaleLowerCase().includes(query)) }
-function transactionKindLabel(kind) { return ({ EXPENSE: '支出', INCOME: '收入', TRANSFER: '转账', BORROW_IN: '借入', LEND_OUT: '借出', COLLECT_DEBT: '收债', REPAY_DEBT: '还款' })[kind] || '类型待补充' }
-function batchItemAction(action, index) {
-  const content = action.structuredContent?.items?.[index] || {}
-  return { actionId: `${action.actionId}:${index}`, structuredContent: content, form: action.form?.items?.[index] || {} }
+
+function onDragLeave(key) {
+  if (dropKey.value === key) dropKey.value = ''
 }
-function batchItemFields(action, index) { return action.structuredContent?.items?.[index]?.fields || [] }
-function batchActionFormComplete(action) { return (action.form?.items || []).length > 0 && (action.form.items || []).every((_, index) => actionFormComplete(batchItemAction(action, index))) }
-function removeBatchItem(action, index) { if ((action.form?.items || []).length <= 1) return; action.form.items.splice(index, 1); action.structuredContent?.items?.splice(index, 1); persist() }
-function batchPreview(item) { return item?.preview || item || {} }
-function batchTotalsLabel(action) {
-  const totals = action.structuredContent?.totals || {}
-  return [`收入 ${formatMoney(totals.income || 0)}`, `支出 ${formatMoney(totals.expense || 0)}`, `转账 ${formatMoney(totals.transfer || 0)}`].join(' · ')
+
+function onDragEnd() {
+  dragKey.value = ''
+  dropKey.value = ''
 }
-function transactionPreviewRows(preview = {}) {
-  return [
-    ['类型', transactionKindLabel(preview.kind)], ['金额', preview.amount != null ? formatMoney(preview.amount) : null],
-    [preview.kind === 'TRANSFER' ? '转出账户' : '账户', preview.accountName], ['转入账户', preview.targetAccountName],
-    ['分类', preview.categoryPath || preview.categoryName], ['商家 / 对方', preview.merchantName], ['成员', preview.memberName],
-    ['项目', preview.projectName], ['日期', preview.occurredOn || '今天'], ['备注', preview.note],
-    ['版本', preview.revision != null ? `rev ${preview.revision}` : null]
-  ].filter(row => row[1] != null && row[1] !== '').map(([label, value]) => ({ label, value }))
+
+function onDrop(key) {
+  if (!editing.value) return
+  const from = dragKey.value
+  dragKey.value = ''
+  dropKey.value = ''
+  if (!from || from === key) return
+  layout.value = moveWidget(layout.value, from, key)
+  persist()
 }
-function scheduleFrequencyLabel(value) { return ({ ONCE: '仅一次', DAILY: '每日', WEEKLY: '每周', MONTHLY: '每月', YEARLY: '每年' })[value] || value }
-function scheduleRuleLabel(value = {}) {
-  if (value.scheduleMode === 'INTERVAL') return `每 ${value.intervalValue || 1} ${scheduleFrequencyLabel(value.frequency)}`
-  if (value.frequency === 'WEEKLY') return `每周星期${['', '一', '二', '三', '四', '五', '六', '日'][Number(value.dayOfWeek || value.calendarRule?.dayOfWeek)] || ''}`
-  if (value.frequency === 'YEARLY') return `每年 ${value.month || value.calendarRule?.month} 月 ${value.dayOfMonth || value.calendarRule?.dayOfMonth} 日`
-  if ((value.monthlyMode || value.calendarRule?.monthlyMode) === 'NTH_WEEKDAY') return `每月第 ${value.weekOfMonth || value.calendarRule?.weekOfMonth} 周星期${['', '一', '二', '三', '四', '五', '六', '日'][Number(value.dayOfWeek || value.calendarRule?.dayOfWeek)] || ''}`
-  if (value.frequency === 'MONTHLY') return `每月 ${value.dayOfMonth || value.calendarRule?.dayOfMonth} 日`
-  return scheduleFrequencyLabel(value.frequency)
-}
-function actionPreviewRows(action) {
-  const preview = action.structuredContent?.preview || {}
-  if (action.structuredContent?.actionType === 'ledger.recycle.restore' || action.structuredContent?.actionType === 'ledger.recycle.purge') return [
-    ['名称', preview.name], ['类型', preview.type], ['删除时间', preview.deletedAt], ['日期', preview.occurredOn],
-    ['金额', preview.amount != null ? formatMoney(preview.amount) : null], ['版本', preview.revision != null ? `rev ${preview.revision}` : null]
-  ].filter(row => row[1] != null && row[1] !== '').map(([label, value]) => ({ label, value }))
-  if (action.structuredContent?.actionType === 'ledger.export') return [
-    ['格式', String(preview.format || 'xlsx').toUpperCase()], ['开始日期', preview.from || '不限'], ['结束日期', preview.to || '不限'],
-    ['预计数量', `${preview.estimatedCount || 0} 笔`], ['文件名', preview.filename]
-  ].map(([label, value]) => ({ label, value }))
-  if (action.structuredContent?.actionType === 'ledger.import.preview') return [
-    ['文件', preview.filename], ['识别模板', preview.template], ['临时批次', preview.batchId],
-    ['待创建账户', preview.toCreate?.accounts?.length || 0], ['待创建分类', preview.toCreate?.categories?.length || 0]
-  ].filter(row => row[1] != null && row[1] !== '').map(([label, value]) => ({ label, value }))
-  if (action.structuredContent?.actionType === 'worktime.settings.update') return [
-    ['税前月薪', preview.salaryPre != null ? formatMoney(preview.salaryPre) : null], ['税后月薪', preview.salaryPost != null ? formatMoney(preview.salaryPost) : null],
-    ['时薪口径', preview.basis === 'pre' ? '税前' : '税后'], ['标准时间', preview.workStart && preview.workEnd ? `${preview.workStart} - ${preview.workEnd}` : null],
-    ['午休', preview.lunchMin != null ? `${preview.lunchMin} 分钟` : null], ['每月工作日', preview.daysPerMonth],
-    ['历史处理', ({ NONE: '仅影响新记录', ALL: '重算全部历史', FROM_DATE: `从 ${preview.fromDate || '指定日期'} 重算` })[preview.lunchScope]]
-  ].filter(row => row[1] != null).map(([label, value]) => ({ label, value }))
-  if (['worktime.record.create', 'worktime.record.update', 'worktime.record.delete'].includes(action.structuredContent?.actionType)) return [
-    ['日期', preview.date], ['开始', preview.start], ['结束', preview.end || '尚未下班'], ['休息', `${preview.restMin ?? preview.rest ?? 0} 分钟`],
-    ['工时', preview.workMin != null ? `${preview.workMin} 分钟` : null], ['加班', preview.overtimeMin != null ? `${preview.overtimeMin} 分钟` : null],
-    ['实际时薪', preview.realHourlyWage != null ? `¥${Number(preview.realHourlyWage).toFixed(2)}` : null], ['备注', preview.note]
-  ].filter(row => row[1] != null).map(([label, value]) => ({ label, value }))
-  if (/^ledger\.(book|account|category|merchant|project|budget)\./.test(action.structuredContent?.actionType || '')) {
-    const resource = actionIsDelete(action) ? (preview.before || preview.after || {}) : (preview.after || preview.before || {})
-    return [
-      ['操作', preview.operation], ['资源', preview.resourceType], ['名称', resource.name], ['币种', resource.currency],
-      ['账户类型', resource.accountType], ['初始余额', resource.openingBalance != null ? formatMoney(resource.openingBalance) : null],
-      ['收支类型', resource.kind === 'EXPENSE' ? '支出' : resource.kind === 'INCOME' ? '收入' : null],
-      ['父分类', resource.parentId], ['备注', resource.note], ['月份', preview.monthKey || resource.monthKey],
-      ['预算范围', preview.categoryName || resource.category], ['预算金额', (preview.budget ?? resource.budget) != null ? formatMoney(preview.budget ?? resource.budget) : null],
-      ['已使用', (preview.spent ?? resource.spent) != null ? formatMoney(preview.spent ?? resource.spent) : null],
-      ['预计使用率', preview.usageRate != null ? `${Number(preview.usageRate).toFixed(2)}%` : null],
-      ['状态', resource.hidden === true || resource.hidden === 'true' ? '停用' : resource.archived === true || resource.archived === 'true' ? '已归档' : resource.hidden != null || resource.archived != null ? '启用' : null],
-      ['版本', preview.before?.revision != null ? `rev ${preview.before.revision}` : null]
-    ].filter(row => row[1] != null && row[1] !== '').map(([label, value]) => ({ label, value }))
-  }
-  if (/^ledger\.schedule\./.test(action.structuredContent?.actionType || '')) {
-    const resource = preview.after || preview.before || {}
-    const payload = resource.payload || resource
-    return [
-      ['操作', preview.operation], ['任务名称', resource.name], ['状态', resource.enabled === false || resource.enabled === 'false' ? '暂停' : '启用'],
-      ['执行规则', scheduleRuleLabel(resource)], ['生效日期', resource.startOn], ['下次执行', resource.nextRunOn || preview.dueOn],
-      ['结束日期', resource.endOn], ['最大次数', resource.maxRuns], ['已执行', resource.runCount != null ? `${resource.runCount} 次` : null],
-      ['流水类型', transactionKindLabel(payload.kind)], ['金额', payload.amount != null ? formatMoney(payload.amount) : null],
-      ['账户', resource.accountName || payload.accountName || payload.accountId], ['分类', resource.categoryName || payload.categoryName || payload.categoryId],
-      ['商家', resource.merchantName || payload.merchantName], ['成员', resource.memberName || payload.memberName],
-      ['项目', resource.projectName || payload.projectName], ['备注', payload.note], ['最近结果', resource.lastRunStatus],
-      ['版本', resource.revision != null ? `rev ${resource.revision}` : null]
-    ].filter(row => row[1] != null && row[1] !== '').map(([label, value]) => ({ label, value }))
-  }
-  return transactionPreviewRows(preview)
-}
-function replaceAction(item, previous, next) { const index = (item.actions || []).findIndex(action => action.actionId === previous.actionId); if (index >= 0) item.actions.splice(index, 1, { ...next, editing: false, form: cloneValue(next.structuredContent?.input || {}) }); persist() }
-function actionAnswerPayload(value, key = '') {
-  if (Array.isArray(value)) return value.map(item => actionAnswerPayload(item))
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([childKey, child]) => [childKey, actionAnswerPayload(child, childKey)]))
-  if (['amount', 'rest'].includes(key) && value !== '') return Number(value)
-  if (['salaryPre', 'salaryPost', 'lunchMin', 'daysPerMonth', 'openingBalance', 'budget', 'intervalValue', 'maxRuns', 'weekOfMonth', 'dayOfWeek', 'dayOfMonth', 'month'].includes(key) && value !== '') return Number(value)
-  if (['autoDays', 'hidden', 'archived', 'enabled'].includes(key) && value !== '') return value === true || value === 'true'
-  return value === '' ? null : value
-}
-async function answerAction(item, action) {
-  action.busy = true
-  try {
-    let payload = actionAnswerPayload(action.form || {})
-    if (actionIsImportPreview(action)) {
-      const file = action.form?.importFile
-      if (!(file instanceof File)) throw new Error('请选择要解析的账本文件')
-      const preview = await apiImportLedgerPreview(action.form?.bookId || action.structuredContent?.input?.bookId, file)
-      payload = { bookId: action.form?.bookId || action.structuredContent?.input?.bookId, batchId: preview.batchId }
-    }
-    replaceAction(item, action, await apiAnswerAgentAction(action.actionId, payload))
-  } catch (error) { message.error(error?.response?.data?.detail || error?.message || '无法生成操作预览') }
-  finally { action.busy = false }
-}
-async function requestImportApproval(action) {
-  action.busy = true
-  try {
-    const input = action.structuredContent?.input || {}
-    const result = await apiInvokeAgentTool('ledger.import.confirm.prepare', { bookId: input.bookId, batchId: input.batchId, duplicateStrategy: 'SKIP' })
-    action.approvalId = result.structuredContent?.approvalId
-    action.confirmationUrl = result.confirmationUrl
-    persist()
-    message.success('已创建站内审批')
-    await router.push(result.confirmationUrl || `/approvals/${action.approvalId}`)
-  } catch (error) { message.error(error?.response?.data?.detail || '创建审批失败') }
-  finally { action.busy = false }
-}
-async function rejectAction(action) { action.busy = true; try { const result = await apiRejectAgentAction(action.actionId); action.uiStatus = result.status || (action.status === 'NEEDS_INPUT' ? 'CANCELLED' : 'DENIED'); action.resultSummary = '已取消，本次未写入任何数据'; persist() } catch (error) { message.error(error?.response?.data?.detail || '取消失败') } finally { action.busy = false } }
-async function confirmAction(item, action) {
-  action.busy = true
-  try {
-    await apiApproveAgentAction(action.actionId)
-    const result = await apiCommitAgentAction(action.actionId)
-    action.uiStatus = result.status
-    action.resultSummary = result.summary
-    action.structuredContent = { ...action.structuredContent, result: result.structuredContent }
-    if (result.status === 'COMPLETED' && actionIsExport(action)) await downloadAgentExport(result.structuredContent)
-    if (result.status === 'COMPLETED') message.success(result.summary || '操作已完成')
-    else message.error(result.summary || '操作未完成')
-    if (result.status === 'COMPLETED' && action.structuredContent?.actionType?.startsWith('worktime.')) await worktimeStore.fetch().catch(() => {})
-    if (result.status === 'COMPLETED' && /^ledger\.transactions?\./.test(action.structuredContent?.actionType || '')) await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {})
-    if (result.status === 'COMPLETED' && /^ledger\.(book|account|category|merchant|project|budget)\./.test(action.structuredContent?.actionType || '')) { await ledgerStore.refreshBooks().catch(() => {}); await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {}) }
-    if (result.status === 'COMPLETED' && (/^ledger\.schedule\./.test(action.structuredContent?.actionType || '') || actionIsRestore(action))) await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {})
-    persist()
-  } catch (error) { message.error(error?.response?.data?.detail || '保存失败') }
-  finally { action.busy = false }
-}
-async function downloadAgentExport(result = {}) {
-  const blob = await apiDownloadLedgerExport(result.bookId, result.format || 'xlsx', { from: result.from || undefined, to: result.to || undefined })
-  const url = URL.createObjectURL(blob); const link = document.createElement('a')
-  link.href = url; link.download = result.filename || `ledger.${result.format || 'xlsx'}`; link.click(); URL.revokeObjectURL(url)
-}
-async function confirmAllActions(item) {
-  if (!allLedgerActionsConfirmable(item)) return
-  item.batchBusy = true
-  try {
-    for (const action of pendingLedgerActions(item)) await confirmAction(item, action)
-  } finally { item.batchBusy = false; persist() }
-}
-async function rejectAllActions(item) {
-  item.batchBusy = true
-  try {
-    for (const action of pendingLedgerActions(item)) await rejectAction(action)
-  } finally { item.batchBusy = false; persist() }
-}
-async function copyMessage(item) { try { await copyText(item.content || '') } catch { /* 兜底已在 copyText 内完成 */ } copiedId.value = item.id; window.setTimeout(() => { if (copiedId.value === item.id) copiedId.value = '' }, 1600) }
-function handleMetaToggle(event) { const current = event.currentTarget; if (!current.open) return; current.closest('.message-meta')?.querySelectorAll('details[open]').forEach(detail => { if (detail !== current) detail.open = false }) }
-function closeMetaPopovers(event) {
-  if (!event.target.closest?.('.agent-entity-picker')) entityPickerState.value = Object.fromEntries(Object.entries(entityPickerState.value).map(([key, value]) => [key, { ...value, open: false }]))
-  document.querySelectorAll('.message-meta details[open]').forEach(detail => { if (!detail.contains(event.target)) detail.open = false })
-  const insideMenu = event.target.closest?.('.conversation-context-menu')
-  const menuTrigger = event.target.closest?.('[aria-haspopup="menu"]')
-  if (conversationMenu.value.item && !insideMenu && !menuTrigger) closeConversationMenu()
-  if (groupMenu.value.item && !insideMenu && !event.target.closest?.('[aria-label$="分组操作"]')) closeGroupMenu()
-}
-function openCard(card) { if (card.planned) { prompt.value = `打开${card.title}`; submitPrompt(); return }; router.push(card.route) }
-function addFiles(event, type) { attachments.value.push(...Array.from(event.target.files || []).map(file => ({ id: uid(), type, name: file.name, size: file.size }))); event.target.value = '' }
-function removeAttachment(id) { attachments.value = attachments.value.filter(item => item.id !== id) }
-async function removeQueuedPrompt(id) { try { await apiRemoveQueuedAgentTurn(id); await loadQueue(activeId.value) } catch { message.error('移除排队消息失败') } }
-async function clearPromptQueue(conversationId) { const queued = queuedPrompts.value.filter(item => item.conversationId === conversationId && item.status === 'QUEUED'); await Promise.all(queued.map(item => apiRemoveQueuedAgentTurn(item.id).catch(() => null))); await loadQueue(conversationId) }
-function startQueueDrag(event, item) { if (item.status !== 'QUEUED') return; draggedQueueId.value = item.id; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', item.id) }
-async function dropQueuedPrompt(targetIndex) {
-  const visible = activeQueuedPrompts.value.filter(item => item.status === 'QUEUED'), dragged = visible.find(item => item.id === draggedQueueId.value)
-  if (!dragged) return endQueueDrag()
-  const reordered = visible.filter(item => item.id !== dragged.id)
-  const runningOffset = activeQueuedPrompts.value.filter(item => item.status !== 'QUEUED').length
-  reordered.splice(Math.max(0, Math.min(targetIndex - runningOffset, reordered.length)), 0, dragged)
-  const previous = activeQueuedPrompts.value
-  queuedPrompts.value = [...queuedPrompts.value.filter(item => item.conversationId !== activeId.value), ...activeQueuedPrompts.value.filter(item => item.status !== 'QUEUED'), ...reordered]
-  endQueueDrag()
-  try { const result = await apiReorderAgentQueue(activeId.value, { revision: queueRevisions.value[activeId.value] || 0, turnIds: reordered.map(item => item.id) }); queueRevisions.value = { ...queueRevisions.value, [activeId.value]: result.revision }; await loadQueue(activeId.value) } catch { queuedPrompts.value = [...queuedPrompts.value.filter(item => item.conversationId !== activeId.value), ...previous]; message.warning('队列已变化，已恢复服务端最新顺序'); await loadQueue(activeId.value).catch(() => {}) }
-}
-function endQueueDrag() { draggedQueueId.value = ''; queueDropIndex.value = -1 }
-function queueStatusLabel(status) { return status === 'QUEUED' ? '排队中 · ' : status === 'RECEIVED' ? '正在启动 · ' : '正在处理 · ' }
-async function cancelTurn(turnId) { try { await apiCancelAgentTurn(turnId); activeTurnController?.abort(); await loadQueue(activeId.value); const target = activeMessages.value.find(item => item.turnId === turnId); if (target) Object.assign(target, { status: 'CANCELLED', typing: false, content: target.content || '本轮对话已取消。' }); message.success('已停止生成') } catch { message.error('停止生成失败') } }
-async function retryTurn(item) { try { const turn = await apiRetryAgentTurn(item.turnId, uid()); queuedPrompts.value = [...queuedPrompts.value, normalizeQueueItem(turn)]; item.retryTurnId = turn.id; message.success('已加入重试队列'); await loadQueue(activeId.value) } catch (error) { message.error(error?.response?.data?.detail || '重试失败') } }
-function renderMarkdown(content) { return DOMPurify.sanitize(marked.parse(content || '', { breaks: true }), { ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'a', 'hr'], ALLOWED_ATTR: ['href', 'title'] }) }
-function handleMessageWheel(event) { if (event.deltaY < 0) { userPausedFollow = true; autoFollow.value = false } }
-function handleMessageScroll() {
-  const viewport = messageViewport.value
-  if (!viewport) return
-  const movingUp = viewport.scrollTop < lastMessageScrollTop - 1
-  const movingDown = viewport.scrollTop > lastMessageScrollTop + 1
-  const atBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 2
-  if (!programmaticScroll && movingUp) { userPausedFollow = true; autoFollow.value = false }
-  else if (!programmaticScroll && movingDown && atBottom) { userPausedFollow = false; autoFollow.value = true }
-  else if (!programmaticScroll && userPausedFollow) autoFollow.value = false
-  lastMessageScrollTop = viewport.scrollTop
-}
-function createReplyPlaceholder(conversation, useDeepThinking = false) { const reply = { id: uid(), role: 'assistant', content: '', reasoningContent: '', deepThinking: useDeepThinking, createdAt: Date.now(), typing: true, status: 'RECEIVED', toolExecutions: [] }; conversation.messages.push(reply); persist(); scrollToBottom(); return conversation.messages.at(-1) }
-async function hydrateTrace(target, keepBottom = true) { if (!target?.turnId || !store.authUser || store.offlineSession) return; try { const trace = await apiGetAgentTrace(target.turnId); const usage = (trace.modelExecutions || []).reduce((sum, row) => ({ inputTokens: sum.inputTokens + Number(row.inputTokens || 0), outputTokens: sum.outputTokens + Number(row.outputTokens || 0), cacheHitTokens: sum.cacheHitTokens + Number(row.cacheHitTokens || 0), cacheMissTokens: sum.cacheMissTokens + Number(row.cacheMissTokens || 0), reasoningTokens: sum.reasoningTokens + Number(row.reasoningTokens || 0), totalTokens: sum.totalTokens + Number(row.totalTokens || 0) }), { inputTokens: 0, outputTokens: 0, cacheHitTokens: 0, cacheMissTokens: 0, reasoningTokens: 0, totalTokens: 0 }); Object.assign(target, { usage, durationMs: trace.totalDurationMs, firstTokenMs: trace.firstTokenMs, modelName: trace.modelName, providerType: trace.providerType, currency: trace.currency, estimatedCost: trace.estimatedCost, modelExecutions: trace.modelExecutions || [], toolExecutions: trace.toolExecutions || [] }); persist(); if (keepBottom) await scrollToBottom() } catch { /* Trace is optional and must never hide the answer. */ } }
-async function hydrateMessageTraces(messages, keepBottom = true) { await Promise.all((messages || []).filter(item => item.role === 'assistant' && item.turnId && item.status === 'COMPLETED').map(item => hydrateTrace(item, keepBottom))) }
-async function applyReply(target, response) { const existingActions = target.actions || [], fields = responseFields(response); if (!fields.actions.length && existingActions.length) fields.actions = existingActions; Object.assign(target, fields, inferRoute(response.content || ''), { content: response.content || '模型没有返回可显示的内容，请稍后重试。', typing: false, status: 'COMPLETED' }); persist(); await scrollToBottom(); void hydrateTrace(target) }
-async function recoverTurn(target) { for (let attempt = 0; attempt < 4; attempt++) { try { const turn = await apiGetAgentTurn(target.turnId); target.status = turn.status; if (turn.status === 'COMPLETED' && turn.responseJson) { await applyReply(target, parseMetadata(turn.responseJson)); return true }; if (['FAILED', 'CANCELLED'].includes(turn.status)) { target.content = turn.errorMessage || (turn.status === 'CANCELLED' ? '本轮对话已取消。' : 'Agent 执行失败。'); target.typing = false; persist(); return true } } catch { /* bounded recovery */ }; await new Promise(resolve => window.setTimeout(resolve, 500 * (attempt + 1))) }; target.content ||= '响应连接已中断，后台仍可能在执行。刷新页面后可恢复已完成消息。'; target.typing = false; persist(); return false }
-async function ensureConversation(text, pendingAttachments) {
-  let conversation = activeConversation.value
-  if (conversation) return conversation
-  if (conversationCreationPromise) return conversationCreationPromise
-  conversationCreationPromise = (async () => {
-    const now = Date.now(), draft = { id: uid(), title: text.slice(0, 24) || pendingAttachments[0]?.name || '新对话', updatedAt: now, messages: [] }
-    if (store.authUser && !store.offlineSession) try { conversation = { ...(await apiCreateAgentSession({ id: draft.id, title: draft.title, modelConnectionId: defaultModelId.value || null })), messages: [] } } catch { message.error('无法创建服务端会话'); return null }
-    else conversation = draft
-    conversations.value.unshift(conversation); activeId.value = conversation.id
-    return conversation
-  })()
-  try { return await conversationCreationPromise } finally { conversationCreationPromise = null }
-}
-async function submitPrompt() {
-  if (!canSubmit.value) return
-  const text = prompt.value.trim() || '请分析这些附件', pendingAttachments = attachments.value.map(item => ({ ...item }))
-  prompt.value = ''; attachments.value = []
-  const conversation = await ensureConversation(text, pendingAttachments)
-  if (!conversation) return
-  const pending = { id: uid(), conversationId: conversation.id, text, attachments: pendingAttachments, deepThinking: deepThinkingSupported.value && deepThinking.value }
-  if (turnRunning.value || activeQueuedPrompts.value.length) {
-    try {
-      const turn = await apiEnqueueAgentTurn(conversation.id, { clientRequestId: pending.id, message: text, deepThinking: pending.deepThinking })
-      queuedPrompts.value = [...queuedPrompts.value, normalizeQueueItem(turn)]
-      await loadQueue(conversation.id)
-      message.success('消息已加入服务端队列')
-    } catch { message.error('消息入队失败，请重试') }
-    return
-  }
-  await executePrompt(pending)
-}
-async function executePrompt(pending) {
-  const conversation = conversations.value.find(item => item.id === pending.conversationId)
-  if (!conversation) return
-  turnRunning.value = true
-  const { text, attachments: pendingAttachments } = pending, now = Date.now()
-  conversation.messages ||= []
-  conversation.messages.push({ id: uid(), role: 'user', content: text, createdAt: now, attachments: pendingAttachments })
-  conversation.updatedAt = now; conversations.value = [conversation, ...conversations.value.filter(item => item.id !== conversation.id)]; persist(); await scrollToBottom()
-  const assistant = createReplyPlaceholder(conversation, Boolean(pending.deepThinking)), clientRequestId = uid(); let received = false, replyReconciled = false
-  activeTurnController = new AbortController()
-  try {
-    await apiStreamAgentTurn(conversation.id, { clientRequestId, message: text, deepThinking: Boolean(pending.deepThinking) }, async (event, data) => {
-      received = true
-      if (event === 'turn.received') { assistant.turnId = data.turnId; assistant.status = data.status }
-      else if (event === 'turn.status') assistant.status = data.status
-      else if (event === 'assistant.delta') { assistant.content += data.content || ''; await scrollToBottom() }
-      else if (event === 'assistant.reasoning.delta') { assistant.reasoningContent += data.content || ''; await scrollToBottom() }
-      else if (event === 'tool.started') assistant.toolExecutions.push({ name: data.name, status: 'RUNNING', summary: '正在调用', durationMs: 0 })
-      else if (event === 'tool.completed') { const index = assistant.toolExecutions.findIndex(tool => tool.name === data.execution?.name && tool.status === 'RUNNING'); if (index >= 0) assistant.toolExecutions.splice(index, 1, data.execution); else assistant.toolExecutions.push(data.execution) }
-      else if (['input.required', 'confirmation.required'].includes(event)) { assistant.actions ||= []; if (!assistant.actions.some(action => action.actionId === data.action?.actionId)) assistant.actions.push({ ...data.action, form: cloneValue(data.action?.structuredContent?.input || {}) }); persist() }
-      else if (event === 'turn.completed') { await applyReply(assistant, data.response || {}); replyReconciled = true }
-      else if (event === 'turn.cancelled') Object.assign(assistant, { content: assistant.content || '本轮对话已取消。', typing: false, status: 'CANCELLED' })
-      else if (event === 'turn.failed') throw new Error(data.message || 'Agent 执行失败')
-    }, activeTurnController.signal)
-    if (assistant.typing && assistant.turnId) replyReconciled = await recoverTurn(assistant)
-  } catch (error) {
-    if (!received) try { await applyReply(assistant, await apiChatWithAssistant(text, conversation.id)); replyReconciled = true; return } catch (fallback) { error = fallback }
-    else if (assistant.turnId && await recoverTurn(assistant)) { replyReconciled = true; return }
-    assistant.content = error?.response?.data?.detail || error?.message || '暂时无法连接 AI 服务，请稍后重试。'; assistant.typing = false; assistant.status = 'FAILED'; persist()
-  } finally {
-    activeTurnController = null
-    await loadQueue(conversation.id).catch(() => {})
-    turnRunning.value = queuedPrompts.value.some(item => item.status !== 'QUEUED')
-    if (replyReconciled) await scrollToBottom()
-    else await loadMessages(conversation.id).catch(() => {})
-  }
-}
-async function pollAgentState() {
-  if (!activeId.value || !store.authUser || store.offlineSession) return
-  const sessionId = activeId.value
-  const before = activeQueuedPrompts.value.map(item => `${item.id}:${item.status}`).join('|')
-  const hadItems = queuePresence.get(sessionId) || false
-  try {
-    await loadQueue(sessionId)
-    if (activeId.value !== sessionId) return
-    const after = activeQueuedPrompts.value.map(item => `${item.id}:${item.status}`).join('|')
-    if ((before !== after || (hadItems && !after)) && !activeTurnController) await loadMessages(sessionId)
-    queuePresence.set(sessionId, Boolean(after))
-  } catch { /* next poll reconciles transient failures */ }
-}
-async function scrollToBottom(force = false) {
-  if (force) { userPausedFollow = false; autoFollow.value = true }
-  if (!autoFollow.value) return
-  await nextTick()
-  const viewport = messageViewport.value
-  if (!viewport) return
-  programmaticScroll = true
-  viewport.scrollTop = viewport.scrollHeight
-  lastMessageScrollTop = viewport.scrollTop
-  window.requestAnimationFrame(() => { programmaticScroll = false })
-}
-async function toggleRecording() { if (recording.value) return mediaRecorder?.stop(); if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') return message.warning('当前浏览器不支持录音'); try { mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true }); mediaRecorder = new MediaRecorder(mediaStream); recordingStartedAt = Date.now(); mediaRecorder.addEventListener('stop', () => { attachments.value.push({ id: uid(), type: 'audio', name: `语音 ${Math.max(1, Math.round((Date.now() - recordingStartedAt) / 1000))} 秒` }); mediaStream?.getTracks().forEach(track => track.stop()); recording.value = false }, { once: true }); mediaRecorder.start(); recording.value = true } catch { message.warning('无法使用麦克风，请检查浏览器权限') } }
 
 onMounted(async () => {
-  await loadConversations()
-  sidebarOpen.value = window.innerWidth >= 900
-  if (composerWrap.value && typeof ResizeObserver !== 'undefined') {
-    composerResizeObserver = new ResizeObserver(([entry]) => { composerHeight.value = Math.ceil(entry?.borderBoxSize?.[0]?.blockSize || entry?.contentRect?.height || 0) })
-    composerResizeObserver.observe(composerWrap.value)
+  if (!ledgerStore.ready) {
+    try { await ledgerStore.init({ waitForRemote: true }) } catch { /* 账本加载失败时组件按空数据处理 */ }
   }
-  document.addEventListener('pointerdown', closeMetaPopovers)
-  queuePollTimer = window.setInterval(pollAgentState, 1500)
-  scrollToBottom(true)
+  if (!tasksStore.ready) {
+    try { await tasksStore.init({ waitForRemote: true }) } catch { /* 同上 */ }
+  }
+  if (!Object.keys(worktimeStore.records).length) {
+    try { await worktimeStore.fetch() } catch { /* 工时接口失败时显示 0 */ }
+  }
 })
-onBeforeUnmount(() => { composerResizeObserver?.disconnect(); document.removeEventListener('pointerdown', closeMetaPopovers); window.clearInterval(queuePollTimer); activeTurnController?.abort(); if (mediaRecorder?.state === 'recording') mediaRecorder.stop(); mediaStream?.getTracks().forEach(track => track.stop()) })
 </script>
+
+<style scoped>
+.home-canvas { height: 100%; overflow-y: auto; padding: 24px 30px 40px; background: var(--paper); }
+.home-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+.home-eyebrow { margin: 0 0 4px; color: var(--accent); font-size: 10px; font-weight: 750; letter-spacing: .16em; }
+.home-head h1 { margin: 0; font-size: clamp(24px, 2.2vw, 32px); font-weight: 730; letter-spacing: -.04em; }
+.home-sub { margin: 6px 0 0; color: var(--muted); font-size: 12.5px; }
+.home-edit { display: inline-flex; height: 34px; align-items: center; gap: 6px; padding: 0 13px; border: 1px solid var(--line2); border-radius: 10px; background: var(--card); color: var(--ink2); font-size: 12px; font-weight: 650; }
+.home-edit:hover { border-color: var(--accent); color: var(--accent); }
+.home-edit[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #fff; }
+.home-edit-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 12px; padding: 9px 13px; border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--line));
+  border-radius: 12px; background: color-mix(in srgb, var(--accent-soft) 32%, var(--card)); color: var(--ink2); font-size: 11.5px;
+}
+.home-edit-bar button { padding: 0; border: 0; background: transparent; color: var(--accent); font-size: 11.5px; font-weight: 650; }
+.home-hidden-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 12px; color: var(--muted); font-size: 11.5px; }
+.home-hidden-bar button { padding: 5px 10px; border: 1px dashed var(--line2); border-radius: 999px; background: var(--card); color: var(--ink2); font-size: 11.5px; }
+.home-hidden-bar button:hover { border-color: var(--accent); color: var(--accent); }
+.home-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
+.home-cell { position: relative; min-width: 0; }
+/* 同一行的卡片等高：高度写死在这里，卡片内部按 flex 分配，避免被邻居的内容高度拉扯 */
+.home-cell.hw-key-tasks, .home-cell.hw-key-calendar, .home-cell.hw-key-ledger { height: 500px; }
+.home-cell.hw-key-cashflow, .home-cell.hw-key-budget, .home-cell.hw-key-category { height: 330px; }
+.home-cell.hw-key-worktime, .home-cell.hw-key-ai { height: 360px; }
+.home-cell.span-3 { grid-column: span 3; }
+.home-cell.span-4 { grid-column: span 4; }
+.home-cell.span-5 { grid-column: span 5; }
+.home-cell.span-8 { grid-column: span 8; }
+.home-cell.is-editing { cursor: grab; }
+.home-cell.is-editing:active { cursor: grabbing; }
+.home-cell.is-dragging { opacity: .45; }
+.home-cell.is-drop-target :deep(.hw) { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 26%, transparent); }
+.home-cell-hide {
+  position: absolute; z-index: 3; top: -7px; right: -7px;
+  display: grid; width: 22px; height: 22px; place-items: center; padding: 0;
+  border: 1px solid var(--line2); border-radius: 50%; background: var(--card); color: var(--muted);
+  font-size: 13px; line-height: 1;
+}
+.home-cell-hide:hover { border-color: var(--down); color: var(--down); }
+@media (max-width: 1439px) {
+  .home-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .home-cell.span-8, .home-cell.span-5 { grid-column: span 6; }
+  .home-cell.span-4, .home-cell.span-3 { grid-column: span 3; }
+}
+@media (max-width: 900px) {
+  .home-canvas { padding: 18px 14px 32px; }
+  .home-cell.hw-key-tasks, .home-cell.hw-key-calendar, .home-cell.hw-key-ledger,
+  .home-cell.hw-key-cashflow, .home-cell.hw-key-budget, .home-cell.hw-key-category,
+  .home-cell.hw-key-worktime, .home-cell.hw-key-ai { height: auto; min-height: 0; }
+  .home-head { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .home-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .home-cell.span-8, .home-cell.span-5, .home-cell.span-4, .home-cell.span-3 { grid-column: span 1; }
+  .home-edit-bar { flex-direction: column; align-items: flex-start; gap: 6px; }
+}
+</style>

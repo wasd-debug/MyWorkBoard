@@ -1312,7 +1312,7 @@ body { background:var(--paper); color:var(--ink); }
 .theme-popover button { display:flex; width:100%; align-items:center; gap:10px; padding:9px 10px; border:0; border-radius:10px; background:transparent; color:var(--ink2); text-align:left; }
 .theme-popover button:hover,.theme-popover button.active { background:var(--paper); color:var(--ink); font-weight:700; }.theme-popover button span { width:15px; height:15px; border-radius:50%; }
 .page-content { max-width:2000px; min-height:calc(100vh - 88px); margin:0 auto; padding:48px 60px 90px; }
-.app-shell.is-home .page-content { max-width:none; padding:0; background:#fff; }
+.app-shell.is-home .page-content { max-width:none; padding:0; background:var(--paper); }
 .page-toolbar { max-width:2000px; margin:0 auto; padding:22px 60px 0; }
 .ledger-page,.ledger-reports,.ledger-management { width:100%; max-width:1320px !important; margin-right:auto !important; margin-left:auto !important; }
 
