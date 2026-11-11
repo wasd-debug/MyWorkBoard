@@ -81,6 +81,11 @@ public final class TaskEnhancementModels {
     public record ImportPreview(String previewId, String fileName, int valid, int duplicates, int errors,
                                 List<ImportRow> rows, String expiresAt) { }
 
+    /** 已在网页里解析完成的导入批次（AI 只能确认这里列出的批次，不能自己造预览）。 */
+    @Schema(name = "TaskImportBatch")
+    public record ImportBatchView(String previewId, String fileName, int valid, int duplicates, int errors,
+                                  String expiresAt, boolean committed) { }
+
     @Schema(name = "TaskImportCommitCommand")
     public record ImportCommitCommand(String previewId, Boolean skipDuplicates) { }
 

@@ -40,19 +40,26 @@
           <span><b>{{ Object.keys(preview.countsByType || {}).length }}</b><small>资源类型</small></span>
           <span><b>{{ preview.scope === 'BOOK' ? '全部' : '单项' }}</b><small>冻结范围</small></span>
         </div>
+        <div v-else-if="isTask && taskStats.length" class="approval-stats destructive-stats">
+          <span v-for="stat in taskStats" :key="stat.label"><b>{{ stat.value }}</b><small>{{ stat.label }}</small></span>
+        </div>
+
+        <dl v-if="isTask && taskRows.length" class="approval-meta approval-task-detail">
+          <div v-for="row in taskRows" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>
+        </dl>
 
         <dl class="approval-meta">
           <div v-if="isImport"><dt>文件</dt><dd>{{ preview.filename || '未知文件' }}</dd></div>
           <div v-else><dt>操作类型</dt><dd>{{ approvalTypeLabel(selected) }}</dd></div>
-          <div><dt>账本</dt><dd>{{ selected.bookId }}</dd></div>
+          <div v-if="selected.bookId"><dt>账本</dt><dd>{{ selected.bookId }}</dd></div>
           <div v-if="isImport"><dt>模板</dt><dd>{{ preview.template || 'AUTO' }}</dd></div>
           <div v-if="isImport"><dt>重复策略</dt><dd>跳过重复流水</dd></div>
-          <div v-if="!isImport"><dt>目标对象</dt><dd>{{ targetName }}</dd></div>
+          <div v-if="!isImport && !isTask"><dt>目标对象</dt><dd>{{ targetName }}</dd></div>
           <div v-if="isRecyclePurge"><dt>快照范围</dt><dd>{{ preview.scope === 'BOOK' ? '当前回收站快照' : '单个回收站项目' }}</dd></div>
           <div><dt>过期时间</dt><dd>{{ formatTime(selected.expiresAt) }}</dd></div>
         </dl>
 
-        <section v-if="!isImport && !isRecyclePurge" class="approval-change">
+        <section v-if="!isImport && !isRecyclePurge && !isTask" class="approval-change">
           <h3>变更预览</h3>
           <div class="approval-change-grid">
             <article v-if="beforeValue"><small>变更前</small><b>{{ valueName(beforeValue) }}</b><span v-if="valueRole(beforeValue)">{{ valueRole(beforeValue) }}</span></article>
@@ -114,7 +121,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { BookX, CheckCircle2, ChevronDown, CircleX, FileSpreadsheet, RefreshCw, ShieldCheck, Trash2, UserRound, UsersRound, X } from 'lucide-vue-next'
+import { BookX, CheckCircle2, ChevronDown, CircleX, FileSpreadsheet, ListX, RefreshCw, ShieldCheck, Trash2, UserRound, UsersRound, X } from 'lucide-vue-next'
 import { apiApproveAgentApproval, apiGetAgentApproval, apiListAgentApprovals, apiRejectAgentApproval } from '../../packages/api-client/src/index.js'
 import { message } from '../services/message.js'
 import { useLedgerStore } from '../stores/ledger.js'
@@ -138,6 +145,11 @@ const isImport = computed(() => actionType.value === 'ledger.import.confirm')
 const isBookDelete = computed(() => actionType.value === 'ledger.book.delete')
 const isRecyclePurge = computed(() => actionType.value === 'ledger.recycle.purge')
 const isRoleApproval = computed(() => actionType.value.startsWith('ledger.role.'))
+// 任务域 R4：payload 自带 previewRows / stats / typeLabel / approveLabel / returnPath，
+// 页面按数据渲染，新增动作不必再改这里
+const isTask = computed(() => actionType.value.startsWith('task.'))
+const taskStats = computed(() => selected.value?.payload?.stats || [])
+const taskRows = computed(() => (selected.value?.payload?.previewRows || []).filter(row => row?.value != null && row.value !== ''))
 const beforeValue = computed(() => selected.value?.payload?.before || null)
 const afterValue = computed(() => selected.value?.payload?.after || null)
 const targetName = computed(() => isRecyclePurge.value ? `${preview.value.count || 0} 个回收站项目` : valueName(afterValue.value || beforeValue.value))
@@ -145,9 +157,15 @@ const finalPermissions = computed(() => afterValue.value?.permissions || beforeV
 const previousPermissions = computed(() => beforeValue.value?.permissions || [])
 const addedPermissions = computed(() => finalPermissions.value.filter(value => !previousPermissions.value.includes(value)))
 const removedPermissions = computed(() => previousPermissions.value.filter(value => !finalPermissions.value.includes(value)))
-const approveLabel = computed(() => isImport.value ? `批准并导入 ${preview.value.validCount || 0} 笔` : isBookDelete.value ? '批准并删除账本' : isRecyclePurge.value ? `批准并永久清除 ${preview.value.count || 0} 项` : `批准并${operationLabel(selected.value?.payload?.operation)}`)
-const resultTarget = computed(() => isImport.value ? '/ledger/transactions' : isBookDelete.value ? '/ledger/manage?view=books' : isRecyclePurge.value ? '/ledger/manage?view=recycle' : '/ledger/manage?view=members')
-const resultTargetLabel = computed(() => isImport.value ? '查看账本流水' : isBookDelete.value ? '查看账本列表' : isRecyclePurge.value ? '查看回收站' : '查看成员与权限')
+const approveLabel = computed(() => isTask.value
+  ? (selected.value?.payload?.approveLabel || '批准并执行')
+  : isImport.value ? `批准并导入 ${preview.value.validCount || 0} 笔` : isBookDelete.value ? '批准并删除账本' : isRecyclePurge.value ? `批准并永久清除 ${preview.value.count || 0} 项` : `批准并${operationLabel(selected.value?.payload?.operation)}`)
+const resultTarget = computed(() => isTask.value
+  ? (selected.value?.payload?.returnPath || '/tasks')
+  : isImport.value ? '/ledger/transactions' : isBookDelete.value ? '/ledger/manage?view=books' : isRecyclePurge.value ? '/ledger/manage?view=recycle' : '/ledger/manage?view=members')
+const resultTargetLabel = computed(() => isTask.value
+  ? (resultTarget.value === '/tasks/trash' ? '查看回收站' : '查看任务')
+  : isImport.value ? '查看账本流水' : isBookDelete.value ? '查看账本列表' : isRecyclePurge.value ? '查看回收站' : '查看成员与权限')
 const resultSummary = computed(() => selected.value?.result?.summary || (selected.value?.status === 'COMPLETED' ? '操作已完成' : '操作执行失败'))
 
 function statusLabel(value) { return ({ PENDING: '待审批', APPROVED: '已批准', EXECUTING: '执行中', COMPLETED: '已完成', REJECTED: '已拒绝', FAILED: '失败', EXPIRED: '已过期', CANCELLED: '已取消' })[value] || value }
@@ -155,9 +173,9 @@ function rowStatus(value) { return ({ VALID: '有效', DUPLICATE: '重复', ERRO
 function transactionLabel(value) { return ({ EXPENSE: '支出', INCOME: '收入', TRANSFER: '转账', BORROW_IN: '借入', LEND_OUT: '借出', COLLECT_DEBT: '收债', REPAY_DEBT: '还款' })[value] || value || '流水' }
 function money(value) { return Number.isFinite(Number(value)) ? `¥${Number(value).toFixed(2)}` : '金额待确认' }
 function formatTime(value) { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—' }
-function approvalIcon(item) { const type = item?.payload?.actionType || ''; return type.startsWith('ledger.member.') ? UserRound : type.startsWith('ledger.role.') ? UsersRound : type === 'ledger.book.delete' ? BookX : type === 'ledger.recycle.purge' ? Trash2 : FileSpreadsheet }
+function approvalIcon(item) { const type = item?.payload?.actionType || ''; if (type.startsWith('task.')) return type === 'task.import.confirm' ? FileSpreadsheet : type === 'task.lists.delete' ? ListX : Trash2; return type.startsWith('ledger.member.') ? UserRound : type.startsWith('ledger.role.') ? UsersRound : type === 'ledger.book.delete' ? BookX : type === 'ledger.recycle.purge' ? Trash2 : FileSpreadsheet }
 function operationLabel(value) { return ({ create: '创建', update: '修改', delete: '删除', purge: '永久清除' })[value] || '执行' }
-function approvalTypeLabel(item) { const type = item?.payload?.actionType || ''; return type.startsWith('ledger.member.') ? `成员${operationLabel(item.payload?.operation)}` : type.startsWith('ledger.role.') ? `角色${operationLabel(item.payload?.operation)}` : type === 'ledger.book.delete' ? '删除账本' : type === 'ledger.recycle.purge' ? '永久清除回收站' : '高风险操作' }
+function approvalTypeLabel(item) { const type = item?.payload?.actionType || ''; if (type.startsWith('task.')) return item.payload?.typeLabel || '高风险任务操作'; return type.startsWith('ledger.member.') ? `成员${operationLabel(item.payload?.operation)}` : type.startsWith('ledger.role.') ? `角色${operationLabel(item.payload?.operation)}` : type === 'ledger.book.delete' ? '删除账本' : type === 'ledger.recycle.purge' ? '永久清除回收站' : '高风险操作' }
 function valueName(value) { return value?.displayName || value?.nickname || value?.name || value?.username || '待确认对象' }
 function valueRole(value) { return value?.roleName || (value?.username ? `用户名：${value.username}` : '') }
 function permissionLabel(value) { return ({ RESOURCE_MANAGE: '资源管理', MEMBER_MANAGE: '成员管理', ROLE_MANAGE: '角色管理', TRANSACTION_ANY_WRITE: '管理全部流水', TRANSACTION_OWN_WRITE: '操作本人流水', RECYCLE_ALL: '管理全部回收站', RECYCLE_SELF: '管理本人回收站', IMPORT_EXPORT: '导入导出', AUDIT_SELF_READ: '查看本人日志' })[value] || value }
@@ -181,8 +199,11 @@ async function approve() {
   try {
     selected.value = await apiApproveAgentApproval(selected.value.id)
     message.success(selected.value.status === 'COMPLETED' ? '审批通过，操作已完成' : '审批已处理')
-    if (isBookDelete.value) await ledgerStore.refreshServer().catch(() => {})
-    else await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {})
+    // 任务域审批不碰账本 store，任务页自己会重新拉数据
+    if (!isTask.value) {
+      if (isBookDelete.value) await ledgerStore.refreshServer().catch(() => {})
+      else await ledgerStore.refreshCurrentBook(undefined, { sync: false }).catch(() => {})
+    }
     await load()
   } catch (error) { message.error(error?.response?.data?.detail || '批准失败') }
   finally { busy.value = false }
@@ -204,4 +225,5 @@ onMounted(load)
 @media(max-width:760px){.approval-page{padding:16px 12px 96px}.approval-page-head{align-items:flex-start}.approval-page-head h1{font-size:24px}.approval-page-head button{padding:8px}.approval-page-head button{font-size:0}.approval-layout{display:block;min-height:0}.approval-list{display:flex;gap:8px;overflow:auto;border-right:0;border-bottom:1px solid var(--line)}.approval-list>button{min-width:230px}.approval-detail{padding:17px}.approval-detail>header{grid-template-columns:auto minmax(0,1fr)}.approval-detail header em{grid-column:2}.approval-stats{grid-template-columns:repeat(3,1fr)}.approval-stats span{padding:10px}.approval-stats b{font-size:20px}.approval-meta{grid-template-columns:1fr}.approval-change-grid{grid-template-columns:1fr}.approval-change-grid article.removed{grid-column:auto}.approval-rows article{grid-template-columns:1fr auto}.approval-rows article b{grid-column:1/-1}.approval-detail footer{position:sticky;bottom:74px;z-index:2;padding:10px;margin:20px -17px -17px;background:var(--card);border-top:1px solid var(--line)}.approval-detail footer>*{flex:1}.approval-placeholder{min-height:360px}}
 .approval-detail footer .approve:hover:not(:disabled) { border-color:color-mix(in srgb,var(--accent) 86%,#000); background:color-mix(in srgb,var(--accent) 86%,#000); color:var(--accent-contrast,#fff) }
 .approval-filters button { flex:0 0 auto; white-space:nowrap; }
+.approval-task-detail { margin-top: 18px }
 </style>

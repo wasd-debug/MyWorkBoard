@@ -237,6 +237,33 @@ public class TaskEnhancementService {
         return new ImportResult(command.previewId(),created,skipped,false);
     }
 
+    /**
+     * 用户在网页里已经解析过、还没提交的导入批次。AI 只能确认这些真实存在的批次，
+     * 不能自己造预览（预览需要上传文件，模型没有文件）。
+     */
+    public List<ImportBatchView> pendingImports() {
+        return jdbc.query("SELECT public_id,file_name,valid_count,duplicate_count,error_count,expires_at,committed_at " +
+                        "FROM task_import_batch WHERE user_id=? AND expires_at>CURRENT_TIMESTAMP " +
+                        "ORDER BY created_at DESC LIMIT 20",
+                (result, rowNum) -> importBatch(result), currentUser.id());
+    }
+
+    public ImportBatchView importBatch(String previewId) {
+        if (previewId == null || previewId.isBlank()) throw new IllegalArgumentException("previewId 不能为空");
+        List<ImportBatchView> rows = jdbc.query("SELECT public_id,file_name,valid_count,duplicate_count,error_count,expires_at,committed_at " +
+                        "FROM task_import_batch WHERE public_id=? AND user_id=? AND expires_at>CURRENT_TIMESTAMP",
+                (result, rowNum) -> importBatch(result), previewId.trim(), currentUser.id());
+        if (rows.isEmpty()) throw new NotFoundException("导入预览不存在或已过期，请重新上传文件预览");
+        return rows.get(0);
+    }
+
+    private ImportBatchView importBatch(java.sql.ResultSet result) throws java.sql.SQLException {
+        return new ImportBatchView(result.getString("public_id"), result.getString("file_name"),
+                result.getInt("valid_count"), result.getInt("duplicate_count"), result.getInt("error_count"),
+                result.getTimestamp("expires_at").toInstant().toString(),
+                result.getTimestamp("committed_at") != null);
+    }
+
     public byte[] export(ExportCommand command) {
         String format=command==null?"csv":enumValue(command.format(),List.of("CSV","XLSX","ICS"),"CSV"); boolean completed=command!=null&&Boolean.TRUE.equals(command.includeCompleted());
         List<TaskModels.TaskItem> rows=openTasks(10000).stream().filter(v->completed||!"COMPLETED".equals(v.status())).toList();

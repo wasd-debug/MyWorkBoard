@@ -50,6 +50,12 @@ class AgentEvaluationContractTest {
         assertFalse(policy.modelVisible(definition("ledger.import.confirm.commit", ToolRisk.R4)));
         assertFalse(policy.modelVisible(definition("ledger.member.update.prepare", ToolRisk.R4)));
         assertFalse(policy.modelVisible(definition("ledger.role.delete.prepare", ToolRisk.R4)));
+        // 任务域 P4：四个最高风险 prepare 也不能进模型上下文，只能由 MCP 客户端触发 + 站内审批
+        assertFalse(policy.modelVisible(definition("task.batch.delete.prepare", ToolRisk.R4)));
+        assertFalse(policy.modelVisible(definition("task.lists.delete.prepare", ToolRisk.R4)));
+        assertFalse(policy.modelVisible(definition("task.purge.prepare", ToolRisk.R4)));
+        assertFalse(policy.modelVisible(definition("task.import.confirm.prepare", ToolRisk.R4)));
+        assertTrue(policy.modelVisible(definition("task.batch.move.prepare", ToolRisk.R3)));
         assertTrue(policy.systemPrompt(java.time.LocalDate.of(2026, 9, 24)).contains("今天是 2026-09-24"));
         assertTrue(policy.systemPrompt(java.time.LocalDate.of(2026, 9, 24)).contains("你不得调用 commit"));
         assertTrue(policy.systemPrompt(java.time.LocalDate.of(2026, 9, 24)).contains("必须先调用 ledger.category.list 和 ledger.merchant.list"));

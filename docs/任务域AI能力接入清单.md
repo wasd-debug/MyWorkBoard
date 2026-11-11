@@ -1,7 +1,7 @@
 # 任务域 AI 能力接入清单
 
-> 版本 v1.1 · 2026-11-11
-> 进度：P0 链路 / P1 只读 / P2 高频写 / **P3 管理类已交付**（任务域 66 个工具，全站 163），余 P4（R4 站内审批）。
+> 版本 v1.2 · 2026-11-11
+> 进度：P0 链路 / P1 只读 / P2 高频写 / P3 管理类 / **P4 R4 站内审批已交付**（任务域 74 个工具，全站 171），四期全部完成。
 > 范围：`task` / `habit` / `focus` / `countdown` 四组能力，对齐账本（`ledger.*`）与工时（`worktime.*`）已开放的 Agent + MCP 能力。
 > 依据：`backend/modules/ai/src/main/java/com/salarytracker/ai/{tool,mcp}`、`AgentPromptPolicy.java`、`docs/Agent功能覆盖与中文评测集.md`、`docs/Phase 2 —— 任务域需求文档.md` §T-704。
 
@@ -22,7 +22,7 @@
 5. `task.today` 实际返回「今天 + 全部逾期」，`task.overdue` 只在前 200 条里过滤，且用 `Instant.now()` 判定，
    把当天已过时刻的任务误判为逾期。
 
-建议按 **P0 修链路（0 个新工具）→ P1 只读补齐 → P2 高频写 → P3 管理类 → P4 R4 审批** 推进，工具数 **16 → 72**（其中 8 个 R4 仅站内审批，模型不可见）。
+建议按 **P0 修链路（0 个新工具）→ P1 只读补齐 → P2 高频写 → P3 管理类 → P4 R4 审批** 推进，工具数 **16 → 74**（其中 8 个 R4 仅站内审批，模型不可见）。
 
 ---
 
@@ -516,3 +516,64 @@ v15 同时修掉两处既有欠账（与任务域无关，但卡着 90% 门禁�
   prepare 不写库、commit 生效。
 - 后端全量 `mvn -o test`：**138 用例全绿**（含上面三条连带修复）。
 - 前端 `npm test` 461 通过、`vite build` 通过。
+
+---
+
+## 13. P4 完成记录（2026-11-11）
+
+### P4 交付清单（R4 站内审批，66 → 74 个工具，全站 171）
+
+| 工具 | 说明 |
+|---|---|
+| `task.batch.delete.prepare/commit` | 批量删除（≤100），**冻结每个任务的当前 revision**，签进审批快照 |
+| `task.lists.delete.prepare/commit` | 删除清单，预览清单内未删除任务数；收集箱直接拒绝 |
+| `task.purge.prepare/commit` | 永久清除回收站里的单个任务；只能对已删除任务生效 |
+| `task.import.confirm.prepare/commit` | 确认网页上已经解析好的导入批次，**不能创建预览**（模型没有文件） |
+
+四个 `.prepare` 都是 `ToolRisk.R4`，因此被 `AgentPromptPolicy.modelVisible` 挡在模型上下文之外：
+**站内对话不能触发这四类操作**，只能由 MCP 客户端调用 prepare，再到 `/approvals` 由用户批准。
+`.commit` 按既有规则不进入 MCP 目录（`visible()` 对 `.commit` 直接返回 false），
+外部客户端一律走 `agent.action.commit`（R4 仍被拒，必须站内审批）。
+
+### 实现要点
+
+- **prepare 与 commit 分居两处**：`TaskR4ToolsConfiguration` 负责「冻结快照 + 建 PendingAction + 建 AgentApproval」，
+  真正执行在 `ai.approval.TaskApprovalExecutor`（实现 `AgentApprovalExecutor`）。审批中心
+  `approveAndExecute` 直接调执行器，**不经过模型、不经过工具调度**。
+- **返回体固定四个标记**：`actionType` / `commitAvailable=false` / `webApprovalRequired=true` /
+  `confirmationUrl=/approvals/{id}`。前端对话卡片因此只显示「需要站内高风险审批」，不会出现可点的「确认并保存」。
+- **卡片复用 P3 的 `previewRows`**，并新增 `stats`（统计块）、`typeLabel`、`approveLabel`、`returnPath`，
+  审批中心按数据渲染，**没有为任务域新增任何 if 分支**（`isTask = actionType.startsWith('task.')`）。
+- **数值与展示串必须分开**：`preview` 里保留真实数字（`count`/`taskCount`/`valid`），
+  卡片行另存「2 个任务」这类展示串。第一版把两者塞进同一个 key，`preview.count.asInt()` 直接变 0（测试当场抓到）。
+- **版本冲突走审批失败，不做「尽力执行」**：`TaskService.batch` / `deleteList` 都会核对 revision，
+  `TaskApprovalExecutor` 把 `ConflictException` 转成 `ActionStatus.CONFLICT` + `ToolResult.conflict`，
+  审批显示「失败」并保留服务端最新版本号。
+- **永久清除的确认字符串由服务端冻结**：`TaskService.purge` 要求 `DELETE:{taskId}`。
+  schema 里 `confirmation` 是可选字段，模型给了就校验、没给就按同一规则生成，既不放松服务端约束，
+  也不要求模型手抄一串 ID。
+- **导入确认只认真实批次**：新增 `TaskEnhancementService.pendingImports()/importBatch(previewId)`。
+  不传 `previewId` 时取最近一条未提交、未过期的批次；已提交的批次再 prepare 直接报错，
+  commit 侧还有 `committed_at` 幂等（`ImportResult.replayed`）。
+- **提示词仍是 `agent-system-v15`**：v15 里本来就有「批量删除任务、删除清单、永久清除任务和导入确认属于最高风险，
+  模型不得调用对应工具」，与 R4 的模型不可见完全对齐，无需改提示词。
+
+### 验证
+
+- `TaskR4ToolsIntegrationTest`（新增 5 用例，真实 MySQL + 真实审批服务）：
+  批量删除冻结 revision、prepare 不写库、审批后两个任务进回收站、重复 commit 幂等；
+  审批期间改过任务 → 审批变 `FAILED`、任务仍在；
+  删除清单统计清单内任务数、收集箱被拒、批准后清单消失且清单内任务不跟着删；
+  永久清除只对回收站任务生效、确认字符串不匹配被拒、批准后不留行；
+  导入确认无预览时报错、有预览时统计正确、批准后建任务、同批次再 prepare 被拒。
+- `AgentEvaluationContractTest` 增加四条断言：`task.batch.delete.prepare` / `task.lists.delete.prepare` /
+  `task.purge.prepare` / `task.import.confirm.prepare` 的 `modelVisible` 必须为 false，
+  而 `task.batch.move.prepare`（R3）必须为 true。
+- 后端全量 `mvn -o test`：**143 用例全绿**。
+- 前端 `npm test` 461 通过、`vite build` 通过。
+- 本地容器 `GET /api/v1/agent/tools`：**171** 个，任务域 **74** 个，P4 的 8 个全部在目录内。
+- 浏览器走查（Playwright，1440 亮 / 1440 暗 / 390 窄屏）：
+  「批量删除 2 个任务」审批页显示统计 `2 任务`、行「数量 / 任务 / 操作类型 / 过期时间」、
+  三条执行影响、按钮「批准并删除 2 个任务」；点击后状态变「已完成」、结果「已删除 2 个任务」；
+  删除清单审批显示「清单内任务 1 个」、按钮「批准并删除清单」，批准后清单只剩收集箱。
+  三档均无 console error、`scrollWidth == innerWidth`。页面上**不再出现「账本」字段**（改为 `v-if="selected.bookId"`）。
