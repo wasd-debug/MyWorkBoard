@@ -1,6 +1,6 @@
 # Agent 功能覆盖与中文评测集
 
-> 版本：v1.13（2026-11-11）
+> 版本：v1.14（2026-11-11）
 > 用途：Phase 3A/3B 自动回归基线。当前首页真实模型已接入 R0/R1 查询和获准的 R2/R3 prepare；commit 仅能由站内确认卡片触发。
 
 ## 1. 功能覆盖矩阵
@@ -65,16 +65,20 @@
 | 日历与设置 | `task.calendar`、`task.settings.get`、`task.filters.list` | R1 | v14 新增，日历与习惯日历均限 92 天 | 跨年区间与节假日边界 |
 | 习惯查询 | `habit.list`、`habit.stats`、`habit.calendar` | R1 | v14 从 `habit.checkin.query` 拆出，语义单一 | 归档习惯与补卡统计 |
 | 专注与倒数日 | `focus.sessions.list`、`focus.current`、`countdown.list` | R1 | v14 新增；无进行中专注返回 null | 专注跨日与倒数日分组排序 |
-| 任务单条写 | `task.create/complete/reschedule.prepare/commit` | R2 | 已接入；create 尚不支持 tags/checklist/子任务/提醒 | P2 扩字段 + reopen/abandon |
-| 任务字段修改与删除 | `task.update/delete.prepare/commit` | R3 | 已接入；update 仅 title/description/priority | P2 扩 checklist/tagIds |
+| 任务单条写 | `task.create/complete/reschedule.prepare/commit` | R2 | P2 起 create 支持 `tagIds`/`checklist`/`parentId`/`durationMinutes`/`reminder`；提醒走批量动作追加，只增不覆盖 | P3 提醒编辑与删除 |
+| 任务字段修改与删除 | `task.update/delete.prepare/commit` | R3 | P2 起 update 支持 checklist/tagIds/时长/父任务；checklist 与 tagIds 是整体替换，diff 显示数量变化 | P3 检查项逐项增删 |
+| 任务状态流转 | `task.reopen`、`task.abandon`、`task.batch.complete` | R2 | P2 新增；批量完成自动跳过已完成项，避免重复生成实例 | 批量改期/移动 |
+| 习惯打卡 | `habit.checkin.prepare/commit` | R2 | P2 新增四态 DONE/SKIP/MISS/CLEAR；CLEAR 是取消打卡，服务端不接受删除 | 按量习惯与补卡边界 |
+| 专注写入 | `focus.start/finish.prepare/commit` | R2 | P2 新增；同一时间只允许一个进行中，支持补记起止时间 | 专注记录修改与删除（P3） |
 
 - MCP 侧修正 `requireScope()`：`task.*`/`habit.*`/`focus.*` 改按 `mcp:task:read` / `mcp:task:prepare` 校验，
   不再误落到工时 scope；P1 补 `countdown.*` 前缀。`McpToolVisibilityTest` 覆盖 `requiredScope` 与
   「只读任务 Token 可调用全部 20 个可见任务工具」。
 - 站内确认入口恢复为 `/agent/chat`，prepare 卡片可在此确认；真实模型端到端已补验通过
   （建任务 → 卡片「新建任务：交周报（👨🏻‍💻工作 · 2026-11-12 15:00）」→ 确认落库到指定清单）。
-- 真实模型评测（`--live`，deepseek-flash）：v13 85% → v14 88% → v15 连续三次 ≥90% 通过；
-  v15 顺带修掉工时设置「先查再改」与账本 R4 成员/角色「完全不调工具」两处欠账。
+- 真实模型评测（`--live`，deepseek-flash）：v13 85% → v14 88% → v15 ≥90%。P2 曾尝试把任务域写入口径
+  加进提示词（v16），连跑三次都是 88%，失败项固定是账本/工时四条，判断为提示词净增长稀释后段指令，
+  已回退到 v15；P2 工具语义由 schema description 承载，实测模型仍能正确选中 `focus.start`、`habit.checkin`。
   评测对畸形 `arguments`（模型 DSML 标记泄漏）改为按单例不合格计，不再中断整轮。
 - 确定性评测 `AgentEvaluationContractTest` 3 用例通过；真实模型评测待账户恢复后重跑。
 

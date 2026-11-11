@@ -65,6 +65,18 @@ public final class ToolSchemas {
         return property;
     }
 
+    /**
+     * 嵌套对象属性。注意必须落在 properties 里：DomainToolRegistry 的入参白名单只认
+     * schema.properties，挂在 schema 根上的字段会被当成未知入参直接拒绝。
+     */
+    public static ObjectNode objectProperty(ObjectNode schema, String name, String description, ObjectNode body) {
+        ObjectNode property = properties(schema).putObject(name);
+        if (body != null) property.setAll(body);
+        property.put("type", "object");
+        property.put("description", description);
+        return property;
+    }
+
     public static ObjectNode required(ObjectNode schema, String... names) {
         var required = schema.putArray("required");
         for (String name : names) required.add(name);

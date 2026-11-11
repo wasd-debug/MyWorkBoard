@@ -127,7 +127,7 @@
 | `task.overdue` | 独立查询条件（`status=OPEN AND due_at < 今天 0 点`），支持 `size`，不再内存过滤 |
 | `habit.checkin.query` | 拆为 `habit.list` + `habit.stats(habitId, from, to)`，语义单一 |
 
-### 3.2 P2 高频写（新增 6 对 / 12 个）
+### 3.2 P2 高频写（新增 6 对 / 12 个）— 已于 2026-11-11 交付，见 §11
 
 | 工具 | 风险 | 入参要点 | 承接服务 |
 |---|---|---|---|
@@ -397,3 +397,64 @@ v15 同时修掉两处既有欠账（与任务域无关，但卡着 90% 门禁�
 
 评测代码同时加容错：模型偶发把特殊标记（`DSML`）泄漏进 `arguments` JSON，原实现直接抛
 `JsonParseException` 中断整轮评测；现改为按「该用例参数不合格」计失败，评测结果不再被单次畸形输出打断。
+
+---
+
+## 11. P2 完成记录（2026-11-11）
+
+### P2 交付清单（高频写，30 → 42 个工具）
+
+| 工具 | 风险 | 说明 |
+|---|---:|---|
+| `task.create.prepare/commit`（扩展） | R2 | 新增 `tagIds[]`、`checklist[]`、`parentId`（子任务）、`durationMinutes`、`reminder` |
+| `task.update.prepare/commit`（扩展） | R3 | 同上；`checklist` 与 `tagIds` 是**整体替换**，diff 会显示检查项/标签数量变化 |
+| `task.reopen.prepare/commit` | R2 | 已完成 / 已放弃 → 未完成；对未完成任务直接报错，避免无意义重开 |
+| `task.abandon.prepare/commit` | R2 | 标记放弃（不算逾期），可再 `reopen` 恢复；重复放弃报错 |
+| `task.batch.complete.prepare/commit` | R2 | `taskIds[]` ≤100；**已完成的自动跳过** |
+| `habit.checkin.prepare/commit` | R2 | 四态 `DONE`/`SKIP`/`MISS`/`CLEAR`，含 `count`/`amount`/`mood`/`note`/`skipReason` |
+| `focus.start.prepare/commit` | R2 | 关联任务/习惯、`plannedMinutes`（0=正计时）、补记用的 `startedAt`/`endedAt` |
+| `focus.finish.prepare/commit` | R2 | `COMPLETED`/`ABORTED`；不填 `sessionId` 时结束当前进行中的专注 |
+
+### 实现要点
+
+- **提醒复用批量动作**：`task_reminder` 没有单独公开接口，`reminder` 由 `TaskService.batch(action=REMINDER)`
+  在 create/update 提交后追加一条，语义是**只新增、不覆盖**已有提醒。
+- **时间统一转 UTC**：`TaskService.validate` 只接受 UTC ISO-8601，模型习惯按用户时区给 `+08:00`。
+  新增 `utc()`/`normalizeTimes()`，在 prepare 阶段按任务时区（缺省取 `task.settings().timezone()`）转 UTC，
+  覆盖 create 的 `startAt`/`dueAt`、reschedule 的改期时间、focus 的 `startedAt`/`endedAt` 与 `reminder.remindAt`。
+  否则会出现「卡片生成成功、点确认必失败」。
+- **前置校验**：`reminder` 在 prepare 就校验 `kind`/偏移/绝对时间，相对提醒要求任务有到期时间。
+  commit 阶段事务已被标记 rollback-only，抛出的错误会被 `UnexpectedRollbackException` 盖住，
+  用户只看到 500。
+- **批量完成跳过已完成**：`changeStatus` 对已完成任务再走一次会重复 `generateNextInstance`，
+  给重复任务多生成一个实例，所以 prepare 阶段过滤掉已完成项，全已完成时报「都已完成，无需重复完成」。
+- **自由专注**：`taskId`/`habitId` 都为空表示不关联对象，服务端支持，不要强制要求。
+- **commit 失败不再 500**：`commit()` 的 catch 里状态流转改成尽力而为（`markFailed`），
+  未批准直接 commit 时返回可读错误而不是 `不允许从 WAITING_CONFIRMATION 转换到 FAILED`。
+- **入参白名单**：`DomainToolRegistry.rejectUnknownFields` 只认 `schema.properties`，
+  挂在 schema 根上的字段会被判成未知入参。新增 `ToolSchemas.objectProperty()` 把嵌套对象放进 properties。
+- 前端 `AgentChatView.vue` 补 `task.reopen|abandon|batch.complete`、`habit.checkin`、`focus.start|finish`
+  的标签与预览行，放弃类操作按钮文案改成「确认放弃」，避免像账本那样退化成通用卡片。
+- **提示词保持 `agent-system-v15` 不变**。试过加 `v16`「写入口径」段（工具名映射＋checklist 整体替换＋
+  批量完成不要循环调），live 评测连跑三次都是 88%，失败项固定是账本/工时四条（工时补录不调工具、
+  工时设置先查再改、账本 R4 不定位账本）——提示词净增长会稀释后段的工时/账本指令。
+  回退到 v15 后连续两次 ≥90% 通过，且不带任何提示词指引时模型仍能正确选中 `focus.start.prepare`
+  与 `habit.checkin.prepare`，说明这些语义由工具 `description` / JSON Schema 承载已经足够。
+  **后续加任务域工具优先写 schema description，不要往系统提示词里堆。**
+
+### 验证
+
+- `TaskWriteToolsIntegrationTest`（新增 9 用例，真实 MySQL + 真实 `TaskService`）：
+  create prepare 带检查项/时长/提醒且不落库；相对提醒缺到期时间报错、绝对提醒通过；
+  create commit 写入 1 条检查项与 1 条提醒且 `duration_minutes=45`；批量完成跳过已完成项、
+  全已完成报错；`reopen` 拒绝未完成任务、对已完成生效；`abandon` 写入放弃原因且重复放弃报错；
+  打卡四态文案、未来日期与早于开始日期报错、CLEAR 提示「取消打卡」；打卡 commit 落 `MISS` 与心得；
+  专注：无进行中时 `focus.finish` 报错、开始后 `focus.start` 报冲突、`ABORTED` 结束。
+- 回归：`TaskReadToolsIntegrationTest` 5、`TaskDomainToolsIntegrationTest` 2、`TaskOrganizationIntegrationTest` 8、
+  `TaskDueWindowToolsIntegrationTest` 2、`McpToolVisibilityTest` 7 全绿；前端 `npm test` 461 通过、`vite build` 通过。
+- 运行时（本地容器）：`GET /api/v1/agent/tools` 共 **139** 个工具，12 个 P2 工具全部在目录内。
+- 脚本级端到端（prepare → approve → commit）：建任务（2 检查项 / 1 提醒 / 45 分钟）→ 批量完成 → 重开 →
+  放弃 → 习惯打卡 `DONE` → 专注 `RUNNING` → 结束 `COMPLETED`，数据逐项核对后已清理。
+- 真实模型对话：「我想开始一个 25 分钟的专注，写周报」→ `focus.current` + `focus.start.prepare`；
+  「帮我把习惯 222 今天标记为跳过，原因是出差」→ `habit.checkin.prepare`（文案明确「不会中断连击」）。
+- 真实模型评测（`agent-system-v15`，未改提示词）：连续两次 ≥90% 通过；对比实验见上一条。
