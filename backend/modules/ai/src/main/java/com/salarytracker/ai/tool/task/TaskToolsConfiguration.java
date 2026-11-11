@@ -28,6 +28,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -1645,10 +1646,50 @@ public class TaskToolsConfiguration {
                         String.valueOf(snapshot.path("revision").asLong())));
     }
 
+    /** 只读工具的摘要名词：用于生成「今天的任务 3 条」这类可读结果，而不是把工具说明当结果。 */
+    private static final Map<String, String> READ_NOUNS = Map.ofEntries(
+            Map.entry("task.today", "今天的任务"),
+            Map.entry("task.overdue", "逾期任务"),
+            Map.entry("task.stats.summary", "任务统计"),
+            Map.entry("task.get", "任务"),
+            Map.entry("task.search", "匹配任务"),
+            Map.entry("task.calendar", "日历任务"),
+            Map.entry("task.settings.get", "任务设置"),
+            Map.entry("task.filters.list", "智能清单"),
+            Map.entry("habit.list", "习惯"),
+            Map.entry("habit.stats", "习惯统计"),
+            Map.entry("habit.calendar", "习惯日历"),
+            Map.entry("habit.checkin.query", "打卡记录"),
+            Map.entry("focus.current", "当前专注"),
+            Map.entry("focus.sessions.list", "专注记录"),
+            Map.entry("focus.stats.query", "专注统计"),
+            Map.entry("countdown.list", "倒数日"));
+
     private DomainTool read(String name, String description, ObjectNode schema, ObjectMapper mapper, Reader reader) {
         ToolDefinition definition = definition(name, description, ToolRisk.R1, schema);
         return new DomainTool() { public ToolDefinition definition(){return definition;} public ToolResult execute(JsonNode input){
-            Object value=reader.read(input==null?mapper.createObjectNode():input); return ToolResult.completed(description,mapper.valueToTree(value)); }};
+            Object value=reader.read(input==null?mapper.createObjectNode():input);
+            JsonNode content=mapper.valueToTree(value);
+            // 摘要不能用 description：模型与 MCP 客户端会把工具说明当成查询结果，
+            // 每次查询都回一整段「查询当前用户今天到期且未完成的任务…」，既浪费上下文，
+            // 也容易让模型误判「已经拿到了结果」而不再读明细。
+            return ToolResult.completed(summarize(name, content), content); }};
+    }
+
+    private static String summarize(String name, JsonNode content) {
+        String noun = READ_NOUNS.getOrDefault(name, "结果");
+        JsonNode list = content != null && content.isObject() ? firstList(content) : content;
+        if (list != null && list.isArray()) return list.isEmpty() ? "没有" + noun : noun + " " + list.size() + " 条";
+        if (content == null || content.isNull() || content.isMissingNode()) return "没有" + noun;
+        return "已返回" + noun;
+    }
+
+    private static JsonNode firstList(JsonNode content) {
+        for (String key : List.of("items", "tasks", "lists", "habits", "groups", "records", "sessions")) {
+            JsonNode node = content.get(key);
+            if (node != null && node.isArray()) return node;
+        }
+        return null;
     }
 
     private DomainTool prepare(ToolDefinition definition, PendingActionService actions, CurrentUserResolver currentUser,

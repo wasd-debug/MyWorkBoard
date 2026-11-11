@@ -137,6 +137,26 @@ class TaskReadToolsIntegrationTest extends MySqlIntegrationTestSupport {
         return new TaskService(jdbc, resolver, new TaskChangeLog(jdbc, mapper));
     }
 
+    /**
+     * 只读工具的 summary 必须是结果摘要，不能回工具描述原文——否则模型和 MCP 客户端会把
+     * 「查询当前用户今天到期且未完成的任务…」当成查询结果，既浪费上下文又容易误判。
+     */
+    @Test
+    void readToolsSummarizeResultCountsInsteadOfToolDescription() {
+        long userId = createUser();
+        TaskService tasks = taskService(userId);
+        var dueAt = LocalDate.now(ZONE).atTime(10, 0).atZone(ZONE).toInstant().toString();
+        tasks.create(new TaskModels.TaskCommand(null, "今天的事", "", "NONE", null, dueAt, false,
+                "Asia/Shanghai", null, null, List.of(), List.of()), "read-" + UUID.randomUUID());
+
+        var today = tools.taskTodayTool(tasks, mapper).execute(mapper.createObjectNode());
+        assertEquals(ToolStatus.COMPLETED, today.status());
+        assertEquals("今天的任务 1 条", today.summary());
+
+        var empty = tools.taskTodayTool(taskService(createUser()), mapper).execute(mapper.createObjectNode());
+        assertEquals("没有今天的任务", empty.summary());
+    }
+
     private TaskModels.TaskItem create(TaskService tasks, String title) {
         return tasks.create(new TaskModels.TaskCommand(null, title, "", "NONE", null, null, false,
                 "Asia/Shanghai", null, null, List.of(), List.of()), "read-" + UUID.randomUUID());
