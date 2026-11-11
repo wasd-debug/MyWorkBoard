@@ -104,8 +104,11 @@ class McpToolVisibilityTest {
     @Test
     void requiredScopeFollowsNamespaceInsteadOfFallingBackToWorktime() {
         assertEquals(TASK_READ, McpServerConfiguration.requiredScope("task.list.query"));
+        assertEquals(TASK_READ, McpServerConfiguration.requiredScope("task.query"));
         assertEquals(TASK_READ, McpServerConfiguration.requiredScope("habit.checkin.query"));
+        assertEquals(TASK_READ, McpServerConfiguration.requiredScope("habit.stats"));
         assertEquals(TASK_READ, McpServerConfiguration.requiredScope("focus.stats.query"));
+        assertEquals(TASK_READ, McpServerConfiguration.requiredScope("countdown.list"));
         assertEquals(TASK_PREPARE, McpServerConfiguration.requiredScope("task.create.prepare"));
         assertEquals(WORKTIME_READ, McpServerConfiguration.requiredScope("worktime.records.search"));
         assertEquals(LEDGER_PREPARE, McpServerConfiguration.requiredScope("ledger.account.create.prepare"));
@@ -114,13 +117,16 @@ class McpToolVisibilityTest {
 
     /**
      * 回归：requireScope 曾经把 task/habit/focus 一律判成工时 scope，导致只授予
-     * mcp:task:read 的 Token 能列出工具却调用全部 403。
+     * mcp:task:read 的 Token 能列出工具却调用全部 403。新增的 P1 只读工具同样要覆盖。
      */
     @Test
     void readOnlyTaskTokenCanInvokeEveryAdvertisedTaskTool() {
         Set<String> taskOnly = Set.of(TASK_READ);
-        for (String name : List.of("task.list.query", "task.today", "task.overdue", "task.stats.summary",
-                "habit.checkin.query", "focus.stats.query")) {
+        for (String name : List.of("task.query", "task.list.query", "task.get", "task.search", "task.calendar",
+                "task.today", "task.overdue", "task.stats.summary", "task.settings.get", "task.filters.list",
+                "task.lists.list", "task.tags.list",
+                "habit.list", "habit.stats", "habit.calendar", "habit.checkin.query",
+                "focus.stats.query", "focus.sessions.list", "focus.current", "countdown.list")) {
             assertTrue(McpServerConfiguration.visible(name, taskOnly), name + " 应对任务 scope 可见");
             String required = McpServerConfiguration.requiredScope(name);
             assertTrue(taskOnly.contains(required), name + " 需要 " + required + "，不应降级到工时 scope");

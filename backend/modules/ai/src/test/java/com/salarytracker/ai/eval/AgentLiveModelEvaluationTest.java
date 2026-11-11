@@ -40,8 +40,15 @@ class AgentLiveModelEvaluationTest {
                     LlmGateway.AgentMessage.system(policy.systemPrompt(dataset.today())),
                     LlmGateway.AgentMessage.user(item.message())), tools);
             String actualTool = turn.toolCalls().isEmpty() ? "" : decode(turn.toolCalls().get(0).name());
-            JsonNode arguments = turn.toolCalls().isEmpty() ? mapper.createObjectNode()
-                    : mapper.readTree(turn.toolCalls().get(0).arguments());
+            // 模型偶尔会吐出畸形参数（实测有 DSML 特殊标记泄漏进 JSON），
+            // 这种情况应按“该用例参数不合格”计失败，而不是抛异常中断整轮评测。
+            JsonNode arguments;
+            try {
+                arguments = turn.toolCalls().isEmpty() ? mapper.createObjectNode()
+                        : mapper.readTree(turn.toolCalls().get(0).arguments());
+            } catch (Exception malformed) {
+                arguments = mapper.createObjectNode();
+            }
             List<String> reasons = validate(item, actualTool, arguments);
             if (reasons.isEmpty()) passed++;
             else failures.add(item.id() + ": " + String.join("; ", reasons));

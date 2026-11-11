@@ -42,7 +42,9 @@
 
 ## 2. 现状盘点
 
-### 2.1 已注册的 16 个工具
+### 2.1 已注册的工具（P0 后 18 个 → P1 后 30 个）
+
+> 下表是 P0 前的原始盘点，保留用于对照；P1 之后的完整清单见 §9 末尾「P1 交付清单」。
 
 | 工具 | 风险 | 承接服务 | 说明 |
 |---|---|---|---|
@@ -99,7 +101,7 @@
 
 命名规则沿用既有：`域名.资源.动作[.prepare|.commit]`；只读 R1 无后缀，写入一律 prepare/commit 成对，`.commit` 不进入模型上下文与 MCP 目录。
 
-### 3.1 P1 只读（新增 10，修正 3）
+### 3.1 P1 只读（新增 10，修正 3）—— ✅ 2026-11-11 已交付，详见 §10
 
 > `task.lists.list`、`task.tags.list` 已在 P0 交付，不在下表内。
 
@@ -182,7 +184,9 @@
 
 ## 4. 提示词、目录资源与 scope
 
-### 4.1 `AgentPromptPolicy` 需要增补（v12 → v13）
+### 4.1 `AgentPromptPolicy` 需要增补（v12 → v13，P1 已到 v14）
+
+> 已在 P0 落地 v13、P1 升到 v14（见 §10）。下面是 v13 的原始草稿，保留用于对照设计意图。
 
 建议插入以下段落（放在账本段落之后，保持「任务 → 账本 → 工时」的域顺序）：
 
@@ -247,7 +251,7 @@ CLEAR 是撤销上次打卡（服务端不接受 DELETE）。用户说“取消/
 | 阶段 | 交付 | 工具数 | 验收标准 |
 |---|---|---:|---|
 | **P0**（已完成） | 修 T-A1~T-A5 + F-1 + 2 个目录工具 | 18 | 只授予 `mcp:task:read` 的 PAT 能成功调用全部任务只读工具；`task.today` 不含逾期；站内 prepare 卡片能确认一次并写入 |
-| **P1** | §3.1 只读 10 个 + 3 处修正（2 个目录工具已在 P0） | 28 | 「今天有什么任务」「我这周习惯怎么样」「我在专注什么」「最近有什么纪念日」四类提问全部走真实工具，不编造 ID |
+| **P1**（已完成） | §3.1 只读 10 个 + 3 处修正（2 个目录工具已在 P0）；实际交付 13 个名字（含 2 个旧名别名） | 30 | 「今天有什么任务」「我这周习惯怎么样」「我在专注什么」「最近有什么纪念日」四类提问全部走真实工具，不编造 ID |
 | **P2** | §3.2 高频写 6 对 | 40 | 「记一个任务：明天下午三点交周报」「这个习惯今天打了」「今天完成了 5 个任务」端到端走通 prepare → 站内确认 → 列表刷新 → 同步不产生幽灵数据 |
 | **P3** | §3.3 管理类 12 对 | 64 | 习惯/倒数日/专注/设置的增改删全部可用；`builtinKey` 倒数日与 `payday` 拒绝修改 |
 | **P4** | §3.4 R4 4 对 | 72 | 模型目录里不出现 R4 工具；站内审批整批原子执行，重复批准不重复写入 |
@@ -329,3 +333,67 @@ CLEAR 是撤销上次打卡（服务端不接受 DELETE）。用户说“取消/
 站内模型连接的 API Key 存在 `ai_model_connection.encrypted_api_key`（AES-GCM，密钥取 `AI_CREDENTIAL_KEY`），
 与服务端 `DEEPSEEK_API_KEY` 是两份独立配置。更换 Key 走后端接口而不是改库：
 `PUT /api/v1/agent/model-connections/{id}`（带 `revision`）→ `POST .../{id}/test`。
+
+---
+
+## 10. P1 完成记录（2026-11-11）
+
+### P1 交付清单（只读，18 → 30 个工具）
+
+| 工具 | 入参 | 承接 | 说明 |
+|---|---|---|---|
+| `task.query` | `listId`/`listIds[]`/`status`/`view`/`tagId`/`priority`/`keyword`/`from`/`to`/`page`/`size` | `TaskService.listTasks`（新增 keyword 重载） | `view` 支持 `TODAY/TOMORROW/NEXT7/INBOX/ALL/COMPLETED/TRASH/ABANDONED`；`listIds` 最多 10 个，逐清单查询后合并去重、按 `size` 截断 |
+| `task.list.query` | 同 `task.query` | 同上 | **旧名别名**，下个版本删除 |
+| `task.get` | `taskId` | `TaskService.get` + `listLists` | 返回任务全字段 + `listName` |
+| `task.search` | `keyword`、`size` | `TaskEnhancementService.search` | 一次返回任务/清单/标签三段，各按 `size` 截断 |
+| `task.calendar` | `from`、`to` | `TaskService.calendarItems` | 区间最多 92 天，按用户时区转 Instant |
+| `task.settings.get` | — | `TaskService.settings` | 时区、默认清单、默认视图、提醒等 |
+| `task.filters.list` | — | `TaskEnhancementService.filters` | 智能清单定义。**原名计划 `task.smart-filters.list`，注册器 `ToolDefinition` 只允许 `[a-z][a-z0-9]*` 点分段，含连字符会启动失败，故改名** |
+| `habit.list` | `includeArchived` | `TaskEfficiencyService.habits` | 与 `habit.checkin.query` 解耦 |
+| `habit.stats` | `habitId`、`from`、`to` | `TaskEfficiencyService.habitStats` | 单习惯统计 |
+| `habit.calendar` | `from`、`to` | `TaskEfficiencyService.habitCalendar` | 每日期应打卡/已完成，最多 92 天 |
+| `focus.sessions.list` | `from`、`to` | `TaskEfficiencyService.focusSessions` | — |
+| `focus.current` | — | `TaskEfficiencyService.currentFocus` | 无进行中返回 `null` |
+| `countdown.list` | — | `TaskEfficiencyService.countdowns/countdownGroups` | 一次返回 `{countdowns, groups}` |
+
+保留旧名别名：`task.list.query`（→ `task.query`）、`habit.checkin.query`（→ `habit.list` / `habit.stats`）。
+
+### 连带改动
+
+- `McpServerConfiguration` 新增 `COUNTDOWN_PREFIX`：此前 `countdown.*` 落到 `requiredScope()` 的 `null` 分支，
+  MCP 侧既不可见也调不通。
+- `AgentPromptPolicy` 升到 `agent-system-v15`，任务域段补「查询口径」：`task.query` 的筛选维度与
+  `TRASH/ABANDONED` 视图、`task.get`/`task.search`/`task.calendar`/`task.settings.get`/`task.filters.list`、
+  `habit.list|stats|calendar`、`focus.sessions.list|current`、`countdown.list`，并明确「已拿到 ID 不重复查目录、
+  同一关键词不要反复搜」。
+
+### 验证
+
+- `TaskReadToolsIntegrationTest`（新增 5 用例，真实 MySQL + 真实 `TaskService`）：
+  keyword 命中且默认排除回收站、`view=TRASH` 只返回软删任务；多清单合并去重且 `size` 截断；
+  `task.get` 返回 `listName`；`task.calendar` 7 天通过、93 天抛错；习惯/专注/倒数日工具参数透传与 92 天限制。
+- `McpToolVisibilityTest`：`requiredScope` 覆盖 `task.query`/`habit.stats`/`countdown.list`；
+  只读任务 Token 可调用 20 个可见任务工具（含新工具）。
+- `modules/ai` 全模块测试通过；`app` 模块 `TaskDomainToolsIntegrationTest`、`TaskDueWindowToolsIntegrationTest`、
+  `TaskOrganizationIntegrationTest` 保持通过。
+- 运行时核对（本地容器）：`GET /api/v1/agent/tools` 共 127 个工具，13 个 P1 工具全部在目录中且风险等级 R1；
+  实际调用 `task.today`、`task.query(keyword=周报)`、`task.lists.list`、`countdown.list`、`habit.list`、
+  `focus.current`（返回 `null`）、`task.settings.get`、`task.filters.list` 均为 `COMPLETED`。
+
+### 真实模型评测（`run-agent-eval.sh --live`，deepseek-flash）
+
+| 提示词版本 | 准确率 | 主要失败项 |
+|---|---|---|
+| v13（P0） | 85% | 工时补录未调工具、工时设置先 `get` 再改、R4 成员/角色不调工具 |
+| v14（P1 初版） | 88%（两次） | 同上（4 例） |
+| v15（P1 收尾） | ≥90%，连续三次通过 | — |
+
+v15 同时修掉两处既有欠账（与任务域无关，但卡着 90% 门禁）：
+
+- 工时设置：「午休改成 45 分钟」这类已给新值的请求，第一次工具调用必须是
+  `worktime.settings.update.prepare`，`worktime.settings.get` 只在用户主动询问当前设置时用。
+- 账本 R4：成员/角色变更要先 `ledger.books.list` 定位账本再引导站内审批；
+  删除账本/永久清除/导入确认等其他 R4 则**不得**调任何工具（避免为了“先查一下”白调一次）。
+
+评测代码同时加容错：模型偶发把特殊标记（`DSML`）泄漏进 `arguments` JSON，原实现直接抛
+`JsonParseException` 中断整轮评测；现改为按「该用例参数不合格」计失败，评测结果不再被单次畸形输出打断。

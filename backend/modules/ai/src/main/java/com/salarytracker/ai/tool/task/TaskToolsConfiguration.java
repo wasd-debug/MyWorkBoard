@@ -31,36 +31,73 @@ import java.util.UUID;
 
 @Configuration
 public class TaskToolsConfiguration {
-    @Bean public DomainTool taskListQueryTool(TaskService tasks, ObjectMapper mapper) {
+    @Bean public DomainTool taskQueryTool(TaskService tasks, ObjectMapper mapper) {
+        return taskQuery("task.query",
+                "查询当前用户任务，可按清单（可多选）、状态、视图、标签、优先级、关键词或日期范围筛选；"
+                        + "view=TRASH 查回收站、view=ABANDONED 查已放弃的任务。", tasks, mapper);
+    }
+
+    /** 旧名别名：外部客户端仍按 task.list.query 调用，下个版本删除。 */
+    @Bean public DomainTool taskListQueryAliasTool(TaskService tasks, ObjectMapper mapper) {
+        return taskQuery("task.list.query",
+                "（旧名，等同 task.query）查询当前用户任务，可按清单、状态、视图、标签或日期范围筛选。", tasks, mapper);
+    }
+
+    private DomainTool taskQuery(String name, String description, TaskService tasks, ObjectMapper mapper) {
         ObjectNode schema = ToolSchemas.object(mapper);
         ToolSchemas.stringProperty(schema, "listId", "任务清单公开 ID", null);
+        ToolSchemas.arrayProperty(schema, "listIds", "多个清单公开 ID（最多 10 个）；提供后忽略 listId",
+                mapper.createObjectNode().put("type", "string"), 1, 10);
         ToolSchemas.enumProperty(schema, "status", "状态", "OPEN", "COMPLETED");
-        ToolSchemas.enumProperty(schema, "view", "视图", "TODAY", "NEXT7", "INBOX", "ALL", "COMPLETED");
+        ToolSchemas.enumProperty(schema, "view", "视图；TRASH 只查回收站，ABANDONED 只查已放弃",
+                "TODAY", "TOMORROW", "NEXT7", "INBOX", "ALL", "COMPLETED", "TRASH", "ABANDONED");
         ToolSchemas.stringProperty(schema, "tagId", "标签公开 ID", null);
         ToolSchemas.enumProperty(schema, "priority", "优先级", "NONE", "LOW", "MEDIUM", "HIGH");
+        ToolSchemas.stringProperty(schema, "keyword", "标题/描述关键词，1-200 字", null);
         ToolSchemas.stringProperty(schema, "from", "开始日期 yyyy-MM-dd；与 to 同时提供时按日期范围查询", "date");
         ToolSchemas.stringProperty(schema, "to", "结束日期 yyyy-MM-dd（含）；与 from 同时提供", "date");
         ToolSchemas.integerProperty(schema, "page", "页码", 0, 0, 1000);
         ToolSchemas.integerProperty(schema, "size", "每页数量", 50, 1, 200);
-        return read("task.list.query", "查询当前用户任务，可按清单、状态、视图、标签或日期范围筛选。", schema, mapper,
-                input -> {
-                    String from = text(input, "from");
-                    String to = text(input, "to");
-                    Instant dueFrom = null;
-                    Instant dueTo = null;
-                    if (from != null || to != null) {
-                        if (from == null || to == null) throw new IllegalArgumentException("from 与 to 必须同时提供");
-                        ZoneId zone = ZoneId.of(tasks.settings().timezone());
-                        LocalDate start = LocalDate.parse(from);
-                        LocalDate end = LocalDate.parse(to);
-                        if (end.isBefore(start)) throw new IllegalArgumentException("to 不能早于 from");
-                        dueFrom = start.atStartOfDay(zone).toInstant();
-                        dueTo = end.plusDays(1).atStartOfDay(zone).toInstant();
-                    }
-                    return tasks.listTasks(text(input,"listId"), text(input,"status"), text(input,"view"),
-                            text(input,"tagId"), text(input,"priority"), dueFrom, dueTo,
-                            integer(input,"page",0), integer(input,"size",50));
+        return read(name, description, schema, mapper, input -> {
+            String from = text(input, "from");
+            String to = text(input, "to");
+            Instant dueFrom = null;
+            Instant dueTo = null;
+            if (from != null || to != null) {
+                if (from == null || to == null) throw new IllegalArgumentException("from 与 to 必须同时提供");
+                ZoneId zone = ZoneId.of(tasks.settings().timezone());
+                LocalDate start = LocalDate.parse(from);
+                LocalDate end = LocalDate.parse(to);
+                if (end.isBefore(start)) throw new IllegalArgumentException("to 不能早于 from");
+                dueFrom = start.atStartOfDay(zone).toInstant();
+                dueTo = end.plusDays(1).atStartOfDay(zone).toInstant();
+            }
+            int page = integer(input, "page", 0);
+            int size = integer(input, "size", 50);
+            String status = text(input, "status");
+            String view = text(input, "view");
+            String tagId = text(input, "tagId");
+            String priority = text(input, "priority");
+            String keyword = text(input, "keyword");
+            List<String> listIds = new java.util.ArrayList<>();
+            if (input.path("listIds").isArray()) {
+                input.path("listIds").forEach(node -> {
+                    if (node.isTextual() && !node.asText().isBlank()) listIds.add(node.asText());
                 });
+            }
+            if (listIds.isEmpty()) {
+                return tasks.listTasks(text(input, "listId"), status, view, tagId, priority,
+                        dueFrom, dueTo, keyword, page, size);
+            }
+            if (listIds.size() > 10) throw new IllegalArgumentException("listIds 最多 10 个");
+            java.util.LinkedHashMap<String, TaskModels.TaskItem> merged = new java.util.LinkedHashMap<>();
+            for (String listId : listIds) {
+                tasks.listTasks(listId, status, view, tagId, priority, dueFrom, dueTo, keyword, page, size)
+                        .items().forEach(item -> merged.putIfAbsent(item.publicId(), item));
+            }
+            List<TaskModels.TaskItem> items = merged.values().stream().limit(size).toList();
+            return new TaskModels.TaskPage(items, 0, size, merged.size());
+        });
     }
 
     @Bean public DomainTool taskTodayTool(TaskService tasks, ObjectMapper mapper) {
@@ -90,7 +127,7 @@ public class TaskToolsConfiguration {
         ToolSchemas.stringProperty(schema, "habitId", "习惯公开 ID；提供后返回该习惯的打卡统计", null);
         ToolSchemas.stringProperty(schema, "from", "打卡统计开始日期 yyyy-MM-dd", "date");
         ToolSchemas.stringProperty(schema, "to", "打卡统计结束日期 yyyy-MM-dd", "date");
-        return read("habit.checkin.query", "查询当前用户习惯清单，或按习惯查询打卡统计。", schema, mapper,
+        return read("habit.checkin.query", "（旧名，等同 habit.list / habit.stats）查询当前用户习惯清单，或按习惯查询打卡统计。", schema, mapper,
                 input -> text(input, "habitId") == null ? efficiency.habits(false)
                         : efficiency.habitStats(text(input, "habitId"), text(input, "from"), text(input, "to")));
     }
@@ -98,6 +135,116 @@ public class TaskToolsConfiguration {
     @Bean public DomainTool focusStatsQueryTool(TaskEfficiencyService efficiency, ObjectMapper mapper) {
         return read("focus.stats.query", "查询当前用户今日、本周、本月专注统计。", ToolSchemas.object(mapper), mapper,
                 input -> efficiency.focusStats());
+    }
+
+    @Bean public DomainTool taskGetTool(TaskService tasks, ObjectMapper mapper) {
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.stringProperty(schema, "taskId", "任务公开 ID", null);
+        ToolSchemas.required(schema, "taskId");
+        return read("task.get", "按公开 ID 查询单条任务详情，附带所属清单名称与活动条数。", schema, mapper, input -> {
+            TaskModels.TaskItem task = tasks.get(ToolInputs.requiredText(input, "taskId"));
+            ObjectNode content = mapper.createObjectNode();
+            content.set("task", mapper.valueToTree(task));
+            row(content, "listName", listName(tasks, task.listId()));
+            return content;
+        });
+    }
+
+    @Bean public DomainTool taskSearchTool(TaskEnhancementService enhancements, ObjectMapper mapper) {
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.stringProperty(schema, "keyword", "关键词，1-200 字", null);
+        ToolSchemas.integerProperty(schema, "size", "任务、清单、标签各自最多返回条数", 20, 1, 50);
+        ToolSchemas.required(schema, "keyword");
+        return read("task.search", "按关键词搜索任务、清单和标签（匹配标题/描述与名称）。", schema, mapper, input -> {
+            var result = enhancements.search(ToolInputs.requiredText(input, "keyword"));
+            int size = integer(input, "size", 20);
+            ObjectNode content = mapper.createObjectNode().put("query", result.query());
+            content.set("tasks", mapper.valueToTree(result.tasks().stream().limit(size).toList()));
+            content.set("lists", mapper.valueToTree(result.lists().stream().limit(size).toList()));
+            content.set("tags", mapper.valueToTree(result.tags().stream().limit(size).toList()));
+            return content;
+        });
+    }
+
+    @Bean public DomainTool taskCalendarTool(TaskService tasks, ObjectMapper mapper) {
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.stringProperty(schema, "from", "开始日期 yyyy-MM-dd（含）", "date");
+        ToolSchemas.stringProperty(schema, "to", "结束日期 yyyy-MM-dd（含），与 from 最多相差 92 天", "date");
+        ToolSchemas.required(schema, "from", "to");
+        return read("task.calendar", "按日期区间查询日历条目（任务与习惯），区间最多 92 天。", schema, mapper, input -> {
+            ZoneId zone = ZoneId.of(tasks.settings().timezone());
+            LocalDate start = LocalDate.parse(ToolInputs.requiredText(input, "from"));
+            LocalDate end = LocalDate.parse(ToolInputs.requiredText(input, "to"));
+            if (end.isBefore(start)) throw new IllegalArgumentException("to 不能早于 from");
+            if (end.isAfter(start.plusDays(92))) throw new IllegalArgumentException("日历区间不能超过 92 天");
+            return tasks.calendarItems(start.atStartOfDay(zone).toInstant(),
+                    end.plusDays(1).atStartOfDay(zone).toInstant());
+        });
+    }
+
+    @Bean public DomainTool taskSettingsGetTool(TaskService tasks, ObjectMapper mapper) {
+        return read("task.settings.get", "查询当前用户任务域设置（时区、默认清单、默认视图、提醒与周起始日等）。",
+                ToolSchemas.object(mapper), mapper, input -> tasks.settings());
+    }
+
+    @Bean public DomainTool taskSmartFiltersTool(TaskEnhancementService enhancements, ObjectMapper mapper) {
+        return read("task.filters.list", "查询当前用户的智能清单（智能筛选）定义，含筛选条件。",
+                ToolSchemas.object(mapper), mapper, input -> enhancements.filters());
+    }
+
+    @Bean public DomainTool habitListTool(TaskEfficiencyService efficiency, ObjectMapper mapper) {
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.booleanProperty(schema, "includeArchived", "是否包含已归档习惯，默认 false");
+        return read("habit.list", "查询当前用户的习惯清单（目标次数、周期、打卡状态、连击等）。", schema, mapper,
+                input -> efficiency.habits(input.path("includeArchived").asBoolean(false)));
+    }
+
+    @Bean public DomainTool habitStatsTool(TaskEfficiencyService efficiency, ObjectMapper mapper) {
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.stringProperty(schema, "habitId", "习惯公开 ID", null);
+        ToolSchemas.stringProperty(schema, "from", "统计开始日期 yyyy-MM-dd", "date");
+        ToolSchemas.stringProperty(schema, "to", "统计结束日期 yyyy-MM-dd", "date");
+        ToolSchemas.required(schema, "habitId");
+        return read("habit.stats", "查询单个习惯在日期区间内的打卡统计（完成率、连击、缺失等）。", schema, mapper,
+                input -> efficiency.habitStats(ToolInputs.requiredText(input, "habitId"),
+                        text(input, "from"), text(input, "to")));
+    }
+
+    @Bean public DomainTool habitCalendarTool(TaskEfficiencyService efficiency, ObjectMapper mapper) {
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.stringProperty(schema, "from", "开始日期 yyyy-MM-dd（含）", "date");
+        ToolSchemas.stringProperty(schema, "to", "结束日期 yyyy-MM-dd（含），与 from 最多相差 92 天", "date");
+        ToolSchemas.required(schema, "from", "to");
+        return read("habit.calendar", "查询习惯日历：每天应打卡数与完成数，区间最多 92 天。", schema, mapper, input -> {
+            LocalDate start = LocalDate.parse(ToolInputs.requiredText(input, "from"));
+            LocalDate end = LocalDate.parse(ToolInputs.requiredText(input, "to"));
+            if (end.isBefore(start)) throw new IllegalArgumentException("to 不能早于 from");
+            if (end.isAfter(start.plusDays(92))) throw new IllegalArgumentException("日历区间不能超过 92 天");
+            return efficiency.habitCalendar(start, end.plusDays(1));
+        });
+    }
+
+    @Bean public DomainTool focusSessionsListTool(TaskEfficiencyService efficiency, ObjectMapper mapper) {
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.stringProperty(schema, "from", "开始日期 yyyy-MM-dd", "date");
+        ToolSchemas.stringProperty(schema, "to", "结束日期 yyyy-MM-dd", "date");
+        return read("focus.sessions.list", "查询专注记录，可按日期区间筛选（不传则取默认范围）。", schema, mapper,
+                input -> efficiency.focusSessions(text(input, "from"), text(input, "to")));
+    }
+
+    @Bean public DomainTool focusCurrentTool(TaskEfficiencyService efficiency, ObjectMapper mapper) {
+        return read("focus.current", "查询当前正在进行的专注；没有进行中的专注时返回 null。",
+                ToolSchemas.object(mapper), mapper, input -> efficiency.currentFocus());
+    }
+
+    @Bean public DomainTool countdownListTool(TaskEfficiencyService efficiency, ObjectMapper mapper) {
+        return read("countdown.list", "查询倒数日与倒数日分组（含内置发薪日、节假日项）。",
+                ToolSchemas.object(mapper), mapper, input -> {
+                    ObjectNode content = mapper.createObjectNode();
+                    content.set("countdowns", mapper.valueToTree(efficiency.countdowns()));
+                    content.set("groups", mapper.valueToTree(efficiency.countdownGroups()));
+                    return content;
+                });
     }
 
     @Bean public DomainTool taskCreatePrepareTool(TaskService tasks, PendingActionService actions,

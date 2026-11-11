@@ -190,6 +190,12 @@ public class TaskService {
     @Transactional
     public TaskPage listTasks(String listId, String status, String view, String tagId, String priority,
                               Instant dueFrom, Instant dueTo, int page, int size) {
+        return listTasks(listId, status, view, tagId, priority, dueFrom, dueTo, null, page, size);
+    }
+
+    @Transactional
+    public TaskPage listTasks(String listId, String status, String view, String tagId, String priority,
+                              Instant dueFrom, Instant dueTo, String keyword, int page, int size) {
         long userId = currentUser.id();
         ensureDefaults(userId);
         int safePage = Math.max(page, 0);
@@ -259,6 +265,16 @@ public class TaskService {
             where.append(" AND t.due_at >= ? AND t.due_at < ?");
             args.add(Timestamp.from(dueFrom));
             args.add(Timestamp.from(dueTo));
+        }
+        if (keyword != null && !keyword.isBlank()) {
+            String query = keyword.trim();
+            if (query.length() > 200) throw new IllegalArgumentException("搜索词长度应为 1-200");
+            where.append(" AND (MATCH(t.title,t.description) AGAINST (? IN NATURAL LANGUAGE MODE)")
+                    .append(" OR t.title LIKE ? OR t.description LIKE ?)");
+            String like = "%" + query.replace("%", "\\%").replace("_", "\\_") + "%";
+            args.add(query);
+            args.add(like);
+            args.add(like);
         }
         long total = jdbcTemplate.queryForObject("SELECT COUNT(*)" + where, Long.class, args.toArray());
         List<Object> pageArgs = new ArrayList<>(args);
