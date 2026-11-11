@@ -1620,7 +1620,7 @@ public class TaskToolsConfiguration {
                 diffRow(content, mapper, "默认提醒", text(normalized, "beforeDefaultReminderMinutes"),
                         text(normalized, "afterDefaultReminderMinutes"));
             if (changed.contains("defaultDueDate"))
-                diffRow(content, mapper, "默认可期日", text(normalized, "beforeDefaultDueDate"),
+                diffRow(content, mapper, "默认到期日", text(normalized, "beforeDefaultDueDate"),
                         text(normalized, "afterDefaultDueDate"));
             if (changed.contains("defaultDueTime"))
                 diffRow(content, mapper, "默认到期时刻", text(normalized, "beforeDefaultDueTime"),
