@@ -1,6 +1,7 @@
 # 任务域 AI 能力接入清单
 
-> 版本 v1.0 · 2026-11-11
+> 版本 v1.1 · 2026-11-11
+> 进度：P0 链路 / P1 只读 / P2 高频写 / **P3 管理类已交付**（任务域 66 个工具，全站 163），余 P4（R4 站内审批）。
 > 范围：`task` / `habit` / `focus` / `countdown` 四组能力，对齐账本（`ledger.*`）与工时（`worktime.*`）已开放的 Agent + MCP 能力。
 > 依据：`backend/modules/ai/src/main/java/com/salarytracker/ai/{tool,mcp}`、`AgentPromptPolicy.java`、`docs/Agent功能覆盖与中文评测集.md`、`docs/Phase 2 —— 任务域需求文档.md` §T-704。
 
@@ -142,7 +143,7 @@
 
 **习惯打卡是任务域最高频的 AI 场景，必须支持四态**：`SKIP` 不断连击、`MISS` 才算断、`CLEAR` 是撤销上次打卡（服务端不接受 DELETE，前端也只能写 CLEAR）。工具 schema 要把四态写进 description，否则模型会用 DELETE 语义。
 
-### 3.3 P3 管理类（新增 12 对 / 24 个）
+### 3.3 P3 管理类（新增 12 对 / 24 个）— 已于 2026-11-11 交付，见 §12
 
 | 工具 | 风险 | 说明 |
 |---|---|---|
@@ -458,3 +459,60 @@ v15 同时修掉两处既有欠账（与任务域无关，但卡着 90% 门禁�
 - 真实模型对话：「我想开始一个 25 分钟的专注，写周报」→ `focus.current` + `focus.start.prepare`；
   「帮我把习惯 222 今天标记为跳过，原因是出差」→ `habit.checkin.prepare`（文案明确「不会中断连击」）。
 - 真实模型评测（`agent-system-v15`，未改提示词）：连续两次 ≥90% 通过；对比实验见上一条。
+
+---
+
+## 12. P3 完成记录（2026-11-11）
+
+### P3 交付清单（管理类，42 → 66 个工具）
+
+| 工具 | 风险 | 说明 |
+|---|---:|---|
+| `task.restore.prepare/commit` | R3 | 回收站恢复；未删除的任务直接报错，子任务一并恢复 |
+| `task.batch.move.prepare/commit` | R3 | `action=MOVE/RESCHEDULE/PRIORITY/TAGS`，≤100 个；TAGS **只增不减** |
+| `task.comment.create.prepare/commit` | R3 | 只开放新增；幂等键 `agent-comment-{actionId}`，重复提交不产生第二条 |
+| `habit.create.prepare/commit` | R3 | 子集：`name`/`frequency`/`targetCount`/`customDays`/`remindAt`/`startDate`/`groupKey` |
+| `habit.update.prepare/commit` | R3 | 同上子集，只传要改的字段；没有改动直接报错 |
+| `habit.delete.prepare/commit` | R3 | 软删除；预览给出累计打卡、当前连续与「无法撤销」提示 |
+| `countdown.create.prepare/commit` | R3 | `title`/`targetDate`/`groupId`/`repeatRule`/`preciseTime`/`unit`/`note`/`pinned` |
+| `countdown.update.prepare/commit` | R3 | **内置项（`builtinKey` 非空）直接拒绝**，改不了发薪日/节日 |
+| `countdown.delete.prepare/commit` | R3 | 内置项可删，预览会提示「删除后不会再自动补建」 |
+| `focus.update.prepare/commit` | R3 | 改关联对象（`unlink` 解除）、起止时间（改则重算时长并置为已完成）、想法 |
+| `focus.delete.prepare/commit` | R3 | 进行中的专注拒绝删除，先 `focus.finish` |
+| `task.settings.update.prepare/commit` | R3 | 只开放 `defaultListId`/`defaultView`/`defaultReminderMinutes`/`defaultDueDate`/`defaultDueTime`/`weekStart` |
+
+### 实现要点
+
+- **卡片改为服务端给行**：新增 `Card` 构造器，一次写入同时产出 `preview`（camelCase，供接口与测试断言）
+  与 `previewRows`（`[{label,value}]`）。前端 `actionPreviewRows` **优先读 `previewRows`**，
+  P3 这 12 类动作没有为此新增任何渲染分支。后续 P4 同样不必改前端。
+- **「没传」与「传了空串」必须分开**：`ToolInputs.optionalText` 会把空串归一成 null，更新类 commit
+  若直接用 `text()`，模型想「清空提醒/备注/解除关联」会被当成「保持不变」。新增 `raw()`，
+  没传返回 null（保持）、传空串返回 `""`（清空），用在 `habit.update` 的 `remindAt`、
+  `countdown.update` 的 `note`/`preciseTime`、`focus.update` 的 `taskId`/`habitId`/`note`。
+- **改期/改时长的时间照旧在 prepare 转 UTC**：`task.batch.move(action=RESCHEDULE)`、
+  `focus.update(startedAt/endedAt)` 都走 `utc()`，否则点确认才报「必须是 UTC」。
+- **批量改动选了不存在的东西要在 prepare 拦**：清单名、标签名、倒数日分组都先解析成真实对象再写进快照，
+  避免 commit 阶段 500（事务已 rollback-only，真错误会被盖掉）。
+- **内部访问器**：`TaskService.getDeleted(publicId)`（`get()` 只查未删除的）、
+  `TaskEfficiencyService.getFocus(publicId)`（原来只有包私有的 `focusById`）。
+- **提示词仍是 `agent-system-v15`**，P3 的语义全部写进工具 `description` 与 JSON Schema，没有新增段落。
+
+### 连带修复（P3 走查时发现，均为 HEAD 上既有失败）
+
+| 问题 | 根因 | 修法 |
+|---|---|---|
+| `TaskEfficiencyIntegrationTest.focusCanBeLinkedToHabitInsteadOfTask` 报「不能新增未来时间的专注记录」 | `dbNow()` 取 `CURRENT_TIMESTAMP(3)` 再 `Timestamp.toInstant()`，MySQL 会话时区（容器 UTC）与 JVM 时区不一致时整体偏移 8 小时 | 改 `UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3))*1000`，返回绝对纪元毫秒；**补记专注在时区不一致环境会被全线拒收，属真实用户可见缺陷** |
+| `FlywayMigrationIntegrationTest` 断言 58，实际 59 | V59（`focus_session_habit`）已上线但断言没跟着改 | 断言改 59 |
+| `ArchitectureBoundaryTest` core-domain 不依赖 ai 违反 170 次 | 集成测试必须放业务包（要构造包私有的 `TaskChangeLog`），又必须装配 ai 工具 | `@AnalyzeClasses` 显式 `DoNotIncludeTests`，规则只约束生产代码 |
+
+### 验证
+
+- `TaskManageToolsIntegrationTest`（新增 9 用例，真实 MySQL）：恢复只对已删除生效且 prepare 不写库；
+  批量换清单要求 `listId` 且校验清单存在、commit 后两个任务都进新清单；改期 `+08:00` 转 UTC 落库、
+  预览按用户时区；加标签校验标签存在、只增不减；评论空内容报错、prepare 不落库、commit 落原文；
+  习惯建（CUSTOM 缺星期报错）→ 改（名称+频率两行 diff、无改动报错）→ 删；倒数日建（含精确时刻）→
+  改重复规则 → 内置项改被拒 → 删；专注改想法并解除关联 → 进行中拒删 → 结束后删除；设置两项 diff、
+  prepare 不写库、commit 生效。
+- 后端全量 `mvn -o test`：**138 用例全绿**（含上面三条连带修复）。
+- 前端 `npm test` 461 通过、`vite build` 通过。

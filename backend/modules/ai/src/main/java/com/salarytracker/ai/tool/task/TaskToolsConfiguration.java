@@ -13,6 +13,7 @@ import com.salarytracker.ai.tool.ToolResult;
 import com.salarytracker.ai.tool.ToolRisk;
 import com.salarytracker.ai.tool.ToolSchemas;
 import com.salarytracker.identity.CurrentUserResolver;
+import com.salarytracker.task.TaskCommentService;
 import com.salarytracker.task.TaskEfficiencyModels;
 import com.salarytracker.task.TaskEfficiencyService;
 import com.salarytracker.task.TaskEnhancementService;
@@ -856,6 +857,794 @@ public class TaskToolsConfiguration {
         } catch (RuntimeException ignored) { return 0; }
     }
 
+    // ================= P3 管理类：回收站 / 批量改动 / 评论 / 习惯 / 倒数日 / 专注记录 / 任务设置 =================
+
+    @Bean public DomainTool taskRestorePrepareTool(TaskService tasks, PendingActionService actions,
+                                                   CurrentUserResolver currentUser, ObjectMapper mapper) {
+        ObjectNode schema = idSchema(mapper);
+        ToolDefinition definition = definition("task.restore.prepare",
+                "把回收站里的任务恢复到原清单（子任务一并恢复）并生成确认预览，不修改数据。"
+                        + "只对已删除的任务有效；未删除的任务会直接报错，不要用这个工具做别的事。", ToolRisk.R3, schema);
+        return prepare(definition, actions, currentUser, mapper, input -> {
+            var task = tasks.getDeleted(ToolInputs.requiredText(input, "taskId"));
+            return taskSnapshot(mapper, task).put("status", task.status())
+                    .put("deletedAt", task.deletedAt() == null ? "" : task.deletedAt());
+        }, normalized -> {
+            String title = normalized.path("title").asText("");
+            Card card = card(mapper)
+                    .text("title", "标题", title)
+                    .text("listName", "恢复到清单", listName(tasks, text(normalized, "listId")))
+                    .time("dueAt", "到期时间", text(normalized, "dueAt"))
+                    .text("deletedAt", "删除时间", readableTime(text(normalized, "deletedAt"), null))
+                    .text("hint", "说明", "子任务会一起恢复");
+            return new Presentation("恢复任务：" + title, card.content());
+        });
+    }
+
+    @Bean public DomainTool taskRestoreCommitTool(TaskService tasks, PendingActionService actions,
+                                                  CurrentUserResolver currentUser, ObjectMapper mapper) {
+        return commit("task.restore.commit", "task.restore.prepare", ToolRisk.R3, actions, currentUser, mapper,
+                (snapshot, actionId) -> tasks.restore(ToolInputs.requiredText(snapshot, "taskId"),
+                        String.valueOf(snapshot.path("revision").asLong())));
+    }
+
+    @Bean public DomainTool taskBatchMovePrepareTool(TaskService tasks, PendingActionService actions,
+                                                     CurrentUserResolver currentUser, ObjectMapper mapper) {
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.arrayProperty(schema, "taskIds", "要修改的任务公开 ID 列表，最多 100 个",
+                mapper.createObjectNode().put("type", "string"), 1, 100);
+        ToolSchemas.enumProperty(schema, "action",
+                "改动类型：MOVE 换清单；RESCHEDULE 改到期时间；PRIORITY 改优先级；TAGS 追加标签（只增不减）",
+                "MOVE", "RESCHEDULE", "PRIORITY", "TAGS");
+        ToolSchemas.stringProperty(schema, "listId", "action=MOVE 时的目标清单公开 ID；先用 task.lists.list 取得", null);
+        ToolSchemas.stringProperty(schema, "dueAt", "action=RESCHEDULE 时的新到期时间 ISO-8601", "date-time");
+        ToolSchemas.enumProperty(schema, "priority", "action=PRIORITY 时的新优先级", "NONE", "LOW", "MEDIUM", "HIGH");
+        ToolSchemas.arrayProperty(schema, "tagIds", "action=TAGS 时要追加的标签公开 ID；先用 task.tags.list 取得",
+                mapper.createObjectNode().put("type", "string"), 1, 20);
+        ToolSchemas.required(schema, "taskIds", "action");
+        ToolDefinition definition = definition("task.batch.move.prepare",
+                "批量改多个任务的清单、到期时间、优先级或追加标签并生成确认预览，不修改数据。一次最多 100 个；"
+                        + "TAGS 只追加标签，不会移除已有标签；只改一个任务时也可以用这个工具。", ToolRisk.R3, schema);
+        return prepare(definition, actions, currentUser, mapper, input -> {
+            String action = text(input, "action");
+            var ids = new java.util.LinkedHashSet<>(stringList(input, "taskIds"));
+            if (ids.isEmpty()) throw new IllegalArgumentException("taskIds 不能为空");
+            if (ids.size() > 100) throw new IllegalArgumentException("一次最多修改 100 个任务");
+            String listId = text(input, "listId");
+            String dueAt = text(input, "dueAt");
+            String priority = text(input, "priority");
+            List<String> tagIds = stringList(input, "tagIds");
+            String targetLabel;
+            switch (action == null ? "" : action) {
+                case "MOVE" -> {
+                    if (listId == null) throw new IllegalArgumentException("换清单必须提供 listId");
+                    String name = listName(tasks, listId);
+                    if (name == null) throw new IllegalArgumentException("清单不存在：" + listId);
+                    targetLabel = name;
+                }
+                case "RESCHEDULE" -> {
+                    if (dueAt == null) throw new IllegalArgumentException("改期必须提供 dueAt");
+                    dueAt = utc(dueAt, tasks.settings().timezone());
+                    targetLabel = readableTime(dueAt, null);
+                }
+                case "PRIORITY" -> {
+                    if (priority == null) throw new IllegalArgumentException("改优先级必须提供 priority");
+                    targetLabel = priorityLabel(priority);
+                }
+                case "TAGS" -> {
+                    if (tagIds.isEmpty()) throw new IllegalArgumentException("追加标签必须提供 tagIds");
+                    var known = tasks.listTags();
+                    var names = new java.util.ArrayList<String>();
+                    for (String tagId : tagIds) {
+                        String name = known.stream().filter(tag -> tagId.equals(tag.publicId()))
+                                .map(TaskModels.TaskTag::name).findFirst().orElse(null);
+                        if (name == null) throw new IllegalArgumentException("标签不存在：" + tagId);
+                        names.add(name);
+                    }
+                    targetLabel = String.join("、", names);
+                }
+                default -> throw new IllegalArgumentException("action 只能是 MOVE / RESCHEDULE / PRIORITY / TAGS");
+            }
+            var items = mapper.createArrayNode();
+            var titles = new java.util.ArrayList<String>();
+            for (String id : ids) {
+                var task = tasks.get(id);
+                items.add(mapper.createObjectNode().put("taskId", task.publicId()).put("revision", task.revision())
+                        .put("title", task.title()));
+                titles.add(task.title());
+            }
+            ObjectNode normalized = mapper.createObjectNode().put("action", action)
+                    .put("count", items.size()).put("targetLabel", targetLabel)
+                    .put("titles", joined(titles));
+            normalized.set("items", items);
+            if (listId != null) normalized.put("listId", listId);
+            if (dueAt != null) normalized.put("dueAt", dueAt);
+            if (priority != null) normalized.put("priority", priority);
+            if (!tagIds.isEmpty()) normalized.set("tagIds", mapper.valueToTree(tagIds));
+            return normalized;
+        }, normalized -> {
+            String action = text(normalized, "action");
+            Card card = card(mapper)
+                    .text("action", "改动", batchActionLabel(action))
+                    .text("count", "数量", normalized.path("count").asInt() + " 个任务")
+                    .text("target", "改到", text(normalized, "targetLabel"))
+                    .text("tasks", "任务", text(normalized, "titles"));
+            return new Presentation(batchActionLabel(action) + " " + normalized.path("count").asInt() + " 个任务",
+                    card.content());
+        });
+    }
+
+    @Bean public DomainTool taskBatchMoveCommitTool(TaskService tasks, PendingActionService actions,
+                                                    CurrentUserResolver currentUser, ObjectMapper mapper) {
+        return commit("task.batch.move.commit", "task.batch.move.prepare", ToolRisk.R3, actions, currentUser, mapper,
+                (snapshot, actionId) -> {
+                    var targets = new java.util.ArrayList<TaskModels.BatchTarget>();
+                    for (JsonNode item : snapshot.path("items")) {
+                        targets.add(new TaskModels.BatchTarget(item.path("taskId").asText(),
+                                item.path("revision").asLong()));
+                    }
+                    var tagIds = new java.util.ArrayList<String>();
+                    snapshot.path("tagIds").forEach(node -> {
+                        if (node.isTextual() && !node.asText().isBlank()) tagIds.add(node.asText());
+                    });
+                    return tasks.batch(new TaskModels.BatchCommand(targets, text(snapshot, "action"),
+                            text(snapshot, "listId"), text(snapshot, "dueAt"),
+                            tagIds.isEmpty() ? null : tagIds, text(snapshot, "priority"), null));
+                });
+    }
+
+    private static String batchActionLabel(String action) {
+        return switch (action == null ? "" : action) {
+            case "MOVE" -> "移动到清单";
+            case "RESCHEDULE" -> "批量改期";
+            case "PRIORITY" -> "批量改优先级";
+            case "TAGS" -> "批量加标签";
+            default -> action;
+        };
+    }
+
+    @Bean public DomainTool taskCommentCreatePrepareTool(TaskService tasks, TaskCommentService comments,
+                                                         PendingActionService actions, CurrentUserResolver currentUser,
+                                                         ObjectMapper mapper) {
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.stringProperty(schema, "taskId", "任务公开 ID", null);
+        ToolSchemas.stringProperty(schema, "bodyMarkdown", "评论内容，支持 Markdown，最长 20000 字", null);
+        ToolSchemas.required(schema, "taskId", "bodyMarkdown");
+        ToolDefinition definition = definition("task.comment.create.prepare",
+                "给任务写一条评论并生成确认预览，不写入数据。只支持新增评论，修改或删除评论不开放。", ToolRisk.R3, schema);
+        return prepare(definition, actions, currentUser, mapper, input -> {
+            var task = tasks.get(ToolInputs.requiredText(input, "taskId"));
+            String body = ToolInputs.requiredText(input, "bodyMarkdown").trim();
+            if (body.isEmpty()) throw new IllegalArgumentException("评论内容不能为空");
+            if (body.length() > 20000) throw new IllegalArgumentException("评论内容不能超过 20000 字");
+            return mapper.createObjectNode().put("taskId", task.publicId()).put("taskTitle", task.title())
+                    .put("bodyMarkdown", body);
+        }, normalized -> {
+            String body = text(normalized, "bodyMarkdown");
+            Card card = card(mapper)
+                    .text("task", "任务", text(normalized, "taskTitle"))
+                    .text("body", "内容", body)
+                    .text("length", "字数", body == null ? null : body.length() + " 字");
+            return new Presentation("给「" + text(normalized, "taskTitle") + "」写评论", card.content());
+        });
+    }
+
+    @Bean public DomainTool taskCommentCreateCommitTool(TaskCommentService comments, PendingActionService actions,
+                                                        CurrentUserResolver currentUser, ObjectMapper mapper) {
+        return commit("task.comment.create.commit", "task.comment.create.prepare", ToolRisk.R3, actions, currentUser,
+                mapper, (snapshot, actionId) -> comments.create(ToolInputs.requiredText(snapshot, "taskId"),
+                        new TaskModels.CommentCommand(text(snapshot, "bodyMarkdown")), "agent-comment-" + actionId));
+    }
+
+    @Bean public DomainTool habitCreatePrepareTool(TaskEfficiencyService efficiency, TaskService tasks,
+                                                   PendingActionService actions, CurrentUserResolver currentUser,
+                                                   ObjectMapper mapper) {
+        ObjectNode schema = habitSchema(mapper);
+        ToolSchemas.required(schema, "name");
+        ToolDefinition definition = definition("habit.create.prepare",
+                "新建一个习惯并生成确认预览，不写入数据。frequency 默认 DAILY；CUSTOM 必须给 customDays（1=周一 … 7=周日）；"
+                        + "WEEKLY_N / MONTHLY_N 用 targetCount 表示次数。", ToolRisk.R3, schema);
+        return prepare(definition, actions, currentUser, mapper, input -> {
+            String name = ToolInputs.requiredText(input, "name").trim();
+            if (name.isEmpty()) throw new IllegalArgumentException("习惯名称不能为空");
+            if (name.length() > 120) throw new IllegalArgumentException("习惯名称不能超过 120 字");
+            String frequency = text(input, "frequency") == null ? "DAILY" : text(input, "frequency");
+            List<Integer> days = customDays(input);
+            if ("CUSTOM".equals(frequency) && days.isEmpty()) throw new IllegalArgumentException("自定义频率至少要选一天");
+            int count = input.path("targetCount").isInt() ? input.path("targetCount").asInt() : 1;
+            if (count < 1 || count > 999) throw new IllegalArgumentException("目标次数必须在 1 到 999 之间");
+            String remindAt = remindTimes(text(input, "remindAt"));
+            String startDate = text(input, "startDate") == null
+                    ? LocalDate.now(ZoneId.of(tasks.settings().timezone())).toString()
+                    : LocalDate.parse(text(input, "startDate")).toString();
+            String groupKey = habitGroupKey(text(input, "groupKey"), "other");
+            ObjectNode normalized = mapper.createObjectNode().put("name", name).put("frequency", frequency)
+                    .put("targetCount", count).put("startDate", startDate).put("groupKey", groupKey)
+                    .put("frequencyLabel", habitFrequencyLabel(frequency, count, days))
+                    .put("remindAt", remindAt);
+            normalized.set("customDays", mapper.valueToTree(days));
+            return normalized;
+        }, normalized -> {
+            Card card = card(mapper)
+                    .text("name", "习惯", text(normalized, "name"))
+                    .text("frequency", "频率", text(normalized, "frequencyLabel"))
+                    .text("targetCount", "目标次数", "WEEKLY_N".equals(text(normalized, "frequency"))
+                            || "MONTHLY_N".equals(text(normalized, "frequency"))
+                            ? normalized.path("targetCount").asInt() + " 次" : null)
+                    .text("remindAt", "提醒", text(normalized, "remindAt"))
+                    .text("startDate", "开始日期", text(normalized, "startDate"))
+                    .text("groupKey", "分组", text(normalized, "groupKey"));
+            return new Presentation("新建习惯：" + text(normalized, "name"), card.content());
+        });
+    }
+
+    @Bean public DomainTool habitCreateCommitTool(TaskEfficiencyService efficiency, PendingActionService actions,
+                                                  CurrentUserResolver currentUser, ObjectMapper mapper) {
+        return commit("habit.create.commit", "habit.create.prepare", ToolRisk.R3, actions, currentUser, mapper,
+                (snapshot, actionId) -> efficiency.createHabit(new TaskEfficiencyModels.HabitCommand(
+                        text(snapshot, "name"), null, null, text(snapshot, "frequency"),
+                        snapshot.path("targetCount").asInt(), intList(snapshot, "customDays"),
+                        text(snapshot, "remindAt"), text(snapshot, "startDate"), false, 0,
+                        text(snapshot, "groupKey"), null, null, null, null, null, null, null, null, null, null)));
+    }
+
+    @Bean public DomainTool habitUpdatePrepareTool(TaskEfficiencyService efficiency, PendingActionService actions,
+                                                  CurrentUserResolver currentUser, ObjectMapper mapper) {
+        ObjectNode schema = habitSchema(mapper);
+        ToolSchemas.stringProperty(schema, "habitId", "习惯公开 ID；先用 habit.list 取得", null);
+        ToolSchemas.required(schema, "habitId");
+        ToolDefinition definition = definition("habit.update.prepare",
+                "修改习惯的名称、频率、目标次数、提醒、开始日期或分组并生成确认预览，不写入数据。"
+                        + "只传要改的字段，没传的保持原样；归档请到站内操作。", ToolRisk.R3, schema);
+        return prepare(definition, actions, currentUser, mapper, input -> {
+            String habitId = ToolInputs.requiredText(input, "habitId");
+            var habit = findHabit(efficiency, habitId);
+            var changed = new java.util.ArrayList<String>();
+            ObjectNode normalized = mapper.createObjectNode().put("habitId", habit.publicId())
+                    .put("revision", habit.revision()).put("habitName", habit.name());
+            if (input.hasNonNull("name")) {
+                String name = input.path("name").asText("").trim();
+                if (name.isEmpty()) throw new IllegalArgumentException("习惯名称不能为空");
+                if (name.length() > 120) throw new IllegalArgumentException("习惯名称不能超过 120 字");
+                normalized.put("name", name);
+                changed.add("name");
+            }
+            String frequency = text(input, "frequency");
+            if (frequency != null) {
+                normalized.put("frequency", frequency);
+                if (!frequency.equals(habit.frequency())) changed.add("frequency");
+            }
+            if (input.path("targetCount").isInt()) {
+                int count = input.path("targetCount").asInt();
+                if (count < 1 || count > 999) throw new IllegalArgumentException("目标次数必须在 1 到 999 之间");
+                normalized.put("targetCount", count);
+                if (count != habit.targetCount()) changed.add("targetCount");
+            }
+            List<Integer> days = customDays(input);
+            String effectiveFrequency = frequency == null ? habit.frequency() : frequency;
+            if (!days.isEmpty()) {
+                normalized.set("customDays", mapper.valueToTree(days));
+                if (!days.equals(habit.customDays())) changed.add("customDays");
+            }
+            if ("CUSTOM".equals(effectiveFrequency)) {
+                List<Integer> effectiveDays = days.isEmpty() ? habit.customDays() : days;
+                if (effectiveDays.isEmpty()) throw new IllegalArgumentException("自定义频率至少要选一天");
+            }
+            if (input.hasNonNull("remindAt")) {
+                String remindAt = remindTimes(input.path("remindAt").asText(""));
+                normalized.put("remindAt", remindAt);
+                if (!remindAt.equals(habit.remindAt() == null ? "" : habit.remindAt())) changed.add("remindAt");
+            }
+            if (input.hasNonNull("startDate")) {
+                String startDate = LocalDate.parse(input.path("startDate").asText()).toString();
+                normalized.put("startDate", startDate);
+                if (!startDate.equals(habit.startDate())) changed.add("startDate");
+            }
+            if (input.hasNonNull("groupKey")) {
+                String groupKey = habitGroupKey(input.path("groupKey").asText(""), habit.groupKey());
+                normalized.put("groupKey", groupKey);
+                if (!groupKey.equals(habit.groupKey())) changed.add("groupKey");
+            }
+            if (changed.isEmpty()) throw new IllegalArgumentException("没有要修改的字段");
+            normalized.put("changedFields", String.join(",", changed));
+            normalized.put("beforeName", habit.name());
+            normalized.put("beforeFrequency", habitFrequencyLabel(habit.frequency(), habit.targetCount(), habit.customDays()));
+            normalized.put("beforeTargetCount", habit.targetCount());
+            normalized.put("beforeRemindAt", habit.remindAt() == null ? "" : habit.remindAt());
+            normalized.put("beforeStartDate", habit.startDate());
+            normalized.put("beforeGroupKey", habit.groupKey());
+            int effectiveCount = normalized.path("targetCount").isInt() ? normalized.path("targetCount").asInt() : habit.targetCount();
+            normalized.put("frequencyLabel", habitFrequencyLabel(effectiveFrequency, effectiveCount,
+                    days.isEmpty() ? habit.customDays() : days));
+            return normalized;
+        }, normalized -> {
+            ObjectNode content = mapper.createObjectNode();
+            var changed = java.util.Arrays.asList(text(normalized, "changedFields").split(","));
+            if (changed.contains("name"))
+                diffRow(content, mapper, "名称", text(normalized, "beforeName"), text(normalized, "name"));
+            if (changed.contains("frequency") || changed.contains("targetCount") || changed.contains("customDays"))
+                diffRow(content, mapper, "频率", text(normalized, "beforeFrequency"),
+                        text(normalized, "frequencyLabel"));
+            if (changed.contains("remindAt"))
+                diffRow(content, mapper, "提醒", text(normalized, "beforeRemindAt"), text(normalized, "remindAt"));
+            if (changed.contains("startDate"))
+                diffRow(content, mapper, "开始日期", text(normalized, "beforeStartDate"), text(normalized, "startDate"));
+            if (changed.contains("groupKey"))
+                diffRow(content, mapper, "分组", text(normalized, "beforeGroupKey"), text(normalized, "groupKey"));
+            content.set("preview", mapper.createObjectNode().put("name", text(normalized, "habitName")));
+            return new Presentation("修改习惯：" + text(normalized, "habitName"), content);
+        });
+    }
+
+    @Bean public DomainTool habitUpdateCommitTool(TaskEfficiencyService efficiency, PendingActionService actions,
+                                                  CurrentUserResolver currentUser, ObjectMapper mapper) {
+        return commit("habit.update.commit", "habit.update.prepare", ToolRisk.R3, actions, currentUser, mapper,
+                (snapshot, actionId) -> efficiency.updateHabit(ToolInputs.requiredText(snapshot, "habitId"),
+                        new TaskEfficiencyModels.HabitCommand(text(snapshot, "name"), null, null,
+                                text(snapshot, "frequency"),
+                                snapshot.path("targetCount").isInt() ? snapshot.path("targetCount").asInt() : null,
+                                snapshot.has("customDays") ? intList(snapshot, "customDays") : null,
+                                raw(snapshot, "remindAt"), text(snapshot, "startDate"), null, null,
+                                text(snapshot, "groupKey"), null, null, null, null, null, null, null, null, null, null),
+                        String.valueOf(snapshot.path("revision").asLong())));
+    }
+
+    @Bean public DomainTool habitDeletePrepareTool(TaskEfficiencyService efficiency, PendingActionService actions,
+                                                   CurrentUserResolver currentUser, ObjectMapper mapper) {
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.stringProperty(schema, "habitId", "要删除的习惯公开 ID；先用 habit.list 取得", null);
+        ToolSchemas.required(schema, "habitId");
+        ToolDefinition definition = definition("habit.delete.prepare",
+                "删除一个习惯（软删除，打卡记录一并不可见）并生成确认预览，不修改数据。删了就找不回来，"
+                        + "只是不想再打卡请考虑用 habit.update 或站内归档。", ToolRisk.R3, schema);
+        return prepare(definition, actions, currentUser, mapper, input -> {
+            var habit = findHabit(efficiency, ToolInputs.requiredText(input, "habitId"));
+            var stats = efficiency.habitStats(habit.publicId(), null, null);
+            return mapper.createObjectNode().put("habitId", habit.publicId()).put("revision", habit.revision())
+                    .put("name", habit.name()).put("frequencyLabel",
+                            habitFrequencyLabel(habit.frequency(), habit.targetCount(), habit.customDays()))
+                    .put("groupKey", habit.groupKey()).put("totalCompleted", stats.totalCompleted())
+                    .put("currentStreak", stats.currentStreak());
+        }, normalized -> {
+            Card card = card(mapper)
+                    .text("name", "习惯", text(normalized, "name"))
+                    .text("frequency", "频率", text(normalized, "frequencyLabel"))
+                    .text("groupKey", "分组", text(normalized, "groupKey"))
+                    .text("totalCompleted", "累计打卡", normalized.path("totalCompleted").asInt() + " 次")
+                    .text("currentStreak", "当前连续", normalized.path("currentStreak").asInt() + " 天")
+                    .text("hint", "影响", "删除后该习惯与它的打卡记录都不再显示，无法撤销");
+            return new Presentation("删除习惯：" + text(normalized, "name"), card.content());
+        });
+    }
+
+    @Bean public DomainTool habitDeleteCommitTool(TaskEfficiencyService efficiency, PendingActionService actions,
+                                                  CurrentUserResolver currentUser, ObjectMapper mapper) {
+        return commit("habit.delete.commit", "habit.delete.prepare", ToolRisk.R3, actions, currentUser, mapper,
+                (snapshot, actionId) -> {
+                    efficiency.deleteHabit(ToolInputs.requiredText(snapshot, "habitId"),
+                            String.valueOf(snapshot.path("revision").asLong()));
+                    return mapper.createObjectNode().put("habitId", snapshot.path("habitId").asText()).put("deleted", true);
+                });
+    }
+
+    // ---------- 倒数日 ----------
+
+    @Bean public DomainTool countdownCreatePrepareTool(TaskEfficiencyService efficiency, TaskService tasks,
+                                                       PendingActionService actions, CurrentUserResolver currentUser,
+                                                       ObjectMapper mapper) {
+        ObjectNode schema = countdownSchema(mapper);
+        ToolSchemas.required(schema, "title", "targetDate");
+        ToolDefinition definition = definition("countdown.create.prepare",
+                "新建一个倒数日/纪念日并生成确认预览，不写入数据。groupId 不给时用第一个分组；"
+                        + "repeatRule 支持 NONE/DAILY/WEEKLY/MONTHLY/YEARLY 或 CUSTOM:N（每隔 N 天）。", ToolRisk.R3, schema);
+        return prepare(definition, actions, currentUser, mapper, input -> {
+            String title = ToolInputs.requiredText(input, "title").trim();
+            if (title.isEmpty()) throw new IllegalArgumentException("标题不能为空");
+            if (title.length() > 160) throw new IllegalArgumentException("标题不能超过 160 字");
+            LocalDate target = LocalDate.parse(ToolInputs.requiredText(input, "targetDate"));
+            var group = resolveCountdownGroup(efficiency, text(input, "groupId"));
+            String repeatRule = countdownRepeatRule(text(input, "repeatRule"));
+            boolean precise = Boolean.TRUE.equals(input.path("preciseSeconds").asBoolean(false));
+            String preciseTime = countdownClock(text(input, "preciseTime"));
+            if (!preciseTime.isEmpty()) precise = true;
+            String unit = countdownUnit(text(input, "unit"));
+            ObjectNode normalized = mapper.createObjectNode().put("title", title).put("targetDate", target.toString())
+                    .put("groupId", group.publicId()).put("groupName", group.name())
+                    .put("repeatRule", repeatRule).put("repeatLabel", countdownRepeatLabel(repeatRule))
+                    .put("unit", unit).put("preciseSeconds", precise).put("preciseTime", preciseTime)
+                    .put("pinned", input.path("pinned").asBoolean(false))
+                    .put("interval", countdownInterval(target, ZoneId.of(tasks.settings().timezone())));
+            if (input.hasNonNull("note")) normalized.put("note", input.path("note").asText());
+            return normalized;
+        }, normalized -> {
+            Card card = card(mapper)
+                    .text("title", "标题", text(normalized, "title"))
+                    .text("targetDate", "目标日期", text(normalized, "targetDate") + "（" + text(normalized, "interval") + "）")
+                    .text("groupName", "分组", text(normalized, "groupName"))
+                    .text("repeatLabel", "重复", text(normalized, "repeatLabel"))
+                    .text("preciseTime", "提醒时刻", text(normalized, "preciseTime"))
+                    .text("note", "备注", text(normalized, "note"));
+            return new Presentation("新建倒数日：" + text(normalized, "title"), card.content());
+        });
+    }
+
+    @Bean public DomainTool countdownCreateCommitTool(TaskEfficiencyService efficiency, PendingActionService actions,
+                                                      CurrentUserResolver currentUser, ObjectMapper mapper) {
+        return commit("countdown.create.commit", "countdown.create.prepare", ToolRisk.R3, actions, currentUser, mapper,
+                (snapshot, actionId) -> efficiency.createCountdown(new TaskEfficiencyModels.CountdownCommand(
+                        text(snapshot, "title"), text(snapshot, "targetDate"), null, text(snapshot, "groupId"),
+                        null, snapshot.path("pinned").asBoolean(false), null, text(snapshot, "note"),
+                        null, null, null, null, null, text(snapshot, "unit"),
+                        snapshot.path("preciseSeconds").asBoolean(false), text(snapshot, "preciseTime"),
+                        null, text(snapshot, "repeatRule"), null, null, null, null, null)));
+    }
+
+    @Bean public DomainTool countdownUpdatePrepareTool(TaskEfficiencyService efficiency, TaskService tasks,
+                                                       PendingActionService actions, CurrentUserResolver currentUser,
+                                                       ObjectMapper mapper) {
+        ObjectNode schema = countdownSchema(mapper);
+        ToolSchemas.stringProperty(schema, "countdownId", "倒数日公开 ID；先用 countdown.list 取得", null);
+        ToolSchemas.required(schema, "countdownId");
+        ToolDefinition definition = definition("countdown.update.prepare",
+                "修改倒数日的标题、目标日期、分组、重复规则、提醒时刻或备注并生成确认预览，不写入数据。"
+                        + "只传要改的字段；系统内置项（如发薪日）不能改，会被直接拒绝。", ToolRisk.R3, schema);
+        return prepare(definition, actions, currentUser, mapper, input -> {
+            var item = findCountdown(efficiency, ToolInputs.requiredText(input, "countdownId"));
+            if (item.builtinKey() != null && !item.builtinKey().isBlank())
+                throw new IllegalArgumentException("「" + item.title() + "」是系统内置倒数日，不能修改");
+            var changed = new java.util.ArrayList<String>();
+            ObjectNode normalized = mapper.createObjectNode().put("countdownId", item.publicId())
+                    .put("revision", item.revision()).put("beforeTitle", item.title())
+                    .put("beforeTargetDate", item.targetDate()).put("beforeGroupId", item.groupId())
+                    .put("beforeRepeatRule", item.repeatRule()).put("beforePreciseTime", item.preciseTime())
+                    .put("beforeNote", item.note() == null ? "" : item.note());
+            if (input.hasNonNull("title")) {
+                String title = input.path("title").asText("").trim();
+                if (title.isEmpty()) throw new IllegalArgumentException("标题不能为空");
+                if (title.length() > 160) throw new IllegalArgumentException("标题不能超过 160 字");
+                normalized.put("title", title);
+                if (!title.equals(item.title())) changed.add("title");
+            }
+            if (input.hasNonNull("targetDate")) {
+                String targetDate = LocalDate.parse(input.path("targetDate").asText()).toString();
+                normalized.put("targetDate", targetDate);
+                if (!targetDate.equals(item.targetDate())) changed.add("targetDate");
+            }
+            if (input.hasNonNull("groupId")) {
+                var group = resolveCountdownGroup(efficiency, input.path("groupId").asText());
+                normalized.put("groupId", group.publicId()).put("groupName", group.name());
+                if (!group.publicId().equals(item.groupId())) changed.add("groupId");
+            }
+            if (input.hasNonNull("repeatRule")) {
+                String repeatRule = countdownRepeatRule(input.path("repeatRule").asText());
+                normalized.put("repeatRule", repeatRule).put("repeatLabel", countdownRepeatLabel(repeatRule));
+                if (!repeatRule.equals(item.repeatRule())) changed.add("repeatRule");
+            }
+            if (input.hasNonNull("preciseTime")) {
+                String preciseTime = countdownClock(input.path("preciseTime").asText(""));
+                normalized.put("preciseTime", preciseTime).put("preciseSeconds", !preciseTime.isEmpty());
+                if (!preciseTime.equals(item.preciseTime())) changed.add("preciseTime");
+            }
+            if (input.hasNonNull("unit")) {
+                String unit = countdownUnit(input.path("unit").asText());
+                normalized.put("unit", unit);
+                if (!unit.equals(item.unit())) changed.add("unit");
+            }
+            if (input.hasNonNull("note")) {
+                String note = input.path("note").asText("");
+                normalized.put("note", note);
+                if (!note.equals(item.note() == null ? "" : item.note())) changed.add("note");
+            }
+            if (input.hasNonNull("pinned")) {
+                boolean pinned = input.path("pinned").asBoolean(false);
+                normalized.put("pinned", pinned);
+                if (pinned != item.pinned()) changed.add("pinned");
+            }
+            if (changed.isEmpty()) throw new IllegalArgumentException("没有要修改的字段");
+            normalized.put("changedFields", String.join(",", changed));
+            String effectiveDate = normalized.has("targetDate") ? text(normalized, "targetDate") : item.targetDate();
+            normalized.put("interval", countdownInterval(LocalDate.parse(effectiveDate),
+                    ZoneId.of(tasks.settings().timezone())));
+            return normalized;
+        }, normalized -> {
+            ObjectNode content = mapper.createObjectNode();
+            var changed = java.util.Arrays.asList(text(normalized, "changedFields").split(","));
+            if (changed.contains("title"))
+                diffRow(content, mapper, "标题", text(normalized, "beforeTitle"), text(normalized, "title"));
+            if (changed.contains("targetDate"))
+                diffRow(content, mapper, "目标日期", text(normalized, "beforeTargetDate"),
+                        text(normalized, "targetDate") + "（" + text(normalized, "interval") + "）");
+            if (changed.contains("groupId"))
+                diffRow(content, mapper, "分组", countdownGroupName(efficiency, text(normalized, "beforeGroupId")),
+                        text(normalized, "groupName"));
+            if (changed.contains("repeatRule"))
+                diffRow(content, mapper, "重复", countdownRepeatLabel(text(normalized, "beforeRepeatRule")),
+                        text(normalized, "repeatLabel"));
+            if (changed.contains("preciseTime"))
+                diffRow(content, mapper, "提醒时刻", text(normalized, "beforePreciseTime"), text(normalized, "preciseTime"));
+            if (changed.contains("note"))
+                diffRow(content, mapper, "备注", text(normalized, "beforeNote"), text(normalized, "note"));
+            if (changed.contains("pinned"))
+                diffRow(content, mapper, "置顶", "否", normalized.path("pinned").asBoolean(false) ? "是" : "否");
+            content.set("preview", mapper.createObjectNode().put("title", text(normalized, "beforeTitle")));
+            return new Presentation("修改倒数日：" + text(normalized, "beforeTitle"), content);
+        });
+    }
+
+    @Bean public DomainTool countdownUpdateCommitTool(TaskEfficiencyService efficiency, PendingActionService actions,
+                                                      CurrentUserResolver currentUser, ObjectMapper mapper) {
+        return commit("countdown.update.commit", "countdown.update.prepare", ToolRisk.R3, actions, currentUser, mapper,
+                (snapshot, actionId) -> efficiency.updateCountdown(ToolInputs.requiredText(snapshot, "countdownId"),
+                        new TaskEfficiencyModels.CountdownCommand(text(snapshot, "title"), text(snapshot, "targetDate"),
+                                null, text(snapshot, "groupId"), null,
+                                snapshot.has("pinned") ? snapshot.path("pinned").asBoolean(false) : null,
+                                null, raw(snapshot, "note"), null, null, null, null, null,
+                                text(snapshot, "unit"),
+                                snapshot.has("preciseTime") ? snapshot.path("preciseSeconds").asBoolean(false) : null,
+                                raw(snapshot, "preciseTime"), null, text(snapshot, "repeatRule"),
+                                null, null, null, null, null),
+                        String.valueOf(snapshot.path("revision").asLong())));
+    }
+
+    @Bean public DomainTool countdownDeletePrepareTool(TaskEfficiencyService efficiency, PendingActionService actions,
+                                                       CurrentUserResolver currentUser, ObjectMapper mapper) {
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.stringProperty(schema, "countdownId", "要删除的倒数日公开 ID；先用 countdown.list 取得", null);
+        ToolSchemas.required(schema, "countdownId");
+        ToolDefinition definition = definition("countdown.delete.prepare",
+                "删除一个倒数日并生成确认预览，不修改数据。内置倒数日被删除后系统不再补建，删了就没有了。",
+                ToolRisk.R3, schema);
+        return prepare(definition, actions, currentUser, mapper, input -> {
+            var item = findCountdown(efficiency, ToolInputs.requiredText(input, "countdownId"));
+            return mapper.createObjectNode().put("countdownId", item.publicId()).put("revision", item.revision())
+                    .put("title", item.title()).put("targetDate", item.targetDate())
+                    .put("groupName", countdownGroupName(efficiency, item.groupId()))
+                    .put("builtin", item.builtinKey() != null && !item.builtinKey().isBlank());
+        }, normalized -> {
+            Card card = card(mapper)
+                    .text("title", "标题", text(normalized, "title"))
+                    .text("targetDate", "目标日期", text(normalized, "targetDate"))
+                    .text("groupName", "分组", text(normalized, "groupName"))
+                    .text("hint", "影响", normalized.path("builtin").asBoolean(false)
+                            ? "这是系统内置项，删除后不会再自动补建" : "删除后无法恢复");
+            return new Presentation("删除倒数日：" + text(normalized, "title"), card.content());
+        });
+    }
+
+    @Bean public DomainTool countdownDeleteCommitTool(TaskEfficiencyService efficiency, PendingActionService actions,
+                                                      CurrentUserResolver currentUser, ObjectMapper mapper) {
+        return commit("countdown.delete.commit", "countdown.delete.prepare", ToolRisk.R3, actions, currentUser, mapper,
+                (snapshot, actionId) -> {
+                    efficiency.deleteCountdown(ToolInputs.requiredText(snapshot, "countdownId"),
+                            String.valueOf(snapshot.path("revision").asLong()));
+                    return mapper.createObjectNode().put("countdownId", snapshot.path("countdownId").asText())
+                            .put("deleted", true);
+                });
+    }
+
+    // ---------- 专注记录 ----------
+
+    @Bean public DomainTool focusUpdatePrepareTool(TaskEfficiencyService efficiency, TaskService tasks,
+                                                   PendingActionService actions, CurrentUserResolver currentUser,
+                                                   ObjectMapper mapper) {
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.stringProperty(schema, "sessionId", "专注记录公开 ID；先用 focus.sessions.list 取得", null);
+        ToolSchemas.stringProperty(schema, "taskId", "改成关联这个任务；与 habitId 只能二选一", null);
+        ToolSchemas.stringProperty(schema, "habitId", "改成关联这个习惯；与 taskId 只能二选一", null);
+        ToolSchemas.booleanProperty(schema, "unlink", "设为 true 表示解除关联，变成自由专注");
+        ToolSchemas.stringProperty(schema, "startedAt", "新的开始时刻 ISO-8601；与 endedAt 必须同时给，时长会按差值重算", "date-time");
+        ToolSchemas.stringProperty(schema, "endedAt", "新的结束时刻 ISO-8601；与 startedAt 必须同时给", "date-time");
+        ToolSchemas.stringProperty(schema, "note", "这轮专注做了什么（想法）", null);
+        ToolSchemas.required(schema, "sessionId");
+        ToolDefinition definition = definition("focus.update.prepare",
+                "修改一条专注记录的关联对象、起止时间或想法并生成确认预览，不写入数据。"
+                        + "改起止时间会把状态改成已完成并重算时长；改关联任务不会回溯已计入旧任务的专注时长。",
+                ToolRisk.R3, schema);
+        return prepare(definition, actions, currentUser, mapper, input -> {
+            String sessionId = ToolInputs.requiredText(input, "sessionId");
+            var session = efficiency.getFocus(sessionId);
+            String taskId = text(input, "taskId");
+            String habitId = text(input, "habitId");
+            boolean unlink = input.path("unlink").asBoolean(false);
+            if (unlink && (taskId != null || habitId != null))
+                throw new IllegalArgumentException("解除关联时不要再给 taskId / habitId");
+            if (taskId != null && habitId != null)
+                throw new IllegalArgumentException("任务和习惯只能关联一个");
+            String startedAt = text(input, "startedAt");
+            String endedAt = text(input, "endedAt");
+            if ((startedAt == null) != (endedAt == null))
+                throw new IllegalArgumentException("修改时长必须同时提供 startedAt 与 endedAt");
+            ObjectNode normalized = mapper.createObjectNode().put("sessionId", session.publicId())
+                    .put("revision", session.revision())
+                    .put("beforeTarget", focusTargetLabel(session))
+                    .put("beforeStartedAt", session.startedAt())
+                    .put("beforeNote", session.note() == null ? "" : session.note());
+            if (unlink) {
+                normalized.put("taskId", "").put("habitId", "");
+            } else if (habitId != null) {
+                var habit = findHabit(efficiency, habitId);
+                normalized.put("habitId", habit.publicId()).put("afterTarget", "习惯 " + habit.name());
+            } else if (taskId != null) {
+                var task = tasks.get(taskId);
+                normalized.put("taskId", task.publicId()).put("afterTarget", "任务 " + task.title());
+            }
+            if (startedAt != null) {
+                normalized.put("startedAt", utc(startedAt, tasks.settings().timezone()));
+                normalized.put("endedAt", utc(endedAt, tasks.settings().timezone()));
+            }
+            if (input.hasNonNull("note")) normalized.put("note", input.path("note").asText());
+            return normalized;
+        }, normalized -> {
+            ObjectNode content = mapper.createObjectNode();
+            if (normalized.has("taskId") || normalized.has("habitId"))
+                diffRow(content, mapper, "关联对象", text(normalized, "beforeTarget"),
+                        text(normalized, "afterTarget") == null ? "自由专注" : text(normalized, "afterTarget"));
+            if (normalized.has("startedAt"))
+                diffRow(content, mapper, "起止时间",
+                        readableTime(text(normalized, "beforeStartedAt"), null),
+                        readableTime(text(normalized, "startedAt"), null) + " → " + readableTime(text(normalized, "endedAt"), null));
+            if (normalized.has("note"))
+                diffRow(content, mapper, "想法", text(normalized, "beforeNote"), text(normalized, "note"));
+            content.set("preview", mapper.createObjectNode().put("target", text(normalized, "beforeTarget")));
+            return new Presentation("修改专注记录：" + text(normalized, "beforeTarget"), content);
+        });
+    }
+
+    @Bean public DomainTool focusUpdateCommitTool(TaskEfficiencyService efficiency, PendingActionService actions,
+                                                  CurrentUserResolver currentUser, ObjectMapper mapper) {
+        return commit("focus.update.commit", "focus.update.prepare", ToolRisk.R3, actions, currentUser, mapper,
+                (snapshot, actionId) -> efficiency.updateFocus(ToolInputs.requiredText(snapshot, "sessionId"),
+                        new TaskEfficiencyModels.FocusSessionUpdateCommand(raw(snapshot, "taskId"),
+                                raw(snapshot, "habitId"), raw(snapshot, "note"),
+                                text(snapshot, "startedAt"), text(snapshot, "endedAt")),
+                        String.valueOf(snapshot.path("revision").asLong())));
+    }
+
+    @Bean public DomainTool focusDeletePrepareTool(TaskEfficiencyService efficiency, PendingActionService actions,
+                                                   CurrentUserResolver currentUser, ObjectMapper mapper) {
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.stringProperty(schema, "sessionId", "要删除的专注记录公开 ID；先用 focus.sessions.list 取得", null);
+        ToolSchemas.required(schema, "sessionId");
+        ToolDefinition definition = definition("focus.delete.prepare",
+                "删除一条专注记录并生成确认预览，不修改数据。进行中的专注要先结束才能删除。", ToolRisk.R3, schema);
+        return prepare(definition, actions, currentUser, mapper, input -> {
+            var session = efficiency.getFocus(ToolInputs.requiredText(input, "sessionId"));
+            if ("RUNNING".equals(session.status()))
+                throw new IllegalArgumentException("这轮专注还在进行中，请先用 focus.finish 结束再删除");
+            return mapper.createObjectNode().put("sessionId", session.publicId()).put("revision", session.revision())
+                    .put("target", focusTargetLabel(session)).put("startedAt", session.startedAt())
+                    .put("actualMinutes", session.actualMinutes()).put("status", session.status());
+        }, normalized -> {
+            Card card = card(mapper)
+                    .text("target", "关联对象", text(normalized, "target"))
+                    .text("startedAt", "开始时间", readableTime(text(normalized, "startedAt"), null))
+                    .text("actualMinutes", "时长", normalized.path("actualMinutes").asInt() + " 分钟")
+                    .text("hint", "影响", "删除后这段专注时长会从统计里消失");
+            return new Presentation("删除专注记录：" + text(normalized, "target"), card.content());
+        });
+    }
+
+    @Bean public DomainTool focusDeleteCommitTool(TaskEfficiencyService efficiency, PendingActionService actions,
+                                                  CurrentUserResolver currentUser, ObjectMapper mapper) {
+        return commit("focus.delete.commit", "focus.delete.prepare", ToolRisk.R3, actions, currentUser, mapper,
+                (snapshot, actionId) -> {
+                    efficiency.deleteFocus(ToolInputs.requiredText(snapshot, "sessionId"),
+                            String.valueOf(snapshot.path("revision").asLong()));
+                    return mapper.createObjectNode().put("sessionId", snapshot.path("sessionId").asText())
+                            .put("deleted", true);
+                });
+    }
+
+    // ---------- 任务设置 ----------
+
+    @Bean public DomainTool taskSettingsUpdatePrepareTool(TaskService tasks, PendingActionService actions,
+                                                          CurrentUserResolver currentUser, ObjectMapper mapper) {
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.stringProperty(schema, "defaultListId", "默认清单公开 ID；先用 task.lists.list 取得", null);
+        ToolSchemas.enumProperty(schema, "defaultView", "打开任务页时默认视图", "INBOX", "TODAY", "CALENDAR", "BOARD");
+        ToolSchemas.integerProperty(schema, "defaultReminderMinutes", "默认提前提醒分钟数，0-10080", 0, 0, 10080);
+        ToolSchemas.enumProperty(schema, "defaultDueDate", "新建任务的默认到期日", "TODAY", "NONE");
+        ToolSchemas.stringProperty(schema, "defaultDueTime", "默认到期时刻：NEXT_HOUR 或本地 HH:mm", null);
+        ToolSchemas.integerProperty(schema, "weekStart", "一周起始日：0 周日 / 1 周一", 1, 0, 1);
+        ToolDefinition definition = definition("task.settings.update.prepare",
+                "修改任务域默认设置（默认清单、默认视图、默认提醒、默认到期时间、周起始日）并生成确认预览，不写入数据。"
+                        + "只传要改的字段；通知时段、日历叠加等界面偏好不在这里改。要先知道当前值请用 task.settings.get。",
+                ToolRisk.R3, schema);
+        return prepare(definition, actions, currentUser, mapper, input -> {
+            var before = tasks.settings();
+            var changed = new java.util.ArrayList<String>();
+            ObjectNode normalized = mapper.createObjectNode().put("revision", before.revision());
+            if (input.hasNonNull("defaultListId")) {
+                String listId = input.path("defaultListId").asText();
+                String name = listName(tasks, listId);
+                if (name == null) throw new IllegalArgumentException("清单不存在：" + listId);
+                normalized.put("defaultListId", listId);
+                if (!listId.equals(before.defaultListId())) changed.add("defaultListId");
+            }
+            if (input.hasNonNull("defaultView")) {
+                String view = input.path("defaultView").asText();
+                normalized.put("defaultView", view);
+                if (!view.equals(before.defaultView())) changed.add("defaultView");
+            }
+            if (input.path("defaultReminderMinutes").isInt()) {
+                int minutes = input.path("defaultReminderMinutes").asInt();
+                if (minutes < 0 || minutes > 10080) throw new IllegalArgumentException("默认提醒必须在 0-10080 分钟");
+                normalized.put("defaultReminderMinutes", minutes);
+                if (before.defaultReminderMinutes() == null || minutes != before.defaultReminderMinutes())
+                    changed.add("defaultReminderMinutes");
+            }
+            if (input.hasNonNull("defaultDueDate")) {
+                String dueDate = input.path("defaultDueDate").asText();
+                normalized.put("defaultDueDate", dueDate);
+                if (!dueDate.equals(before.defaultDueDate())) changed.add("defaultDueDate");
+            }
+            if (input.hasNonNull("defaultDueTime")) {
+                String dueTime = input.path("defaultDueTime").asText().trim();
+                if (!"NEXT_HOUR".equals(dueTime) && !dueTime.matches("([01]\\d|2[0-3]):[0-5]\\d"))
+                    throw new IllegalArgumentException("默认到期时刻必须是 NEXT_HOUR 或 HH:mm");
+                normalized.put("defaultDueTime", dueTime);
+                if (!dueTime.equals(before.defaultDueTime())) changed.add("defaultDueTime");
+            }
+            if (input.path("weekStart").isInt()) {
+                int weekStart = input.path("weekStart").asInt();
+                if (weekStart != 0 && weekStart != 1) throw new IllegalArgumentException("一周起始日只能是 0 或 1");
+                normalized.put("weekStart", weekStart);
+                if (weekStart != before.weekStart()) changed.add("weekStart");
+            }
+            if (changed.isEmpty()) throw new IllegalArgumentException("没有要修改的字段");
+            normalized.put("changedFields", String.join(",", changed));
+            normalized.put("beforeDefaultListName", listName(tasks, before.defaultListId()));
+            normalized.put("beforeDefaultView", before.defaultView());
+            normalized.put("beforeDefaultReminderMinutes", before.defaultReminderMinutes() == null
+                    ? "不提醒" : before.defaultReminderMinutes() + " 分钟");
+            normalized.put("beforeDefaultDueDate", "NONE".equals(before.defaultDueDate()) ? "不设到期日" : "今天");
+            normalized.put("beforeDefaultDueTime", before.defaultDueTime());
+            normalized.put("beforeWeekStart", before.weekStart() == 0 ? "周日" : "周一");
+            normalized.put("afterDefaultListName", normalized.has("defaultListId")
+                    ? listName(tasks, text(normalized, "defaultListId")) : null);
+            normalized.put("afterDefaultDueDate", "NONE".equals(text(normalized, "defaultDueDate")) ? "不设到期日" : "今天");
+            normalized.put("afterWeekStart", normalized.has("weekStart")
+                    ? (normalized.path("weekStart").asInt() == 0 ? "周日" : "周一") : null);
+            normalized.put("afterDefaultReminderMinutes", normalized.path("defaultReminderMinutes").isInt()
+                    ? normalized.path("defaultReminderMinutes").asInt() + " 分钟" : null);
+            return normalized;
+        }, normalized -> {
+            ObjectNode content = mapper.createObjectNode();
+            var changed = java.util.Arrays.asList(text(normalized, "changedFields").split(","));
+            if (changed.contains("defaultListId"))
+                diffRow(content, mapper, "默认清单", text(normalized, "beforeDefaultListName"),
+                        text(normalized, "afterDefaultListName"));
+            if (changed.contains("defaultView"))
+                diffRow(content, mapper, "默认视图", text(normalized, "beforeDefaultView"), text(normalized, "defaultView"));
+            if (changed.contains("defaultReminderMinutes"))
+                diffRow(content, mapper, "默认提醒", text(normalized, "beforeDefaultReminderMinutes"),
+                        text(normalized, "afterDefaultReminderMinutes"));
+            if (changed.contains("defaultDueDate"))
+                diffRow(content, mapper, "默认可期日", text(normalized, "beforeDefaultDueDate"),
+                        text(normalized, "afterDefaultDueDate"));
+            if (changed.contains("defaultDueTime"))
+                diffRow(content, mapper, "默认到期时刻", text(normalized, "beforeDefaultDueTime"),
+                        text(normalized, "defaultDueTime"));
+            if (changed.contains("weekStart"))
+                diffRow(content, mapper, "一周起始", text(normalized, "beforeWeekStart"),
+                        text(normalized, "afterWeekStart"));
+            content.set("preview", mapper.createObjectNode().put("changed", changed.size() + " 项设置"));
+            return new Presentation("修改任务设置（" + changed.size() + " 项）", content);
+        });
+    }
+
+    @Bean public DomainTool taskSettingsUpdateCommitTool(TaskService tasks, PendingActionService actions,
+                                                         CurrentUserResolver currentUser, ObjectMapper mapper) {
+        return commit("task.settings.update.commit", "task.settings.update.prepare", ToolRisk.R3, actions,
+                currentUser, mapper, (snapshot, actionId) -> tasks.updateSettings(new TaskModels.SettingsCommand(
+                        text(snapshot, "defaultListId"), text(snapshot, "defaultView"),
+                        snapshot.path("defaultReminderMinutes").isInt() ? snapshot.path("defaultReminderMinutes").asInt() : null,
+                        text(snapshot, "defaultDueDate"), text(snapshot, "defaultDueTime"),
+                        snapshot.path("weekStart").isInt() ? snapshot.path("weekStart").asInt() : null,
+                        null, null, null, null, null, null, null, null, null, null, null, null),
+                        String.valueOf(snapshot.path("revision").asLong())));
+    }
+
     private DomainTool read(String name, String description, ObjectNode schema, ObjectMapper mapper, Reader reader) {
         ToolDefinition definition = definition(name, description, ToolRisk.R1, schema);
         return new DomainTool() { public ToolDefinition definition(){return definition;} public ToolResult execute(JsonNode input){
@@ -980,6 +1769,198 @@ public class TaskToolsConfiguration {
                 .put("after", after == null || after.isBlank() ? "未填写" : after);
     }
 
+    /** 把一行差异追加进 content.diff（前端直接渲染 before → after）。 */
+    private static void diffRow(ObjectNode content, ObjectMapper mapper, String label, String before, String after) {
+        content.withArray("diff").add(diffRow(mapper, label, before, after));
+    }
+
+    private static Card card(ObjectMapper mapper) { return new Card(mapper); }
+
+    /**
+     * 卡片行构造器：写入时同时产出 preview（camelCase，供接口与测试断言）和 previewRows（中文标签，
+     * 前端 AgentChatView 优先按 previewRows 渲染）。新接入的动作只要用 Card，就不必再改前端分支。
+     */
+    private static final class Card {
+        private final ObjectMapper mapper;
+        private final ObjectNode preview;
+        private final com.fasterxml.jackson.databind.node.ArrayNode rows;
+
+        private Card(ObjectMapper mapper) {
+            this.mapper = mapper;
+            this.preview = mapper.createObjectNode();
+            this.rows = mapper.createArrayNode();
+        }
+
+        Card text(String key, String label, String value) {
+            if (value == null || value.isBlank()) return this;
+            preview.put(key, value);
+            rows.add(mapper.createObjectNode().put("label", label).put("value", value));
+            return this;
+        }
+
+        Card time(String key, String label, String iso) { return text(key, label, readableTime(iso, null)); }
+
+        ObjectNode content() {
+            ObjectNode content = mapper.createObjectNode();
+            content.set("preview", preview);
+            if (!rows.isEmpty()) content.set("previewRows", rows);
+            return content;
+        }
+    }
+
+    private ObjectNode habitSchema(ObjectMapper mapper) {
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.stringProperty(schema, "name", "习惯名称，最长 120 字", null);
+        ToolSchemas.enumProperty(schema, "frequency", "频率：DAILY 每天 / WEEKLY_N 每周 N 次 / MONTHLY_N 每月 N 次 / CUSTOM 指定星期",
+                "DAILY", "WEEKLY_N", "MONTHLY_N", "CUSTOM");
+        ToolSchemas.integerProperty(schema, "targetCount", "频率对应的目标次数（WEEKLY_N / MONTHLY_N 用），默认 1", 1, 1, 999);
+        ToolSchemas.arrayProperty(schema, "customDays", "CUSTOM 频率下的星期，1=周一 … 7=周日",
+                mapper.createObjectNode().put("type", "integer"), 1, 7);
+        ToolSchemas.stringProperty(schema, "remindAt", "提醒时间 HH:mm；多个用逗号分隔，如 07:00,20:30", null);
+        ToolSchemas.stringProperty(schema, "startDate", "开始日期 yyyy-MM-dd，默认今天", "date");
+        ToolSchemas.stringProperty(schema, "groupKey", "分组名，最长 16 字；默认 other", null);
+        return schema;
+    }
+
+    private ObjectNode countdownSchema(ObjectMapper mapper) {
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.stringProperty(schema, "title", "标题，最长 160 字", null);
+        ToolSchemas.stringProperty(schema, "targetDate", "目标日期 yyyy-MM-dd（公历）", "date");
+        ToolSchemas.stringProperty(schema, "groupId", "分组公开 ID；先用 countdown.list 或 countdown.groups.list 取得，不传用第一个分组", null);
+        ToolSchemas.stringProperty(schema, "repeatRule",
+                "重复规则：NONE/DAILY/WEEKLY/MONTHLY/YEARLY，或 CUSTOM:N 表示每隔 N 天（1-365）", null);
+        ToolSchemas.booleanProperty(schema, "preciseSeconds", "是否按精确时刻显示");
+        ToolSchemas.stringProperty(schema, "preciseTime", "精确时刻 HH:mm；给了就自动按精确时刻显示", null);
+        ToolSchemas.enumProperty(schema, "unit", "展示单位", "DAY", "WEEK", "MONTH", "YEAR", "SECOND", "MINUTE", "HOUR");
+        ToolSchemas.booleanProperty(schema, "pinned", "是否置顶");
+        ToolSchemas.stringProperty(schema, "note", "备注，最长 1000 字", null);
+        return schema;
+    }
+
+    private static List<Integer> customDays(JsonNode input) {
+        var days = new java.util.ArrayList<Integer>();
+        if (!input.path("customDays").isArray()) return days;
+        for (JsonNode node : input.path("customDays")) {
+            if (!node.isInt()) continue;
+            int day = node.asInt();
+            if (day < 1 || day > 7) throw new IllegalArgumentException("星期必须在 1 到 7 之间");
+            if (!days.contains(day)) days.add(day);
+        }
+        return days;
+    }
+
+    private static List<Integer> intList(JsonNode node, String name) {
+        var values = new java.util.ArrayList<Integer>();
+        if (!node.path(name).isArray()) return values;
+        for (JsonNode item : node.path(name)) if (item.isInt()) values.add(item.asInt());
+        return values;
+    }
+
+    /** 提醒时间支持多个，用逗号分隔（如 07:00,20:30）；空串表示不提醒。 */
+    private static String remindTimes(String raw) {
+        String value = raw == null ? "" : raw.trim();
+        if (value.isEmpty()) return "";
+        for (String part : value.split(",")) {
+            if (!part.trim().matches("([01]\\d|2[0-3]):[0-5]\\d"))
+                throw new IllegalArgumentException("提醒时间必须形如 HH:mm，多个用逗号分隔");
+        }
+        return value;
+    }
+
+    private static String habitGroupKey(String raw, String fallback) {
+        String value = raw == null || raw.isBlank() ? fallback : raw.trim();
+        if (!value.matches("[\\p{L}\\p{N}_-]{1,16}"))
+            throw new IllegalArgumentException("分组名只能包含文字、数字、下划线和短横线，最长 16 个字符");
+        return value;
+    }
+
+    private static String habitFrequencyLabel(String frequency, int targetCount, List<Integer> days) {
+        return switch (frequency == null ? "" : frequency) {
+            case "DAILY" -> "每天";
+            case "WEEKLY_N" -> "每周 " + targetCount + " 次";
+            case "MONTHLY_N" -> "每月 " + targetCount + " 次";
+            case "CUSTOM" -> "每周 " + days.stream().map(TaskToolsConfiguration::weekdayLabel)
+                    .collect(java.util.stream.Collectors.joining("、"));
+            case "INTERVAL" -> "每隔 " + targetCount + " 天";
+            default -> frequency;
+        };
+    }
+
+    private static String weekdayLabel(int day) {
+        return switch (day) {
+            case 1 -> "周一"; case 2 -> "周二"; case 3 -> "周三"; case 4 -> "周四";
+            case 5 -> "周五"; case 6 -> "周六"; default -> "周日";
+        };
+    }
+
+    private static TaskEfficiencyModels.Countdown findCountdown(TaskEfficiencyService efficiency, String countdownId) {
+        return efficiency.countdowns().stream().filter(item -> countdownId.equals(item.publicId()))
+                .findFirst().orElseThrow(() -> new IllegalArgumentException("倒数日不存在：" + countdownId));
+    }
+
+    /** groupId 为空时落到第一个分组（与服务端「必须有一个分组」的约束一致）。 */
+    private static TaskEfficiencyModels.CountdownGroup resolveCountdownGroup(TaskEfficiencyService efficiency,
+                                                                             String groupId) {
+        var groups = efficiency.countdownGroups();
+        if (groups.isEmpty()) throw new IllegalArgumentException("还没有倒数日分组，请先在站内创建一个");
+        if (groupId == null || groupId.isBlank()) return groups.get(0);
+        return groups.stream().filter(group -> groupId.equals(group.publicId())).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("倒数日分组不存在：" + groupId));
+    }
+
+    private static String countdownGroupName(TaskEfficiencyService efficiency, String groupId) {
+        if (groupId == null || groupId.isBlank()) return null;
+        return efficiency.countdownGroups().stream().filter(group -> groupId.equals(group.publicId()))
+                .map(TaskEfficiencyModels.CountdownGroup::name).findFirst().orElse(null);
+    }
+
+    private static String countdownRepeatRule(String raw) {
+        String value = raw == null || raw.isBlank() ? "NONE" : raw.trim().toUpperCase(java.util.Locale.ROOT);
+        if (value.matches("CUSTOM:\\d{1,3}")) {
+            int every = Integer.parseInt(value.substring(7));
+            if (every >= 1 && every <= 365) return value;
+            throw new IllegalArgumentException("自定义重复间隔必须在 1 到 365 天之间");
+        }
+        if (!List.of("NONE", "DAILY", "WEEKLY", "MONTHLY", "YEARLY", "CUSTOM").contains(value))
+            throw new IllegalArgumentException("repeatRule 不支持：" + raw);
+        return value;
+    }
+
+    private static String countdownRepeatLabel(String repeatRule) {
+        if (repeatRule == null) return null;
+        if (repeatRule.startsWith("CUSTOM:")) return "每 " + repeatRule.substring(7) + " 天";
+        return switch (repeatRule) {
+            case "NONE" -> "不重复"; case "DAILY" -> "每天"; case "WEEKLY" -> "每周";
+            case "MONTHLY" -> "每月"; case "YEARLY" -> "每年"; default -> repeatRule;
+        };
+    }
+
+    private static String countdownClock(String raw) {
+        String value = raw == null ? "" : raw.trim();
+        if (value.isEmpty()) return "";
+        if (!value.matches("([01]\\d|2[0-3]):[0-5]\\d")) throw new IllegalArgumentException("精确时刻必须形如 HH:mm");
+        return value;
+    }
+
+    private static String countdownUnit(String raw) {
+        String value = raw == null || raw.isBlank() ? "DAY" : raw.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!List.of("DAY", "WEEK", "MONTH", "YEAR", "SECOND", "MINUTE", "HOUR").contains(value))
+            throw new IllegalArgumentException("展示单位不支持：" + raw);
+        return value;
+    }
+
+    private static String countdownInterval(LocalDate target, ZoneId zone) {
+        long days = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(zone), target);
+        if (days == 0) return "就是今天";
+        return days > 0 ? "还有 " + days + " 天" : "已过 " + (-days) + " 天";
+    }
+
+    private static String joined(List<String> values) {
+        if (values.isEmpty()) return null;
+        return String.join("、", values.subList(0, Math.min(5, values.size())))
+                + (values.size() > 5 ? " 等 " + values.size() + " 个" : "");
+    }
+
     private DomainTool commit(String name, String prepareName, ToolRisk risk, PendingActionService actions,
                               CurrentUserResolver currentUser, ObjectMapper mapper, Committer committer) {
         ObjectNode schema=ToolSchemas.object(mapper);ToolSchemas.stringProperty(schema,"actionId","已批准 action ID",null);ToolSchemas.required(schema,"actionId");
@@ -1071,6 +2052,14 @@ public class TaskToolsConfiguration {
                 text(value,"rrule"),text(value,"recurrenceAnchor"));
     }
     private static String text(JsonNode node,String name){String value=ToolInputs.optionalText(node,name);return value==null?null:value;}
+    /**
+     * 区分「没传」与「传了空串」：没传返回 null（保持原值），传了空串返回 ""（清空该字段）。
+     * 更新类 commit 必须用它，否则「清空提醒/备注/解除关联」会被 optionalText 的 trim-空→null 吞掉。
+     */
+    private static String raw(JsonNode node,String name){
+        if(!node.has(name)||node.get(name).isNull())return null;
+        return node.path(name).asText();
+    }
     private static int integer(JsonNode node,String name,int fallback){return node.path(name).isInt()?node.path(name).asInt():fallback;}
     private static void copy(JsonNode from,ObjectNode to,String...names){for(String name:names)if(from.hasNonNull(name))to.put(name,from.path(name).asText());}
     /** 数组/对象字段必须整节点拷贝，用 put 会把它们变成字符串。 */

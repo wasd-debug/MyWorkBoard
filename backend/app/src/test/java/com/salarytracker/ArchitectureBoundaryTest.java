@@ -1,5 +1,6 @@
 package com.salarytracker;
 
+import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
@@ -12,7 +13,11 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@AnalyzeClasses(packages = "com.salarytracker")
+/**
+ * 架构约束只约束生产代码。集成测试必须放在业务包内（要构造包私有的 TaskChangeLog），
+ * 它们会引用 ai 模块的工具装配，不能被算作「业务模块依赖 ai」，所以显式排除测试类。
+ */
+@AnalyzeClasses(packages = "com.salarytracker", importOptions = ImportOption.DoNotIncludeTests.class)
 class ArchitectureBoundaryTest {
     private static final Path BACKEND_ROOT = backendRoot();
 

@@ -668,6 +668,11 @@ public class TaskService {
         return taskForUser(currentUser.id(), publicId);
     }
 
+    /** 回收站里的任务：get() 只查未删除的，恢复前的预览必须走这个。 */
+    public TaskItem getDeleted(String publicId) {
+        return taskForUser(currentUser.id(), publicId, true);
+    }
+
     public ActivityPage activity(String publicId, int page, int size) {
         long userId = currentUser.id();
         taskForUserIncludingDeleted(userId, publicId);

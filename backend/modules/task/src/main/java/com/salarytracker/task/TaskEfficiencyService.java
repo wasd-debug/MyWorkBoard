@@ -102,6 +102,11 @@ public class TaskEfficiencyService {
                 (row, index) -> focusSession(row), userId, Timestamp.from(start), Timestamp.from(end));
     }
 
+    /** 按公开 ID 取一条专注记录（含已结束的），改/删前要先做版本与状态校验。 */
+    public FocusSession getFocus(String publicId) {
+        return focusById(currentUser.id(), publicId);
+    }
+
     public FocusSession currentFocus() {
         List<FocusSession> rows = jdbc.query("SELECT f.*,t.public_id task_public_id,t.title task_title," +
                         "h.public_id habit_public_id,h.name habit_title FROM focus_session f " +
@@ -1180,8 +1185,15 @@ public class TaskEfficiencyService {
         catch (Exception ignored) { return ZoneId.of("Asia/Shanghai"); }
     }
 
+    /**
+     * 服务端时间。不能直接读 CURRENT_TIMESTAMP 再 Timestamp.toInstant()：MySQL 会话时区（容器里常是 UTC）
+     * 与 JVM 默认时区不一致时会被当成 JVM 本地时间解释，整体偏移若干小时，导致「补记专注」被误判为未来时间。
+     * UNIX_TIMESTAMP 返回的是绝对纪元秒，与时区无关。
+     */
     private Instant dbNow() {
-        return jdbc.queryForObject("SELECT CURRENT_TIMESTAMP(3)", Timestamp.class).toInstant();
+        Long millis = jdbc.queryForObject(
+                "SELECT CAST(UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000 AS SIGNED)", Long.class);
+        return millis == null ? Instant.now() : Instant.ofEpochMilli(millis);
     }
 
     private long revision(String raw) {
