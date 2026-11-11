@@ -104,7 +104,7 @@
           <button type="button" :disabled="busy" @click="reject"><X />拒绝</button>
           <button class="approve" type="button" :disabled="busy" @click="approve"><ShieldCheck />{{ busy ? '正在校验并执行…' : approveLabel }}</button>
         </footer>
-        <footer v-else><router-link to="/">返回 AI 工作台</router-link><router-link class="approve" :to="resultTarget">{{ resultTargetLabel }}</router-link></footer>
+        <footer v-else><router-link to="/agent/chat">返回 AI 对话</router-link><router-link class="approve" :to="resultTarget">{{ resultTargetLabel }}</router-link></footer>
       </main>
       <main v-else class="approval-placeholder"><ShieldCheck /><h2>选择一条审批查看详情</h2><p>批准前请核对文件、账本、数量和错误行。</p></main>
     </div>

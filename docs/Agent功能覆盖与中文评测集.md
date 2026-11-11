@@ -1,6 +1,6 @@
 # Agent 功能覆盖与中文评测集
 
-> 版本：v1.11（2026-10-08）
+> 版本：v1.12（2026-11-11）
 > 用途：Phase 3A/3B 自动回归基线。当前首页真实模型已接入 R0/R1 查询和获准的 R2/R3 prepare；commit 仅能由站内确认卡片触发。
 
 ## 1. 功能覆盖矩阵
@@ -53,6 +53,22 @@
 | 外部 MCP 低风险提交 | `agent.action.commit` | R2 | 已按独立 commit scope 开放新增工时/新增流水；绑定原 PAT、站内批准、单次幂等，账本写入产生同步 oplog | Inspector/Codex/WorkBuddy 真实兼容与故障恢复 |
 | 外部 MCP OAuth | OAuth 2.1 Authorization Code + PKCE | 认证 | 已支持 metadata、DCR、S256、resource、refresh 轮换、账本范围和 grant 撤销 | Inspector/Codex/WorkBuddy 真实授权回调与版本兼容记录 |
 | MCP 客户端诊断与运维 | 诊断、客户端断开、协议事件、清理任务 | 运维 | 已支持用户隔离诊断、协议错误分层、DCR 限流、客户端级撤销和保留期清理 | 真实客户端版本矩阵与长期运行观察 |
+
+### 2026-11-11 任务域接入（Prompt `agent-system-v13`）
+
+| 业务能力 | Domain Tool | 风险 | 当前状态 | 下一门禁 |
+|---|---|---:|---|---|
+| 清单与标签目录 | `task.lists.list`、`task.tags.list` | R1 | 已实现并接入 v13 提示词，默认排除归档清单 | 大清单量与分组排序回归 |
+| 今天 / 逾期 | `task.today`、`task.overdue` | R1 | 已实现；今天只含当天、逾期按到期日早于今天，日界按用户时区 | 跨时区账号与超 200 条逾期 |
+| 任务查询与统计 | `task.list.query`、`task.stats.summary` | R1 | 已接入 v13；`task.list.query` 仍缺 keyword/TRASH/ABANDONED | P1 扩展筛选口径 |
+| 习惯与专注查询 | `habit.checkin.query`、`focus.stats.query` | R1 | 已接入 v13 | 拆出 `habit.list` / `habit.stats` |
+| 任务单条写 | `task.create/complete/reschedule.prepare/commit` | R2 | 已接入 v13；create 尚不支持 tags/checklist/子任务/提醒 | P2 扩字段 + reopen/abandon |
+| 任务字段修改与删除 | `task.update/delete.prepare/commit` | R3 | 已接入 v13；update 仅 title/description/priority | P2 扩 checklist/tagIds |
+
+- MCP 侧修正 `requireScope()`：`task.*`/`habit.*`/`focus.*` 改按 `mcp:task:read` / `mcp:task:prepare` 校验，
+  不再误落到工时 scope；`McpToolVisibilityTest` 增加 `requiredScope` 与「只读任务 Token 可调用全部可见工具」两条回归。
+- 站内确认入口恢复为 `/agent/chat`，prepare 卡片可在此确认；真实模型端到端因本地账户 `Insufficient Balance` 暂未补验。
+- 确定性评测 `AgentEvaluationContractTest` 3 用例通过；真实模型评测待账户恢复后重跑。
 
 ## 2. 中文指令评测集
 

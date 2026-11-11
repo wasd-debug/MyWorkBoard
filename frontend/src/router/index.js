@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
   { path: '/', name: 'workspace-home', component: () => import('../views/HomeView.vue'), meta: { title: '工作台' } },
+  { path: '/agent/chat', name: 'agent-chat', component: () => import('../views/AgentChatView.vue'), meta: { title: 'AI 对话' } },
   { path: '/calendar', name: 'calendar', component: () => import('../views/TasksCalendarView.vue'), meta: { title: '日历' } },
   { path: '/approvals/:id?', name: 'agent-approvals', component: () => import('../views/AgentApprovalsView.vue'), meta: { title: '审批中心' } },
   { path: '/mcp/actions/confirm', name: 'mcp-action-confirm', component: () => import('../views/McpActionConfirmationView.vue'), meta: { title: '外部操作确认' } },

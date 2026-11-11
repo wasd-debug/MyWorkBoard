@@ -49,7 +49,7 @@
         <button type="button" :disabled="busy" @click="reject"><X />拒绝</button>
         <button class="approve" type="button" :disabled="busy" @click="approve"><ShieldCheck />{{ busy ? '正在处理…' : '批准并冻结参数' }}</button>
       </footer>
-      <footer v-else class="resolved-actions"><router-link to="/">返回 AI 工作台</router-link><router-link class="approve" to="/settings">查看 MCP Token</router-link></footer>
+      <footer v-else class="resolved-actions"><router-link to="/agent/chat">返回 AI 对话</router-link><router-link class="approve" to="/settings">查看 MCP Token</router-link></footer>
     </main>
   </section>
 </template>

@@ -184,7 +184,7 @@ async function submitPrompt() {
 async function openFullConversation() {
   if (!sessionId.value) return
   open.value = false
-  await router.push({ path: '/', query: { session: sessionId.value } })
+  await router.push({ path: '/agent/chat', query: { session: sessionId.value } })
 }
 function handleOutsidePointer(event) { if (open.value && root.value && !root.value.contains(event.target)) closePanel() }
 onMounted(() => { document.addEventListener('pointerdown', handleOutsidePointer); void restoreSessionMessages() })

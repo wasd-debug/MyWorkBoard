@@ -248,11 +248,28 @@ public class McpServerConfiguration {
 
     private void requireScope(McpPersonalTokenService.AuthenticatedToken token, String toolName) {
         if (token == null) throw new SecurityException("MCP Token 上下文缺失");
-        boolean prepare = toolName.endsWith(".prepare");
-        String required = toolName.startsWith(LEDGER_PREFIX)
-                ? prepare ? McpPersonalTokenService.LEDGER_PREPARE : McpPersonalTokenService.LEDGER_READ
-                : prepare ? McpPersonalTokenService.WORKTIME_PREPARE : McpPersonalTokenService.WORKTIME_READ;
-        if (!token.scopes().contains(required)) throw new SecurityException("Token 缺少工具所需 scope");
+        String required = requiredScope(toolName);
+        if (required == null || !token.scopes().contains(required)) {
+            throw new SecurityException("Token 缺少工具所需 scope");
+        }
+    }
+
+    /**
+     * 按命名空间推导工具所需的 MCP scope；未知命名空间返回 null。
+     * 与 {@link #visible(String, Set)} 共用同一份前缀规则，避免可见性与实际校验漂移。
+     */
+    static String requiredScope(String name) {
+        boolean prepare = name.endsWith(".prepare");
+        if (name.startsWith(LEDGER_PREFIX)) {
+            return prepare ? McpPersonalTokenService.LEDGER_PREPARE : McpPersonalTokenService.LEDGER_READ;
+        }
+        if (name.startsWith(WORKTIME_PREFIX)) {
+            return prepare ? McpPersonalTokenService.WORKTIME_PREPARE : McpPersonalTokenService.WORKTIME_READ;
+        }
+        if (name.startsWith(TASK_PREFIX) || name.startsWith(HABIT_PREFIX) || name.startsWith(FOCUS_PREFIX)) {
+            return prepare ? McpPersonalTokenService.TASK_PREPARE : McpPersonalTokenService.TASK_READ;
+        }
+        return null;
     }
 
     private void validateQueryBounds(JsonNode input) {
@@ -266,20 +283,15 @@ public class McpServerConfiguration {
 
     /**
      * MCP visibility is derived from the domain tool namespace and scope, rather than
-     * from a hand-maintained allow-list. This keeps newly registered ledger/worktime
+     * from a hand-maintained allow-list. This keeps newly registered ledger/worktime/task
      * tools available to MCP automatically while preserving the read/prepare boundary.
      */
     static boolean visible(String name, Set<String> scopes) {
         // Domain commit tools are intentionally never advertised through MCP.
         // External clients use agent.action.commit after the website approval flow.
         if (name.endsWith(".commit")) return false;
-        boolean prepare = name.endsWith(".prepare");
-        return name.startsWith(LEDGER_PREFIX) && scopes.contains(prepare
-                ? McpPersonalTokenService.LEDGER_PREPARE : McpPersonalTokenService.LEDGER_READ)
-                || name.startsWith(WORKTIME_PREFIX) && scopes.contains(prepare
-                ? McpPersonalTokenService.WORKTIME_PREPARE : McpPersonalTokenService.WORKTIME_READ)
-                || (name.startsWith(TASK_PREFIX) || name.startsWith(HABIT_PREFIX) || name.startsWith(FOCUS_PREFIX))
-                && scopes.contains(prepare ? McpPersonalTokenService.TASK_PREPARE : McpPersonalTokenService.TASK_READ);
+        String required = requiredScope(name);
+        return required != null && scopes.contains(required);
     }
 
     private List<McpServerFeatures.SyncToolSpecification> actionSpecifications(

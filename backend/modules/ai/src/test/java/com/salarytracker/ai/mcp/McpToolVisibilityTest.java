@@ -21,6 +21,7 @@ import static com.salarytracker.ai.mcp.McpPersonalTokenService.TASK_PREPARE;
 import static com.salarytracker.ai.mcp.McpPersonalTokenService.TASK_READ;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
@@ -95,5 +96,34 @@ class McpToolVisibilityTest {
         assertFalse(McpServerConfiguration.visible("task.create.prepare", Set.of(TASK_READ)));
         assertTrue(McpServerConfiguration.visible("task.create.prepare", Set.of(TASK_READ, TASK_PREPARE)));
         assertFalse(McpServerConfiguration.visible("task.create.commit", Set.of(TASK_READ, TASK_PREPARE, TASK_COMMIT)));
+        // 工时 scope 不应放行任务工具，任务 scope 也不应放行工时工具。
+        assertFalse(McpServerConfiguration.visible("task.today", Set.of(WORKTIME_READ)));
+        assertFalse(McpServerConfiguration.visible("worktime.records.search", Set.of(TASK_READ)));
+    }
+
+    @Test
+    void requiredScopeFollowsNamespaceInsteadOfFallingBackToWorktime() {
+        assertEquals(TASK_READ, McpServerConfiguration.requiredScope("task.list.query"));
+        assertEquals(TASK_READ, McpServerConfiguration.requiredScope("habit.checkin.query"));
+        assertEquals(TASK_READ, McpServerConfiguration.requiredScope("focus.stats.query"));
+        assertEquals(TASK_PREPARE, McpServerConfiguration.requiredScope("task.create.prepare"));
+        assertEquals(WORKTIME_READ, McpServerConfiguration.requiredScope("worktime.records.search"));
+        assertEquals(LEDGER_PREPARE, McpServerConfiguration.requiredScope("ledger.account.create.prepare"));
+        assertNull(McpServerConfiguration.requiredScope("agent.action.commit"));
+    }
+
+    /**
+     * 回归：requireScope 曾经把 task/habit/focus 一律判成工时 scope，导致只授予
+     * mcp:task:read 的 Token 能列出工具却调用全部 403。
+     */
+    @Test
+    void readOnlyTaskTokenCanInvokeEveryAdvertisedTaskTool() {
+        Set<String> taskOnly = Set.of(TASK_READ);
+        for (String name : List.of("task.list.query", "task.today", "task.overdue", "task.stats.summary",
+                "habit.checkin.query", "focus.stats.query")) {
+            assertTrue(McpServerConfiguration.visible(name, taskOnly), name + " 应对任务 scope 可见");
+            String required = McpServerConfiguration.requiredScope(name);
+            assertTrue(taskOnly.contains(required), name + " 需要 " + required + "，不应降级到工时 scope");
+        }
     }
 }

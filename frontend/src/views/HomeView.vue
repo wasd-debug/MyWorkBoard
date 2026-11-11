@@ -7,6 +7,9 @@
         <p class="home-sub">{{ dateLabel }} · {{ headline }}</p>
       </div>
       <div class="home-head-actions">
+        <router-link class="home-edit" to="/agent/chat">
+          <MessagesSquare :size="14" />AI 对话
+        </router-link>
         <button class="home-edit" type="button" :aria-pressed="editing" @click="toggleEditing">
           <SlidersHorizontal :size="14" />{{ editing ? '完成' : '自定义' }}
         </button>
@@ -45,7 +48,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { SlidersHorizontal } from 'lucide-vue-next'
+import { MessagesSquare, SlidersHorizontal } from 'lucide-vue-next'
 import HomeTasksWidget from '../components/home/HomeTasksWidget.vue'
 import HomeCalendarWidget from '../components/home/HomeCalendarWidget.vue'
 import HomeLedgerWidget from '../components/home/HomeLedgerWidget.vue'
@@ -199,9 +202,10 @@ onMounted(async () => {
 .home-eyebrow { margin: 0 0 4px; color: var(--accent); font-size: 10px; font-weight: 750; letter-spacing: .16em; }
 .home-head h1 { margin: 0; font-size: clamp(24px, 2.2vw, 32px); font-weight: 730; letter-spacing: -.04em; }
 .home-sub { margin: 6px 0 0; color: var(--muted); font-size: 12.5px; }
-.home-edit { display: inline-flex; height: 34px; align-items: center; gap: 6px; padding: 0 13px; border: 1px solid var(--line2); border-radius: 10px; background: var(--card); color: var(--ink2); font-size: 12px; font-weight: 650; }
+.home-head-actions { display: flex; align-items: center; gap: 8px; }
+.home-edit { display: inline-flex; height: 34px; align-items: center; gap: 6px; padding: 0 13px; border: 1px solid var(--line2); border-radius: 10px; background: var(--card); color: var(--ink2); font-size: 12px; font-weight: 650; text-decoration: none; }
 .home-edit:hover { border-color: var(--accent); color: var(--accent); }
-.home-edit[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #fff; }
+.home-edit[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--paper); }
 .home-edit-bar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   margin-bottom: 12px; padding: 9px 13px; border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--line));

@@ -210,7 +210,14 @@ public class TaskService {
         }
         String normalizedView = view == null ? "" : view.trim().toUpperCase(Locale.ROOT);
         switch (normalizedView) {
-            case "TODAY" -> where.append(" AND l.archived=FALSE AND t.status='OPEN' AND t.due_at < DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY)");
+            case "TODAY" -> {
+                // 视图语义沿用「今天及以前未完成」（逾期留在今天里，与既有接口契约一致），
+                // 但日界改按用户时区计算，避免 DB 时区与用户时区不一致时把明天算进今天。
+                ZoneId zone = userZone(userId);
+                java.time.LocalDate tomorrow = java.time.LocalDate.now(zone).plusDays(1);
+                where.append(" AND l.archived=FALSE AND t.status='OPEN' AND t.due_at < ?");
+                args.add(Timestamp.from(tomorrow.atStartOfDay(zone).toInstant()));
+            }
             case "TOMORROW" -> {
                 ZoneId zone = userZone(userId);
                 java.time.LocalDate tomorrowDate = java.time.LocalDate.now(zone).plusDays(1);
@@ -219,7 +226,13 @@ public class TaskService {
                 args.add(Timestamp.from(tomorrow));
                 args.add(Timestamp.from(tomorrowDate.plusDays(1).atStartOfDay(zone).toInstant()));
             }
-            case "NEXT7" -> where.append(" AND l.archived=FALSE AND t.status='OPEN' AND t.due_at >= CURRENT_DATE AND t.due_at < DATE_ADD(CURRENT_DATE, INTERVAL 8 DAY)");
+            case "NEXT7" -> {
+                ZoneId zone = userZone(userId);
+                java.time.LocalDate today = java.time.LocalDate.now(zone);
+                where.append(" AND l.archived=FALSE AND t.status='OPEN' AND t.due_at >= ? AND t.due_at < ?");
+                args.add(Timestamp.from(today.atStartOfDay(zone).toInstant()));
+                args.add(Timestamp.from(today.plusDays(8).atStartOfDay(zone).toInstant()));
+            }
             case "INBOX" -> where.append(" AND l.system_key='INBOX'");
             case "ALL", "TRASH", "" -> { }
             case "COMPLETED" -> where.append(" AND t.status='COMPLETED'");
@@ -255,6 +268,47 @@ public class TaskService {
                         " ORDER BY t.status = 'COMPLETED', t.sort_order, t.created_at, t.id LIMIT ? OFFSET ?",
                 (result, rowNum) -> task(result), pageArgs.toArray());
         return new TaskPage(items, safePage, safeSize, total);
+    }
+
+    /**
+     * 今天到期且未完成的任务（只含当天，不含逾期）。日界按用户时区计算；
+     * 无到期日的任务不算今天到期。
+     */
+    public List<TaskItem> todayTasks(int limit) {
+        long userId = currentUser.id();
+        ensureDefaults(userId);
+        int safeLimit = Math.min(Math.max(limit, 1), 500);
+        ZoneId zone = userZone(userId);
+        java.time.LocalDate today = java.time.LocalDate.now(zone);
+        return openTasksBetween(userId, today.atStartOfDay(zone).toInstant(),
+                today.plusDays(1).atStartOfDay(zone).toInstant(), safeLimit);
+    }
+
+    /**
+     * 逾期未完成任务：到期日早于用户时区的今天。当天到期（无论时刻是否已过）不算逾期，
+     * 与页面 {@code isTaskOverdue()} 的口径一致。已归档清单与无到期日的任务不参与。
+     */
+    public List<TaskItem> overdueTasks(int limit) {
+        long userId = currentUser.id();
+        ensureDefaults(userId);
+        int safeLimit = Math.min(Math.max(limit, 1), 500);
+        ZoneId zone = userZone(userId);
+        Instant todayStart = java.time.LocalDate.now(zone).atStartOfDay(zone).toInstant();
+        return jdbcTemplate.query("SELECT " + TASK_COLUMNS +
+                        " FROM task t JOIN task_list l ON l.id = t.list_id" +
+                        " WHERE t.user_id = ? AND t.deleted = FALSE AND l.deleted = FALSE AND l.archived = FALSE" +
+                        " AND t.status = 'OPEN' AND t.due_at IS NOT NULL AND t.due_at < ?" +
+                        " ORDER BY t.due_at, t.priority DESC, t.id LIMIT ?",
+                (result, rowNum) -> task(result), userId, Timestamp.from(todayStart), safeLimit);
+    }
+
+    private List<TaskItem> openTasksBetween(long userId, Instant from, Instant to, int limit) {
+        return jdbcTemplate.query("SELECT " + TASK_COLUMNS +
+                        " FROM task t JOIN task_list l ON l.id = t.list_id" +
+                        " WHERE t.user_id = ? AND t.deleted = FALSE AND l.deleted = FALSE AND l.archived = FALSE" +
+                        " AND t.status = 'OPEN' AND t.due_at >= ? AND t.due_at < ?" +
+                        " ORDER BY t.due_at, t.priority DESC, t.id LIMIT ?",
+                (result, rowNum) -> task(result), userId, Timestamp.from(from), Timestamp.from(to), limit);
     }
 
     public List<CalendarItem> calendarItems(Instant from, Instant to) {

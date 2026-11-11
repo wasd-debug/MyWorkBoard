@@ -64,16 +64,17 @@ public class TaskToolsConfiguration {
     }
 
     @Bean public DomainTool taskTodayTool(TaskService tasks, ObjectMapper mapper) {
-        return read("task.today", "查询当前用户今天到期和逾期未完成任务。", ToolSchemas.object(mapper), mapper,
-                input -> tasks.listTasks(null, "OPEN", "TODAY", null, 0, 200));
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.integerProperty(schema, "size", "最多返回条数", 50, 1, 200);
+        return read("task.today", "查询当前用户今天到期且未完成的任务（只含今天，不含逾期；当天到期无论时刻是否已过都不算逾期）。", schema, mapper,
+                input -> tasks.todayTasks(integer(input, "size", 50)));
     }
 
     @Bean public DomainTool taskOverdueTool(TaskService tasks, ObjectMapper mapper) {
-        return read("task.overdue", "查询当前用户逾期未完成任务。", ToolSchemas.object(mapper), mapper, input -> {
-            Instant now = Instant.now();
-            return tasks.listTasks(null, "OPEN", "TODAY", null, 0, 200).items().stream()
-                    .filter(task -> task.dueAt() != null && Instant.parse(task.dueAt()).isBefore(now)).toList();
-        });
+        ObjectNode schema = ToolSchemas.object(mapper);
+        ToolSchemas.integerProperty(schema, "size", "最多返回条数", 50, 1, 500);
+        return read("task.overdue", "查询当前用户已逾期未完成的任务（到期日早于今天，按到期时间升序，最多 500 条）。", schema, mapper,
+                input -> tasks.overdueTasks(integer(input, "size", 50)));
     }
 
     @Bean public DomainTool taskStatsSummaryTool(TaskEnhancementService enhancements, ObjectMapper mapper) {
