@@ -9,7 +9,9 @@ import java.util.Optional;
 public interface AgentSessionRepository {
     OptionalLong findOwner(String sessionId);
 
-    void create(String sessionId, long userId, String title);
+    void create(String sessionId, long userId, String title, boolean ephemeral);
+
+    void setEphemeral(String sessionId, long userId, boolean ephemeral);
 
     List<AgentConversationService.StoredMessage> recentMessages(String sessionId, long userId, int limit);
 

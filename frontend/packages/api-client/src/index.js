@@ -18,9 +18,15 @@ const revision = value => value === undefined || value === null || value === '' 
 export { api, clearAccessToken, getAccessToken, setAccessToken }
 export * from './generated/models/index.ts'
 
-export async function apiChatWithAssistant(message, sessionId) {
-  return data(await api.post('/api/v1/ai/chat', { sessionId, message }, { timeout: 60_000 }))
+/**
+ * @param options.ephemeral 首页小组件这类临时入口传 true：会话不进 AI 页面的会话列表
+ */
+export async function apiChatWithAssistant(message, sessionId, options = {}) {
+  return data(await api.post('/api/v1/ai/chat', { sessionId, message, ephemeral: Boolean(options.ephemeral) }, { timeout: 60_000 }))
 }
+
+/** 把临时会话转正，转正后出现在会话列表里 */
+export async function apiKeepAgentSession(sessionId) { return data(await api.post(`/api/v1/agent/sessions/${sessionId}/keep`)) }
 
 export async function apiCreateAgentSession(payload) { return data(await api.post('/api/v1/agent/sessions', payload)) }
 export async function apiListAgentSessions(archived = false) { return data(await api.get('/api/v1/agent/sessions', { params: { archived } })) }

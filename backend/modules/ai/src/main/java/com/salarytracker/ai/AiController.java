@@ -26,9 +26,14 @@ public class AiController {
     @Operation(operationId = "chatWithAssistant")
     public ApiResponse<LlmGateway.ChatResponse> chat(@RequestBody ChatRequest body) {
         return ApiResponse.ok(agent.chat(body == null ? null : body.sessionId(),
-                body == null ? "" : body.message()));
+                body == null ? "" : body.message(),
+                body != null && body.ephemeral()));
     }
 
-    public record ChatRequest(String sessionId, String message) {
+    /**
+     * @param ephemeral 首页小组件等临时入口传 true：会话仍可续聊、动作卡仍可确认，
+     *                  但不会出现在 AI 页面的会话列表里，7 天不活跃自动清理
+     */
+    public record ChatRequest(String sessionId, String message, boolean ephemeral) {
     }
 }

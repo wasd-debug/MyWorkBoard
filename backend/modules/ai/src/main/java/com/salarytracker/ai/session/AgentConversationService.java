@@ -28,6 +28,15 @@ public class AgentConversationService {
 
     @Transactional
     public SessionContext open(String requestedSessionId, String firstMessage) {
+        return open(requestedSessionId, firstMessage, false);
+    }
+
+    /**
+     * ephemeral 只在新建会话时生效：已存在的会话保持原来的可见性，避免临时对话被改成永久，
+     * 也避免同一会话在多轮里反复切换。
+     */
+    @Transactional
+    public SessionContext open(String requestedSessionId, String firstMessage, boolean ephemeral) {
         long userId = currentUser.id();
         String sessionId = normalizeSessionId(requestedSessionId);
         OptionalLong owner = repository.findOwner(sessionId);
@@ -35,7 +44,7 @@ public class AgentConversationService {
             throw new IllegalArgumentException("会话不存在");
         }
         if (owner.isEmpty()) {
-            repository.create(sessionId, userId, title(firstMessage));
+            repository.create(sessionId, userId, title(firstMessage), ephemeral);
         }
         return new SessionContext(sessionId, userId,
                 repository.recentMessages(sessionId, userId, CONTEXT_MESSAGE_LIMIT));
@@ -58,7 +67,22 @@ public class AgentConversationService {
         long userId = currentUser.id();
         String sessionId = normalizeSessionId(requestedId);
         if (repository.findOwner(sessionId).isPresent()) throw new IllegalArgumentException("会话已存在");
-        repository.create(sessionId, userId, title(title));
+        repository.create(sessionId, userId, title(title), false);
+        return repository.findSession(sessionId, userId).orElseThrow();
+    }
+
+    /** 临时会话转正：出现在 AI 页面的会话列表里，不再被自动清理。 */
+    public SessionSummary keep(String sessionId) {
+        long userId = currentUser.id();
+        requireOwned(sessionId, userId);
+        repository.setEphemeral(sessionId, userId, false);
+        return repository.findSession(sessionId, userId).orElseThrow();
+    }
+
+    /** 按 ID 取会话摘要：不能用 list() 兜底，临时会话不在列表里。 */
+    public SessionSummary summary(String sessionId) {
+        long userId = currentUser.id();
+        requireOwned(sessionId, userId);
         return repository.findSession(sessionId, userId).orElseThrow();
     }
 

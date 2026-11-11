@@ -58,8 +58,7 @@ public class AgentSessionController {
         if (command != null && command.modelConnectionId() != null) {
             String sessionId = session.id();
             models.bindSession(sessionId, command.modelConnectionId());
-            session = conversations.list(false).stream().filter(item -> item.id().equals(sessionId))
-                    .findFirst().orElse(session);
+            session = conversations.summary(sessionId);
         }
         return ApiResponse.ok(session);
     }
@@ -128,6 +127,13 @@ public class AgentSessionController {
         return ApiResponse.ok(Map.of("archived", true));
     }
 
+    /** 临时会话（首页小组件）转正：进入会话列表。已在列表里的会话重复调用无副作用。 */
+    @PostMapping("/sessions/{sessionId}/keep")
+    @Operation(operationId = "keepAgentSession")
+    public ApiResponse<AgentConversationService.SessionSummary> keep(@PathVariable String sessionId) {
+        return ApiResponse.ok(conversations.keep(sessionId));
+    }
+
     @DeleteMapping("/sessions/{sessionId}")
     @Operation(operationId = "deleteAgentSession")
     public ApiResponse<Map<String, Boolean>> delete(@PathVariable String sessionId) {
@@ -170,8 +176,7 @@ public class AgentSessionController {
                                                                             @RequestBody ModelCommand command) {
         if (!turns.queue(sessionId).items().isEmpty()) throw new IllegalStateException("队列非空时不能切换模型");
         models.bindSession(sessionId, command == null ? null : command.modelConnectionId());
-        return ApiResponse.ok(conversations.list(false).stream().filter(item -> item.id().equals(sessionId))
-                .findFirst().orElseThrow());
+        return ApiResponse.ok(conversations.summary(sessionId));
     }
 
     @PostMapping("/turns/{turnId}/cancel")

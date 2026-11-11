@@ -11,7 +11,7 @@
         <button type="button" title="新建分组" aria-label="新建会话分组" @click="showGroupDialog('create')"><FolderPlus /></button>
       </div>
       <nav class="conversation-list" aria-label="会话列表">
-        <p v-if="!conversations.length" class="conversation-empty">还没有历史会话</p>
+        <p v-if="!listedConversations.length" class="conversation-empty">还没有历史会话</p>
         <section
           v-for="section in conversationSections"
           :key="section.id"
@@ -102,7 +102,8 @@
     <section class="chat-workspace" :style="{ '--chat-composer-height': `${composerHeight}px` }">
       <header class="chat-workspace-head">
         <button v-if="!sidebarOpen" class="chat-icon-button" type="button" title="展开历史会话" aria-label="展开历史会话" @click="sidebarOpen = true"><PanelLeftOpen /></button>
-        <div><b>{{ activeConversation?.title || '新对话' }}</b><small>AI 个人工作台</small></div>
+        <div><b>{{ activeConversation?.title || '新对话' }}</b><small>{{ activeConversation?.ephemeral ? '临时对话 · 不在会话列表' : 'AI 个人工作台' }}</small></div>
+        <button v-if="activeConversation?.ephemeral" class="chat-keep-session" type="button" @click="keepActiveSession">保存到会话列表</button>
       </header>
 
       <div ref="messageViewport" class="chat-message-viewport" @scroll.passive="handleMessageScroll" @wheel.passive="handleMessageWheel">
@@ -203,7 +204,7 @@
                     </details>
                     <div v-if="action.structuredContent?.effects?.length" class="agent-action-effects" aria-label="操作影响"><strong>批量删除影响</strong><ul><li v-for="effect in action.structuredContent.effects" :key="effect">{{ effect }}</li></ul></div>
                     <p><ShieldCheck />{{ actionIsDelete(action) ? '确认后才会整批删除；任意一笔版本变化时全部不执行。' : '确认后整批写入；任意一笔失败时全部回滚，重复点击不会重复创建。' }}</p>
-                    <footer><button v-if="actionIsBatchCreate(action)" type="button" @click="editAction(action)">返回编辑</button><button type="button" @click="rejectAction(action)">全部取消</button><button :class="actionIsDelete(action) ? 'danger' : 'primary'" type="button" :disabled="action.busy" @click="confirmAction(item, action)">{{ action.busy ? (actionIsDelete(action) ? '正在整批删除…' : '正在整批保存…') : (actionIsDelete(action) ? '确认删除全部' : '确认并保存全部') }}</button></footer>
+                    <footer><button type="button" @click="openActionSheet(item, action)">宽屏核对</button><button v-if="actionIsBatchCreate(action)" type="button" @click="editAction(action)">返回编辑</button><button type="button" @click="rejectAction(action)">全部取消</button><button :class="actionIsDelete(action) ? 'danger' : 'primary'" type="button" :disabled="action.busy" @click="confirmAction(item, action)">{{ action.busy ? (actionIsDelete(action) ? '正在整批删除…' : '正在整批保存…') : (actionIsDelete(action) ? '确认删除全部' : '确认并保存全部') }}</button></footer>
                   </div>
                   <div v-else-if="action.status === 'NEEDS_CONFIRMATION' && !action.uiStatus" class="agent-confirmation-summary">
                     <div v-if="action.structuredContent?.diff?.length" class="agent-action-diff" aria-label="修改差异">
@@ -211,15 +212,16 @@
                       <dl><template v-for="row in action.structuredContent.diff" :key="row.label"><dt>{{ row.label }}</dt><dd><del>{{ row.before || '未填写' }}</del><ArrowRight /><ins>{{ row.after || '未填写' }}</ins></dd></template></dl>
                     </div>
                     <dl>
-                      <template v-for="row in actionPreviewRows(action)" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template>
+                      <template v-for="row in actionPreviewRows(action).slice(0, 6)" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template>
                     </dl>
+                    <button v-if="actionPreviewRows(action).length > 6" class="agent-action-more" type="button" @click="openActionSheet(item, action)">展开全部 {{ actionPreviewRows(action).length }} 项<ArrowRight /></button>
                     <div v-if="actionIsImportPreview(action)" class="agent-import-preview" aria-label="导入预览结果">
                       <div><span><b>{{ action.structuredContent?.preview?.validCount || 0 }}</b><small>有效</small></span><span><b>{{ action.structuredContent?.preview?.duplicateCount || 0 }}</b><small>重复</small></span><span><b>{{ action.structuredContent?.preview?.errorCount || 0 }}</b><small>错误</small></span></div>
                       <details v-if="action.structuredContent?.preview?.rows?.length"><summary>查看解析明细<ChevronDown /></summary><ul><li v-for="row in action.structuredContent.preview.rows.slice(0, 20)" :key="`${row.sheet}-${row.rowNumber}`"><span>{{ row.sheet }} · 第 {{ row.rowNumber }} 行</span><b :class="`status-${String(row.status || '').toLowerCase()}`">{{ importRowStatus(row.status) }}</b><small>{{ row.errors?.join('；') || `${transactionKindLabel(row.kind)} ${formatMoney(row.amount)}` }}</small></li></ul></details>
                     </div>
                     <div v-if="action.structuredContent?.effects?.length" class="agent-action-effects" aria-label="操作影响"><strong>删除影响</strong><ul><li v-for="effect in action.structuredContent.effects" :key="effect">{{ effect }}</li></ul></div>
                     <p><ShieldCheck />{{ actionIsDelete(action) ? '确认后才会执行删除；提交前会再次校验记录版本。' : actionIsRun(action) ? '确认后将立即生成真实流水；相同到期日不会重复记账。' : '确认后才会写入业务数据；重复点击不会重复创建。' }}</p>
-                    <footer><button v-if="action.structuredContent?.fields?.length" type="button" @click="editAction(action)">返回编辑</button><button type="button" @click="rejectAction(action)">取消</button><button v-if="actionIsImportPreview(action)" class="danger" type="button" :disabled="action.busy" @click="requestImportApproval(action)">{{ action.busy ? '正在创建审批…' : '提交站内审批' }}</button><button v-else-if="actionRequiresWebApproval(action)" class="danger" type="button" disabled>{{ webApprovalLabel(action) }}</button><button v-else :class="actionIsDelete(action) ? 'danger' : 'primary'" type="button" :disabled="action.busy" @click="confirmAction(item, action)">{{ action.busy ? confirmBusyLabel(action) : confirmButtonLabel(action) }}</button></footer>
+                    <footer><button v-if="action.structuredContent?.fields?.length" type="button" @click="editAction(action)">返回编辑</button><button type="button" @click="rejectAction(action)">取消</button><button v-if="actionIsImportPreview(action)" class="danger" type="button" :disabled="action.busy" @click="requestImportApproval(action)">{{ action.busy ? '正在创建审批…' : '提交站内审批' }}</button><button v-else-if="actionRequiresWebApproval(action)" class="danger" type="button" @click="openWebApproval(action)">前往审批中心<ArrowUpRight /></button><button v-else :class="actionIsDelete(action) ? 'danger' : 'primary'" type="button" :disabled="action.busy" @click="confirmAction(item, action)">{{ action.busy ? confirmBusyLabel(action) : confirmButtonLabel(action) }}</button></footer>
                   </div>
                   <div v-else class="agent-action-result">
                     <CheckCircle2 v-if="action.uiStatus === 'COMPLETED'" />
@@ -328,6 +330,49 @@
       </div>
     </section>
   </main>
+
+  <Teleport to="body">
+    <div v-if="sheetAction" class="agent-sheet-mask" @click.self="closeActionSheet">
+      <section class="agent-sheet" role="dialog" aria-modal="true" :aria-label="sheetAction.summary">
+        <header>
+          <span><Trash2 v-if="actionIsDelete(sheetAction)" /><ClipboardCheck v-else /></span>
+          <div><b>{{ sheetAction.summary }}</b><small>{{ actionTypeLabel(sheetAction) }} · {{ actionStatusLabel(sheetAction) }}</small></div>
+          <button type="button" aria-label="关闭" @click="closeActionSheet"><X /></button>
+        </header>
+        <div class="agent-sheet-body">
+          <div v-if="sheetAction.structuredContent?.diff?.length" class="agent-action-diff" aria-label="修改差异">
+            <strong>本次修改</strong>
+            <dl><template v-for="row in sheetAction.structuredContent.diff" :key="row.label"><dt>{{ row.label }}</dt><dd><del>{{ row.before || '未填写' }}</del><ArrowRight /><ins>{{ row.after || '未填写' }}</ins></dd></template></dl>
+          </div>
+          <template v-if="actionIsBatch(sheetAction)">
+            <div class="agent-batch-overview">
+              <span><b>{{ sheetAction.structuredContent?.totals?.count || sheetAction.structuredContent?.items?.length || 0 }} 笔{{ actionIsDelete(sheetAction) ? '待删除流水' : '待保存流水' }}</b><small>{{ batchTotalsLabel(sheetAction) }}</small></span>
+              <em>{{ actionIsDelete(sheetAction) ? '整批强确认' : '原子提交' }}</em>
+            </div>
+            <details v-for="(batchItem, batchIndex) in sheetAction.structuredContent?.items || []" :key="`sheet-${batchIndex}`" class="agent-batch-preview" open>
+              <summary><span>第 {{ batchIndex + 1 }} 笔 · {{ transactionKindLabel(batchPreview(batchItem).kind) }}</span><b>{{ formatMoney(batchPreview(batchItem).amount) }}</b></summary>
+              <dl><template v-for="row in transactionPreviewRows(batchPreview(batchItem))" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template></dl>
+            </details>
+          </template>
+          <dl v-else class="agent-sheet-fields">
+            <template v-for="row in sheetRows" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template>
+          </dl>
+          <div v-if="sheetAction.structuredContent?.effects?.length" class="agent-action-effects" aria-label="操作影响">
+            <strong>操作影响</strong>
+            <ul><li v-for="effect in sheetAction.structuredContent.effects" :key="effect">{{ effect }}</li></ul>
+          </div>
+        </div>
+        <footer>
+          <button type="button" @click="closeActionSheet">关闭</button>
+          <template v-if="sheetActionPending">
+            <button type="button" :disabled="sheetAction.busy" @click="sheetReject">取消操作</button>
+            <button v-if="actionRequiresWebApproval(sheetAction)" class="danger" type="button" @click="openWebApproval(sheetAction)">前往审批中心<ArrowUpRight /></button>
+            <button v-else :class="actionIsDelete(sheetAction) ? 'danger' : 'primary'" type="button" :disabled="sheetAction.busy" @click="sheetConfirm">{{ sheetAction.busy ? confirmBusyLabel(sheetAction) : confirmButtonLabel(sheetAction) }}</button>
+          </template>
+        </footer>
+      </section>
+    </div>
+  </Teleport>
 </template>
 
 <script setup>
@@ -340,11 +385,12 @@ import { Calendar, List, Timer, Wallet } from '../icons.js'
 import { message } from '../services/message.js'
 import { autoGrowTextarea } from '../directives/autoGrowTextarea.js'
 import { parseAgentMetadata, normalizeAgentActions, recoverAgentMetadata, missingActionCard } from '../utils/agentMessageRecovery.js'
+import { actionNeedsApproval, agentActionTypeLabel } from '../utils/agentActionLabels.js'
 import { copyText } from '../utils/clipboard.js'
 import { useAppStore } from '../stores/app'
 import { useLedgerStore } from '../stores/ledger'
 import { useWorktimeStore } from '../stores/worktime'
-import { apiAnswerAgentAction, apiApproveAgentAction, apiArchiveAgentSession, apiCancelAgentTurn, apiChangeAgentSessionModel, apiChatWithAssistant, apiCommitAgentAction, apiCreateAgentSession, apiCreateAgentSessionGroup, apiDeleteAgentSession, apiDeleteAgentSessionGroup, apiDownloadLedgerExport, apiEnqueueAgentTurn, apiGetAgentAction, apiGetAgentTrace, apiGetAgentTurn, apiImportLedgerPreview, apiInvokeAgentTool, apiListAgentMessages, apiListAgentModelConnections, apiListAgentQueue, apiListAgentSessionGroups, apiListAgentSessions, apiMoveAgentSession, apiRejectAgentAction, apiRemoveQueuedAgentTurn, apiRenameAgentSessionGroup, apiReorderAgentQueue, apiRetryAgentTurn, apiStreamAgentTurn, apiUpdateAgentSession } from '../../packages/api-client/src/index.js'
+import { apiAnswerAgentAction, apiApproveAgentAction, apiArchiveAgentSession, apiCancelAgentTurn, apiChangeAgentSessionModel, apiChatWithAssistant, apiCommitAgentAction, apiCreateAgentSession, apiCreateAgentSessionGroup, apiDeleteAgentSession, apiDeleteAgentSessionGroup, apiDownloadLedgerExport, apiEnqueueAgentTurn, apiGetAgentAction, apiGetAgentTrace, apiGetAgentTurn, apiImportLedgerPreview, apiInvokeAgentTool, apiKeepAgentSession, apiListAgentMessages, apiListAgentModelConnections, apiListAgentQueue, apiListAgentSessionGroups, apiListAgentSessions, apiMoveAgentSession, apiRejectAgentAction, apiRemoveQueuedAgentTurn, apiRenameAgentSessionGroup, apiReorderAgentQueue, apiRetryAgentTurn, apiStreamAgentTurn, apiUpdateAgentSession } from '../../packages/api-client/src/index.js'
 
 const router = useRouter(), route = useRoute(), store = useAppStore(), ledgerStore = useLedgerStore(), worktimeStore = useWorktimeStore()
 const vAutoGrow = autoGrowTextarea
@@ -364,6 +410,8 @@ const queuePresence = new Map()
 const historyKey = computed(() => `workspace_ai_conversations_v1:${store.accountScope || 'local'}`)
 const displayName = computed(() => store.authUser?.nickname || store.authUser?.username || '建胜')
 const activeConversation = computed(() => conversations.value.find(item => item.id === activeId.value) || null)
+// 临时会话（首页小组件）只在打开时作为上下文，不进入左侧历史会话列表
+const listedConversations = computed(() => conversations.value.filter(item => !item.ephemeral))
 const activeMessages = computed(() => activeConversation.value?.messages || [])
 const canSubmit = computed(() => Boolean(prompt.value.trim() || attachments.value.length))
 const activeQueuedPrompts = computed(() => queuedPrompts.value.filter(item => item.conversationId === activeId.value))
@@ -374,8 +422,8 @@ const deepThinkingSupported = computed(() => activeModel.value?.providerType ===
 const conversationMenuStyle = computed(() => ({ left: `${conversationMenu.value.x}px`, top: `${conversationMenu.value.y}px` }))
 const groupMenuStyle = computed(() => ({ left: `${groupMenu.value.x}px`, top: `${groupMenu.value.y}px` }))
 const conversationSections = computed(() => {
-  const pinned = conversations.value.filter(item => item.pinnedAt)
-  const normal = conversations.value.filter(item => !item.pinnedAt)
+  const pinned = listedConversations.value.filter(item => item.pinnedAt)
+  const normal = listedConversations.value.filter(item => !item.pinnedAt)
   const sections = []
   if (pinned.length) sections.push({ id: 'pinned', name: '置顶', items: pinned, group: null })
   for (const group of sessionGroups.value) sections.push({ id: group.id, name: group.name, items: normal.filter(item => item.groupId === group.id), group })
@@ -424,7 +472,21 @@ async function loadMessages(id, forceScroll = false) {
 async function reconcileActionStates(messages) { const actions = messages.flatMap(item => item.actions || []); await Promise.all(actions.map(async action => { try { const state = await apiGetAgentAction(action.actionId); if (!['WAITING_INPUT', 'WAITING_CONFIRMATION', 'APPROVED'].includes(state.status)) action.uiStatus = state.status } catch { action.uiStatus ||= 'EXPIRED' } })) }
 function normalizeQueueItem(item) { return { id: item.id, conversationId: item.sessionId, text: item.userMessage, status: item.status, createdAt: item.createdAt, retryOfTurnId: item.retryOfTurnId, deepThinking: Boolean(item.deepThinking) } }
 async function loadQueue(id) { if (!id || !store.authUser || store.offlineSession) return; const queue = await apiListAgentQueue(id); queueRevisions.value = { ...queueRevisions.value, [id]: Number(queue?.revision || 0) }; const others = queuedPrompts.value.filter(item => item.conversationId !== id); queuedPrompts.value = [...others, ...(queue?.items || []).map(normalizeQueueItem)]; if (id === activeId.value) turnRunning.value = activeQueuedPrompts.value.some(item => item.status !== 'QUEUED') }
-async function loadConversations() { if (!store.authUser || store.offlineSession) return loadLocalConversations(); try { const [sessions, groups, models] = await Promise.all([apiListAgentSessions(), apiListAgentSessionGroups(), apiListAgentModelConnections()]); conversations.value = (sessions || []).map(item => ({ ...item, messages: [] })); sessionGroups.value = groups || []; modelConnections.value = models || []; const requested = route.query.session; activeId.value = conversations.value.find(item => item.id === requested)?.id || conversations.value[0]?.id || ''; if (activeId.value) await Promise.all([loadMessages(activeId.value, true), loadQueue(activeId.value)]) } catch { loadLocalConversations() } }
+// 临时会话转正：保存后才会出现在左侧会话列表
+async function keepActiveSession() {
+  const item = activeConversation.value
+  if (!item || !item.ephemeral) return
+  try {
+    await apiKeepAgentSession(item.id)
+    item.ephemeral = false
+    message.success('已保存到会话列表')
+  } catch { message.error('保存会话失败') }
+}
+async function loadConversations() { if (!store.authUser || store.offlineSession) return loadLocalConversations(); try { const [sessions, groups, models] = await Promise.all([apiListAgentSessions(), apiListAgentSessionGroups(), apiListAgentModelConnections()]); conversations.value = (sessions || []).map(item => ({ ...item, messages: [] })); sessionGroups.value = groups || []; modelConnections.value = models || []; const requested = route.query.session
+    // 临时会话（首页小组件）不在会话列表里，建占位条目打开，消息与动作卡照常加载
+    if (requested && !conversations.value.some(item => item.id === String(requested))) conversations.value.unshift({ id: String(requested), title: String(route.query.title || '临时对话'), messages: [], ephemeral: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+    activeId.value = conversations.value.find(item => item.id === requested)?.id || conversations.value[0]?.id || ''
+    if (activeId.value) await Promise.all([loadMessages(activeId.value, true), loadQueue(activeId.value)]) } catch { loadLocalConversations() } }
 async function changeConversationModel(event) { const id = event.target.value; if (!activeConversation.value || !id) return; try { const updated = await apiChangeAgentSessionModel(activeConversation.value.id, id); Object.assign(activeConversation.value, updated); message.success('当前会话模型已切换') } catch (error) { event.target.value = activeConversation.value.modelConnectionId || defaultModelId.value; message.error(error?.response?.data?.detail || '切换模型失败') } }
 function toggleDeepThinking() { deepThinking.value = !deepThinking.value; localStorage.setItem(`workspace_deep_thinking:${store.accountScope || 'local'}`, String(deepThinking.value)) }
 function closeConversationMenu() { conversationMenu.value = { item: null, x: 0, y: 0 } }
@@ -481,7 +543,11 @@ async function dropConversation(section) {
 function endConversationDrag() { draggedConversationId.value = ''; conversationDropTarget.value = '' }
 async function saveSessionGroup() { const name = groupName.value.trim(), item = conversationDialog.value.item; if (!name) return; try { if (conversationDialog.value.type === 'group-create') sessionGroups.value.push(await apiCreateAgentSessionGroup({ id: uid(), name })); else Object.assign(item, await apiRenameAgentSessionGroup(item.id, { name })); closeConversationDialog(); message.success('分组已保存') } catch { message.error('保存分组失败') } }
 async function deleteSessionGroup(item) { closeGroupMenu(); if (!window.confirm(`删除分组“${item.name}”？其中的会话会移到未分组。`)) return; try { await apiDeleteAgentSessionGroup(item.id); conversations.value.forEach(session => { if (session.groupId === item.id) session.groupId = null }); sessionGroups.value = sessionGroups.value.filter(group => group.id !== item.id); message.success('分组已删除') } catch { message.error('删除分组失败') } }
-function formatTime(value) { return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) }
+function formatTime(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '刚刚'
+  return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date)
+}
 function formatMessageTime(value) { return new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(new Date(value)) }
 function formatNumber(value) { return new Intl.NumberFormat('zh-CN').format(Number(value || 0)) }
 function formatDuration(value) { const ms = Math.max(0, Number(value || 0)); if (ms < 1000) return `${ms}ms`; if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`; return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s` }
@@ -492,14 +558,44 @@ function pricingTierLabel(value) { return value === 'PEAK' ? '高峰' : value ==
 function replyTokens(usage) { return Math.max(0, Number(usage?.outputTokens || 0) - Number(usage?.reasoningTokens || 0)) }
 function cacheHitRate(usage) { const hit = Number(usage?.cacheHitTokens || 0), miss = Number(usage?.cacheMissTokens || 0); return hit + miss ? Math.round(hit / (hit + miss) * 100) : 0 }
 function toolLabel(name) { return ({ 'ledger.books.list': '查询账本', 'ledger.book.create.prepare': '准备新增账本', 'ledger.book.update.prepare': '准备修改账本', 'ledger.account.list': '查询账户', 'ledger.account.create.prepare': '准备新增账户', 'ledger.account.update.prepare': '准备修改账户', 'ledger.account.delete.prepare': '准备删除账户', 'ledger.category.list': '查询分类', 'ledger.category.create.prepare': '准备新增分类', 'ledger.category.update.prepare': '准备修改分类', 'ledger.category.delete.prepare': '准备删除分类', 'ledger.merchant.list': '查询商家', 'ledger.merchant.create.prepare': '准备新增商家', 'ledger.merchant.update.prepare': '准备修改商家', 'ledger.merchant.delete.prepare': '准备删除商家', 'ledger.project.list': '查询项目', 'ledger.project.create.prepare': '准备新增项目', 'ledger.project.update.prepare': '准备修改项目', 'ledger.project.delete.prepare': '准备删除项目', 'ledger.budget.upsert.prepare': '准备设置预算', 'ledger.budget.delete.prepare': '准备删除预算', 'ledger.schedule.list': '查询周期任务', 'ledger.schedule.create.prepare': '准备创建周期任务', 'ledger.schedule.update.prepare': '准备修改周期任务', 'ledger.schedule.delete.prepare': '准备删除周期任务', 'ledger.schedule.run.prepare': '准备执行周期任务', 'ledger.recycle.list': '查询回收站', 'ledger.recycle.restore.prepare': '准备恢复回收站项目', 'ledger.export.prepare': '准备导出流水', 'ledger.import.preview.prepare': '准备导入预览', 'ledger.import.confirm.prepare': '创建导入审批', 'ledger.overview': '查询账本概览', 'ledger.transactions.search': '查询账本流水', 'ledger.transaction.history': '查询流水历史', 'ledger.transaction.create.prepare': '准备新增流水', 'ledger.transaction.update.prepare': '准备修改流水', 'ledger.transaction.delete.prepare': '准备删除流水', 'ledger.transactions.batch.create.prepare': '准备批量记账', 'ledger.transactions.batch.delete.prepare': '准备批量删除', 'ledger.reports.summary': '生成账本报表', 'ledger.budgets.list': '查询预算', 'worktime.settings.get': '读取工时设置', 'worktime.settings.update.prepare': '准备修改工时设置', 'worktime.records.search': '查询工时记录', 'worktime.record.create.prepare': '准备新增工时', 'worktime.record.update.prepare': '准备修改工时', 'worktime.record.delete.prepare': '准备删除工时' })[name] || name }
-function actionTypeLabel(action) { return ({ 'task.create': '新建任务', 'task.update': '修改任务', 'task.reschedule': '任务改期', 'task.complete': '完成任务', 'task.delete': '删除任务', 'task.reopen': '重开任务', 'task.abandon': '放弃任务', 'task.batch.complete': '批量完成任务', 'habit.checkin': '习惯打卡', 'focus.start': '开始专注', 'focus.finish': '结束专注', 'focus.update': '修改专注记录', 'focus.delete': '删除专注记录', 'task.restore': '恢复任务', 'task.batch.move': '批量修改任务', 'task.comment.create': '写评论', 'task.settings.update': '修改任务设置', 'habit.create': '新建习惯', 'habit.update': '修改习惯', 'habit.delete': '删除习惯', 'countdown.create': '新建倒数日', 'countdown.update': '修改倒数日', 'countdown.delete': '删除倒数日', 'task.batch.delete': '批量删除任务', 'task.lists.delete': '删除清单', 'task.purge': '永久清除任务', 'task.import.confirm': '导入任务', 'worktime.settings.update': '修改工时设置', 'worktime.record.create': '新增工时', 'worktime.record.update': '修改工时', 'worktime.record.delete': '删除工时', 'ledger.book.create': '新增账本', 'ledger.book.update': '修改账本', 'ledger.book.delete': '删除账本', 'ledger.account.create': '新增账户', 'ledger.account.update': '修改账户', 'ledger.account.delete': '删除账户', 'ledger.category.create': '新增分类', 'ledger.category.update': '修改分类', 'ledger.category.delete': '删除分类', 'ledger.merchant.create': '新增商家', 'ledger.merchant.update': '修改商家', 'ledger.merchant.delete': '删除商家', 'ledger.project.create': '新增项目', 'ledger.project.update': '修改项目', 'ledger.project.delete': '删除项目', 'ledger.budget.upsert': '设置预算', 'ledger.budget.delete': '删除预算', 'ledger.schedule.create': '创建周期任务', 'ledger.schedule.update': '修改周期任务', 'ledger.schedule.delete': '删除周期任务', 'ledger.schedule.run': '立即执行周期任务', 'ledger.recycle.restore': '恢复回收站项目', 'ledger.recycle.purge': '永久清除回收站项目', 'ledger.export': '导出流水', 'ledger.import.preview': '导入文件预览', 'ledger.transaction.create': '单笔记账', 'ledger.transaction.update': '修改流水', 'ledger.transaction.delete': '删除流水', 'ledger.transactions.batch.create': '批量记账', 'ledger.transactions.batch.delete': '批量删除流水' })[action.structuredContent?.actionType] || '待确认操作' }
+function actionTypeLabel(action) { return agentActionTypeLabel(action.structuredContent?.actionType) }
 function actionIsDelete(action) { return action.structuredContent?.actionType?.endsWith('.delete') }
 function actionIsRun(action) { return action.structuredContent?.actionType === 'ledger.schedule.run' }
 function actionIsRestore(action) { return action.structuredContent?.actionType === 'ledger.recycle.restore' || action.structuredContent?.actionType === 'task.restore' }
 function actionIsExport(action) { return action.structuredContent?.actionType === 'ledger.export' }
 function actionIsImportPreview(action) { return action.structuredContent?.actionType === 'ledger.import.preview' }
-function actionRequiresWebApproval(action) { return action.structuredContent?.webApprovalRequired === true || action.structuredContent?.commitAvailable === false }
-function webApprovalLabel() { return '需要站内高风险审批' }
+function actionRequiresWebApproval(action) { return actionNeedsApproval(action) }
+// 宽浮层：卡片只有 620px，记账多笔时预览行数放不下，展开到浮层里逐项核对
+const actionSheet = ref(null)
+const sheetAction = computed(() => actionSheet.value?.action || null)
+const sheetRows = computed(() => sheetAction.value
+  ? actionPreviewRows(sheetAction.value).filter(row => row?.value != null && String(row.value).trim() !== '')
+  : [])
+const sheetActionPending = computed(() => {
+  const action = sheetAction.value
+  return Boolean(action) && !action.uiStatus && ['NEEDS_CONFIRMATION', 'NEEDS_INPUT'].includes(action.status) && !action.editing
+})
+function openActionSheet(item, action) { actionSheet.value = { item, action } }
+function closeActionSheet() { actionSheet.value = null }
+async function sheetConfirm() {
+  const { item, action } = actionSheet.value || {}
+  if (!action || action.busy) return
+  await confirmAction(item, action)
+  if (['COMPLETED', 'FAILED', 'CONFLICT'].includes(action.uiStatus)) closeActionSheet()
+}
+async function sheetReject() {
+  const { action } = actionSheet.value || {}
+  if (!action || action.busy) return
+  await rejectAction(action)
+  closeActionSheet()
+}
+function openWebApproval(action) {
+  closeActionSheet()
+  const approvalId = action?.structuredContent?.approvalId || action?.approvalId
+  const path = action?.confirmationUrl || action?.structuredContent?.confirmationUrl
+    || (approvalId ? `/approvals/${approvalId}` : '/approvals')
+  router.push(path)
+}
 function confirmButtonLabel(action) { if (actionIsDelete(action)) return '确认删除'; if (action.structuredContent?.actionType === 'task.abandon') return '确认放弃'; if (actionIsRun(action)) return '确认并立即执行'; if (actionIsRestore(action)) return '确认并恢复'; if (actionIsExport(action)) return '确认并下载'; return '确认并保存' }
 function confirmBusyLabel(action) { if (actionIsDelete(action)) return '正在删除…'; if (action.structuredContent?.actionType === 'task.abandon') return '正在放弃…'; if (actionIsRun(action)) return '正在执行…'; if (actionIsRestore(action)) return '正在恢复…'; if (actionIsExport(action)) return '正在生成文件…'; return '正在保存…' }
 function importRowStatus(value) { return ({ VALID: '有效', DUPLICATE: '重复', ERROR: '错误' })[value] || value }

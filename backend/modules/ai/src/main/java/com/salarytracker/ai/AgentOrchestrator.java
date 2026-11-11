@@ -63,6 +63,14 @@ public class AgentOrchestrator {
     }
 
     public LlmGateway.ChatResponse chat(String sessionId, String message) {
+        return chat(sessionId, message, false);
+    }
+
+    /**
+     * @param ephemeral 新建会话时不进入 AI 页面的会话列表（首页小组件的临时提问），
+     *                  已存在的会话保持原可见性
+     */
+    public LlmGateway.ChatResponse chat(String sessionId, String message, boolean ephemeral) {
         if (!model.configured()) return model.chat(message);
 
         long startedAt = System.nanoTime();
@@ -71,7 +79,9 @@ public class AgentOrchestrator {
         List<LlmGateway.ModelExecution> modelExecutions = new ArrayList<>();
         List<LlmGateway.ActionRequest> actionRequests = new ArrayList<>();
 
-        AgentConversationService.SessionContext context = conversations.open(sessionId, message);
+        AgentConversationService.SessionContext context = ephemeral
+                ? conversations.open(sessionId, message, true)
+                : conversations.open(sessionId, message);
 
         Map<String, ToolDefinition> exposed = exposedTools();
         List<LlmGateway.AgentTool> modelTools = exposed.entrySet().stream()

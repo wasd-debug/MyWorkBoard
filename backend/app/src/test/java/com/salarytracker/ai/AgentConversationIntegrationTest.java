@@ -24,7 +24,7 @@ class AgentConversationIntegrationTest extends MySqlIntegrationTestSupport {
         String sessionId = UUID.randomUUID().toString();
         JdbcAgentSessionRepository repository = new JdbcAgentSessionRepository(jdbc);
 
-        repository.create(sessionId, userId, "我有哪些账本？");
+        repository.create(sessionId, userId, "我有哪些账本？", false);
         repository.appendExchange(sessionId, userId, "我有哪些账本？", "你有一个默认账本。");
         repository.appendExchange(sessionId, userId, "它有几条流水？", "目前没有流水。");
 
@@ -42,7 +42,7 @@ class AgentConversationIntegrationTest extends MySqlIntegrationTestSupport {
         long secondUser = createUser("agent-session-b-");
         JdbcAgentSessionRepository repository = new JdbcAgentSessionRepository(jdbc);
         String sessionId = UUID.randomUUID().toString();
-        repository.create(sessionId, firstUser, "原始标题");
+        repository.create(sessionId, firstUser, "原始标题", false);
         new JdbcAgentTurnRepository(jdbc).enqueue("turn-1", sessionId, firstUser, "request-1", "问题", null);
         repository.appendExchange(sessionId, firstUser, "turn-1", "问题", "回答", "{\"durationMs\":18}");
 
@@ -73,11 +73,27 @@ class AgentConversationIntegrationTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
+    void hidesWidgetSessionsUntilKept() {
+        long userId = createUser("agent-ephemeral-");
+        JdbcAgentSessionRepository repository = new JdbcAgentSessionRepository(jdbc);
+        String sessionId = UUID.randomUUID().toString();
+        repository.create(sessionId, userId, "本月花了多少", true);
+        repository.appendExchange(sessionId, userId, "本月花了多少", "本月支出 1234 元。");
+
+        assertEquals(0, repository.listSessions(userId, false).size());
+        assertTrue(repository.findSession(sessionId, userId).isPresent());
+
+        repository.setEphemeral(sessionId, userId, false);
+
+        assertEquals(1, repository.listSessions(userId, false).size());
+    }
+
+    @Test
     void replacesPreparedActionInStoredAssistantMetadataForRefreshRecovery() throws Exception {
         long userId = createUser("agent-action-recovery-");
         JdbcAgentSessionRepository repository = new JdbcAgentSessionRepository(jdbc);
         String sessionId = UUID.randomUUID().toString();
-        repository.create(sessionId, userId, "记工时");
+        repository.create(sessionId, userId, "记工时", false);
         repository.appendExchange(sessionId, userId, "帮我记工时", "请补充");
         jdbc.update("UPDATE agent_message SET metadata_json=? WHERE session_id=? AND user_id=? AND role='assistant'", """
                 {"actions":[{"status":"NEEDS_INPUT","actionId":"old-action","summary":"请补充"}]}
@@ -100,7 +116,7 @@ class AgentConversationIntegrationTest extends MySqlIntegrationTestSupport {
         JdbcAgentSessionRepository sessions = new JdbcAgentSessionRepository(jdbc);
         JdbcAgentTurnRepository turns = new JdbcAgentTurnRepository(jdbc);
         String sessionId = UUID.randomUUID().toString();
-        sessions.create(sessionId, userId, "turn 测试");
+        sessions.create(sessionId, userId, "turn 测试", false);
 
         var original = turns.enqueue("turn-a", sessionId, userId, "request-a", "问题", null);
         var replay = turns.enqueue("turn-b", sessionId, userId, "request-a", "问题", null);
@@ -123,7 +139,7 @@ class AgentConversationIntegrationTest extends MySqlIntegrationTestSupport {
         JdbcAgentSessionRepository sessions = new JdbcAgentSessionRepository(jdbc);
         JdbcAgentTurnRepository turns = new JdbcAgentTurnRepository(jdbc);
         String sessionId = UUID.randomUUID().toString();
-        sessions.create(sessionId, userId, "queue 测试");
+        sessions.create(sessionId, userId, "queue 测试", false);
 
         var first = turns.enqueue("queue-a", sessionId, userId, "queue-request-a", "第一条", null);
         var second = turns.enqueue("queue-b", sessionId, userId, "queue-request-b", "第二条", null);
@@ -159,7 +175,7 @@ class AgentConversationIntegrationTest extends MySqlIntegrationTestSupport {
         var turns = new JdbcAgentTurnRepository(jdbc);
         String sessionId = UUID.randomUUID().toString();
         String turnId = UUID.randomUUID().toString();
-        sessions.create(sessionId, userId, "记账");
+        sessions.create(sessionId, userId, "记账", false);
         turns.enqueue(turnId, sessionId, userId, UUID.randomUUID().toString(), "两笔支出", null);
         turns.claimNext(sessionId, userId).orElseThrow();
         turns.markPlanning(turnId, userId);

@@ -9,7 +9,7 @@
       <div v-if="!messages.length" class="ai-hint">
         <span class="ai-mark"><Sparkles :size="13" /></span>
         <p>问一句就行：今天还剩什么、本月花了多少、有没有超预算。</p>
-        <small>这段对话不落库，刷新即丢；想留下就点「保存会话」。</small>
+        <small>随手问不会进 AI 页面的会话列表；想留下就点「保存会话」。</small>
       </div>
       <article v-for="item in messages" :key="item.id" class="ai-msg" :class="item.role">
         <div v-if="item.role === 'assistant'" class="ai-mark small"><Sparkles :size="11" /></div>
@@ -20,6 +20,14 @@
         </div>
       </article>
       <p v-if="notice" class="ai-notice">{{ notice }}</p>
+    </div>
+
+    <div v-if="pendingActions.length" class="ai-actions">
+      <span>
+        <b>{{ pendingActions.length }} 个待确认操作</b>
+        <small>{{ actionsSummary }}</small>
+      </span>
+      <button type="button" @click="openActions">{{ actionsTargetLabel }}</button>
     </div>
 
     <form class="ai-composer" @submit.prevent="send">
@@ -49,18 +57,21 @@
 
 <script setup>
 import { computed, nextTick, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ArrowUp, Sparkles, Trash2 } from 'lucide-vue-next'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import HomeWidgetFrame from './HomeWidgetFrame.vue'
 import Dialog from '../ui/Dialog.vue'
-import { apiChatWithAssistant } from '../../../packages/api-client/src/index.js'
+import { apiChatWithAssistant, apiKeepAgentSession } from '../../../packages/api-client/src/index.js'
 import { useAppStore } from '../../stores/app.js'
 import { message } from '../../services/message.js'
 import { uuid } from '../../utils/uuid.js'
+import { actionNeedsApproval, agentActionTypeLabel } from '../../utils/agentActionLabels.js'
 
 defineProps({ editing: Boolean })
 
+const router = useRouter()
 const store = useAppStore()
 const draft = ref('')
 const sending = ref(false)
@@ -71,9 +82,17 @@ const notice = ref('')
 const viewport = ref(null)
 const historyOpen = ref(false)
 const history = ref(readHistory())
+const pendingActions = ref([])
 
 const storageKey = computed(() => `home_ai_sessions_v1:${store.accountScope || 'local'}`)
 const metaLabel = computed(() => messages.value.length ? `${messages.value.length} 条消息 · 未保存` : '临时对话')
+const actionsSummary = computed(() => {
+  const labels = [...new Set(pendingActions.value.map(action => agentActionTypeLabel(action.structuredContent?.actionType, '待确认操作')))]
+  return labels.length > 2 ? `${labels.slice(0, 2).join('、')} 等 ${labels.length} 类` : labels.join('、')
+})
+// 全是高危动作时只有审批中心能执行；有普通动作则去完整对话页逐笔核对
+const onlyApprovalActions = computed(() => pendingActions.value.length > 0 && pendingActions.value.every(actionNeedsApproval))
+const actionsTargetLabel = computed(() => onlyApprovalActions.value ? '去审批中心' : '去完整对话处理')
 
 function readHistory() {
   try {
@@ -112,6 +131,7 @@ function resetChat() {
   sessionId.value = ''
   saved.value = false
   notice.value = ''
+  pendingActions.value = []
 }
 
 async function send() {
@@ -120,17 +140,20 @@ async function send() {
   draft.value = ''
   notice.value = ''
   saved.value = false
+  pendingActions.value = []
   messages.value.push({ id: uuid(), role: 'user', content: text })
   const reply = { id: uuid(), role: 'assistant', content: '', typing: true }
   messages.value.push(reply)
   sending.value = true
   await scrollToEnd()
   try {
-    const response = await apiChatWithAssistant(text, sessionId.value)
+    // ephemeral：会话可续聊、动作卡可确认，但不进 AI 页面的会话列表
+    const response = await apiChatWithAssistant(text, sessionId.value, { ephemeral: true })
     sessionId.value = response?.sessionId || sessionId.value
     reply.content = response?.content || '本轮没有返回内容。'
     reply.typing = false
-    if (response?.actions?.length) notice.value = `有 ${response.actions.length} 个待确认操作，请到「审批中心」处理。`
+    pendingActions.value = response?.actions || []
+    if (pendingActions.value.length && pendingActions.value.every(actionNeedsApproval)) notice.value = '有高风险操作，需要到审批中心确认。'
   } catch (error) {
     reply.typing = false
     reply.content = error?.response?.data?.detail || error?.message || '暂时连不上 AI，稍后再试。'
@@ -142,7 +165,7 @@ async function send() {
   }
 }
 
-function saveSession() {
+async function saveSession() {
   if (!messages.value.length) return
   const first = messages.value.find(item => item.role === 'user')?.content || 'AI 对话'
   const row = {
@@ -155,7 +178,25 @@ function saveSession() {
   history.value = [row, ...history.value].slice(0, 30)
   persistHistory()
   saved.value = true
-  message.success('会话已保存到本机')
+  if (sessionId.value) {
+    try {
+      await apiKeepAgentSession(sessionId.value)
+      message.success('会话已保存，可在 AI 页面继续查看')
+    } catch {
+      message.error('已存到本机，但同步到会话列表失败')
+    }
+  } else {
+    message.success('会话已保存到本机')
+  }
+}
+
+function openActions() {
+  if (onlyApprovalActions.value || !sessionId.value) {
+    router.push('/approvals')
+    return
+  }
+  const title = messages.value.find(item => item.role === 'user')?.content?.slice(0, 40) || '临时对话'
+  router.push({ path: '/agent/chat', query: { session: sessionId.value, title } })
 }
 
 function loadSession(row) {
@@ -163,6 +204,7 @@ function loadSession(row) {
   sessionId.value = row.sessionId || ''
   saved.value = true
   notice.value = ''
+  pendingActions.value = []
   historyOpen.value = false
   scrollToEnd()
 }
@@ -192,6 +234,11 @@ function removeSession(id) {
 .ai-md :deep(code) { padding: 1px 4px; border-radius: 4px; background: color-mix(in srgb, var(--ink) 8%, transparent); font-size: 11px; }
 .ai-typing { color: var(--accent); font-size: 11px; }
 .ai-notice { margin: 0; color: var(--warn, var(--down)); font-size: 10.5px; }
+.ai-actions { display: flex; align-items: center; gap: 9px; margin-top: 10px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); border-radius: 10px; background: color-mix(in srgb, var(--accent-soft) 48%, var(--card)); }
+.ai-actions > span { display: grid; min-width: 0; flex: 1; gap: 2px; }
+.ai-actions b { color: var(--ink); font-size: 11.5px; }
+.ai-actions small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.ai-actions button { min-width: 0; min-height: 0; flex: 0 0 auto; padding: 6px 10px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent); color: var(--paper); font-size: 11px; font-weight: 650; }
 .ai-composer { display: flex; gap: 6px; margin-top: 10px; }
 .ai-composer input { min-width: 0; height: 32px; flex: 1; padding: 0 10px; border: 1px solid var(--line2); border-radius: 9px; background: var(--paper); color: var(--ink); font-size: 12px; }
 .ai-composer input:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }

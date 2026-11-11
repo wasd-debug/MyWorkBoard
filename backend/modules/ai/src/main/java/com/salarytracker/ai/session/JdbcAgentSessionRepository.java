@@ -30,12 +30,20 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
     }
 
     @Override
-    public void create(String sessionId, long userId, String title) {
+    public void create(String sessionId, long userId, String title, boolean ephemeral) {
         try {
-            jdbc.update("INSERT INTO agent_session(id,user_id,title) VALUES(?,?,?)", sessionId, userId, title);
+            jdbc.update("INSERT INTO agent_session(id,user_id,title,ephemeral) VALUES(?,?,?,?)",
+                    sessionId, userId, title, ephemeral ? 1 : 0);
         } catch (DuplicateKeyException exception) {
             throw new IllegalStateException("会话已存在", exception);
         }
+    }
+
+    @Override
+    public void setEphemeral(String sessionId, long userId, boolean ephemeral) {
+        // 幂等：已在列表里的会话再次 keep 不应报错
+        jdbc.update("UPDATE agent_session SET ephemeral=? WHERE id=? AND user_id=?",
+                ephemeral ? 1 : 0, sessionId, userId);
     }
 
     @Override
@@ -70,9 +78,12 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
 
     @Override
     public List<AgentConversationService.SessionSummary> listSessions(long userId, boolean archived) {
+        // 临时会话不进列表，顺手清掉 7 天没动过的，避免首页随手提问无限堆积
+        jdbc.update("DELETE FROM agent_session WHERE user_id=? AND ephemeral=1 AND updated_at < "
+                + "DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 7 DAY)", userId);
         return jdbc.query("""
                         SELECT id,title,group_id,model_connection_id,created_at,updated_at,archived_at,pinned_at
-                        FROM agent_session WHERE user_id=? AND (archived_at IS NOT NULL)=?
+                        FROM agent_session WHERE user_id=? AND (archived_at IS NOT NULL)=? AND ephemeral=0
                         ORDER BY (pinned_at IS NULL), pinned_at DESC, updated_at DESC LIMIT 100
                         """,
                 (result, rowNum) -> session(result), userId, archived);

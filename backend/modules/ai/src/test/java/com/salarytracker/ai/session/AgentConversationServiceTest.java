@@ -4,6 +4,7 @@ import com.salarytracker.identity.CurrentUserResolver;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,7 +30,40 @@ class AgentConversationServiceTest {
 
         assertEquals("conversation-1", context.sessionId());
         assertEquals(1, context.history().size());
-        verify(repository).create("conversation-1", 7L, "第一条问题");
+        verify(repository).create("conversation-1", 7L, "第一条问题", false);
+    }
+
+    @Test
+    void marksWidgetSessionsEphemeralOnCreate() {
+        when(currentUser.id()).thenReturn(7L);
+        when(repository.findOwner("widget-session")).thenReturn(OptionalLong.empty());
+
+        service.open("widget-session", "本月花了多少", true);
+
+        verify(repository).create("widget-session", 7L, "本月花了多少", true);
+    }
+
+    @Test
+    void keepsExistingSessionVisibilityWhenReopened() {
+        when(currentUser.id()).thenReturn(7L);
+        when(repository.findOwner("kept-session")).thenReturn(OptionalLong.of(7L));
+
+        service.open("kept-session", "继续问", true);
+
+        verify(repository, never()).create("kept-session", 7L, "继续问", true);
+    }
+
+    @Test
+    void keepPromotesEphemeralSessionIntoList() {
+        when(currentUser.id()).thenReturn(7L);
+        when(repository.findOwner("widget-session")).thenReturn(OptionalLong.of(7L));
+        when(repository.findSession("widget-session", 7L)).thenReturn(Optional.of(
+                new AgentConversationService.SessionSummary("widget-session", "本月花了多少", null, null,
+                        null, null, null, null)));
+
+        service.keep("widget-session");
+
+        verify(repository).setEphemeral("widget-session", 7L, false);
     }
 
     @Test
