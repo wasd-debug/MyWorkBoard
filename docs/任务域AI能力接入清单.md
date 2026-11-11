@@ -71,6 +71,7 @@
 | **T-A3** | 站内确认入口失效：`openFullConversation()` 跳 `/`，而 `/` 已是小组件画布 | `FloatingAgentAssistant.vue:184` | 所有 prepare 的「进入完整对话」落到画布，卡片无处确认；**账本/工时站内写能力同时被回归** | ✅ 已修：会话与 action 卡片迁到独立页 `/agent/chat`，首页头部加「AI 对话」入口 |
 | **T-A4** | `task.today` 直接复用 `TODAY` 视图（含逾期）；`task.overdue` 在结果里用 `Instant.now()` 过滤且只取 200 条；视图日界用 MySQL `CURRENT_DATE` | `TaskService.java:213`、`TaskToolsConfiguration.java:71` | 「今天」混进逾期；当天 09:00 的任务在 10:00 被误判逾期；逾期超 200 条不完整；跨时区日界偏移 | ✅ 已修：工具改用 `todayTasks()` / `overdueTasks()` 独立查询，日界统一按用户时区；`TODAY` 视图保留「含逾期」的既有接口契约，只修正时区 |
 | **T-A5** | 无 `task.lists.list` / `task.tags.list` 目录工具 | `tool/task/` | `task.create.prepare` 的 `listId`、`task.list.query` 的 `tagId` 不可得，模型只能猜 | ✅ 已修：新增两个 `@Component` 目录工具，默认排除已归档清单 |
+| **T-A6** | 任务 prepare 的 `structuredContent` 只回原始入参（`title/listId/dueAt/allDay/timezone`），没有 `actionType` 与 `preview`；卡片标题直接用工具描述 | `TaskToolsConfiguration.java:201`、`AgentChatView.vue:actionPreviewRows` | 前端按账本字段猜：标题显示「校验单条任务并生成确认预览，不写入任务数据。」，字段退化成「类型待补充 / 日期 今天」；真实模型端到端时暴露 | ✅ 已修：5 个 prepare 统一输出 `actionType` + `preview`（标题/清单名/时间/优先级/描述/子任务），标题改人类可读；改期与修改额外给 `diff`（改前 → 改后）；前端补 `task.*` 分支 |
 
 ### 2.3 与账本 / 工时的能力差集
 
@@ -305,16 +306,26 @@ CLEAR 是撤销上次打卡（服务端不接受 DELETE）。用户说“取消/
 | T-A3 | 会话与 action 卡片恢复为独立页 `/agent/chat`（沿用原对话页实现）；悬浮助手与设置页「原会话」、审批页返回链接全部改指该路由；首页头部新增「AI 对话」入口 | `views/AgentChatView.vue`、`router/index.js`、`App.vue`、`FloatingAgentAssistant.vue`、`SettingsView.vue`、`AgentApprovalsView.vue`、`McpActionConfirmationView.vue`、`HomeView.vue` |
 | T-A4 | 新增 `TaskService.todayTasks()` / `overdueTasks()`；`task.today`、`task.overdue` 改用专用查询，日界按用户时区；`TODAY`/`NEXT7` 视图日界从 MySQL `CURRENT_DATE` 改为用户时区参数（保留「今天含逾期」的既有接口契约） | `TaskService.java`、`TaskToolsConfiguration.java` |
 | T-A5 | 新增 `task.lists.list`、`task.tags.list` 目录工具 | `tool/task/TaskListsListTool.java`、`tool/task/TaskTagsListTool.java` |
+| T-A6 | 5 个 prepare 统一产出 `actionType` + `preview`（+ 改期/修改的 `diff`），卡片标题改人类可读；前端 `actionTypeLabel` / `actionPreviewRows` 增加 `task.*` 分支 | `TaskToolsConfiguration.java`、`views/AgentChatView.vue` |
 
 ### 验证
 
 - 后端：`McpToolVisibilityTest` 7 用例（新增 `requiredScopeFollowsNamespaceInsteadOfFallingBackToWorktime`、
   `readOnlyTaskTokenCanInvokeEveryAdvertisedTaskTool`）；新增 `TaskDueWindowToolsIntegrationTest` 2 用例
   （今天/逾期按日历日切分、当天到期不算逾期；目录工具返回真实 ID 且默认排除归档清单）；
+  `TaskDomainToolsIntegrationTest` 2 用例（prepare 不写库 + 卡片 `actionType`/`preview`/标题断言）；
   `TaskOrganizationIntegrationTest` 8 用例保持通过（确认 `TODAY` 视图契约未被破坏）。
 - 前端：`npm test` 461 通过；`vite build` 通过。
 - 浏览器：1440 首页出现「AI 对话」入口并进入 `/agent/chat`；1440 / 390 / 暗色三档布局正常，
   `overflowX = 0`、无 console error；手机端侧栏收起、输入框可用。
-- **未完成**：真实模型下的「任务 prepare → 卡片确认 → 写入」端到端未跑通，本地模型账户返回
-  `Insufficient Balance (request_id: d2cca936-...)`，已在 `docs/前端手工检查清单.md` 记录为待验收项。
-  prepare/commit 的服务端链路已由 `TaskDomainToolsIntegrationTest` 覆盖。
+- **真实模型端到端（2026-11-11 补跑）**：站内模型连接的旧 Key（`****4873`）已失效（`Authentication Fails`，
+  与余额无关），换成环境有效 Key 后 `POST .../test` 返回 `AVAILABLE`。对话「帮我建一个任务：明天下午三点交周报，
+  放到工作清单」→ `task.lists.list`（92ms）→ `task.create.prepare`（26ms）→ action `WAITING_CONFIRMATION`
+  → 卡片「新建任务：交周报（👨🏻‍💻工作 · 2026-11-12 15:00）」→ 确认后 `task` 表落库到 `👨🏻‍💻工作` 清单、
+  `due_at = 2026-11-12 15:00:00`。账本记账、工时补录同日回归通过。验证数据已清理。
+
+### 环境提示（不入库）
+
+站内模型连接的 API Key 存在 `ai_model_connection.encrypted_api_key`（AES-GCM，密钥取 `AI_CREDENTIAL_KEY`），
+与服务端 `DEEPSEEK_API_KEY` 是两份独立配置。更换 Key 走后端接口而不是改库：
+`PUT /api/v1/agent/model-connections/{id}`（带 `revision`）→ `POST .../{id}/test`。
