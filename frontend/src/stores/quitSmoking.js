@@ -13,7 +13,7 @@ import {
 import { message } from '../services/message.js'
 import { uuid } from '../utils/uuid.js'
 import { addDate, todayKey } from '../components/tools/dateMath.js'
-import { computeStreak, estimateSaved } from '../components/tools/quitSmoking.js'
+import { computeStreak, estimateSaved, estimateSubstance } from '../components/tools/quitSmoking.js'
 
 /** 统一从 RFC7807 错误体里取可读文案。 */
 export function errorText(error, fallback = '操作失败') {
@@ -37,6 +37,9 @@ export const useQuitSmokingStore = defineStore('quitSmoking', {
     currentStreak: state => state.summary?.currentStreak ?? 0,
     todaySmoked: state => state.summary?.todaySmoked ?? 0,
     savedAmount: state => state.summary?.savedAmount ?? 0,
+    substance: state => state.summary?.substance || null,
+    recovery: state => state.summary?.recovery || null,
+    milestones: state => state.summary?.recovery?.milestones || [],
     unitPrice: state => {
       const price = Number(state.settings?.pricePerPack || 0)
       const perPack = Number(state.settings?.cigarettesPerPack || 0)
@@ -98,6 +101,18 @@ export const useQuitSmokingStore = defineStore('quitSmoking', {
       const nextDays = { ...this.days, [today]: optimisticDay }
       const totalSmoked = Math.max(0,
         (this.summary?.totalSmoked || 0) - (previousDay?.smokedCount || 0) + target)
+      const previousSubstance = previousSummary?.substance
+      const substance = {
+        ...(previousSubstance || {}),
+        ...estimateSubstance({
+          todaySmoked: target,
+          elapsedDays: previousSummary?.elapsedDays || 0,
+          baselinePerDay: this.settings?.baselinePerDay || 0,
+          totalSmoked,
+          tarPerCigarette: previousSubstance?.tarPerCigarette ?? this.settings?.tarPerCigarette ?? 0,
+          coPerCigarette: previousSubstance?.coPerCigarette ?? this.settings?.coPerCigarette ?? 0
+        })
+      }
       this.days = nextDays
       this.summary = {
         ...this.summary,
@@ -105,6 +120,7 @@ export const useQuitSmokingStore = defineStore('quitSmoking', {
         todaySmoked: target,
         todayLogged: true,
         totalSmoked,
+        substance,
         currentStreak: computeStreak(nextDays, today, {
           maxDays: Math.max(1, this.summary?.elapsedDays || 1)
         }),

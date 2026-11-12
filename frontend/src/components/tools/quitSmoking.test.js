@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  DAY_STATUS, computeLongestStreak, computeStreak, dayStatus, estimateSaved, timeline, triggerLabel
+  CIGARETTE_TYPES, DAY_STATUS, MILESTONE_CATEGORIES, cigaretteType, computeLongestStreak, computeStreak,
+  dayStatus, estimateSaved, estimateSubstance, formatMg, formatRemaining, groupMilestones, timeline, triggerLabel
 } from './quitSmoking.js'
 
 test('三种日状态判定', () => {
@@ -61,4 +62,79 @@ test('省下金额为正负两种情形', () => {
 test('触发场景有中文标签兜底', () => {
   assert.equal(triggerLabel('after-meal'), '饭后')
   assert.equal(triggerLabel(''), '其他')
+})
+
+test('剩余时间按分钟/小时/天三档格式化', () => {
+  assert.equal(formatRemaining(0), '已达成')
+  assert.equal(formatRemaining(-5), '已达成')
+  assert.equal(formatRemaining(45), '45 分钟')
+  assert.equal(formatRemaining(120), '2 小时')
+  assert.equal(formatRemaining(125), '2 小时 5 分')
+  assert.equal(formatRemaining(1440), '1 天')
+  assert.equal(formatRemaining(1500), '1 天 1 小时')
+  assert.equal(formatRemaining(525600), '365 天')
+  assert.equal(formatRemaining(Number.NaN), '—')
+  // 进位边界：1440 分钟余数凑满 24 小时后必须并进天数，不能出现「10 天 24 小时」
+  assert.equal(formatRemaining(10 * 1440 + 1439), '11 天')
+  assert.equal(formatRemaining(119), '1 小时 59 分')
+  assert.equal(formatRemaining(150), '2 小时 30 分')
+})
+
+test('毫克数超过 1000 换成克', () => {
+  assert.equal(formatMg(0), '0.0 mg')
+  assert.equal(formatMg(24), '24.0 mg')
+  assert.equal(formatMg(999.9), '999.9 mg')
+  assert.equal(formatMg(12340), '12.34 g')
+  assert.equal(formatMg(-165), '-165.0 mg')
+  assert.equal(formatMg(undefined), '0 mg')
+})
+
+test('香烟种类预设与后端保持一致', () => {
+  // 与 backend CigaretteTypes 一一对应；改一处必须同步另一处
+  const expected = {
+    regular: [11, 12],
+    fine: [8, 8],
+    medium: [9, 9],
+    thick: [13, 14],
+    'hand-rolled': [12, 14],
+    cigar: [15, 15],
+    ecig: [0, 0]
+  }
+  for (const [key, [tar, co]] of Object.entries(expected)) {
+    const preset = CIGARETTE_TYPES.find(item => item.key === key)
+    assert.ok(preset, `缺少预设 ${key}`)
+    assert.equal(preset.tarMg, tar, `${key} 焦油量不一致`)
+    assert.equal(preset.coMg, co, `${key} 一氧化碳量不一致`)
+  }
+  assert.equal(cigaretteType('other').tarMg, null, '自定义不带预设数值')
+  assert.equal(cigaretteType('unknown').key, 'regular', '未知种类回落到普通卷烟')
+})
+
+test('里程碑按四个维度分组且保持后端顺序之外的稳定顺序', () => {
+  const groups = groupMilestones([
+    { key: 'lung-72h', category: 'lung' },
+    { key: 'vascular-20min', category: 'vascular' },
+    { key: 'physiological-24h', category: 'physiological' },
+    { key: 'psych-3m', category: 'psychological' },
+    { key: 'unknown-1', category: 'other' }
+  ])
+  assert.deepEqual(groups.map(group => group.key),
+    ['physiological', 'psychological', 'vascular', 'lung', 'other'])
+  assert.equal(groups[0].label, '生理依赖')
+  assert.equal(groups[4].label, 'other')
+  assert.deepEqual(groupMilestones([]), [])
+  assert.equal(MILESTONE_CATEGORIES.length, 4)
+})
+
+test('乐观更新的焦油量按当日支数与每支含量计算', () => {
+  const result = estimateSubstance({
+    todaySmoked: 3, elapsedDays: 5, baselinePerDay: 20, totalSmoked: 3,
+    tarPerCigarette: 8, coPerCigarette: 8
+  })
+  assert.equal(result.todayTarMg, 24)
+  assert.equal(result.todayCoMg, 24)
+  // 基线 100 支 − 实际 3 支 = 97 支
+  assert.equal(result.avoidedTarMg, 776)
+  assert.equal(result.avoidedCoMg, 776)
+  assert.deepEqual(estimateSubstance(), { todayTarMg: 0, todayCoMg: 0, avoidedTarMg: 0, avoidedCoMg: 0 })
 })
