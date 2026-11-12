@@ -39,7 +39,8 @@ class QuitSmokingIntegrationTest extends MySqlIntegrationTestSupport {
         QuitSmokingService secondService = service(second);
 
         firstService.updateSettings(new QuitSmokingSettingsUpdate("2026-11-01T00:00:00Z", "Asia/Shanghai",
-                20, new BigDecimal("25.00"), 20, "CNY"), null);
+                20, new BigDecimal("25.00"), 20, "CNY", "regular", new BigDecimal("11.0"),
+                new BigDecimal("12.0")), null);
         String today = LocalDate.now(ZONE).toString();
         firstService.putDay(today, new QuitSmokingDayUpdate(2, ""), null);
 
@@ -85,7 +86,8 @@ class QuitSmokingIntegrationTest extends MySqlIntegrationTestSupport {
         QuitSmokingService svc = service(userId);
         LocalDate today = LocalDate.now(ZONE);
         svc.updateSettings(new QuitSmokingSettingsUpdate(today.minusDays(4) + "T00:00:00Z",
-                "Asia/Shanghai", 20, new BigDecimal("20.00"), 20, "CNY"), null);
+                "Asia/Shanghai", 20, new BigDecimal("20.00"), 20, "CNY", "regular",
+                new BigDecimal("11.0"), new BigDecimal("12.0")), null);
 
         svc.putDay(today.minusDays(1).toString(), new QuitSmokingDayUpdate(4, ""), null);
         svc.createCraving(new QuitSmokingCravingCreate(null, 4, true, "饭后", ""), null);
@@ -119,8 +121,78 @@ class QuitSmokingIntegrationTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    void deleteCravingHidesItFromLists() {
+    void settingsPersistCigaretteTypeAndFeedTheSubstanceNumbers() {
         long userId = createUser();
+        QuitSmokingService svc = service(userId);
+        LocalDate today = LocalDate.now(ZONE);
+        svc.updateSettings(new QuitSmokingSettingsUpdate(today.minusDays(2) + "T00:00:00Z", "Asia/Shanghai",
+                20, new BigDecimal("20.00"), 20, "CNY", "fine", new BigDecimal("8.0"),
+                new BigDecimal("8.0")), null);
+        svc.putDay(today.toString(), new QuitSmokingDayUpdate(3, ""), null);
+
+        QuitSmokingSettings settings = svc.settings();
+        assertEquals("fine", settings.cigaretteType());
+        assertEquals(0, settings.tarPerCigarette().compareTo(new BigDecimal("8.0")));
+        assertEquals(0, settings.coPerCigarette().compareTo(new BigDecimal("8.0")));
+
+        QuitSmokingSummary summary = svc.summary();
+        assertEquals("fine", summary.substance().cigaretteType());
+        // 今天抽 3 支 × 8 mg
+        assertEquals(0, summary.substance().todayTarMg().compareTo(new BigDecimal("24.0")));
+        assertEquals(0, summary.substance().todayCoMg().compareTo(new BigDecimal("24.0")));
+        // 基线 20 × 3 天 = 60 支，实际 3 支 → 少吸 57 支 × 8 mg
+        assertEquals(0, summary.substance().avoidedTarMg().compareTo(new BigDecimal("456.0")));
+    }
+
+    @Test
+    void switchingCigaretteTypeFallsBackToPresetMagnitudes() {
+        long userId = createUser();
+        QuitSmokingService svc = service(userId);
+        String start = LocalDate.now(ZONE).minusDays(1) + "T00:00:00Z";
+        svc.updateSettings(new QuitSmokingSettingsUpdate(start, "Asia/Shanghai", 20, new BigDecimal("20.00"),
+                20, "CNY", "regular", new BigDecimal("11.0"), new BigDecimal("12.0")), null);
+
+        // 只改种类、不传毫克数：按该种类预设回填，而不是沿用旧值
+        QuitSmokingSettings switched = svc.updateSettings(new QuitSmokingSettingsUpdate(null, null, null,
+                null, null, null, "thick", null, null), null);
+
+        assertEquals("thick", switched.cigaretteType());
+        assertEquals(0, switched.tarPerCigarette().compareTo(new BigDecimal("13.0")));
+        assertEquals(0, switched.coPerCigarette().compareTo(new BigDecimal("14.0")));
+    }
+
+    @Test
+    void rejectsUnknownCigaretteTypeAndOutOfRangeMagnitudes() {
+        long userId = createUser();
+        QuitSmokingService svc = service(userId);
+
+        assertThrows(IllegalArgumentException.class, () -> svc.updateSettings(
+                new QuitSmokingSettingsUpdate(null, null, null, null, null, null, "hookah", null, null), null));
+        assertThrows(IllegalArgumentException.class, () -> svc.updateSettings(
+                new QuitSmokingSettingsUpdate(null, null, null, null, null, null, "regular",
+                        new BigDecimal("101"), null), null));
+    }
+
+    @Test
+    void summaryCarriesRecoveryMilestones() {
+        long userId = createUser();
+        QuitSmokingService svc = service(userId);
+        LocalDate today = LocalDate.now(ZONE);
+        svc.updateSettings(new QuitSmokingSettingsUpdate(today.minusDays(3) + "T00:00:00Z", "Asia/Shanghai",
+                20, new BigDecimal("20.00"), 20, "CNY", "regular", new BigDecimal("11.0"),
+                new BigDecimal("12.0")), null);
+
+        QuitSmokingSummary summary = svc.summary();
+
+        assertTrue(summary.recovery().totalCount() >= 10);
+        assertTrue(summary.recovery().reachedCount() >= 1, "已戒烟 4 天，至少应先跨过 20 分钟与 12 小时节点");
+        assertFalse(summary.recovery().milestones().isEmpty());
+        assertTrue(summary.recovery().milestones().stream().anyMatch(item -> item.reached()));
+        assertFalse(summary.recovery().encouragement().isBlank());
+    }
+
+    @Test
+    void deleteCravingHidesItFromLists() {        long userId = createUser();
         QuitSmokingService svc = service(userId);
         QuitSmokingCraving created = svc.createCraving(
                 new QuitSmokingCravingCreate(null, 3, true, "", ""), null);

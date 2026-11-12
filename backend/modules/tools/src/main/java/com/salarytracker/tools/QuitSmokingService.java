@@ -10,8 +10,10 @@ import com.salarytracker.tools.ToolsModels.QuitSmokingCravingCreate;
 import com.salarytracker.tools.ToolsModels.QuitSmokingCravingUpdate;
 import com.salarytracker.tools.ToolsModels.QuitSmokingDay;
 import com.salarytracker.tools.ToolsModels.QuitSmokingDayUpdate;
+import com.salarytracker.tools.ToolsModels.QuitSmokingRecovery;
 import com.salarytracker.tools.ToolsModels.QuitSmokingSettings;
 import com.salarytracker.tools.ToolsModels.QuitSmokingSettingsUpdate;
+import com.salarytracker.tools.ToolsModels.QuitSmokingSubstance;
 import com.salarytracker.tools.ToolsModels.QuitSmokingSummary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -61,21 +63,24 @@ public class QuitSmokingService {
         long userId = currentUser.id();
         List<QuitSmokingSettings> rows = jdbc.query(
                 "SELECT public_id,start_at,timezone,baseline_per_day,price_per_pack,cigarettes_per_pack," +
-                        "currency,revision FROM quit_smoking_setting WHERE user_id=?",
+                        "currency,cigarette_type,tar_per_cigarette,co_per_cigarette,revision " +
+                        "FROM quit_smoking_setting WHERE user_id=?",
                 (row, index) -> settings(row), userId);
         if (!rows.isEmpty()) return rows.get(0);
+        CigaretteTypes.Preset preset = CigaretteTypes.preset(CigaretteTypes.DEFAULT_KEY).orElseThrow();
         return new QuitSmokingSettings("", Instant.now().toString(), timezone(userId), 20,
-                BigDecimal.ZERO, 20, "CNY", false, 0);
+                BigDecimal.ZERO, 20, "CNY", preset.key(), preset.tarMg(), preset.coMg(), false, 0);
     }
 
     @Transactional
     public QuitSmokingSettings updateSettings(QuitSmokingSettingsUpdate body, String ifMatch) {
         long userId = currentUser.id();
         QuitSmokingSettingsUpdate command = body == null
-                ? new QuitSmokingSettingsUpdate(null, null, null, null, null, null) : body;
+                ? new QuitSmokingSettingsUpdate(null, null, null, null, null, null, null, null, null) : body;
         List<QuitSmokingSettings> rows = jdbc.query(
                 "SELECT public_id,start_at,timezone,baseline_per_day,price_per_pack,cigarettes_per_pack," +
-                        "currency,revision FROM quit_smoking_setting WHERE user_id=?",
+                        "currency,cigarette_type,tar_per_cigarette,co_per_cigarette,revision " +
+                        "FROM quit_smoking_setting WHERE user_id=?",
                 (row, index) -> settings(row), userId);
         QuitSmokingSettings current = rows.isEmpty() ? null : rows.get(0);
 
@@ -100,16 +105,32 @@ public class QuitSmokingService {
                 : between(command.cigarettesPerPack(), 1, 100, "每包支数");
         String currency = command.currency() == null || command.currency().isBlank()
                 ? (current == null ? "CNY" : current.currency()) : currency(command.currency());
+        // 种类只是预设来源：没给每支含量时按种类预设回填，给了就以便用用户填的为准。
+        CigaretteTypes.Preset fallback = CigaretteTypes.preset(CigaretteTypes.DEFAULT_KEY).orElseThrow();
+        String type = command.cigaretteType() == null || command.cigaretteType().isBlank()
+                ? (current == null ? fallback.key() : current.cigaretteType())
+                : cigaretteType(command.cigaretteType());
+        CigaretteTypes.Preset preset = CigaretteTypes.preset(type).orElse(null);
+        BigDecimal tar = command.tarPerCigarette() == null
+                ? (preset != null ? preset.tarMg()
+                        : (current == null ? fallback.tarMg() : current.tarPerCigarette()))
+                : quantity(command.tarPerCigarette(), "每支焦油量");
+        BigDecimal co = command.coPerCigarette() == null
+                ? (preset != null ? preset.coMg()
+                        : (current == null ? fallback.coMg() : current.coPerCigarette()))
+                : quantity(command.coPerCigarette(), "每支一氧化碳量");
 
         if (current == null) {
             jdbc.update("INSERT INTO quit_smoking_setting(public_id,user_id,start_at,timezone,baseline_per_day," +
-                            "price_per_pack,cigarettes_per_pack,currency) VALUES(?,?,?,?,?,?,?,?)",
+                            "price_per_pack,cigarettes_per_pack,currency,cigarette_type,tar_per_cigarette," +
+                            "co_per_cigarette) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                     UUID.randomUUID().toString(), userId, Timestamp.from(startAt), zone, baseline, price, perPack,
-                    currency);
+                    currency, type, tar, co);
         } else {
             jdbc.update("UPDATE quit_smoking_setting SET start_at=?,timezone=?,baseline_per_day=?,price_per_pack=?," +
-                            "cigarettes_per_pack=?,currency=?,revision=revision+1 WHERE user_id=?",
-                    Timestamp.from(startAt), zone, baseline, price, perPack, currency, userId);
+                            "cigarettes_per_pack=?,currency=?,cigarette_type=?,tar_per_cigarette=?," +
+                            "co_per_cigarette=?,revision=revision+1 WHERE user_id=?",
+                    Timestamp.from(startAt), zone, baseline, price, perPack, currency, type, tar, co, userId);
         }
         return settings();
     }
@@ -290,7 +311,6 @@ public class QuitSmokingService {
                 QuitSmokingSummaryCalculator.totals(start, today, smokedByDay);
         BigDecimal saved = QuitSmokingSummaryCalculator.savedAmount(totals, settings.baselinePerDay(),
                 settings.pricePerPack(), settings.cigarettesPerPack());
-
         List<QuitSmokingCraving> todayItems = jdbc.query(
                 "SELECT public_id,occurred_at,day_date,intensity,resisted,trigger_key,note,revision " +
                         "FROM quit_smoking_craving WHERE user_id=? AND day_date=? AND deleted_at IS NULL " +
@@ -304,11 +324,24 @@ public class QuitSmokingService {
                         userId, java.sql.Date.valueOf(today))
                 .stream().findFirst().orElse(null);
 
+        int todaySmoked = todayRecord == null ? 0 : todayRecord.smokedCount();
+        QuitSmokingSubstance substance = substance(settings, totals, todaySmoked);
+        QuitSmokingRecovery recovery = QuitSmokingMilestones.recovery(Instant.parse(settings.startAt()),
+                Instant.now());
+
         return new QuitSmokingSummary(settings.startAt(), totals.elapsedDays(), totals.cleanDays(),
                 totals.currentStreak(), totals.longestStreak(), totals.totalSmoked(), saved, settings.currency(),
-                today.toString(), todayRecord == null ? 0 : todayRecord.smokedCount(), todayItems.size(),
+                today.toString(), todaySmoked, todayItems.size(),
                 resistedCount, todayRecord != null, settings.revision(),
-                todayRecord == null ? 0 : todayRecord.revision(), todayItems);
+                todayRecord == null ? 0 : todayRecord.revision(), todayItems, substance, recovery);
+    }
+
+    private QuitSmokingSubstance substance(QuitSmokingSettings settings, QuitSmokingSummaryCalculator.Totals totals,
+                                           int todaySmoked) {
+        QuitSmokingSummaryCalculator.Substance value = QuitSmokingSummaryCalculator.substance(totals,
+                settings.baselinePerDay(), settings.tarPerCigarette(), settings.coPerCigarette(), todaySmoked);
+        return new QuitSmokingSubstance(settings.cigaretteType(), value.tarPerCigarette(), value.coPerCigarette(),
+                value.todayTarMg(), value.todayCoMg(), value.avoidedTarMg(), value.avoidedCoMg());
     }
 
     // ------------------------------------------------------------------ helpers
@@ -317,7 +350,9 @@ public class QuitSmokingService {
         return new QuitSmokingSettings(row.getString("public_id"),
                 row.getTimestamp("start_at").toInstant().toString(), row.getString("timezone"),
                 row.getInt("baseline_per_day"), row.getBigDecimal("price_per_pack"),
-                row.getInt("cigarettes_per_pack"), row.getString("currency"), true, row.getLong("revision"));
+                row.getInt("cigarettes_per_pack"), row.getString("currency"),
+                row.getString("cigarette_type"), row.getBigDecimal("tar_per_cigarette"),
+                row.getBigDecimal("co_per_cigarette"), true, row.getLong("revision"));
     }
 
     private QuitSmokingCraving craving(ResultSet row) throws SQLException {
@@ -413,6 +448,23 @@ public class QuitSmokingService {
         String value = text(raw, 8, "币种").toUpperCase();
         if (!value.matches("[A-Z]{3}")) throw new IllegalArgumentException("币种需要是三位字母代码");
         return value;
+    }
+
+    private String cigaretteType(String raw) {
+        String value = text(raw, 32, "香烟种类").toLowerCase();
+        if (!CigaretteTypes.isKnown(value)) {
+            throw new IllegalArgumentException("香烟种类不支持，可选值见设置页");
+        }
+        return value;
+    }
+
+    /** 每支焦油/一氧化碳量，单位 mg，保留一位小数。 */
+    private BigDecimal quantity(BigDecimal value, String label) {
+        if (value == null) return BigDecimal.ZERO.setScale(1, java.math.RoundingMode.HALF_UP);
+        if (value.signum() < 0 || value.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new IllegalArgumentException(label + "需要在 0 到 100 之间");
+        }
+        return value.setScale(1, java.math.RoundingMode.HALF_UP);
     }
 
     private String text(String raw, int max, String label) {

@@ -78,11 +78,44 @@ public final class QuitSmokingSummaryCalculator {
                 .divide(BigDecimal.valueOf(cigarettesPerPack), 2, RoundingMode.HALF_UP);
     }
 
+    /**
+     * 焦油与一氧化碳口径：
+     * <ul>
+     *   <li>「今天吸入」= 今天吸烟支数 × 每支含量；</li>
+     *   <li>「累计少吸入」=（基线日消耗 × 已戒烟天数 − 实际吸掉的支数）× 每支含量，
+     *       吸得比基线更多时返回负数，与省钱额的约定一致。</li>
+     * </ul>
+     * 每支含量为 0（例如电子烟）时所有结果都是 0，不做特殊处理。
+     */
+    public static Substance substance(Totals totals, int baselinePerDay, BigDecimal tarPerCigarette,
+                                      BigDecimal coPerCigarette, int todaySmoked) {
+        BigDecimal tar = perCigarette(tarPerCigarette);
+        BigDecimal co = perCigarette(coPerCigarette);
+        int elapsedDays = totals == null ? 0 : totals.elapsedDays();
+        int totalSmoked = totals == null ? 0 : totals.totalSmoked();
+        long avoidedCount = (long) elapsedDays * Math.max(0, baselinePerDay) - totalSmoked;
+        int today = Math.max(0, todaySmoked);
+        return new Substance(tar, co,
+                tar.multiply(BigDecimal.valueOf(today)).setScale(1, RoundingMode.HALF_UP),
+                co.multiply(BigDecimal.valueOf(today)).setScale(1, RoundingMode.HALF_UP),
+                tar.multiply(BigDecimal.valueOf(avoidedCount)).setScale(1, RoundingMode.HALF_UP),
+                co.multiply(BigDecimal.valueOf(avoidedCount)).setScale(1, RoundingMode.HALF_UP));
+    }
+
+    private static BigDecimal perCigarette(BigDecimal value) {
+        if (value == null || value.signum() < 0) return BigDecimal.ZERO.setScale(1, RoundingMode.HALF_UP);
+        return value.setScale(1, RoundingMode.HALF_UP);
+    }
+
     private static int smoked(LocalDate day, Map<LocalDate, Integer> smokedByDay) {
         Integer count = smokedByDay.get(day);
         return count == null ? 0 : Math.max(0, count);
     }
 
     public record Totals(int elapsedDays, int cleanDays, int currentStreak, int longestStreak, int totalSmoked) {
+    }
+
+    public record Substance(BigDecimal tarPerCigarette, BigDecimal coPerCigarette, BigDecimal todayTarMg,
+                            BigDecimal todayCoMg, BigDecimal avoidedTarMg, BigDecimal avoidedCoMg) {
     }
 }

@@ -120,4 +120,50 @@ class QuitSmokingSummaryCalculatorTest {
         assertEquals(0, QuitSmokingSummaryCalculator
                 .savedAmount(totals, 20, new BigDecimal("20.00"), 0).signum());
     }
+
+    @Test
+    void substanceMultipliesPerCigaretteValuesByTodayCount() {
+        QuitSmokingSummaryCalculator.Totals totals =
+                QuitSmokingSummaryCalculator.totals(START, LocalDate.of(2026, 11, 5), Map.of());
+
+        QuitSmokingSummaryCalculator.Substance substance = QuitSmokingSummaryCalculator.substance(
+                totals, 20, new BigDecimal("11.0"), new BigDecimal("12.0"), 3);
+
+        assertEquals(new BigDecimal("33.0"), substance.todayTarMg());
+        assertEquals(new BigDecimal("36.0"), substance.todayCoMg());
+        // 基线 20 × 5 天 = 100 支，实际 0 → 少吸 100 支
+        assertEquals(new BigDecimal("1100.0"), substance.avoidedTarMg());
+        assertEquals(new BigDecimal("1200.0"), substance.avoidedCoMg());
+    }
+
+    @Test
+    void substanceGoesNegativeWhenSmokingMoreThanBaseline() {
+        Map<LocalDate, Integer> smoked = Map.of(LocalDate.of(2026, 11, 5), 40);
+        QuitSmokingSummaryCalculator.Totals totals =
+                QuitSmokingSummaryCalculator.totals(START, LocalDate.of(2026, 11, 5), smoked);
+
+        QuitSmokingSummaryCalculator.Substance substance = QuitSmokingSummaryCalculator.substance(
+                totals, 5, new BigDecimal("11.0"), new BigDecimal("12.0"), 40);
+
+        // 基线 25 支，实际 40 支 → 多吸 15 支
+        assertEquals(new BigDecimal("-165.0"), substance.avoidedTarMg());
+        assertEquals(new BigDecimal("-180.0"), substance.avoidedCoMg());
+        assertEquals(new BigDecimal("440.0"), substance.todayTarMg());
+    }
+
+    @Test
+    void substanceIsZeroForElectronicCigaretteAndClampsNegativePerCigarette() {
+        QuitSmokingSummaryCalculator.Totals totals =
+                QuitSmokingSummaryCalculator.totals(START, LocalDate.of(2026, 11, 5), Map.of());
+
+        QuitSmokingSummaryCalculator.Substance zero = QuitSmokingSummaryCalculator.substance(
+                totals, 20, BigDecimal.ZERO, BigDecimal.ZERO, 5);
+        assertEquals(0, zero.todayTarMg().signum());
+        assertEquals(0, zero.avoidedCoMg().signum());
+
+        QuitSmokingSummaryCalculator.Substance clamped = QuitSmokingSummaryCalculator.substance(
+                totals, 20, new BigDecimal("-5.0"), null, 2);
+        assertEquals(0, clamped.tarPerCigarette().signum());
+        assertEquals(0, clamped.todayTarMg().signum());
+    }
 }
