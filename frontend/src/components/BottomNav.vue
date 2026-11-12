@@ -55,7 +55,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Calendar, DataAnalysis, Delete, Document, Grid, List, Management, MoreFilled, Setting, SortDown, SortUp, Tickets, Timer, User, Wallet, Close } from '../icons.js'
-import { ledgerNavigation, navigationItemIsActive, taskNavigation, worktimeNavigation } from '../config/moduleNavigation.js'
+import { Calculator, CalendarRange, CigaretteOff, Link2, ReceiptText } from 'lucide-vue-next'
+import { ledgerNavigation, navigationItemIsActive, taskNavigation, toolsNavigation, worktimeNavigation } from '../config/moduleNavigation.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -67,12 +68,13 @@ const itemIcons = {
   punch: Timer, records: Calendar, stats: DataAnalysis,
   overview: Grid, transactions: Tickets, accounts: Wallet, reports: DataAnalysis,
   scheduled: Timer, manage: Management, members: User, recycle: Delete, audit: Document,
-  task: List, habits: Management, calendar: Calendar, focus: Timer, countdowns: Timer
+  task: List, habits: Management, calendar: Calendar, focus: Timer, countdowns: Timer,
+  mortgage: Calculator, tax: ReceiptText, date: CalendarRange, quit: CigaretteOff, douyin: Link2
 }
 
-const moduleKey = computed(() => route.path === '/calendar' ? 'calendar' : route.path.startsWith('/ledger') ? 'ledger' : route.path.startsWith('/tasks') ? 'tasks' : route.path === '/settings' ? 'settings' : 'worktime')
-const moduleLabel = computed(() => moduleKey.value === 'ledger' ? '账本' : moduleKey.value === 'tasks' ? '任务' : moduleKey.value === 'worktime' ? '工时' : '设置')
-const moduleItems = computed(() => moduleKey.value === 'ledger' ? ledgerNavigation : moduleKey.value === 'tasks' ? taskNavigation : moduleKey.value === 'worktime' ? worktimeNavigation : [])
+const moduleKey = computed(() => route.path === '/calendar' ? 'calendar' : route.path.startsWith('/ledger') ? 'ledger' : route.path.startsWith('/tasks') ? 'tasks' : route.path.startsWith('/tools') ? 'tools' : route.path === '/settings' ? 'settings' : 'worktime')
+const moduleLabel = computed(() => moduleKey.value === 'ledger' ? '账本' : moduleKey.value === 'tasks' ? '任务' : moduleKey.value === 'tools' ? '工具箱' : moduleKey.value === 'worktime' ? '工时' : '设置')
+const moduleItems = computed(() => moduleKey.value === 'ledger' ? ledgerNavigation : moduleKey.value === 'tasks' ? taskNavigation : moduleKey.value === 'tools' ? toolsNavigation : moduleKey.value === 'worktime' ? worktimeNavigation : [])
 const orderKeys = ref([])
 const storageKey = computed(() => `workspace_mobile_${moduleKey.value}_nav_order_v1`)
 

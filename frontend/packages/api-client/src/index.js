@@ -348,3 +348,29 @@ export const apiImportLedgerConfirm = async (bookId, batchId) => data(await ledg
 export async function apiDownloadLedgerExport(bookId, format = 'xlsx', params = {}) {
   return (await ledger.exportLedgerTransactions({ bookId, format, ...params }, { responseType: 'blob', timeout: 600_000 })).data
 }
+
+// ---------------------------------------------------------------- 工具箱
+// 说明：工具箱接口暂未进入 packages/api-client/openapi.json 快照，这里按既有
+// 「apiUpdateTaskSettings」的做法直接用 axios 实例封装，等快照刷新后可替换为生成客户端。
+export const apiGetQuitSmokingSettings = async () => data(await api.get('/api/v1/tools/quit-smoking/settings'))
+export const apiUpdateQuitSmokingSettings = async (payload, currentRevision) =>
+  data(await api.put('/api/v1/tools/quit-smoking/settings', payload,
+    { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiListQuitSmokingDays = async (params = {}) =>
+  data(await api.get('/api/v1/tools/quit-smoking/days', { params }))
+export const apiPutQuitSmokingDay = async (date, payload, currentRevision) =>
+  data(await api.put(`/api/v1/tools/quit-smoking/days/${date}`, payload,
+    { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiListQuitSmokingCravings = async (params = {}) =>
+  data(await api.get('/api/v1/tools/quit-smoking/cravings', { params }))
+export const apiCreateQuitSmokingCraving = async (payload, idempotencyKey) =>
+  data(await api.post('/api/v1/tools/quit-smoking/cravings', payload,
+    { headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {} }))
+export const apiUpdateQuitSmokingCraving = async (id, payload, currentRevision) =>
+  data(await api.put(`/api/v1/tools/quit-smoking/cravings/${id}`, payload,
+    { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiDeleteQuitSmokingCraving = async (id, currentRevision) =>
+  data(await api.delete(`/api/v1/tools/quit-smoking/cravings/${id}`,
+    { headers: { 'If-Match': revision(currentRevision) } }))
+export const apiGetQuitSmokingSummary = async () => data(await api.get('/api/v1/tools/quit-smoking/summary'))
+export const apiResolveDouyinLink = async url => data(await api.post('/api/v1/tools/douyin/resolve', { url }))

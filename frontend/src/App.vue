@@ -20,6 +20,7 @@
           <button class="top-text-button" type="button" :aria-label="store.theme === 'dark' ? '切换为亮色模式' : '切换为暗色模式'" :title="store.theme === 'dark' ? '切换为亮色模式' : '切换为暗色模式'" @click="store.toggleTheme()"><Sun v-if="store.theme === 'dark'" aria-hidden="true" /><Moon v-else aria-hidden="true" /></button>
           <router-link class="top-text-button notification-link" to="/tasks/inbox-notify" aria-label="任务提醒" title="任务提醒"><Bell aria-hidden="true" /><span>提醒</span><b v-if="taskInbox.unread" class="notification-badge">{{ taskInbox.unread > 99 ? '99+' : taskInbox.unread }}</b></router-link>
           <router-link class="top-text-button" to="/approvals" aria-label="审批中心" title="审批中心"><ShieldCheck aria-hidden="true" /><span>审批</span></router-link>
+          <router-link class="top-text-button" to="/tools/mortgage" aria-label="工具箱" title="工具箱"><Wrench aria-hidden="true" /><span>工具箱</span></router-link>
           <router-link class="top-text-button" to="/settings" aria-label="设置" title="设置"><Setting aria-hidden="true" /><span>设置</span></router-link>
           <span class="workspace-avatar" aria-label="当前用户">{{ userInitial }}</span>
         </div>
@@ -39,8 +40,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowLeft, House, Setting } from './icons.js'
-import { Bell, Moon, ShieldCheck, Sun, Timer } from 'lucide-vue-next'
-import { ledgerNavigation, navigationItemIsActive, taskNavigation, worktimeNavigation } from './config/moduleNavigation.js'
+import { Bell, Moon, ShieldCheck, Sun, Timer, Wrench } from 'lucide-vue-next'
+import { ledgerNavigation, navigationItemIsActive, taskNavigation, toolsNavigation, worktimeNavigation } from './config/moduleNavigation.js'
 import { useAppStore } from './stores/app'
 import { useWorktimeStore } from './stores/worktime.js'
 import { useTaskInboxStore } from './stores/taskInbox.js'
@@ -65,16 +66,19 @@ const route = useRoute()
 // 首页画布与独立的 AI 对话页都按整屏无内边距渲染，且不显示底部导航与悬浮助手。
 const isHome = computed(() => route.path === '/' || route.path.startsWith('/agent/'))
 const taskWorkspaceRoutes = new Set(['tasks-inbox', 'tasks-today', 'tasks-tomorrow', 'tasks-next7', 'tasks-board', 'tasks-timeline', 'tasks-filter', 'tasks-shortcut', 'tasks-all', 'tasks-completed', 'tasks-abandoned', 'tasks-trash', 'tasks-list', 'tasks-group', 'tasks-tag', 'tasks-search'])
-const routerViewKey = computed(() => taskWorkspaceRoutes.has(route.name) ? route.path : route.fullPath)
+const routerViewKey = computed(() => route.path.startsWith('/tools')
+  ? '/tools'
+  : taskWorkspaceRoutes.has(route.name) ? route.path : route.fullPath)
 const navigationLoading = ref(false)
 let navigationFinishTimer
 let navigationSafetyTimer
 const userInitial = computed(() => String(store.authUser?.nickname || store.authUser?.username || '我').slice(0, 1))
 const isLedger = computed(() => route.path.startsWith('/ledger'))
 const isTasks = computed(() => route.path.startsWith('/tasks'))
+const isTools = computed(() => route.path.startsWith('/tools'))
 const isExternalFlow = computed(() => route.path === '/oauth/consent' || route.path === '/mcp/actions/confirm')
-const moduleLabel = computed(() => route.path === '/calendar' ? '日历' : isLedger.value ? '账本' : isTasks.value ? '任务' : route.path.startsWith('/approvals') ? '审批中心' : route.path === '/settings' ? '设置' : isExternalFlow.value ? '外部授权' : '工时')
-const moduleNav = computed(() => route.path === '/calendar' ? [] : isLedger.value ? ledgerNavigation : isTasks.value ? taskNavigation.map(item => item.view ? { ...item, to: { path: route.path, query: { ...route.query, workspaceView: item.view } } } : item) : route.path === '/settings' || route.path.startsWith('/approvals') || isExternalFlow.value ? [] : worktimeNavigation)
+const moduleLabel = computed(() => route.path === '/calendar' ? '日历' : isLedger.value ? '账本' : isTasks.value ? '任务' : isTools.value ? '工具箱' : route.path.startsWith('/approvals') ? '审批中心' : route.path === '/settings' ? '设置' : isExternalFlow.value ? '外部授权' : '工时')
+const moduleNav = computed(() => route.path === '/calendar' ? [] : isLedger.value ? ledgerNavigation : isTasks.value ? taskNavigation.map(item => item.view ? { ...item, to: { path: route.path, query: { ...route.query, workspaceView: item.view } } } : item) : isTools.value ? toolsNavigation : route.path === '/settings' || route.path.startsWith('/approvals') || isExternalFlow.value ? [] : worktimeNavigation)
 function isNavActive(item) { if (item.view) return route.path === item.to.path && route.query.workspaceView === item.view; return item.key === 'task' && route.query.workspaceView ? false : navigationItemIsActive(route, item) }
 function onGlobalKeydown(event) {
   if (!route.path.startsWith('/tasks') || event.defaultPrevented) return

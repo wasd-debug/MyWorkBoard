@@ -48,6 +48,9 @@ const routes = [
   { path: '/ledger/reports', name: 'ledger-reports', component: () => import('../views/LedgerReportsView.vue'), meta: { title: '账本报表' } },
   { path: '/ledger/scheduled-tasks', name: 'ledger-scheduled-tasks', component: () => import('../views/LedgerScheduledTasksView.vue'), meta: { title: '定时任务' } },
   { path: '/ledger/manage', name: 'ledger-manage', component: () => import('../views/LedgerManagementView.vue'), meta: { title: '账本管理' } },
+  { path: '/tools', redirect: '/tools/mortgage' },
+  { path: '/tools/:tool(mortgage|tax|date|quit|douyin)', name: 'tools', component: () => import('../views/ToolsView.vue'), meta: { title: '工具箱' } },
+  { path: '/tools/:pathMatch(.*)*', redirect: '/tools/mortgage' },
   { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue'), meta: { title: '设置' } }
 ]
 

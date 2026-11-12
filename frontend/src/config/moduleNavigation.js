@@ -31,6 +31,15 @@ export const taskNavigation = [
   { key: 'settings', to: '/tasks/app-settings', label: '设置' }
 ]
 
+// 工具箱：纯计算工具 + 两个需要后端的工具（戒烟日记、抖音链接还原）
+export const toolsNavigation = [
+  { key: 'mortgage', to: '/tools/mortgage', label: '房贷' },
+  { key: 'tax', to: '/tools/tax', label: '个税' },
+  { key: 'date', to: '/tools/date', label: '日期' },
+  { key: 'quit', to: '/tools/quit', label: '戒烟' },
+  { key: 'douyin', to: '/tools/douyin', label: '抖音' }
+]
+
 export function navigationItemIsActive(route, item) {
   if (item.activePrefix && (route.path === item.activePrefix || route.path.startsWith(`${item.activePrefix}/`))) {
     return !(item.activeExclude || []).some(path => route.path === path || route.path.startsWith(`${path}/`))

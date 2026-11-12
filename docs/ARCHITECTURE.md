@@ -1067,3 +1067,50 @@ Agent 普通请求与 SSE 均持久化结构化响应。查询历史 assistant �
 修法是补一条「事后同步」：`propagateChecklistToNextInstance()` 在当前实例检查项变化后（以及完成时命中已存在实例的分支里），把内容补给**还没有任何检查项**的下一实例，同时推高它的 `revision` 并写 `task_sync_oplog`——不写同步日志各端拉不到这次变更。下一实例已经有检查项时一律不覆盖，避免冲掉用户手工加的内容。
 
 一个测试环境上的坑：`scanDueRecurrences` 依赖 MySQL 的 `CURRENT_TIMESTAMP`，测试容器是 UTC 而 JVM 是 +08，直接调用它匹配不到任何行（看起来像「扫描没生效」）。回归测试里用 `insertPreGeneratedNext()` 直接插一条等价的任务行来模拟预生成，不要依赖扫描器。
+
+## 工具箱模块 `modules/tools`（2026-11-12）
+
+工具箱是 `modules/` 下的第七个物理模块（与 platform / identity / worktime / ledger / task / ai 并列），
+对外只暴露 `/api/v1/tools/**`。它刻意保持"薄"：除戒烟日记要跨端持久化之外，
+其余四个工具（房贷、个税、日期、抖音链接提取）都是浏览器内纯计算，后端不参与。
+
+| 关注点 | 落地方式 |
+|---|---|
+| 模块边界 | `@ApplicationModule(displayName = "Tools", allowedDependencies = {"platform", "identity"})`；`ArchitectureBoundaryTest.assertModuleOwns("tools")` 守住归属，禁止反向依赖 task/ledger |
+| 表结构 | V62：`quit_smoking_setting` / `quit_smoking_day` / `quit_smoking_craving`，三表都带 `user_id`，`(user_id, day_date)` 唯一 |
+| 权限 | `tools:read` / `tools:write`，方法级 `@PreAuthorize`；迁移里同时授予 `ADMIN`、`USER` |
+| 并发 | 写入口用 `If-Match` 携带 revision，冲突返回 409；渴望登记用 `idempotency_key` 表存首次响应 |
+| 时区 | 「今天」由服务端按账号时区判定（`summary.todayDate`），客户端不自己算日期，避免跨零点/跨时区错一天 |
+| 汇总口径 | `QuitSmokingSummaryCalculator` 纯函数：`totals()` 给已戒烟天数/连续/最长/累计支数，`savedAmount()` 给省钱额；前端同名计算只作乐观展示 |
+
+`days` / `cravings` 的查询区间上限 366 天，`days` 默认最近 90 天、`cravings` 默认最近 30 天；
+`putDay()` 允许补录过去但拒绝未来日期（`today.plusDays(1)` 之后一律 400）。
+
+### 抖音短链还原的 SSRF 边界
+
+这是全站第一个"服务端主动访问用户给的 URL"的入口，防线分四层，任何一层都不能省：
+
+1. **域名白名单**（`DouyinUrlGuard.ALLOWED_HOSTS`）：只认 `douyin.com` / `www.douyin.com` / `v.douyin.com` /
+   `iesdouyin.com` / `www.iesdouyin.com`；拒绝 userinfo（`user@host`）、`%` 编码 host、IP 字面量、非 80/443 端口。
+2. **逐跳重校验**：`followRedirects(NEVER)`，拿到 `Location` 后先 `validate(current.resolve(location))` 再发下一跳。
+   只校验入口 URL 是最常见的绕过点——入口合法、第二跳指向内网即可。
+3. **DNS 落地判定**：`assertPublicHost()` 对 `InetAddress.getAllByName()` 的**全部**结果判私网
+   （`0/8`、`10/8`、`127`、`100.64/10`、`169.254/16`、`172.16/12`、`192.168/16`、`>=224`、`::1`、`fc00::/7`、`fe80::/10`、
+   IPv4-mapped），任一命中即 502 `UPSTREAM_UNAVAILABLE`；解析失败同样按不可达处理。
+4. **不读响应体 + 预算**：`BodyHandlers.discarding()`，只取状态码和 `Location`；HEAD 遇 405/501 退回 `GET` + `Range: bytes=0-0`；
+   总预算 5s、最多 4 次请求（入口 + 3 跳），每用户 10 次/分钟（`ToolsRateLimiter`，超限 429 `RATE_LIMITED`）。
+
+链路结果返回 `hops[]`（实际走过的每一跳）、`videoId`、`resolved` 与 `reason`，前端把它原样展示成"跳转链路"，
+失败不猜原因。`DouyinHttpClient` 是接口，`DouyinLinkResolverTest` 用它注入假响应覆盖跳数上限、跨域跳转、
+404/410、200 无 `Location`、相对 `Location` 等分支，不需要真实外网。
+
+新增能力若要复用这套防线，请注入同一个 `DouyinHostChecker` / `DouyinUrlGuard`，不要另写一份白名单。
+
+### 前端组织
+
+`/tools/:tool` 是单路由（`mortgage|tax|date|quit|douyin`），`App.vue` 的 `routerViewKey` 对 `/tools` 固定为 `/tools`，
+所以切工具只是换面板组件、不整页重挂载。五个工具页签由 `ToolsView.vue` 的 `tools` 数组驱动，
+顶栏入口与底栏图标分别改 `App.vue` 的 `moduleNav` 与 `BottomNav.vue` 的 `moduleItems`（两处都要加，漏一处就只在一种屏宽下可见）。
+
+计算逻辑全部抽成无 Vue 依赖的纯函数（`components/tools/*.js`），面板只做输入绑定与展示，因此单测可以直接 `node --test`。
+金额一律用整数分推进，末期吸收舍入残差，保证 `Σ本金 = 贷款额` 且末月余额为 0——浮点月供列表最后差几分钱是最容易被用户抓到的缺陷。
