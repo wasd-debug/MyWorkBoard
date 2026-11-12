@@ -1,5 +1,7 @@
 package com.salarytracker.identity;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.salarytracker.platform.UnauthorizedException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
@@ -13,10 +15,12 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -27,13 +31,24 @@ public class AuthService {
     private final JwtService jwtService;
     private final long refreshTtlSeconds;
     private final SecureRandom secureRandom = new SecureRandom();
+    /**
+     * 每个带 Bearer 的请求都要取一次身份（三张表 JOIN）。缓存 TTL 就是「改角色/禁用账号后
+     * 最晚多久生效」的上限，默认 30 秒。缓存值为 Optional 是为了把「用户不存在/已禁用」也缓存住，
+     * 避免无效令牌反复打库。登录、注册、刷新这些低频且要求读到最新状态的路径走 loadUserFresh。
+     */
+    private final Cache<Long, Optional<CurrentUser>> userCache;
 
     public AuthService(JdbcTemplate jdbcTemplate, PasswordEncoder passwordEncoder, JwtService jwtService,
-                       @Value("${app.jwt.refresh-ttl:2592000}") long refreshTtlSeconds) {
+                       @Value("${app.jwt.refresh-ttl:2592000}") long refreshTtlSeconds,
+                       @Value("${app.auth.user-cache-ttl-seconds:30}") long userCacheTtlSeconds) {
         this.jdbcTemplate = jdbcTemplate;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.refreshTtlSeconds = refreshTtlSeconds;
+        this.userCache = Caffeine.newBuilder()
+                .maximumSize(10_000)
+                .expireAfterWrite(Duration.ofSeconds(Math.max(1, userCacheTtlSeconds)))
+                .build();
     }
 
     @Transactional
@@ -100,23 +115,38 @@ public class AuthService {
         jdbcTemplate.update("UPDATE app_user SET password_hash = ? WHERE id = ?", passwordEncoder.encode(newPassword), user.id());
     }
 
+    /** 请求链路用：命中缓存时不回库。 */
     public CurrentUser loadUser(long id) {
+        return userCache.get(id, this::queryUser).orElse(null);
+    }
+
+    /** 登录/注册/刷新用：必须读到提交后的真实状态，不写缓存也不读缓存。 */
+    public CurrentUser loadUserFresh(long id) {
+        return queryUser(id).orElse(null);
+    }
+
+    /** 管理侧改动角色或禁用账号后可直接调用，让变更立即生效而不必等 TTL 到期。 */
+    public void invalidateUser(long id) {
+        userCache.invalidate(id);
+    }
+
+    private Optional<CurrentUser> queryUser(long id) {
         List<AuthorityRow> rows = jdbcTemplate.query("SELECT u.id, u.username, u.nickname, r.code role_code, p.code permission_code FROM app_user u JOIN user_role ur ON ur.user_id = u.id JOIN role r ON r.id = ur.role_id LEFT JOIN role_permission rp ON rp.role_id = r.id LEFT JOIN permission p ON p.id = rp.permission_id WHERE u.id = ? AND u.status = 'ACTIVE'",
                 (result, rowNum) -> new AuthorityRow(result.getLong("id"), result.getString("username"),
                         result.getString("nickname"), result.getString("role_code"),
                         result.getString("permission_code")), id);
-        if (rows.isEmpty()) return null;
+        if (rows.isEmpty()) return Optional.empty();
         AuthorityRow first = rows.get(0);
         Set<String> authorities = new HashSet<>();
         for (AuthorityRow row : rows) {
             if (row.roleCode() != null) authorities.add("ROLE_" + row.roleCode());
             if (row.permissionCode() != null) authorities.add(row.permissionCode());
         }
-        return new CurrentUser(id, first.username(), first.nickname(), authorities);
+        return Optional.of(new CurrentUser(id, first.username(), first.nickname(), Set.copyOf(authorities)));
     }
 
     private AuthTokens issue(long userId, String username, String nickname, String device) {
-        CurrentUser user = loadUser(userId);
+        CurrentUser user = loadUserFresh(userId);
         if (user == null) throw new UnauthorizedException("用户不可用");
         String refresh = randomToken();
         jdbcTemplate.update("INSERT INTO refresh_token (user_id, token_hash, device, expires_at) VALUES (?, ?, ?, ?)",

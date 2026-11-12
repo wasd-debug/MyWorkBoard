@@ -16,5 +16,10 @@
             <artifactId>salary-tracker-platform</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- 每个请求都要取一次身份，缓存 30 秒省掉这条三表 JOIN；单实例无需 Redis -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
     </dependencies>
 </project>
