@@ -155,7 +155,13 @@ public class AgentTurnService {
         turns.requeueInterrupted();
     }
 
-    @Scheduled(fixedDelayString = "${app.agent.queue-recovery-ms:5000}")
+    /**
+     * 兜底扫描：入队路径本身已经事件驱动（start/enqueue/reorder 都会立刻 dispatch，
+     * dispatch 结束还会自驱链式消费），这条定时任务只负责异常与重启后的漏网队列。
+     * 因此不必每 5 秒查一次库——线上 43 天累计跑到 75 万次，缩到 30 秒一次即可，
+     * 真出问题最坏多等 30 秒，而空闲期查询量降到原来的 1/6。
+     */
+    @Scheduled(fixedDelayString = "${app.agent.queue-recovery-ms:30000}")
     void recoverPendingQueues() {
         for (AgentTurnRepository.PendingQueue queue : turns.pendingQueues(20)) {
             dispatch(queue.sessionId(), queue.userId());

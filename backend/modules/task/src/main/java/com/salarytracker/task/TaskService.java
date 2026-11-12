@@ -71,6 +71,16 @@ public class TaskService {
     /** 已确认初始化过收集箱与任务设置的用户，避免每个读请求都跑 INSERT IGNORE。 */
     private final Set<Long> initializedUsers = ConcurrentHashMap.newKeySet();
     private final Map<Long, CachedZone> zoneCache = new ConcurrentHashMap<>();
+    /**
+     * 清单/标签/分组是纯字典表，读多写少，前端每个同步周期都会拉一次。
+     * 放在进程内而不是引入 Redis：单实例部署下没有跨进程共享需求，
+     * 写操作在本类内统一失效，集群化之前不需要外部缓存。
+     */
+    private final com.github.benmanes.caffeine.cache.Cache<String, Object> dictionaryCache =
+            com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
+                    .maximumSize(512)
+                    .expireAfterWrite(java.time.Duration.ofMinutes(2))
+                    .build();
 
     public TaskService(JdbcTemplate jdbcTemplate, CurrentUserResolver currentUser, TaskChangeLog changeLog) {
         this(jdbcTemplate, currentUser, changeLog, null);
@@ -89,7 +99,11 @@ public class TaskService {
     public List<TaskList> listLists() {
         long userId = currentUser.id();
         ensureDefaults(userId);
-        return jdbcTemplate.query("SELECT l.public_id,(SELECT g.public_id FROM task_list_group g WHERE g.id=l.group_id) group_public_id," +
+        String key = userId + ":lists";
+        @SuppressWarnings("unchecked")
+        List<TaskList> cached = (List<TaskList>) dictionaryCache.getIfPresent(key);
+        if (cached != null) return cached;
+        List<TaskList> rows = jdbcTemplate.query("SELECT l.public_id,(SELECT g.public_id FROM task_list_group g WHERE g.id=l.group_id) group_public_id," +
                         "l.name,l.color,l.icon,l.system_key,l.sort_order,l.archived,l.is_pinned,l.view_type,l.object_type,l.show_in_smart_lists,l.revision FROM task_list l " +
                         "WHERE l.user_id = ? AND l.deleted = FALSE ORDER BY l.sort_order, l.id",
                 (result, rowNum) -> new TaskList(result.getString("public_id"), result.getString("group_public_id"), result.getString("name"),
@@ -97,6 +111,15 @@ public class TaskService {
                         result.getLong("sort_order"), result.getBoolean("archived"), result.getBoolean("is_pinned"),
                         result.getString("view_type"), result.getString("object_type"), result.getBoolean("show_in_smart_lists"), result.getLong("revision")),
                 userId);
+        rows = List.copyOf(rows);
+        dictionaryCache.put(key, rows);
+        return rows;
+    }
+
+    /** 清单/标签/分组任一写操作后调用，只失效当前用户，别的账号的缓存不受影响。 */
+    private void invalidateDictionaries(long userId) {
+        String prefix = userId + ":";
+        dictionaryCache.asMap().keySet().removeIf(key -> key.startsWith(prefix));
     }
 
     public List<TaskList> listDeletedLists() {
@@ -107,8 +130,15 @@ public class TaskService {
     }
 
     public List<ListGroup> listGroups() {
-        return jdbcTemplate.query("SELECT public_id,name,color,icon,sort_order,is_pinned,revision FROM task_list_group WHERE user_id=? ORDER BY is_pinned DESC,sort_order,id",
-                (result, rowNum) -> listGroup(result), currentUser.id());
+        long userId = currentUser.id();
+        String key = userId + ":groups";
+        @SuppressWarnings("unchecked")
+        List<ListGroup> cached = (List<ListGroup>) dictionaryCache.getIfPresent(key);
+        if (cached != null) return cached;
+        List<ListGroup> rows = List.copyOf(jdbcTemplate.query("SELECT public_id,name,color,icon,sort_order,is_pinned,revision FROM task_list_group WHERE user_id=? ORDER BY is_pinned DESC,sort_order,id",
+                (result, rowNum) -> listGroup(result), userId));
+        dictionaryCache.put(key, rows);
+        return rows;
     }
 
     @Transactional
@@ -121,6 +151,7 @@ public class TaskService {
         jdbcTemplate.update("INSERT INTO task_list_group(public_id,user_id,name,color,icon,sort_order,is_pinned) VALUES(?,?,?,?,?,?,?)",
                 publicId, userId, name, optionalText(command.color(), 16), optionalText(command.icon(), 24), order,
                 Boolean.TRUE.equals(command.pinned()));
+        invalidateDictionaries(userId);
         return listGroupForUser(userId, publicId);
     }
 
@@ -140,6 +171,7 @@ public class TaskService {
                 command == null || command.pinned() == null ? before.pinned() : command.pinned(),
                 validUuid(publicId, "publicId"), userId, expected);
         if (changed == 0) throw new ConflictException("清单分组版本已变化", before.revision());
+        invalidateDictionaries(userId);
         return listGroupForUser(userId, publicId);
     }
 
@@ -154,6 +186,7 @@ public class TaskService {
         jdbcTemplate.update("UPDATE task_list SET group_id=NULL,revision=revision+1 WHERE user_id=? AND group_id=?", userId, id);
         int deleted = jdbcTemplate.update("DELETE FROM task_list_group WHERE id=? AND user_id=? AND revision=?", id, userId, expected);
         if (deleted == 0) throw new ConflictException("清单分组版本已变化", before.revision());
+        invalidateDictionaries(userId);
     }
 
     @Transactional
@@ -182,6 +215,7 @@ public class TaskService {
         if (changed == 0) throw new ConflictException("清单版本已变化", before.revision());
         TaskList assigned = listForUser(userId, listPublicId, false);
         changeLog.append(userId, UUID.randomUUID().toString(), "task-list", listPublicId, "UPSERT", syncEntity(assigned, false));
+        invalidateDictionaries(userId);
         return assigned;
     }
 
@@ -306,11 +340,22 @@ public class TaskService {
                 (result, rowNum) -> result.getLong(1), idArgs.toArray());
         if (ids.isEmpty()) return List.of();
         TaskEnrichment enrichment = loadEnrichment(ids, userId);
-        List<Object> pageArgs = new ArrayList<>(args);
-        pageArgs.add(size);
-        pageArgs.add(offset);
-        return jdbcTemplate.query("SELECT " + TASK_COLUMNS + where + orderBy + " LIMIT ? OFFSET ?",
-                (result, rowNum) -> task(result, enrichment), pageArgs.toArray());
+        // 第二步改成按主键点查：原来把 where + orderBy 再跑一遍，等于对全量行再做一次 filesort，
+        // 而这 50 行在上一步已经有序。取回后按 ids 顺序重排即可，语义完全一致。
+        String placeholders = String.join(",", Collections.nCopies(ids.size(), "?"));
+        List<Object> pageArgs = new ArrayList<>(ids);
+        pageArgs.add(userId);
+        Map<Long, TaskItem> byId = new HashMap<>(ids.size() * 2);
+        org.springframework.jdbc.core.RowCallbackHandler collect = rs ->
+                byId.put(rs.getLong("task_id"), task(rs, enrichment));
+        jdbcTemplate.query("SELECT " + TASK_COLUMNS + " FROM task t JOIN task_list l ON l.id = t.list_id " +
+                "WHERE t.id IN (" + placeholders + ") AND t.user_id = ?", collect, pageArgs.toArray());
+        List<TaskItem> items = new ArrayList<>(ids.size());
+        for (Long id : ids) {
+            TaskItem item = byId.get(id);
+            if (item != null) items.add(item);
+        }
+        return items;
     }
 
     /**
@@ -453,6 +498,7 @@ public class TaskService {
                 !Boolean.FALSE.equals(command.showInSmartLists()));
         TaskList created = listForUser(userId, publicId, false);
         changeLog.append(userId, opId, "task-list", publicId, "UPSERT", syncEntity(created, false));
+        invalidateDictionaries(userId);
         return created;
     }
 
@@ -493,6 +539,7 @@ public class TaskService {
         if (updated == 0) throw new ConflictException("清单版本已变化", before.revision());
         TaskList changed = listForUser(userId, publicId, false);
         changeLog.append(userId, opId, "task-list", publicId, "UPSERT", syncEntity(changed, false));
+        invalidateDictionaries(userId);
         return changed;
     }
 
@@ -519,6 +566,7 @@ public class TaskService {
         if (changed == 0) throw new ConflictException("清单版本已变化", listForUser(userId, publicId, false).revision());
         DeletedResource deleted = new DeletedResource(publicId, expected + 1, true);
         changeLog.append(userId, opId, "task-list", publicId, "DELETE", syncEntity(list, true));
+        invalidateDictionaries(userId);
         return deleted;
     }
 
@@ -535,14 +583,21 @@ public class TaskService {
         TaskList restored = listForUser(userId, publicId, false);
         changeLog.append(userId, UUID.randomUUID().toString(), "task-list", publicId, "UPSERT",
                 syncEntity(restored, false));
+        invalidateDictionaries(userId);
         return restored;
     }
 
     public List<TaskTag> listTags() {
         long userId = currentUser.id();
-        return jdbcTemplate.query("SELECT t.public_id,p.public_id parent_public_id,t.name,t.color,t.icon,t.sort_order,t.revision " +
-                        "FROM task_tag t LEFT JOIN task_tag p ON p.id=t.parent_id WHERE t.user_id=? AND t.deleted=FALSE " +
-                        "ORDER BY t.sort_order,t.id", (result, rowNum) -> tag(result), userId);
+        String key = userId + ":tags";
+        @SuppressWarnings("unchecked")
+        List<TaskTag> cached = (List<TaskTag>) dictionaryCache.getIfPresent(key);
+        if (cached != null) return cached;
+        List<TaskTag> rows = List.copyOf(jdbcTemplate.query("SELECT t.public_id,p.public_id parent_public_id,t.name,t.color,t.icon,t.sort_order,t.revision " +
+                "FROM task_tag t LEFT JOIN task_tag p ON p.id=t.parent_id WHERE t.user_id=? AND t.deleted=FALSE " +
+                "ORDER BY t.sort_order,t.id", (result, rowNum) -> tag(result), userId));
+        dictionaryCache.put(key, rows);
+        return rows;
     }
 
     @Transactional
@@ -565,6 +620,7 @@ public class TaskService {
                 command.sortOrder() == null ? nextOrder("task_tag", userId) : command.sortOrder(), optionalText(command.icon(), 40));
         TaskTag created = tagForUser(userId, publicId);
         changeLog.append(userId, opId, "task-tag", publicId, "UPSERT", syncEntity(created, false));
+        invalidateDictionaries(userId);
         return created;
     }
 
@@ -595,6 +651,7 @@ public class TaskService {
         if (updated == 0) throw new ConflictException("标签版本已变化", tagForUser(userId, publicId).revision());
         TaskTag changed = tagForUser(userId, publicId);
         changeLog.append(userId, opId, "task-tag", publicId, "UPSERT", syncEntity(changed, false));
+        invalidateDictionaries(userId);
         return changed;
     }
 
@@ -655,6 +712,7 @@ public class TaskService {
         if (deleted != 1) throw new ConflictException("源标签版本已变化", tagForUser(userId, source.publicId()).revision());
         changeLog.append(userId, UUID.randomUUID().toString(), "task-tag", source.publicId(),
                 "DELETE", syncEntity(source, true));
+        invalidateDictionaries(userId);
         return new TaskModels.TaskTagMergeResult(source.publicId(), target.publicId(), affectedTasks.size(),
                 childIds.size(), expectedSourceRevision + 1, target.revision());
     }
@@ -689,6 +747,7 @@ public class TaskService {
         if (updated == 0) throw new ConflictException("标签版本已变化", tagForUser(userId, publicId).revision());
         DeletedResource deleted = new DeletedResource(publicId, expected + 1, true);
         changeLog.append(userId, opId, "task-tag", publicId, "DELETE", syncEntity(tag, true));
+        invalidateDictionaries(userId);
         return deleted;
     }
 

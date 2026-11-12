@@ -10,8 +10,11 @@ spring:
     password: ${DB_PASSWORD:salary123}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
-      maximum-pool-size: 5
-      minimum-idle: 1
+      # 5 个连接在并发 10 时就会排队，超过 30s 抛 SQLTransientConnectionException。
+      # 主机 2 核、MySQL max_connections=151，20 个连接对数据库压力可忽略。
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 10000
   sql:
     init:
       mode: never

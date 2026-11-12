@@ -49,6 +49,25 @@ public class LedgerBookService {
                     "WHEN t.account_id=a.id AND t.kind IN ('INCOME','BORROW_IN','COLLECT_DEBT') THEN t.amount " +
                     "WHEN t.account_id=a.id AND t.kind IN ('EXPENSE','LEND_OUT','REPAY_DEBT','TRANSFER_OUT') THEN -t.amount " +
                     "ELSE 0 END";
+    /**
+     * 账户列表的余额拆成两段聚合再 join：原写法把 (account_id=a.id OR counterparty_account_id=a.id ...)
+     * 放在 LEFT JOIN 条件里，优化器对每个账户都要把整个账本的流水扫一遍（19 个账户 × 8159 行），
+     * 实测 350ms。这里先按 account_id / counterparty_account_id 各聚合一次，再 join 回账户。
+     * 配对判断从每行的依赖子查询改成对 transfer_group_id 先分组一次，再 LEFT JOIN。
+     */
+    private static final String ACCOUNT_MAIN_DELTA =
+            "SELECT t.account_id acc,SUM(CASE " +
+                    "WHEN t.kind IN ('INCOME','BORROW_IN','COLLECT_DEBT') THEN t.amount " +
+                    "WHEN t.kind IN ('EXPENSE','LEND_OUT','REPAY_DEBT','TRANSFER_OUT') THEN -t.amount " +
+                    "WHEN t.kind='TRANSFER_IN' AND paired.gid IS NULL THEN t.amount ELSE 0 END) delta " +
+                    "FROM ledger_transaction t LEFT JOIN (SELECT transfer_group_id gid FROM ledger_transaction " +
+                    "WHERE book_id=? AND deleted=FALSE AND kind='TRANSFER_OUT' AND transfer_group_id IS NOT NULL " +
+                    "GROUP BY transfer_group_id) paired ON paired.gid=t.transfer_group_id " +
+                    "WHERE t.book_id=? AND t.deleted=FALSE AND t.account_id IS NOT NULL GROUP BY t.account_id";
+    private static final String ACCOUNT_COUNTERPARTY_DELTA =
+            "SELECT t.counterparty_account_id acc,SUM(t.amount) delta FROM ledger_transaction t " +
+                    "WHERE t.book_id=? AND t.deleted=FALSE AND t.counterparty_account_id IS NOT NULL " +
+                    "AND t.kind='TRANSFER_OUT' GROUP BY t.counterparty_account_id";
     private static final double CATEGORY_HUE_BASE = 178;
     private static final double CATEGORY_HUE_STEP = 137.508;
     private static final Pattern HSL_COLOR = Pattern.compile(
@@ -178,15 +197,14 @@ public class LedgerBookService {
         String hidden = includeHidden ? "" : " AND a.hidden=FALSE";
         return DbRow.query(jdbc,
                 "SELECT a.public_id,a.name,a.icon,a.account_type,a.currency,a.opening_balance,a.hidden,a.revision,a.created_at," +
-                        "a.opening_balance+COALESCE(SUM(" + ACCOUNT_BALANCE_DELTA + "),0) balance " +
-                        "FROM ledger_account a LEFT JOIN ledger_transaction t ON t.book_id=a.book_id AND t.deleted=FALSE " +
-                        "AND ((t.account_id=a.id AND t.kind<>'TRANSFER_IN') OR (t.counterparty_account_id=a.id AND t.kind='TRANSFER_OUT') " +
-                        "OR (t.account_id=a.id AND t.kind='TRANSFER_IN' AND NOT EXISTS " +
-                        "(SELECT 1 FROM ledger_transaction source_transfer WHERE source_transfer.transfer_group_id=t.transfer_group_id " +
-                        "AND source_transfer.kind='TRANSFER_OUT' AND source_transfer.book_id=t.book_id AND source_transfer.deleted=FALSE))) " +
+                        "a.opening_balance+COALESCE(m.delta,0)+COALESCE(c.delta,0) balance " +
+                        "FROM ledger_account a " +
+                        "LEFT JOIN (" + ACCOUNT_MAIN_DELTA + ") m ON m.acc=a.id " +
+                        "LEFT JOIN (" + ACCOUNT_COUNTERPARTY_DELTA + ") c ON c.acc=a.id " +
                         "WHERE a.book_id=? AND a.deleted=FALSE" + hidden +
-                        " GROUP BY a.id ORDER BY a.created_at,a.id",
-                context.bookId()).stream().map(this::accountView).toList();
+                        " ORDER BY a.created_at,a.id",
+                context.bookId(), context.bookId(), context.bookId(), context.bookId())
+                .stream().map(this::accountView).toList();
     }
 
     @Transactional

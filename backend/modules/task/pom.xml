@@ -21,5 +21,10 @@
             <artifactId>salary-tracker-identity</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- 清单/标签这类纯字典表的进程内缓存：省掉每次同步周期都回库，且不需要 Redis -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
     </dependencies>
 </project>
