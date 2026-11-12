@@ -1,5 +1,16 @@
 # 部署说明
 
+## 2026-11-12 工具箱前端发布（bfd41d0）
+
+- 提交 `bfd41d0` 已推送至远程 `main`（`cee8c4f..bfd41d0`）。本轮改动全部在前端：新增独立「工具箱」模块（`/tools/:tool`）、顶栏入口与底栏五个工具图标，以及房贷/个税/日期/戒烟/抖音五个面板与对应纯函数单测。`git diff cee8c4f..bfd41d0 -- backend` 为空，后端源码与线上运行版本完全一致。
+- 因此本次为纯前端发布：仅构建并替换前端镜像，`salary-backend` 容器未重建（部署前后均为 `Up` 且镜像仍为 `salary-backend:cee8c4f`），MySQL 容器与数据卷全程未动。工具箱后端接口与 Flyway V62 已在此前的 `cee8c4f` 发布中上线，`quit_smoking_setting` / `quit_smoking_day` / `quit_smoking_craving` 三表存在，schema 版本 `62`。
+- 前端镜像 `salary-frontend:bfd41d0`（`linux/amd64`，运行镜像 ID `sha256:48252ba947f292269229f2559406cb239400fd377daecdbfcccf9e101ab6767e`，69,213,407 字节），由 `deploy/Dockerfile.frontend.runtime` 与本地 `npm run build` 产物构建，经 `docker save | gzip -1 | ssh 'gunzip | docker load'` 流式上传（本地未落 tar 包）。加载后在服务器内直接 `docker run` 抽检，确认镜像内含 `assets/ToolsView-BI1K8yvu.js` 与 `assets/index-h2ZVcJ8R.js` 入口。
+- 回滚物资：原前端镜像 `salary-frontend:40a20b6` 保留为 `salary-frontend:pre-bfd41d0`（ID `sha256:fc338dcc33d88a8990d0991b48341e285d5d63e09ea2fef5d7646003b476d200`）；生产编排备份为 `docker-compose.prod.yml.bak.bfd41d0`；`DEPLOYED_RELEASE` 已更新为 `bfd41d0`（同文件内不含后端标签，后端版本仍为 `cee8c4f`，回滚后端请按镜像标签核对）。
+- 本次按用户明确指示跳过发布前数据库逻辑备份：无 schema 变更、后端镜像未替换、未执行任何写库语句，风险边界仅限前端静态资源；回滚由 `pre-bfd41d0` 镜像与前一份编排备份覆盖。
+- 一次性切换 `docker compose -f docker-compose.prod.yml up -d --no-deps frontend`，前端容器重建约 18 秒，期间静态页短暂 502/连接失败属预期。
+- 验收（服务器本机与公网一致）：`/api/health` 返回 `{"ok":true}`；`/`、`/tools/mortgage`、`/assets/index-h2ZVcJ8R.js`、`/assets/ToolsView-BI1K8yvu.js` 均 HTTP 200；首页入口 hash 已由旧的 `40a20b6` 产物切换为 `index-h2ZVcJ8R.js` 且该 bundle 内含 `ToolsView` 引用；`/index.html` 仍为 `Cache-Control: no-cache, must-revalidate`；`/api/v1/tools/quit-smoking/summary` 返回 401（路由生效、需登录）而非 404。
+- 未完成项：浏览器登录后的实际走查（顶栏「工具箱」入口、五个面板交互、移动端底栏五图标、戒烟记录落库）需用户用自己的账号按《前端手工检查清单》第 27 节确认。HTTP 200 与静态资源存在不等于交互已验收。
+
 ## 2026-10-21 任务侧栏交互增量发布
 
 - 应用提交 `3c01c68` 已推送到远程 `main`，包含 9 个独立提交：移除组织对象“打开新窗口”菜单、统一侧栏区块缩进、稳定 mini 月历翻页、修正展开箭头、按日期筛选任务、支持侧栏宽度调整、将四个快捷筛选与系统集合分离、清单颜色改为独立圆点、补充对象拖放位置反馈。精确源码归档位于 `/home/ubuntu/salary-tracker/releases/3c01c68/source.tar.gz`，SHA-256 为 `ffebf6a5673c9a3960818c05c41a6db076222b565665a7c1069fb7539cd6beb6`。
