@@ -58,6 +58,16 @@ public class ApiExceptionHandler {
         return problem(HttpStatus.NOT_FOUND, "NOT_FOUND", exception.getMessage(), request, null);
     }
 
+    @ExceptionHandler(UpstreamException.class)
+    public ResponseEntity<ApiProblem> upstream(UpstreamException exception, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_GATEWAY, "UPSTREAM_UNAVAILABLE", exception.getMessage(), request, null);
+    }
+
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<ApiProblem> rateLimited(TooManyRequestsException exception, HttpServletRequest request) {
+        return problem(HttpStatus.TOO_MANY_REQUESTS, "RATE_LIMITED", exception.getMessage(), request, null);
+    }
+
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ApiProblem> methodNotAllowed(HttpRequestMethodNotSupportedException exception,
                                                        HttpServletRequest request) {

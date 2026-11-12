@@ -57,4 +57,13 @@ public final class ToolsModels {
     @Schema(name = "ToolsDeletedResource")
     public record DeletedResource(String id) {
     }
+
+    @Schema(name = "ToolsDouyinResolveCommand")
+    public record DouyinResolveCommand(String url) {
+    }
+
+    @Schema(name = "ToolsDouyinResolveResult")
+    public record DouyinResolveResult(String inputUrl, String resolvedUrl, String videoId, List<String> hops,
+                                      String host, boolean shortLink, boolean resolved, String reason) {
+    }
 }
