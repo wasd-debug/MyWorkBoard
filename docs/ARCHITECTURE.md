@@ -1077,14 +1077,45 @@ Agent 普通请求与 SSE 均持久化结构化响应。查询历史 assistant �
 | 关注点 | 落地方式 |
 |---|---|
 | 模块边界 | `@ApplicationModule(displayName = "Tools", allowedDependencies = {"platform", "identity"})`；`ArchitectureBoundaryTest.assertModuleOwns("tools")` 守住归属，禁止反向依赖 task/ledger |
-| 表结构 | V62：`quit_smoking_setting` / `quit_smoking_day` / `quit_smoking_craving`，三表都带 `user_id`，`(user_id, day_date)` 唯一 |
+| 表结构 | V62：`quit_smoking_setting` / `quit_smoking_day` / `quit_smoking_craving`，三表都带 `user_id`，`(user_id, day_date)` 唯一；V63 给 setting 加 `cigarette_type` / `tar_per_cigarette` / `co_per_cigarette` |
 | 权限 | `tools:read` / `tools:write`，方法级 `@PreAuthorize`；迁移里同时授予 `ADMIN`、`USER` |
 | 并发 | 写入口用 `If-Match` 携带 revision，冲突返回 409；渴望登记用 `idempotency_key` 表存首次响应 |
 | 时区 | 「今天」由服务端按账号时区判定（`summary.todayDate`），客户端不自己算日期，避免跨零点/跨时区错一天 |
-| 汇总口径 | `QuitSmokingSummaryCalculator` 纯函数：`totals()` 给已戒烟天数/连续/最长/累计支数，`savedAmount()` 给省钱额；前端同名计算只作乐观展示 |
+| 汇总口径 | `QuitSmokingSummaryCalculator` 纯函数：`totals()` 给已戒烟天数/连续/最长/累计支数，`savedAmount()` 给省钱额，`substance()` 给焦油/一氧化碳；前端同名计算只作乐观展示 |
+| 恢复里程碑 | `QuitSmokingMilestones.recovery(startAt, now)` 纯函数，按经过分钟数算 19 个节点的达成状态与倒计时；时间点见下节 |
 
 `days` / `cravings` 的查询区间上限 366 天，`days` 默认最近 90 天、`cravings` 默认最近 30 天；
 `putDay()` 允许补录过去但拒绝未来日期（`today.plusDays(1)` 之后一律 400）。
+
+### 戒烟恢复里程碑的取值口径
+
+`QuitSmokingMilestones.DEFINITIONS` 是唯一数据源，前端只渲染后端返回的列表，不维护第二份时间点。
+四个维度（`physiological` / `psychological` / `vascular` / `lung`）共 19 个节点，依据：
+
+- **CDC / 美国卫生总监报告**《The Health Consequences of Smoking—What It Means to You》(2004) 的戒烟获益时间线：
+  20 分钟心率回落、12 小时一氧化碳回到正常、2 周–3 个月肺功能与循环改善、1–9 个月咳嗽气短减少、
+  1 年冠心病风险减半、5 年（5–15 年区间）中风风险接近不吸烟者、10 年肺癌死亡风险减半、15 年冠心病风险等同不吸烟者。
+- **临床戒烟指南的通行结论**：血中尼古丁约 24 小时清除；戒断症状 2–3 天达峰值、2–4 周基本消退（生理依赖）；
+  与场景绑定的心理依赖在 1–3 个月明显减弱、6–12 个月趋于稳定。
+
+`recovery()` 只依赖 `startAt` 与 `now` 两个入参，因此单测能钉死每个边界的达成状态。要点：
+
+- `reachedAt` 是**该节点达标的那一刻**（`startAt + atMinutes`），不是「现在」，前端据此显示「刚达成」；
+- 同一分钟允许有多个节点（72 小时同时是生理戒断峰值与支气管舒张），所以定义表只保证**非递减**而不是严格递增，
+  `QuitSmokingMilestonesTest.definitionsAreOrderedByElapsedMinutes` 钉住这一点——错序会让「下一个节点」取到更晚的那个；
+- `progress` 逐节点裁剪到 0–1，顶部大进度条用「下一个节点」的进度，而不是整体时间比例（15 年对 20 分钟没法线性比）；
+- 复吸不会清零倒计时：节点只按起始时刻算，页面上明确写出「复吸会让部分修复重新开始」，不假装身体没受影响。
+
+### 焦油与一氧化碳的口径
+
+`cigarette_type` 只是「预设来源」，真正参与计算的是设置里的 `tar_per_cigarette` / `co_per_cigarette`（mg，一位小数）：
+
+- 后端 `CigaretteTypes` 与前端 `quitSmoking.js` 的 `CIGARETTE_TYPES` 各存一份同样的预设（regular 11/12、fine 8/8、
+  medium 9/9、thick 13/14、hand-rolled 12/14、cigar 15/15、ecig 0/0），**改一处必须同步另一处**，两端单测各自钉住数值；
+- 只改种类、不传毫克数时，后端按种类预设回填；`other`（自定义）没有预设，沿用用户当前填写值；
+- `substance()` 的公式：今日吸入 = 今日支数 × 每支含量；累计少吸入 =（基线日消耗 × 已戒烟天数 − 实际支数）× 每支含量，
+  吸得比基线更多时为负值，与省钱额同一约定；
+- 结果都是**估算**：不同品牌实测差异很大，实际吸入还受吸食深度、过滤嘴通风影响，页面必须保留免责文案。
 
 ### 抖音短链还原的 SSRF 边界
 
