@@ -933,6 +933,10 @@ public class TaskService {
                 validUuid(publicId, "publicId"), userId, expected);
         ensureUpdated(updated, userId, publicId);
         replaceTagsAndChecklist(userId, publicId, command.tagIds(), command.checklist());
+        // 下一实例可能早已预生成且是空的，检查项改完要同步过去（下一实例已有内容则不动）
+        if (command.checklist() != null) {
+            propagateChecklistToNextInstance(userId, publicId, seriesId, sequence);
+        }
         if (seriesId != null) jdbcTemplate.update("INSERT IGNORE INTO task_recurrence_instance(series_id,planned_due_at,task_id) " +
                 "SELECT series_id,planned_due_at,id FROM task WHERE public_id=?", publicId);
         if (!"COMPLETED".equals(before.status()) && "COMPLETED".equals(normalizedStatus)) {
@@ -1345,6 +1349,9 @@ public class TaskService {
                     sequence, Timestamp.from(next), opKey, current.publicId(), userId);
             if (inserted == 0) return;
         } catch (DuplicateKeyException duplicate) {
+            // 下一实例已经在（多见于到期当天凌晨预生成的那一条），插入被唯一键挡回。
+            // 此时仍要把源实例的检查项补过去，否则「下一周期没有检查项」。
+            propagateChecklistToNextInstance(userId, current.publicId(), current.seriesId(), current.seriesSequence());
             return;
         }
         Long sourceId = jdbcTemplate.queryForObject("SELECT id FROM task WHERE public_id=?", Long.class, current.publicId());
@@ -1373,6 +1380,40 @@ public class TaskService {
                 current.seriesId(), Timestamp.from(next), targetId);
         TaskItem generated = taskForUser(userId, nextId);
         changeLog.append(userId, opKey, nextId, "UPSERT", syncEntity(generated, false));
+    }
+
+    /**
+     * 把源实例的检查项补给「还没有检查项」的下一实例。
+     *
+     * <p>重复任务的下一实例并不是等用户完成才生成的：源实例到期当天凌晨，
+     * {@code scanDueRecurrences} 就会把下一实例建出来（这样「明天」的视图里能提前看到）。
+     * 但用户当天往当前实例里新增的检查项那时还不存在，于是生成出来的下一实例是空的；
+     * 等用户真的完成当前实例时，下一实例早已存在，插入被唯一键挡回，检查项再也补不上。
+     *
+     * <p>所以检查项一旦变化（以及完成时命中已存在的下一实例），就把内容同步过去。
+     * 下一实例已经有检查项时不动它——用户可能已经手工改过，覆盖会丢数据。
+     */
+    private void propagateChecklistToNextInstance(long userId, String sourcePublicId, String seriesId, Integer sequence) {
+        if (seriesId == null || sequence == null) return;
+        List<Long> next = jdbcTemplate.query("SELECT id FROM task WHERE user_id=? AND deleted=FALSE AND status='OPEN' " +
+                        "AND series_id=? AND series_sequence>? ORDER BY series_sequence,id LIMIT 1",
+                (row, rowNum) -> row.getLong(1), userId, seriesId, sequence);
+        if (next.isEmpty()) return;
+        long nextId = next.get(0);
+        Long existing = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM task_checklist_item WHERE task_id=? AND deleted=FALSE", Long.class, nextId);
+        if (existing != null && existing > 0) return;
+        Long sourceId = jdbcTemplate.queryForObject("SELECT id FROM task WHERE public_id=? AND user_id=?", Long.class,
+                sourcePublicId, userId);
+        int copied = jdbcTemplate.update("INSERT INTO task_checklist_item(public_id,user_id,task_id,title,completed,sort_order) " +
+                        "SELECT UUID(),user_id,?,title,FALSE,sort_order FROM task_checklist_item WHERE task_id=? AND deleted=FALSE",
+                nextId, sourceId);
+        if (copied == 0) return;
+        // 下一实例的内容变了，必须推高 revision 并写 oplog，否则各端拉不到这条更新
+        jdbcTemplate.update("UPDATE task SET revision=revision+1 WHERE id=?", nextId);
+        String nextPublicId = jdbcTemplate.queryForObject("SELECT public_id FROM task WHERE id=?", String.class, nextId);
+        changeLog.append(userId, UUID.randomUUID().toString(), nextPublicId, "UPSERT",
+                syncEntity(taskForUser(userId, nextPublicId), false));
     }
 
     @Scheduled(fixedDelay = 30000, initialDelay = 10000)
