@@ -36,9 +36,10 @@ class ArchitectureBoundaryTest {
         assertModuleOwns("worktime");
         assertModuleOwns("ledger");
         assertModuleOwns("task");
+        assertModuleOwns("tools");
         assertModuleOwns("ai");
         Path legacySource = BACKEND_ROOT.resolve("src/main/java/com/salarytracker");
-        for (String module : new String[]{"platform", "identity", "worktime", "ledger", "task", "ai"}) {
+        for (String module : new String[]{"platform", "identity", "worktime", "ledger", "task", "tools", "ai"}) {
             assertFalse(Files.exists(legacySource.resolve(module)),
                     () -> "central source root still owns " + module);
         }

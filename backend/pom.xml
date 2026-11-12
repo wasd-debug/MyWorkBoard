@@ -36,6 +36,7 @@
         <module>modules/worktime</module>
         <module>modules/ledger</module>
         <module>modules/task</module>
+        <module>modules/tools</module>
         <module>modules/ai</module>
         <module>app</module>
     </modules>

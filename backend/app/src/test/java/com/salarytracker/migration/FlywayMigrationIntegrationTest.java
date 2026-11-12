@@ -34,7 +34,7 @@ class FlywayMigrationIntegrationTest {
         flyway.migrate();
         flyway.validate();
 
-        assertEquals("61", flyway.info().current().getVersion().getVersion());
+        assertEquals("62", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement()) {
@@ -74,6 +74,12 @@ class FlywayMigrationIntegrationTest {
             assertTrue(tableExists(connection, "task_import_batch"));
             assertTrue(indexExists(connection, "task", "ft_task_title_description"));
             assertEquals(2L, scalar(statement, "SELECT COUNT(*) FROM permission WHERE code IN ('task:read','task:write')"));
+            assertTrue(tableExists(connection, "quit_smoking_setting"));
+            assertTrue(tableExists(connection, "quit_smoking_day"));
+            assertTrue(tableExists(connection, "quit_smoking_craving"));
+            assertEquals(2L, scalar(statement, "SELECT COUNT(*) FROM permission WHERE code IN ('tools:read','tools:write')"));
+            assertEquals(2L, scalar(statement, "SELECT COUNT(DISTINCT p.code) FROM role_permission rp " +
+                    "JOIN permission p ON p.id = rp.permission_id WHERE p.code IN ('tools:read','tools:write')"));
             assertTrue(tableExists(connection, "ai_usage_budget"));
             assertTrue(tableExists(connection, "ai_usage_alert"));
             assertTrue(columnExists(connection, "mcp_external_action", "commit_status"));
@@ -111,7 +117,7 @@ class FlywayMigrationIntegrationTest {
         flyway.migrate();
         flyway.validate();
 
-        assertEquals("61", flyway.info().current().getVersion().getVersion());
+        assertEquals("62", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement()) {
