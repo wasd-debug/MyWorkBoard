@@ -10,6 +10,33 @@ import { createClientId } from '../utils/clientId.js'
 
 const SCOPE = 'tasks'
 const SYNC_IDLE_DELAY_MS = 1200
+// 单轮同步里变化的任务超过这个数量，就地逐条改内存还不如直接全量重排
+const INCREMENTAL_PATCH_LIMIT = 100
+// 能就地打补丁的内存集合。键是 sync 引擎里真实的存储名（引擎会做复数化：
+// task → tasks、habit-checkin → habit-checkins），不是实体类型名
+const PATCHABLE_COLLECTIONS = {
+  tasks: 'tasks',
+  habits: 'habits',
+  'habit-checkins': 'habitCheckins',
+  countdowns: 'countdowns'
+}
+
+/**
+ * 任务列表里影响分组/排序/可见性的字段。动了任何一个，就地改字段会让列表停在
+ * 错的顺序上，必须走全量重排。
+ */
+function taskNeedsRebuild(existing, next) {
+  return Boolean(existing.deleted) !== Boolean(next.deleted) ||
+    existing.status !== next.status ||
+    Number(existing.sortOrder || 0) !== Number(next.sortOrder || 0) ||
+    existing.listId !== next.listId ||
+    (existing.parentId || null) !== (next.parentId || null) ||
+    existing.dueAt !== next.dueAt ||
+    Number(next.revision || 0) < Number(existing.revision || 0)
+}
+/** 首屏兜底下载时的分页并发数与本地批量写入批大小。 */
+const PAGE_CONCURRENCY = 5
+const LOCAL_WRITE_BATCH = 500
 const LIST_GROUPS_CACHE_META_KEY = 'task-list-groups-cache'
 const COUNTDOWN_GROUPS_CACHE_META_KEY = 'countdown-groups-cache'
 const transport = {
@@ -258,6 +285,57 @@ export const useTasksStore = defineStore('tasks', {
       this.countdownGroups = cachedCountdownGroups || []
       this.pending = pending.length
     },
+    /**
+     * 只动了少数几条记录时，就地更新内存里那几条即可。全量 hydrate 要把上万条从
+     * IndexedDB 重读、重排、换新数组，进而让整个列表重渲染，一次编辑要等好几秒才
+     * 看到结果。遇到增删、改状态、改列表归属、改排序这类会影响分组与排序的结构性
+     * 变化，仍回退到全量 hydrate 保正确性。
+     */
+    async applySyncChanges(changed) {
+      if (!changed) return false
+      const stores = Object.keys(changed).filter(name => changed[name]?.length)
+      if (!stores.length) return false
+      const total = stores.reduce((sum, name) => sum + changed[name].length, 0)
+      if (total > INCREMENTAL_PATCH_LIMIT) return false
+      // 先把快照全部读出来再改内存：中途发现一条读不到（已清理）或本地没有（新增），
+      // 就整体放弃，避免改了一半留下不一致
+      const pending = []
+      for (const store of stores) {
+        const listKey = PATCHABLE_COLLECTIONS[store]
+        if (!listKey) return false
+        const collection = this[listKey]
+        if (!collection?.length) return false
+        let records
+        try {
+          records = await Promise.all(changed[store].map(key => engine.read(store, key)))
+        } catch {
+          // 读不到就老实退回全量 hydrate，别把一次编辑弄失败
+          return false
+        }
+        const byId = new Map(collection.map(item => [item.publicId, item]))
+        const pairs = []
+        for (const record of records) {
+          if (!record) return false
+          const next = localTask(record)
+          const existing = byId.get(next.publicId)
+          if (!existing) return false
+          const structural = store === 'tasks'
+            ? taskNeedsRebuild(existing, next)
+            : Boolean(existing.deleted) !== Boolean(next.deleted)
+          if (structural) return false
+          pairs.push([existing, next])
+        }
+        pending.push(pairs)
+      }
+      for (const pairs of pending) {
+        for (const [existing, next] of pairs) {
+          for (const key of Object.keys(next)) {
+            if (existing[key] !== next[key]) existing[key] = next[key]
+          }
+        }
+      }
+      return true
+    },
     async refreshServer() {
       if (!this.online || !this.accountScope) return
       const epoch = sessionEpoch
@@ -283,28 +361,7 @@ export const useTasksStore = defineStore('tasks', {
           const habitStats = await Promise.all((habits || []).map(habit => apiGetHabitStats(habit.publicId)))
           const checkins = habitStats.flatMap(result => result?.checkins || [])
           await replaceRemoteCollection(scoped, 'habit-checkin', checkins || [])
-          const remoteTasks = []
-          for (const view of ['ALL', 'TRASH']) {
-            let pageNumber = 0
-            let fetched = 0
-            let total = 0
-            do {
-              const page = await apiListTasks({ view, page: pageNumber, size: 200 })
-              if (epoch !== sessionEpoch || scoped !== engine) return
-              const items = page?.items || []
-              remoteTasks.push(...items)
-              fetched += items.length
-              total = Number(page?.total ?? fetched)
-              pageNumber += 1
-              if (!items.length) break
-            } while (fetched < total)
-          }
-          const pendingIds = new Set((await scoped.pendingOperations(SCOPE)).map(item => item.entityId))
-          for (const item of remoteTasks) {
-            if (!pendingIds.has(item.publicId)) {
-              await scoped.put('task', { ...item, id: item.publicId }, { bookId: SCOPE, recordOp: false })
-            }
-          }
+          await this.downloadTasksWhenLocalEmpty(scoped, epoch)
           await this.hydrate()
         } catch (error) {
           if (epoch === sessionEpoch) this.error = error?.response?.data?.detail || error?.message || '任务同步失败'
@@ -315,6 +372,51 @@ export const useTasksStore = defineStore('tasks', {
         return await promise
       } finally {
         if (activeRefreshPromise?.promise === promise) activeRefreshPromise = null
+      }
+    },
+    /**
+     * 任务列表只做「本地为空」时的兜底下载。
+     *
+     * 任务实体的增删改由 syncNow 的 oplog 游标增量维护，每轮刷新再按 ALL/TRASH
+     * 两个视图翻页重拉一遍是纯冗余：一万条任务就是 100 次串行请求、约 7 秒停顿，
+     * 而拉回来的内容与本地游标结果完全一致。正常同步下没有任何网络请求。
+     *
+     * 留这个兜底是因为 oplog 只记录经过 TaskService 的写入：直接用 SQL 导入的历史
+     * 数据没有 oplog，新设备首次登录会拉到空游标。本地已有任务时不再触发。
+     */
+    async downloadTasksWhenLocalEmpty(scoped, epoch) {
+      if (this.tasks.length) return
+      const stale = () => epoch !== sessionEpoch || scoped !== engine
+      const fetchAllPages = async view => {
+        const first = await apiListTasks({ view, page: 0, size: 200 })
+        if (stale()) return null
+        const items = [...(first?.items || [])]
+        const pageCount = Math.ceil(Number(first?.total ?? items.length) / 200)
+        // 之前是一页页串行等，一万条要 50 个来回；页与页之间没有依赖，按小批并发。
+        for (let start = 1; start < pageCount; start += PAGE_CONCURRENCY) {
+          const requests = []
+          for (let page = start; page < Math.min(start + PAGE_CONCURRENCY, pageCount); page += 1) {
+            requests.push(apiListTasks({ view, page, size: 200 }))
+          }
+          const pages = await Promise.all(requests)
+          if (stale()) return null
+          for (const page of pages) items.push(...(page?.items || []))
+        }
+        return items
+      }
+      const [active, trashed] = await Promise.all([fetchAllPages('ALL'), fetchAllPages('TRASH')])
+      if (!active || !trashed) return
+      const pendingIds = new Set((await scoped.pendingOperations(SCOPE)).map(item => item.entityId))
+      const seen = new Set()
+      const rows = []
+      for (const item of [...active, ...trashed]) {
+        if (!item?.publicId || seen.has(item.publicId) || pendingIds.has(item.publicId)) continue
+        seen.add(item.publicId)
+        rows.push({ ...item, id: item.publicId })
+      }
+      // 逐条 put 时每条各开一个事务，改成一个事务写一批。
+      for (let index = 0; index < rows.length; index += LOCAL_WRITE_BATCH) {
+        await scoped.putMany('task', rows.slice(index, index + LOCAL_WRITE_BATCH), { bookId: SCOPE })
       }
     },
     async saveLocal(value, operation = 'UPSERT') {
@@ -335,7 +437,11 @@ export const useTasksStore = defineStore('tasks', {
       const record = operation === 'DELETE'
         ? await engine.remove('task', id, options)
         : await engine.put('task', { ...merged, id, publicId: undefined }, options)
-      await this.hydrate()
+      // 改标题/备注/标签这类不动结构字段的编辑，直接就地改内存那一条；
+      // 新建、删除、改状态、换清单才需要重排全量
+      const patched = operation !== 'DELETE' &&
+        await this.applySyncChanges({ [engine.storeName('task')]: [`${SCOPE}:${id}`] })
+      if (!patched) await this.hydrate()
       this.scheduleSync()
       return localTask(record)
     },
@@ -350,7 +456,11 @@ export const useTasksStore = defineStore('tasks', {
       } else {
         await engine.put(type, { ...value, id, publicId: undefined }, { bookId: SCOPE, opId: pending?.opId, baseRevision: value.revision || 0 })
       }
-      await this.hydrate(); this.scheduleSync()
+      // 习惯/打卡/倒数日都在各自集合里，改一条不该连带把上万条任务重读重渲染
+      const patched = operation !== 'DELETE' &&
+        await this.applySyncChanges({ [engine.storeName(type)]: [`${SCOPE}:${id}`] })
+      if (!patched) await this.hydrate()
+      this.scheduleSync()
       return id
     },
     createHabit(payload) { return this.saveEfficiency('habit', { ...payload, publicId: createClientId(), revision: 0 }) },
@@ -743,14 +853,24 @@ export const useTasksStore = defineStore('tasks', {
               if (activeSyncPromise?.promise === promise) activeSyncPromise.rerun = true
               continue
             }
-            if (epoch === sessionEpoch && scoped === engine) await this.hydrate()
+            // 这里原本还有一次 hydrate()，循环末尾又会再跑一次。同步一轮要重读两遍
+            // 全库（上万条）并触发两次全列表重渲染，改成只在循环结束后刷新一次。
             if (syncHoldTokens.size && activeSyncPromise?.rerun) {
               activeSyncPromise.rerun = false
               syncDeferredByEditor = true
             }
           } while (epoch === sessionEpoch && scoped === engine && activeSyncPromise?.rerun && !syncHoldTokens.size)
           if (epoch === sessionEpoch && scoped === engine) {
-            await this.hydrate()
+            // 能增量就直接改那几条，省掉一次上万条的重读 + 全列表重渲染。
+            // 但冲突/驳回数量变了必须走全量，否则冲突提示会停在旧状态。
+            const patched = await this.applySyncChanges(result?.changed)
+            const conflictsDrifted = Number(result?.conflicts ?? 0) !== this.conflicts.length ||
+              Number(result?.rejected ?? 0) !== this.rejected.length
+            if (patched && !conflictsDrifted) {
+              if (typeof result?.pending === 'number') this.pending = result.pending
+            } else {
+              await this.hydrate()
+            }
             this.syncError = ''
             if (!this.pending && !this.conflicts.length && !this.rejected.length) syncRetryAttempt = 0
             else if (this.pending && !this.conflicts.length) scheduleSyncRetry(this, epoch)

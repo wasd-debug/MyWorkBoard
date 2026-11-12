@@ -1038,3 +1038,20 @@ Agent 普通请求与 SSE 均持久化结构化响应。查询历史 assistant �
 跳转契约：弹窗里点任务 → `/tasks/search?…&open=<publicId>`，工作区监听 `route.query.open` 直接展开该任务详情；点习惯 → `/tasks/habits?habit=<publicId>`；点倒数日 → `/tasks/countdowns?focus=<publicId>`。
 
 2026-11-11 任务域 AI 接入 P2（高频写，30 → 42 个工具）：新增 `task.reopen`、`task.abandon`、`task.batch.complete`、`habit.checkin`、`focus.start`、`focus.finish` 六对 `*.prepare/commit`；`task.create`/`task.update` 扩展 `tagIds`、`checklist`、`parentId`、`durationMinutes`、`reminder`。`reminder` 复用 `TaskService.batch(action=REMINDER)` 追加（仅新增不覆盖）；`ToolSchemas` 新增 `objectProperty()`，因为 `DomainToolRegistry.rejectUnknownFields` 只认 `schema.properties`，挂在 schema 根上的字段会被判成未知入参。prepare 阶段统一把 `startAt`/`dueAt`/`startedAt`/`endedAt`/`remindAt` 规范化为 UTC（`TaskService.validate` 只接受 UTC，模型习惯给 `+08:00`，否则卡片能生成但确认必失败），并对 `reminder` 做前置校验。`task.batch.complete` 在 prepare 跳过已完成项，避免 `changeStatus` 重复触发 `generateNextInstance` 给重复任务多生成实例。`commit()` 的失败流转改为尽力而为，未批准直接 commit 时返回可读错误而非 `不允许从 WAITING_CONFIRMATION 转换到 FAILED`。`AgentPromptPolicy` **保持 `agent-system-v15` 不变**：试加 v16「写入口径」段后 live 评测连续三次掉到 88%（失败项固定在账本/工时域的工时补录、工时设置与账本 R4），提示词净增长会稀释后段指令；回退后连续两次 ≥90%，且无提示词指引时模型仍能正确选中新工具，说明语义由工具 description/JSON Schema 承载已足够。前端 `AgentChatView` 补六种新 actionType 的标签与预览行。接口为增量新增，无数据库迁移。
+
+## 任务域性能与同步链路（2026-11-12）
+
+用生产快照复制出的账号实测（9568 条存活任务、665 条未完成、3.4 万条 oplog），慢的不是后端：单条 push 16ms、TODAY 视图 14ms。真正的开销集中在三处，已按下表改完，并留下结论供后续改动参照。
+
+| 环节 | 改前 | 改后 | 做法 |
+|---|---|---|---|
+| 列表单页（size=200） | 217ms | 40~50ms | `TaskService.task(ResultSet)` 原来每行再查 4 次（标签、检查项、子任务完成数、子任务总数），200 行 = 800 次附加 SQL。改为 `enrichedPage()` 先拿到本页 taskId，用 3 条批量查询预取后复用 |
+| 读路径附带写库 | 每次读 2 次 `INSERT IGNORE` + 2 次 SELECT + 1 次查 `app_user` | 0 | `ensureDefaults` 从 `listTasks/todayTasks/overdueTasks` 移出，`userZone` 加进程内缓存 |
+| 首屏拉取 | 51 页 × 2 视图串行 ≈ 22s | 4.6s | `refreshServer` 不再全量分页重拉，任务数据交给 oplog 游标增量；空库时走 `downloadTasksWhenLocalEmpty`（页间 5 并发 + `putMany` 批量写） |
+| 单页响应体积 | 143KB 明文 | 3.1KB | nginx 开 gzip；`/api/v1/tasks/inbox/stream` 必须单独 `gzip off` + `proxy_buffering off`，否则 SSE 被缓冲 |
+
+同步链路的增量刷新：`SyncEngine.sync()` 现在返回 `changed`（本轮真正落库/清理的 key，按 store 归集）。`tasks` store 的 `applySyncChanges()` 就地改内存里那几条记录，取代一次全量 `hydrate()`；只有增删、改状态、换清单、改排序、改 `dueAt` 这类影响分组排序的结构性变化才回退全量。`saveLocal`/`saveEfficiency` 同理，本地编辑不必等全库重读。注意引擎的存储名是复数（`tasks`/`habit-checkins`），不是实体类型名，拼错会抛 `object stores was not found`。`applySyncChanges` 读不到记录时返回 false 走全量，不能把一次编辑弄失败。
+
+循环里原本有一次 `hydrate()`，末尾又跑一次，等于每轮同步重读两遍全库，已删掉前者。
+
+两个容易踩的度量陷阱：① 用 SQL 直插的压测数据没有 oplog，新设备拉不到，看起来像「只剩几条任务」，其实是测试数据的问题；② 把一万条塞进同一个清单会把「所有/收集箱」渲染成上万行（编辑一次要 6s），而真实分布是单清单最多 327 条、收集箱 49 条，对应的编辑延迟是 336~606ms。判断是否需要虚拟滚动，要按真实分布量，不能按人造极端值。

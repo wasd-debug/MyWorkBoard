@@ -8148,6 +8148,10 @@ const SidebarSection = {
 .clone-primary-nav small {
   color: var(--ink2);
   font-size: 11px;
+  /* 计数固定按内容撑开：原先被压成 24px，「10012」这类五位数会被侧栏边界裁掉最后一位 */
+  flex: none;
+  min-width: max-content;
+  white-space: nowrap;
 }
 .clone-sidebar-section {
   display: grid;
@@ -8941,6 +8945,10 @@ const SidebarSection = {
   padding: 0 10px 0 13px;
   border-left: 3px solid var(--task-group-color, transparent);
   transition: background 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease, transform 0.12s ease;
+  /* 万条任务时列表会渲染数千行，离屏行不再参与样式计算与布局；
+     auto 让浏览器记住每行实测高度，滚动回来不会跳。 */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 48px;
 }
 .clone-task-row[data-depth]:not([data-depth="0"]) { width: calc(100% - 40px * var(--task-depth)); margin-left: calc(40px * var(--task-depth)); }
 .clone-subtask-toggle { position: absolute; z-index: 2; top: 50%; left: -3px; display: grid; width: 14px; height: 18px; place-items: center; padding: 0; transform: translateY(-50%); border: 0; background: transparent; color: var(--muted); cursor: pointer; }

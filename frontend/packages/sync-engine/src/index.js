@@ -1,4 +1,6 @@
 const DEFAULT_DB = 'salary-tracker-sync-v2'
+// 合并时超过这个条数才值得全表预读建索引；日常改一条任务只应点查那一两条
+const BULK_MERGE_THRESHOLD = 200
 const DEFAULT_STORES = [
   'ledger-books',
   'ledger-accounts',
@@ -109,6 +111,30 @@ export class SyncEngine {
       .map(stripLocal)
   }
 
+  /**
+   * 批量写入本地库（不记录 oplog），用于把服务端整批数据落到本地。
+   * 逐条 put 时一万条任务就是一万个 IndexedDB 事务，实测能把首屏拖到数秒；
+   * 这里按批共用一个事务，调用方按 500 条左右切分即可。
+   */
+  async putMany(entityType, values, { bookId } = {}) {
+    const entityStore = this.storeName(entityType)
+    const records = (values || []).map(value => {
+      const safeValue = cloneSerializable(value)
+      const entityId = String(safeValue.id ?? randomId())
+      const scope = String(bookId || safeValue.bookId || 'default')
+      return {
+        ...safeValue,
+        id: entityId,
+        bookId: scope,
+        key: entityKey(scope, entityId),
+        updatedAt: safeValue.updatedAt ?? new Date().toISOString()
+      }
+    })
+    if (!records.length) return []
+    await this.writeMany(entityStore, records)
+    return records
+  }
+
   async replace(entityType, values, { bookId } = {}) {
     const store = this.storeName(entityType)
     const current = await this.readAll(store)
@@ -143,6 +169,8 @@ export class SyncEngine {
     if (!bookId) throw new Error('bookId is required')
     let pushed = 0
     let rebuildAttempts = 0
+    // 本轮真正写入/清理过的实体 key，按 store 归集，供调用方做增量刷新
+    this.touchedKeys = new Map()
     // 旧版本留下的存量冲突也先试着自动修复，能合的直接放回队列重推
     await this.rebaseStoredConflicts(bookId)
     let pending = await this.pendingOperations(bookId)
@@ -235,10 +263,14 @@ export class SyncEngine {
         }
       }
     }
+    const changed = {}
+    for (const [store, keys] of (this.touchedKeys || new Map()).entries()) changed[store] = [...keys]
+    this.touchedKeys = null
     return {
       pushed,
       pulled,
       cursor,
+      changed,
       pending: (await this.pendingOperations(bookId)).length,
       conflicts: (await this.conflicts(bookId)).length,
       rejected: (await this.rejected(bookId)).length
@@ -260,15 +292,27 @@ export class SyncEngine {
     await Promise.all([...groups.entries()].map(async ([store, entries]) => {
       let cache = caches.get(store)
       if (!cache) {
-        cache = new Map((await this.readAll(store)).map(record => [String(record.key), record]))
+        cache = new Map()
         caches.set(store, cache)
       }
+      // 日常同步通常只有一两条操作（改个标题、勾个完成）。以前无论几条都要把整个
+      // store 全表读进内存建索引——任务上万条时，单这一项每次同步就是几百毫秒。
+      // 少量操作按 key 点查；只有大批量（首屏灌库、冲突重放）才全表预读。
+      const bulk = entries.length >= BULK_MERGE_THRESHOLD
+      if (bulk && !cache.size) {
+        for (const record of await this.readAll(store)) cache.set(String(record.key), record)
+      }
       const writes = new Map()
+      const purged = new Set()
       for (const { operation, index } of entries) {
         const entityId = String(operation.entityId ?? operation.payload?.id)
         const scope = String(bookId || operation.bookId || operation.payload?.bookId || 'default')
         const key = entityKey(scope, entityId)
-        const current = cache.get(key)
+        let current = cache.get(key)
+        if (current === undefined && !bulk) {
+          current = await this.read(store, key)
+          if (current !== undefined) cache.set(key, current)
+        }
         const incoming = {
           ...(operation.payload || {}),
           ...(this.entityPrefix === 'task' ? operation.payload?.extra || {} : {}),
@@ -283,6 +327,7 @@ export class SyncEngine {
         if (operation.operation === 'PURGE') {
           cache.delete(payload.key)
           writes.delete(payload.key)
+          purged.add(payload.key)
           await this.removeStore(store, payload.key)
           results[index] = null
           continue
@@ -297,6 +342,14 @@ export class SyncEngine {
         results[index] = stripLocal(payload)
       }
       await this.writeMany(store, [...writes.values()])
+      // 记录本轮真正落库的 key：调用方据此做增量刷新，不必把整库重读重排一遍
+      const touched = this.touchedKeys || (this.touchedKeys = new Map())
+      let touchedStore = touched.get(store)
+      if (!touchedStore) {
+        touchedStore = new Set()
+        touched.set(store, touchedStore)
+      }
+      for (const key of [...writes.keys(), ...purged]) touchedStore.add(String(key))
     }))
     return results
   }
@@ -489,6 +542,29 @@ export class SyncEngine {
       const tx = db.transaction(store, 'readwrite')
       tx.objectStore(store).put(record)
       tx.oncomplete = () => resolve(record)
+      tx.onerror = () => reject(tx.error)
+    })
+  }
+
+  /** 一个事务写多条记录，减少 IndexedDB 的事务提交次数。 */
+  async writeMany(store, records) {
+    if (!records?.length) return []
+    const safeRecords = records.map(value => ({
+      ...cloneSerializable(value),
+      key: String(value.key ?? value.id)
+    }))
+    const db = await this.open()
+    if (!db) {
+      if (!this.memory.has(store)) this.memory.set(store, new Map())
+      const target = this.memory.get(store)
+      for (const record of safeRecords) target.set(record.key, record)
+      return safeRecords
+    }
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(store, 'readwrite')
+      const objectStore = tx.objectStore(store)
+      for (const record of safeRecords) objectStore.put(record)
+      tx.oncomplete = () => resolve(safeRecords)
       tx.onerror = () => reject(tx.error)
     })
   }
