@@ -1072,7 +1072,7 @@ Agent 普通请求与 SSE 均持久化结构化响应。查询历史 assistant �
 
 工具箱是 `modules/` 下的第七个物理模块（与 platform / identity / worktime / ledger / task / ai 并列），
 对外只暴露 `/api/v1/tools/**`。它刻意保持"薄"：除戒烟日记要跨端持久化之外，
-其余四个工具（房贷、个税、日期、抖音链接提取）都是浏览器内纯计算，后端不参与。
+其余三个工具（房贷、个税、日期）都是浏览器内纯计算，后端不参与。
 
 | 关注点 | 落地方式 |
 |---|---|
@@ -1117,30 +1117,28 @@ Agent 普通请求与 SSE 均持久化结构化响应。查询历史 assistant �
   吸得比基线更多时为负值，与省钱额同一约定；
 - 结果都是**估算**：不同品牌实测差异很大，实际吸入还受吸食深度、过滤嘴通风影响，页面必须保留免责文案。
 
-### 抖音短链还原的 SSRF 边界
+### 已移除：抖音链接提取（2026-11-13）
 
-这是全站第一个"服务端主动访问用户给的 URL"的入口，防线分四层，任何一层都不能省：
+原先的 `/api/v1/tools/douyin/resolve` 只做短链还原（逐跳校验、DNS 私网判定、不读响应体），
+需求方后来确认真正要的是「能下载无水印视频的地址」。实测当前抖音风控已封死匿名解析：
 
-1. **域名白名单**（`DouyinUrlGuard.ALLOWED_HOSTS`）：只认 `douyin.com` / `www.douyin.com` / `v.douyin.com` /
-   `iesdouyin.com` / `www.iesdouyin.com`；拒绝 userinfo（`user@host`）、`%` 编码 host、IP 字面量、非 80/443 端口。
-2. **逐跳重校验**：`followRedirects(NEVER)`，拿到 `Location` 后先 `validate(current.resolve(location))` 再发下一跳。
-   只校验入口 URL 是最常见的绕过点——入口合法、第二跳指向内网即可。
-3. **DNS 落地判定**：`assertPublicHost()` 对 `InetAddress.getAllByName()` 的**全部**结果判私网
-   （`0/8`、`10/8`、`127`、`100.64/10`、`169.254/16`、`172.16/12`、`192.168/16`、`>=224`、`::1`、`fc00::/7`、`fe80::/10`、
-   IPv4-mapped），任一命中即 502 `UPSTREAM_UNAVAILABLE`；解析失败同样按不可达处理。
-4. **不读响应体 + 预算**：`BodyHandlers.discarding()`，只取状态码和 `Location`；HEAD 遇 405/501 退回 `GET` + `Range: bytes=0-0`；
-   总预算 5s、最多 4 次请求（入口 + 3 跳），每用户 10 次/分钟（`ToolsRateLimiter`，超限 429 `RATE_LIMITED`）。
+- `aweme/v1/web/aweme/detail` 与 `m.iesdouyin.com` 详情接口均返回 **403 `Blocked by ArgusSecurityPlugin Uifid Not Found`**，
+  需要 `uifid`/`a_bogus` 签名与登录态 cookie；
+- 旧的 `web/api/v2/aweme/iteminfo` 返回 200 但**空响应体**，接口已停用；
+- 分享页 SSR 的 `window._ROUTER_DATA` 只有渲染上下文（UA、abParams、webId），**不含 `play_addr`**。
 
-链路结果返回 `hops[]`（实际走过的每一跳）、`videoId`、`resolved` 与 `reason`，前端把它原样展示成"跳转链路"，
-失败不猜原因。`DouyinHttpClient` 是接口，`DouyinLinkResolverTest` 用它注入假响应覆盖跳数上限、跨域跳转、
-404/410、200 无 `Location`、相对 `Location` 等分支，不需要真实外网。
+继续留在站内只会让用户反复点「展开真实地址」期待下载，因此整个工具下线：前端页签、路由分支、面板、
+客户端函数与后端 `DouyinUrlGuard` / `DouyinLinkResolver` / `ToolsRateLimiter` 全部删除，
+`/tools/douyin` 由 `/tools/:pathMatch(.*)*` 重定向到房贷。`platform` 的 `UpstreamException`（502）与
+`TooManyRequestsException`（429）保留——它们是通用错误映射，不属于抖音专有。
 
-新增能力若要复用这套防线，请注入同一个 `DouyinHostChecker` / `DouyinUrlGuard`，不要另写一份白名单。
+若将来要恢复下载能力，唯一稳妥路径是接入用户自备的第三方解析服务，并且**只解析地址、不代理视频本体**；
+不要尝试在服务端维护签名算法或抖音登录 cookie。
 
 ### 前端组织
 
-`/tools/:tool` 是单路由（`mortgage|tax|date|quit|douyin`），`App.vue` 的 `routerViewKey` 对 `/tools` 固定为 `/tools`，
-所以切工具只是换面板组件、不整页重挂载。五个工具页签由 `ToolsView.vue` 的 `tools` 数组驱动，
+`/tools/:tool` 是单路由（`mortgage|tax|date|quit`），`App.vue` 的 `routerViewKey` 对 `/tools` 固定为 `/tools`，
+所以切工具只是换面板组件、不整页重挂载。四个工具页签由 `ToolsView.vue` 的 `tools` 数组驱动，
 顶栏入口与底栏图标分别改 `App.vue` 的 `moduleNav` 与 `BottomNav.vue` 的 `moduleItems`（两处都要加，漏一处就只在一种屏宽下可见）。
 
 计算逻辑全部抽成无 Vue 依赖的纯函数（`components/tools/*.js`），面板只做输入绑定与展示，因此单测可以直接 `node --test`。
