@@ -16,7 +16,7 @@
 <script setup>
 import { computed } from 'vue'
 import LedgerCategoryCombobox from './LedgerCategoryCombobox.vue'
-import { rankLedgerOptions, recentLedgerTransactions } from './ledgerPreferences'
+import { rankLedgerOptions } from './ledgerPreferences'
 
 const props = defineProps({
   model: { type: Object, required: true },
@@ -31,7 +31,8 @@ const props = defineProps({
 })
 
 const requiresCategory = computed(() => ['INCOME', 'EXPENSE'].includes(props.model.kind))
-const recentTransactions = computed(() => recentLedgerTransactions(props.usageTransactions))
+// 调用方传入的已经是「最近 200 条」，这里不再重复排序整本账本
+const recentTransactions = computed(() => props.usageTransactions || [])
 const preferredAccounts = computed(() => rankLedgerOptions(props.accounts, recentTransactions.value,
   item => [item.accountId, item.targetAccountId]))
 const transferTargets = computed(() => preferredAccounts.value.filter(item => String(item.id) !== String(props.model.accountId)))

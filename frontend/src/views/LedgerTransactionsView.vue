@@ -124,7 +124,7 @@
 
     <Sheet v-model:open="editorOpen" :title="editing?'编辑流水':'新增流水'">
       <form class="flow-editor" @submit.prevent="saveTransaction">
-        <LedgerTransactionEditor :model="form" :accounts="accounts" :categories="categories" :usage-transactions="ledgerStore.transactions" :kinds="kindOptions" :merchant-options="merchantOptions" :member-options="memberOptions" :project-options="projectOptions" :lock-kind="editing?.kind==='TRANSFER'" />
+        <LedgerTransactionEditor :model="form" :accounts="accounts" :categories="categories" :usage-transactions="ledgerStore.recentTransactions" :kinds="kindOptions" :merchant-options="merchantOptions" :member-options="memberOptions" :project-options="projectOptions" :lock-kind="editing?.kind==='TRANSFER'" />
         <div class="flow-editor-footer"><LedgerActionIcon action="close" label="取消" @click="editorOpen=false" /><LedgerActionIcon action="confirm" type="submit" :label="saving?'保存中':'保存流水'" :disabled="saving" /></div>
       </form>
     </Sheet>
@@ -147,7 +147,7 @@ import LedgerTransactionFilters from '../components/ledger/LedgerTransactionFilt
 import LedgerResourceIcon from '../components/ledger/LedgerResourceIcon.vue'
 import LedgerActionIcon from '../components/ledger/LedgerActionIcon.vue'
 import LoadingOverlay from '../components/ledger/LoadingOverlay.vue'
-import { currentMemberName, ledgerTransactionDraft, preferredDraftAccountId, recentLedgerTransactions } from '../components/ledger/ledgerPreferences'
+import { currentMemberName, ledgerTransactionDraft, preferredDraftAccountId } from '../components/ledger/ledgerPreferences'
 import { useAppStore } from '../stores/app'
 import { useLedgerStore } from '../stores/ledger'
 import Card from '../components/ui/Card.vue'
@@ -356,7 +356,7 @@ function sortBy(column) { if (!column.sortKey) return; if (sort.key === column.s
 function startResize(event, key) { const startX = event.clientX, startWidth = columnWidths[key], maxWidth = key === 'note' ? 120 : 360; const move = current => { columnWidths[key] = Math.max(82, Math.min(maxWidth, startWidth + current.clientX - startX)) }; const stop = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop) }; window.addEventListener('pointermove', move); window.addEventListener('pointerup', stop) }
 function blankForm() {
   Object.assign(form, { kind: 'EXPENSE', amount: '', occurredOn: new Date().toLocaleDateString('en-CA'),
-    accountId: preferredDraftAccountId(accounts.value, recentLedgerTransactions(ledgerStore.transactions), filters.accountId),
+    accountId: preferredDraftAccountId(accounts.value, ledgerStore.recentTransactions, filters.accountId),
     targetAccountId: '', categoryId: '', payee: '',
     member: currentMemberName(ledgerStore.activeMembers, appStore.authUser), project: '', note: '' })
 }
@@ -446,8 +446,17 @@ async function removeTransaction() {
     deleting.value = false
   }
 }
-function applyCachedData() {
+/**
+ * 服务端分页时表格只认接口分页结果。
+ *
+ * 以前保存后会把本地投影（生产上一本 8500+ 流水）整体塞给 `transactions`，
+ * 而 serverMode 下 `paginatedTransactions` 不做切片，等于让每页 100 条的表
+ * 瞬间渲染上万行、再被接口结果替换掉，主线程白卡一两秒。
+ * 只有接口失败、需要降级读缓存时才走 `fallback`。
+ */
+function applyCachedData({ fallback = false } = {}) {
   applyCachedResources()
+  if (serverMode.value && !fallback) return
   transactions.value = ledgerStore.transactions.filter(item => !item.deleted)
 }
 function applyCachedResources() {
@@ -460,32 +469,60 @@ function serverSortKey() {
 }
 
 let requestSequence = 0
-async function loadPage() {
+/** 同一组参数的请求只保留一个；刚拉完的同一组参数在 300ms 内不再重复拉 */
+let inflightPage = null
+let inflightPageKey = ''
+let lastPageKey = ''
+let lastPageAt = 0
+function pageQueryKey() {
+  return JSON.stringify([ledgerStore.currentBookId, currentPage.value, pageSize.value,
+    serverSortKey(), sort.direction, searchText.value.trim(), filters])
+}
+
+/**
+ * 保存一条流水后，`pending` 归零、显式调用、筛选/排序 watcher 会同时触发刷新，
+ * 以前一次保存能打出 5 次同参数分页请求，每次都重渲染整张表。这里按参数去重。
+ */
+async function loadPage({ force = false } = {}) {
   if (!serverMode.value) return
+  const key = pageQueryKey()
+  if (!force) {
+    if (inflightPage && inflightPageKey === key) return inflightPage
+    if (key === lastPageKey && Date.now() - lastPageAt < 300) return
+  }
   const requestId = ++requestSequence
   loading.value = true
-  try {
-    const response = await apiListLedgerTransactions(ledgerStore.currentBookId, {
-      page: currentPage.value,
-      pageSize: pageSize.value,
-      sort: serverSortKey(),
-      direction: sort.direction,
-      q: searchText.value.trim() || undefined,
-      ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value))
-    })
-    if (requestId !== requestSequence) return
-    transactions.value = response.items || []
-    serverTotal.value = Number(response.total || 0)
-    serverSummary.value = response.summary || null
-  } catch (error) {
-    if (requestId !== requestSequence) return
-    applyCachedData()
-    serverTotal.value = filteredTransactions.value.length
-    serverSummary.value = null
-    message.error(error.response?.data?.detail || '流水读取失败')
-  } finally {
-    if (requestId === requestSequence) loading.value = false
-  }
+  const task = (async () => {
+    try {
+      const response = await apiListLedgerTransactions(ledgerStore.currentBookId, {
+        page: currentPage.value,
+        pageSize: pageSize.value,
+        sort: serverSortKey(),
+        direction: sort.direction,
+        q: searchText.value.trim() || undefined,
+        ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value))
+      })
+      if (requestId !== requestSequence) return
+      transactions.value = response.items || []
+      serverTotal.value = Number(response.total || 0)
+      serverSummary.value = response.summary || null
+      lastPageKey = key
+      lastPageAt = Date.now()
+    } catch (error) {
+      if (requestId !== requestSequence) return
+      // 接口失败才退回本地投影，正常路径不要用整本缓存覆盖当前分页
+      applyCachedData({ fallback: true })
+      serverTotal.value = filteredTransactions.value.length
+      serverSummary.value = null
+      message.error(error.response?.data?.detail || '流水读取失败')
+    } finally {
+      if (requestId === requestSequence) loading.value = false
+      if (inflightPage === task) inflightPage = null
+    }
+  })()
+  inflightPage = task
+  inflightPageKey = key
+  return task
 }
 
 async function loadData() {

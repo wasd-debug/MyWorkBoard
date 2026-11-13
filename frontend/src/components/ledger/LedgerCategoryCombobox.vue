@@ -42,7 +42,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { exactLedgerSecondaryCategory, filterLedgerPrimaryCategories, filterLedgerSecondaryCategories, ledgerCategoryParent } from './ledgerCategoryMatcher'
-import { rankLedgerOptions, recentLedgerTransactions } from './ledgerPreferences'
+import { rankLedgerOptions } from './ledgerPreferences'
 
 const props = defineProps({
   modelValue: { type: [String, Number], default: '' },
@@ -59,7 +59,8 @@ const secondaryQuery = ref('')
 const primaryOpen = ref(false)
 const secondaryOpen = ref(false)
 const lastEmittedValue = ref(null)
-const recentTransactions = computed(() => recentLedgerTransactions(props.usageTransactions))
+// 调用方传入的已经是「最近 200 条」，这里不再重复排序整本账本
+const recentTransactions = computed(() => props.usageTransactions || [])
 const orderedParents = computed(() => rankLedgerOptions(
   filterLedgerPrimaryCategories(props.categories, props.kind), recentTransactions.value,
   row => [props.categories.find(category => String(category.id) === String(row.categoryId))?.parentId]

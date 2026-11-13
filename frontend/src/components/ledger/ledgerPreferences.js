@@ -1,12 +1,4 @@
-export function recentLedgerTransactions(transactions, limit = 200) {
-  return [...(transactions || [])]
-    .filter(item => !item.deleted)
-    .sort((left, right) =>
-      String(right.occurredOn || '').localeCompare(String(left.occurredOn || '')) ||
-      String(right.createdAt || '').localeCompare(String(left.createdAt || '')) ||
-      String(right.id || '').localeCompare(String(left.id || '')))
-    .slice(0, limit)
-}
+export { recentLedgerTransactions } from '../../utils/ledgerRecency.js'
 
 export function rankLedgerOptions(options, recentTransactions, idsForTransaction) {
   const scores = new Map()

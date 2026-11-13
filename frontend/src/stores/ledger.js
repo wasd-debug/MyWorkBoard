@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { createLedgerSyncEngine } from '../../packages/sync-engine/src/index.js'
 import { accountScopeFor, currentLedgerBookStorageKey, ledgerDatabaseName, setActiveAccountScope } from '../utils/accountScope.js'
 import { createClientId } from '../utils/clientId.js'
+import { recentLedgerTransactions } from '../utils/ledgerRecency.js'
 import {
   apiCreateLedgerBook,
   apiCreateLedgerScheduledTask,
@@ -38,6 +39,33 @@ let activeSyncPromise
 let sessionEpoch = 0
 const OFFLINE_RESOURCE_TYPES = new Set(['account', 'category', 'merchant', 'project', 'budget'])
 
+/**
+ * 本地库 store 名 / 实体类型 → store 里对应的集合字段。
+ * 单条写入和增量同步都靠这张表就地补记录，不再整库重读。
+ */
+const COLLECTION_BY_STORE = {
+  'ledger-transactions': 'transactions',
+  'ledger-accounts': 'accounts',
+  'ledger-categories': 'categories',
+  'ledger-merchants': 'merchants',
+  'ledger-members': 'members',
+  'ledger-projects': 'projects',
+  'ledger-roles': 'roles',
+  'ledger-budgets': 'budgets'
+}
+const COLLECTION_BY_TYPE = {
+  transaction: 'transactions',
+  account: 'accounts',
+  category: 'categories',
+  merchant: 'merchants',
+  member: 'members',
+  project: 'projects',
+  role: 'roles',
+  budget: 'budgets'
+}
+/** 单轮要补的记录超过这个数就不值得逐条读，直接整库重读更划算 */
+const SYNC_PATCH_LIMIT = 200
+
 function onlineRequired(message) {
   const error = new Error(message)
   error.code = 'ONLINE_REQUIRED'
@@ -62,7 +90,8 @@ function clearLedgerState(store) {
     conflicts: [],
     rejected: [],
     pending: 0,
-    syncError: ''
+    syncError: '',
+    lastSyncAt: 0
   })
 }
 
@@ -90,6 +119,13 @@ export const useLedgerStore = defineStore('ledger', {
   }),
   getters: {
     currentBook: state => state.books.find(book => String(book.id) === String(state.currentBookId)),
+    /**
+     * 最近 200 条流水：录入表单的账户/分类/商家排序、默认账户推断都用它。
+     *
+     * 放进 getter 是为了让 Vue 缓存结果——以前每个组件各自对整本流水拷贝排序，
+     * 一本 8500 条的账本，保存一次要排四五遍，主线程直接卡住。
+     */
+    recentTransactions: state => recentLedgerTransactions(state.transactions),
     visibleAccounts: state => state.accounts.filter(item => !item.hidden && !item.deleted),
     visibleCategories: state => state.categories.filter(item => {
       if (item.hidden || item.deleted) return false
@@ -345,7 +381,7 @@ export const useLedgerStore = defineStore('ledger', {
         baseRevision: value.revision || 0
       })
       if (epoch === sessionEpoch && scopedEngine === engine) {
-        await this.hydrate()
+        await this.refreshAfterLocalWrite(type, record, scopedEngine)
         this.scheduleSync()
       }
       return record
@@ -359,10 +395,74 @@ export const useLedgerStore = defineStore('ledger', {
         baseRevision: value.revision || 0
       })
       if (epoch === sessionEpoch && scopedEngine === engine) {
-        await this.hydrate()
+        await this.refreshAfterLocalWrite(type, record, scopedEngine)
         this.scheduleSync()
       }
       return record
+    },
+
+    /**
+     * 本地写完一条后只更新这一条。
+     *
+     * 以前这里 `hydrate()`：把整本 8000+ 流水从 IndexedDB 重读、重排、换新数组，
+     * 保存按钮要多等两轮这样的全量刷新，页面也跟着重算，主线程能卡上一两秒。
+     * 真正变的只有刚写的这一条，就地替换即可；万一类型对不上再退回全量。
+     */
+    async refreshAfterLocalWrite(type, record, scopedEngine) {
+      const collectionKey = COLLECTION_BY_TYPE[type]
+      if (!collectionKey || !this.patchCollection(collectionKey, record)) {
+        await this.hydrate()
+        return
+      }
+      try {
+        this.pending = (await scopedEngine.pendingOperations(this.currentBookId)).length
+      } catch {
+        /* 待同步计数拿不到就留旧值，下一次 syncNow 会纠正 */
+      }
+    },
+
+    /** 就地替换/插入一条记录：保持数组引用不变，避免整表重渲染 */
+    patchCollection(collectionKey, record) {
+      const list = this[collectionKey]
+      if (!Array.isArray(list) || !record) return false
+      const id = String(record.id ?? record.publicId ?? '')
+      if (!id) return false
+      const index = list.findIndex(item => String(item.id ?? item.publicId) === id)
+      if (record.deleted) {
+        if (index >= 0) list.splice(index, 1)
+        return true
+      }
+      if (index >= 0) list.splice(index, 1, record)
+      else list.unshift(record)
+      return true
+    },
+
+    /**
+     * 同步拉回来的少量改动按 key 补进内存，避免整库重读。
+     * 返回 false 表示这批改动不适合增量处理（类型未知/记录读不到），调用方退回 `hydrate()`。
+     */
+    async applySyncChanges(changed) {
+      const stores = Object.keys(changed || {}).filter(name => changed[name]?.length)
+      if (!stores.length) return false
+      const epoch = sessionEpoch
+      const scopedEngine = engine
+      const bookId = this.currentBookId
+      for (const store of stores) if (!COLLECTION_BY_STORE[store]) return false
+      const batches = []
+      for (const store of stores) {
+        const records = []
+        for (const key of changed[store]) {
+          const record = await scopedEngine.read(store, key)
+          if (!record) return false
+          records.push(record)
+        }
+        batches.push([COLLECTION_BY_STORE[store], records])
+      }
+      if (epoch !== sessionEpoch || scopedEngine !== engine || String(bookId) !== String(this.currentBookId)) return false
+      for (const [collectionKey, records] of batches) {
+        for (const record of records) this.patchCollection(collectionKey, record)
+      }
+      return true
     },
 
     async saveTransaction(payload) {
@@ -520,20 +620,47 @@ export const useLedgerStore = defineStore('ledger', {
       }, 250)
     },
 
-    async syncNow() {
+    /**
+     * 推拉一次同步。
+     *
+     * 保存一条流水会同时触发：scheduleSync 定时器、页面显式 `await syncNow()`、
+     * pending 变化后的 watcher。以前它们各发一轮 push+pull，一次保存能看到 5 次；
+     * 这里用「刚同步过且没有待推操作」直接短路，把同一次保存压成一轮。
+     */
+    async syncNow({ force = false } = {}) {
       if (!this.online || !this.currentBookId) return
       const epoch = sessionEpoch
       const scopedEngine = engine
       const bookId = this.currentBookId
       if (activeSyncPromise?.epoch === epoch && activeSyncPromise.bookId === bookId) return activeSyncPromise.promise
+      if (!force && !this.pending && Date.now() - Number(this.lastSyncAt || 0) < 600) return
+      clearTimeout(syncTimer)
       this.syncing = true
       this.syncError = ''
       const promise = (async () => {
         try {
           const result = await scopedEngine.sync(bookId)
           if (epoch !== sessionEpoch || scopedEngine !== engine || String(bookId) !== String(this.currentBookId)) return result
-          if (result.resetRequired) await this.refreshCurrentBook(undefined, { sync: false })
-          else await this.hydrate()
+          if (result.resetRequired) {
+            await this.refreshCurrentBook(undefined, { sync: false })
+            return result
+          }
+          // 一次保存通常只产生一两条改动：按 key 补进内存即可，不必把整本流水重读一遍。
+          // 冲突/拒绝数量变了、或一次拉回太多改动时，仍走全量刷新保证状态一致。
+          const stores = Object.keys(result.changed || {}).filter(name => result.changed[name]?.length)
+          const changedCount = stores.reduce((sum, name) => sum + result.changed[name].length, 0)
+          const issuesChanged = Number(result.conflicts || 0) !== this.conflicts.length
+            || Number(result.rejected || 0) !== this.rejected.length
+          let patched = false
+          if (!issuesChanged && changedCount > 0 && changedCount <= SYNC_PATCH_LIMIT) {
+            patched = await this.applySyncChanges(result.changed)
+          }
+          if (patched || (!issuesChanged && changedCount === 0)) {
+            this.pending = Number(result.pending ?? this.pending)
+          } else {
+            await this.hydrate()
+          }
+          this.lastSyncAt = Date.now()
           return result
         } catch (error) {
           if (epoch === sessionEpoch) this.syncError = error?.response?.data?.detail || error?.message || '同步失败'

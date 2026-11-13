@@ -124,3 +124,61 @@ test('refreshServer hydrates resources when a persisted current book is still va
   assert.equal(store.accounts.length, 1)
   assert.equal(store.accounts[0].name, '现金')
 })
+
+test('local writes patch a single record instead of re-reading the whole book', async t => {
+  const store = await createOfflineLedger(t)
+  // 模拟生产：本地投影里已经有整本流水
+  store.transactions = [
+    { id: 'old-1', amount: 10, note: 'a', revision: 1 },
+    { id: 'old-2', amount: 20, note: 'b', revision: 1 }
+  ]
+
+  const created = await store.saveTransaction({ kind: 'EXPENSE', amount: 30, occurredOn: '2026-11-13' })
+
+  // 新记录插到最前面，原有记录原样保留（没有被整库覆盖）
+  assert.equal(store.transactions.length, 3)
+  assert.equal(store.transactions[0].id, created.id)
+  assert.deepEqual(store.transactions.slice(1).map(item => item.id), ['old-1', 'old-2'])
+
+  await store.deleteTransaction(store.transactions[0])
+  assert.deepEqual(store.transactions.map(item => item.id), ['old-1', 'old-2'])
+})
+
+test('patchCollection replaces in place, drops deleted rows and rejects unknown collections', async t => {
+  const store = await createOfflineLedger(t)
+  store.transactions = [{ id: 't1', amount: 10 }, { id: 't2', amount: 20 }]
+
+  assert.equal(store.patchCollection('transactions', { id: 't2', amount: 99, revision: 3 }), true)
+  assert.equal(store.transactions[1].amount, 99)
+  assert.equal(store.transactions[1].revision, 3)
+
+  assert.equal(store.patchCollection('transactions', { id: 't1', deleted: true }), true)
+  assert.deepEqual(store.transactions.map(item => item.id), ['t2'])
+
+  assert.equal(store.patchCollection('not-a-collection', { id: 'x' }), false)
+  assert.equal(store.patchCollection('transactions', { id: '' }), false)
+})
+
+test('syncNow skips a redundant round trip right after a successful sync', async t => {
+  const store = await createOfflineLedger(t)
+  const originalAdapter = api.defaults.adapter
+  let requests = 0
+  api.defaults.adapter = async config => {
+    requests += 1
+    throw new Error(`unexpected request: ${config.method} ${config.url}`)
+  }
+  t.after(() => { api.defaults.adapter = originalAdapter })
+
+  store.online = true
+  store.pending = 0
+  store.lastSyncAt = Date.now()
+
+  // 刚同步过且没有待推操作：不应再打 push/pull
+  await store.syncNow()
+  assert.equal(requests, 0)
+
+  // 有待推操作时必须真正同步
+  store.pending = 1
+  await store.syncNow().catch(() => {})
+  assert.equal(requests > 0, true)
+})

@@ -5,7 +5,7 @@
         :model="form"
         :accounts="ledgerStore.visibleAccounts"
         :categories="ledgerStore.visibleCategories"
-        :usage-transactions="ledgerStore.transactions"
+        :usage-transactions="ledgerStore.recentTransactions"
         :kinds="KIND_OPTIONS"
         :merchant-options="merchantOptions"
         :member-options="memberOptions"
@@ -31,7 +31,7 @@ import LedgerTransactionEditor from '../ledger/LedgerTransactionEditor.vue'
 import { useLedgerStore } from '../../stores/ledger.js'
 import { message } from '../../services/message.js'
 import {
-  ledgerFormFromTransaction, ledgerTransactionDraft, preferredDraftAccountId, recentLedgerTransactions
+  ledgerFormFromTransaction, ledgerTransactionDraft, preferredDraftAccountId
 } from '../ledger/ledgerPreferences.js'
 import { dateKeyOf } from './homeMetrics.js'
 
@@ -61,15 +61,15 @@ const form = reactive(blankForm())
 
 const merchantOptions = computed(() => unique([
   ...ledgerStore.visibleMerchants.map(item => item.name),
-  ...recentLedgerTransactions(ledgerStore.transactions).map(item => item.payee)
+  ...ledgerStore.recentTransactions.map(item => item.payee)
 ]))
 const memberOptions = computed(() => unique([
   ...ledgerStore.activeMembers.map(item => item.displayName || item.username),
-  ...recentLedgerTransactions(ledgerStore.transactions).map(item => item.memberName)
+  ...ledgerStore.recentTransactions.map(item => item.memberName)
 ]))
 const projectOptions = computed(() => unique([
   ...ledgerStore.visibleProjects.map(item => item.name),
-  ...recentLedgerTransactions(ledgerStore.transactions).map(item => item.projectName)
+  ...ledgerStore.recentTransactions.map(item => item.projectName)
 ]))
 
 function unique(values) {
@@ -78,7 +78,7 @@ function unique(values) {
 
 function blankForm() {
   const accountId = preferredDraftAccountId(
-    ledgerStore.visibleAccounts, recentLedgerTransactions(ledgerStore.transactions), '')
+    ledgerStore.visibleAccounts, ledgerStore.recentTransactions, '')
   return {
     kind: 'EXPENSE', amount: '', occurredOn: dateKeyOf(new Date()), accountId: accountId ? String(accountId) : '',
     targetAccountId: '', categoryId: '', payee: '', member: '', project: '', note: ''
