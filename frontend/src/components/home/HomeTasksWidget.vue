@@ -13,22 +13,30 @@
     <div v-if="overdue.length" class="tk-block">
       <div class="tk-label is-overdue">逾期 {{ overdue.length }}<em v-if="overdue.length > 2">还有 {{ overdue.length - 2 }} 条</em></div>
       <ul class="tk-list">
-        <li v-for="task in overdue.slice(0, 2)" :key="task.publicId">
-          <button class="tk-check" type="button" :aria-label="`完成 ${task.title}`" @click="complete(task)" />
-          <span class="tk-title" :title="task.title">{{ task.title }}</span>
-          <span class="tk-badge is-overdue">{{ overdueDays(task) }} 天</span>
-        </li>
+        <template v-for="task in overdue.slice(0, 2)" :key="task.publicId">
+          <li>
+            <button class="tk-check" type="button" :aria-label="`完成 ${task.title}`" @click="complete(task)" />
+            <button class="tk-title is-editable" type="button" :title="`编辑「${task.title}」`" @click="toggleEdit(task)">{{ task.title }}</button>
+            <span class="tk-badge is-overdue">{{ overdueDays(task) }} 天</span>
+            <button class="tk-edit" type="button" :aria-label="`编辑 ${task.title}`" :aria-expanded="editingId === task.publicId" @click="toggleEdit(task)"><Pencil :size="12" /></button>
+          </li>
+          <li v-if="editingId === task.publicId" class="tk-editor"><HomeTaskEditor :task="task" @close="editingId = ''" /></li>
+        </template>
       </ul>
     </div>
 
     <div class="tk-block">
       <div class="tk-label">今天 {{ today.length }}<em v-if="today.length > 3">还有 {{ today.length - 3 }} 条</em></div>
       <ul v-if="today.length" class="tk-list">
-        <li v-for="task in today.slice(0, 3)" :key="task.publicId">
-          <button class="tk-check" type="button" :aria-label="`完成 ${task.title}`" @click="complete(task)" />
-          <span class="tk-title" :title="task.title">{{ task.title }}</span>
-          <span v-if="task.priority && task.priority !== 'NONE'" class="tk-priority" :class="`is-${task.priority.toLowerCase()}`" :title="priorityLabel(task.priority)" />
-        </li>
+        <template v-for="task in today.slice(0, 3)" :key="task.publicId">
+          <li>
+            <button class="tk-check" type="button" :aria-label="`完成 ${task.title}`" @click="complete(task)" />
+            <button class="tk-title is-editable" type="button" :title="`编辑「${task.title}」`" @click="toggleEdit(task)">{{ task.title }}</button>
+            <span v-if="task.priority && task.priority !== 'NONE'" class="tk-priority" :class="`is-${task.priority.toLowerCase()}`" :title="priorityLabel(task.priority)" />
+            <button class="tk-edit" type="button" :aria-label="`编辑 ${task.title}`" :aria-expanded="editingId === task.publicId" @click="toggleEdit(task)"><Pencil :size="12" /></button>
+          </li>
+          <li v-if="editingId === task.publicId" class="tk-editor"><HomeTaskEditor :task="task" @close="editingId = ''" /></li>
+        </template>
       </ul>
       <p v-else class="tk-empty">今天没有到期任务</p>
     </div>
@@ -54,9 +62,10 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
-import { Check } from 'lucide-vue-next'
+import { computed, ref, watch } from 'vue'
+import { Check, Pencil } from 'lucide-vue-next'
 import HomeWidgetFrame from './HomeWidgetFrame.vue'
+import HomeTaskEditor from './HomeTaskEditor.vue'
 import { useTasksStore } from '../../stores/tasks.js'
 import { message } from '../../services/message.js'
 import { dateKeyOf, overdueDays, taskBuckets } from './homeMetrics.js'
@@ -68,6 +77,7 @@ const tasksStore = useTasksStore()
 const draft = ref('')
 const adding = ref(false)
 const addError = ref('')
+const editingId = ref('')
 const todayKey = dateKeyOf(new Date())
 
 const buckets = computed(() => taskBuckets(tasksStore.tasks, new Date()))
@@ -87,6 +97,17 @@ function streakOf(habit) {
 function priorityLabel(priority) {
   return { HIGH: '高优先级', MEDIUM: '中优先级', LOW: '低优先级' }[priority] || priority
 }
+
+/** 只允许同时展开一条，避免卡片里堆满日期面板 */
+function toggleEdit(task) {
+  editingId.value = editingId.value === task.publicId ? '' : task.publicId
+}
+
+// 任务完成后会从「今天」列表消失，编辑器随之收起，避免浮在别的任务下面
+watch(() => [today.value.map(item => item.publicId).join(','), overdue.value.map(item => item.publicId).join(',')], () => {
+  if (!editingId.value) return
+  if (![...today.value, ...overdue.value].some(item => item.publicId === editingId.value)) editingId.value = ''
+})
 
 async function complete(task) {
   try {
@@ -144,6 +165,13 @@ async function addTask() {
 .tk-check { position: relative; flex: 0 0 15px; width: 15px; height: 15px; min-width: 0; min-height: 0; padding: 0; border: 1.5px solid var(--line2); border-radius: 50%; background: transparent; }
 .tk-check:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .tk-title { min-width: 0; flex: 1; overflow: hidden; color: var(--ink2); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.tk-title.is-editable { padding: 0; border: 0; background: transparent; font: inherit; font-size: 12.5px; text-align: left; }
+.tk-title.is-editable:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.tk-edit { display: grid; width: 22px; height: 22px; min-width: 0; min-height: 0; flex: 0 0 22px; place-items: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); opacity: 0; transition: opacity .15s ease; }
+.tk-list li:hover .tk-edit, .tk-edit:focus-visible, .tk-edit[aria-expanded="true"] { opacity: 1; }
+.tk-edit:hover { background: var(--card); color: var(--accent); }
+.tk-editor { display: block; padding: 0; }
+.tk-editor:hover .tk-edit { opacity: 1; }
 .tk-badge { flex: 0 0 auto; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
 .tk-badge.is-overdue { color: var(--down); }
 .tk-priority { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; }
@@ -161,5 +189,7 @@ async function addTask() {
   .tk-check { flex-basis: 20px; width: 20px; height: 20px; }
   .habits .hk-check { flex-basis: 20px; width: 20px; height: 20px; border-radius: 6px; }
   .tk-title { font-size: 13px; }
+  /* 触屏没有 hover，编辑入口必须常显 */
+  .tk-edit { width: 30px; height: 30px; flex-basis: 30px; opacity: 1; }
 }
 </style>

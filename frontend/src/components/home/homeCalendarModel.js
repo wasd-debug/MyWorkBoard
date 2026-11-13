@@ -66,7 +66,9 @@ function normalizeTask(task) {
     title: task.title || task.name || '未命名任务',
     tone: taskTone(task),
     priority: task.priority || 'NONE',
-    time: timeLabelOf(task)
+    time: timeLabelOf(task),
+    // 明细行要就地编辑，得拿回原始记录；没有它就只能跳任务页
+    source: task
   }
 }
 
@@ -77,7 +79,8 @@ function normalizeFlow(row) {
     title: row.payee || row.note || (incoming ? '收入' : '支出'),
     amount: Number(row.amount) || 0,
     incoming,
-    tone: incoming ? 'in' : OUT_KINDS.includes(row.kind) ? 'out' : 'move'
+    tone: incoming ? 'in' : OUT_KINDS.includes(row.kind) ? 'out' : 'move',
+    source: row
   }
 }
 

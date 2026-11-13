@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { currentMemberName, ledgerTransactionDraft, preferredDraftAccountId, rankLedgerOptions, recentLedgerTransactions, selectedResourceId } from './ledgerPreferences.js'
+import { currentMemberName, ledgerFormFromTransaction, ledgerTransactionDraft, preferredDraftAccountId, rankLedgerOptions, recentLedgerTransactions, selectedResourceId } from './ledgerPreferences.js'
 import { accountBalancesAt, totalLedgerAssets } from './ledgerAccounting.js'
 
 test('recent frequent accounts and categories lead without removing unused choices', () => {
@@ -80,4 +80,26 @@ test('draft requires two-level categories only for income/expense and maps selec
   assert.throws(() => ledgerTransactionDraft({ ...form, categoryId: 'primary' }, resources), /二级分类/)
   assert.equal(ledgerTransactionDraft({ ...form, kind: 'TRANSFER', categoryId: '' }, resources).categoryId, null)
   assert.throws(() => ledgerTransactionDraft({ ...form, payee: '未知商家' }, resources), /商家/)
+})
+
+test('editing a transaction maps stored names back into the shared editor form', () => {
+  const form = ledgerFormFromTransaction({
+    kind: 'INCOME', amount: 120.5, occurredOn: '2026-11-08', accountId: 7,
+    targetAccountId: null, categoryId: 21, payee: '工资', member: '我', project: '主业', note: '11 月'
+  })
+  assert.deepEqual(form, {
+    kind: 'INCOME', amount: 120.5, occurredOn: '2026-11-08', accountId: '7',
+    targetAccountId: '', categoryId: '21', payee: '工资', member: '我', project: '主业', note: '11 月'
+  })
+  // 列表接口只回名字字段时也要能回填，否则编辑会把商家/成员清空
+  assert.deepEqual(
+    (({ payee, member, project }) => ({ payee, member, project }))(ledgerFormFromTransaction({
+      kind: 'EXPENSE', merchantName: '便利店', memberName: '太太', projectName: '装修'
+    })),
+    { payee: '便利店', member: '太太', project: '装修' })
+  assert.equal(ledgerFormFromTransaction(null), null)
+  // 编辑态提交仍要复用同一套草稿校验
+  assert.throws(() => ledgerTransactionDraft(ledgerFormFromTransaction({ kind: 'EXPENSE', categoryId: 'primary' }), {
+    categories: [{ id: 'primary', kind: 'EXPENSE' }], merchants: [], members: [], projects: []
+  }), /二级分类/)
 })

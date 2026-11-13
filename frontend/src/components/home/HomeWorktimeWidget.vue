@@ -6,8 +6,7 @@
         <button type="button" :class="{ active: range === 'month' }" @click="range = 'month'">本月</button>
         <button type="button" :class="{ active: range === 'year' }" @click="range = 'year'">本年</button>
       </div>
-      <button class="hw-btn" type="button" @click="togglePunch"><Timer :size="13" />{{ hasToday ? '修改本日工时' : '记录本日工时' }}</button>
-    </template>
+      <button class="hw-btn" type="button" @click="togglePunch"><Timer :size="13" />{{ punchLabel }}</button>    </template>
 
     <div class="wt-stats">
       <div><small>工时</small><b>{{ hours(stats.totalMin) }}<i>h</i></b></div>
@@ -33,6 +32,7 @@
 
     <Transition name="wt-punch">
       <form v-if="punchOpen" class="wt-punch" @submit.prevent="savePunch">
+        <label>日期<input v-model="punch.date" type="date" required @change="loadPunch" /></label>
         <label>上班<input v-model="punch.start" type="time" required /></label>
         <label>下班<input v-model="punch.end" type="time" required /></label>
         <label>休息<input v-model="punch.rest" type="number" min="0" max="600" step="5" /><small>分钟</small></label>
@@ -58,6 +58,7 @@ import { useWorktimeStore } from '../../stores/worktime.js'
 import { useAppStore } from '../../stores/app.js'
 import { message } from '../../services/message.js'
 import { dateKeyOf, hoursLabel, worktimeStats } from './homeMetrics.js'
+import { punchUpdate } from './homeWidgetEdits.js'
 
 defineProps({ editing: Boolean })
 
@@ -69,7 +70,13 @@ const saving = ref(false)
 const punchError = ref('')
 const todayKey = dateKeyOf(new Date())
 const hasToday = computed(() => Boolean(worktimeStore.records[todayKey]?.id))
-const punch = reactive({ start: '', end: '', rest: 0 })
+const punch = reactive({ date: todayKey, start: '', end: '', rest: 0 })
+const punchLabel = computed(() => {
+  if (punchOpen.value) return '收起工时编辑'
+  const target = punch.date || todayKey
+  if (target === todayKey) return hasToday.value ? '修改本日工时' : '记录本日工时'
+  return worktimeStore.records[target]?.id ? `修改 ${target.slice(5)} 工时` : `补记 ${target.slice(5)} 工时`
+})
 
 const stats = computed(() => worktimeStats({
   records: worktimeStore.records,
@@ -119,21 +126,30 @@ function money(value) { return Number(value || 0).toLocaleString('zh-CN', { maxi
 
 function togglePunch() {
   if (punchOpen.value) { punchOpen.value = false; return }
-  const record = worktimeStore.records[todayKey] || {}
-  punch.start = record.start || worktimeStore.settings.workStart || '09:00'
-  punch.end = record.end || worktimeStore.settings.workEnd || '18:00'
-  punch.rest = Number(record.rest || 0)
+  // 默认仍是今天；之前补记过别的日期就沿用上次选的日子，省一次点选
+  punch.date = punch.date || todayKey
+  loadPunch()
   punchError.value = ''
   punchOpen.value = true
 }
 
+/** 切日期时把那天已有的记录读进表单，没记录就按设置里的上下班时间给默认值 */
+function loadPunch() {
+  const record = worktimeStore.records[punch.date] || {}
+  punch.start = record.start || worktimeStore.settings.workStart || '09:00'
+  punch.end = record.end || worktimeStore.settings.workEnd || '18:00'
+  punch.rest = Number(record.rest || 0)
+  punchError.value = ''
+}
+
 async function savePunch() {
-  if (!punch.start || !punch.end) { punchError.value = '请填写上下班时间'; return }
+  const payload = punchUpdate(punch.date, punch)
+  if (!payload) { punchError.value = '请填写有效的日期与上下班时间'; return }
   saving.value = true
   punchError.value = ''
   try {
-    await worktimeStore.saveRecord({ date: todayKey, start: punch.start, end: punch.end, rest: Number(punch.rest) || 0 })
-    message.success('本日工时已保存')
+    await worktimeStore.saveRecord(payload)
+    message.success(payload.date === todayKey ? '本日工时已保存' : `${payload.date.slice(5)} 工时已保存`)
     punchOpen.value = false
   } catch (error) {
     punchError.value = error?.response?.data?.detail || error?.message || '保存失败'
@@ -163,6 +179,8 @@ async function savePunch() {
 .wt-punch label { display: flex; align-items: center; gap: 5px; color: var(--ink2); font-size: 11px; }
 .wt-punch input { height: 30px; padding: 0 7px; border: 1px solid var(--line2); border-radius: 7px; background: var(--card); color: var(--ink); font-size: 12px; }
 .wt-punch input[type="number"] { width: 62px; }
+/* 日期输入给固定宽度，否则 iOS/Safari 会把整行撑开 */
+.wt-punch input[type="date"] { width: 140px; }
 .wt-punch label small { color: var(--muted); font-size: 10px; }
 .wt-punch .hw-btn { margin-left: auto; }
 .wt-punch .hw-btn + .hw-btn { margin-left: 0; }

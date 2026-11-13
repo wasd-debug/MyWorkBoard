@@ -49,6 +49,30 @@ export function selectedResourceId(options, selected, nameKey = 'name') {
     || item[nameKey] === selected || item.username === selected)?.id || null
 }
 
+/**
+ * 把既有流水映射回编辑表单。
+ *
+ * 首页「最近流水」与完整账本页用的是同一套 `LedgerTransactionEditor`，
+ * 编辑入口就必须喂同一份表单结构；商家/成员/项目在流水上是名字字段，
+ * 在表单里是按名字匹配的输入框，所以这里统一取名字而不是 id。
+ */
+export function ledgerFormFromTransaction(transaction) {
+  if (!transaction) return null
+  const text = value => String(value ?? '')
+  return {
+    kind: transaction.kind || 'EXPENSE',
+    amount: transaction.amount ?? '',
+    occurredOn: text(transaction.occurredOn).slice(0, 10),
+    accountId: text(transaction.accountId),
+    targetAccountId: text(transaction.targetAccountId),
+    categoryId: text(transaction.categoryId),
+    payee: text(transaction.payee || transaction.merchantName),
+    member: text(transaction.member || transaction.memberName),
+    project: text(transaction.project || transaction.projectName),
+    note: text(transaction.note)
+  }
+}
+
 export function ledgerTransactionDraft(form, { categories, merchants, members, projects }) {
   const category = categories.find(item => String(item.id) === String(form.categoryId))
   if (['INCOME', 'EXPENSE'].includes(form.kind) &&

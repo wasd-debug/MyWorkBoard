@@ -24,32 +24,44 @@
       </div>
       <div class="hc-day">
         <template v-if="selectedDay.count">
-          <router-link
-            v-for="task in selectedDay.tasks"
-            :key="`task-${task.id}`"
-            class="hc-line"
-            :class="`is-${task.tone}`"
-            :to="{ path: '/tasks/all', query: { task: task.id } }"
-            :title="`${task.time} ${task.title}`"
-          >
-            <span class="hc-tag is-task">任务</span>
-            <span class="hc-time">{{ task.time }}</span>
-            <span class="hc-label">{{ task.title }}</span>
-            <ChevronRight class="hc-go" :size="12" />
-          </router-link>
-          <router-link
+          <template v-for="task in selectedDay.tasks" :key="`task-${task.id}`">
+            <div class="hc-line" :class="`is-${task.tone}`">
+              <button
+                class="hc-line-main"
+                type="button"
+                :title="`编辑「${task.title}」`"
+                :aria-expanded="editingTaskId === task.id"
+                @click="toggleTask(task)"
+              >
+                <span class="hc-tag is-task">任务</span>
+                <span class="hc-time">{{ task.time }}</span>
+                <span class="hc-label">{{ task.title }}</span>
+              </button>
+              <router-link
+                class="hc-go"
+                :to="{ path: '/tasks/all', query: { task: task.id } }"
+                :aria-label="`在任务页打开 ${task.title}`"
+                title="在任务页打开"
+              ><ChevronRight :size="12" /></router-link>
+            </div>
+            <div v-if="editingTaskId === task.id && task.source" class="hc-editor">
+              <HomeTaskEditor :task="task.source" @close="editingTaskId = ''" />
+            </div>
+          </template>
+          <button
             v-for="flow in selectedDay.flows"
             :key="`flow-${flow.id}`"
-            class="hc-line"
+            class="hc-line hc-line-flow"
             :class="`is-${flow.tone}`"
-            :to="{ path: '/ledger/transactions', query: { from: selectedDay.key, to: selectedDay.key } }"
-            :title="flow.title"
+            type="button"
+            :title="`编辑「${flow.title}」`"
+            @click="openTransaction(flow)"
           >
             <span class="hc-tag is-flow">流水</span>
             <span class="hc-time"></span>
             <span class="hc-label">{{ flow.title }}</span>
             <b class="hc-amount">{{ flow.incoming ? '+' : '−' }}¥{{ money(flow.amount) }}</b>
-          </router-link>
+          </button>
           <router-link
             v-if="selectedDay.work"
             class="hc-line is-work"
@@ -151,6 +163,8 @@
       <span class="hc-legend"><i class="hc-dot is-task" />任务 <i class="hc-dot is-flow" />流水 <i class="hc-dot is-work" />工时</span>
       <router-link class="hc-more" to="/calendar">完整日历 →</router-link>
     </template>
+
+    <HomeTransactionEditor v-model:open="flowEditorOpen" :transaction="editingFlow" @saved="editingFlow = null" />
   </HomeWidgetFrame>
 </template>
 
@@ -158,6 +172,8 @@
 import { computed, ref, watch } from 'vue'
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import HomeWidgetFrame from './HomeWidgetFrame.vue'
+import HomeTaskEditor from './HomeTaskEditor.vue'
+import HomeTransactionEditor from './HomeTransactionEditor.vue'
 import { compactMoney, dateKeyOf } from './homeMetrics.js'
 import {
   AGENDA_DAYS, HOME_CALENDAR_VIEWS, HOME_CALENDAR_VIEW_LABELS, agendaGroups, buildDayIndex,
@@ -182,6 +198,9 @@ const storageKey = calendarViewStorageKey(store.accountScope)
 const view = ref(readCalendarView(storageKey))
 const anchorKey = ref(todayKey)
 const selectedKey = ref('')
+const editingTaskId = ref('')
+const flowEditorOpen = ref(false)
+const editingFlow = ref(null)
 
 const holidays = computed(() => store.holidays || {})
 const options = computed(() => ({ todayKey, holidays: holidays.value }))
@@ -225,6 +244,17 @@ const atToday = computed(() => {
 
 function money(value) {
   return compactMoney(value)
+}
+
+/** 明细行就地编辑：任务用首页共享的任务编辑器，流水用账本表单，都不跳页 */
+function toggleTask(task) {
+  editingTaskId.value = editingTaskId.value === task.id ? '' : task.id
+}
+
+function openTransaction(flow) {
+  if (!flow.source) return
+  editingFlow.value = flow.source
+  flowEditorOpen.value = true
 }
 
 function setView(key) {
@@ -272,6 +302,9 @@ watch(() => store.accountScope, () => {
   anchorKey.value = todayKey
   selectedKey.value = ''
 })
+
+// 换一天就收起任务编辑器，否则会把上一天的任务面板带到下一天
+watch(selectedKey, () => { editingTaskId.value = '' })
 </script>
 
 <style scoped>
@@ -391,10 +424,19 @@ watch(() => store.accountScope, () => {
 /* 当天明细 */
 .hc-day { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 1px; overflow-y: auto; padding-right: 2px; }
 .hc-line {
-  display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 6px;
-  padding: 4px 6px; border-radius: 8px; color: var(--ink2); text-decoration: none;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px;
+  padding: 2px 4px 2px 0; border: 0; border-radius: 8px; background: transparent; color: var(--ink2); text-decoration: none;
 }
 .hc-line:hover { background: var(--paper); }
+/* 明细行主体是按钮（点了就地编辑），右侧箭头才是跳页入口 */
+.hc-line-main, .hc-line-flow {
+  display: grid; width: 100%; min-width: 0; min-height: 0; align-items: center; gap: 6px; padding: 2px 0 2px 6px;
+  border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; text-align: left;
+}
+.hc-line-flow { grid-template-columns: auto auto minmax(0, 1fr) auto; }
+.hc-line-main { grid-template-columns: auto auto minmax(0, 1fr); }
+.hc-line-main:hover .hc-label, .hc-line-flow:hover .hc-label { color: var(--accent); }
+.hc-editor { margin: 2px 0 6px; }
 .hc-line.is-done .hc-label, .hc-line.is-abandoned .hc-label { color: var(--muted); text-decoration: line-through; }
 .hc-line.is-move .hc-label { color: var(--muted); }
 .hc-tag { padding: 1px 5px; border-radius: 5px; background: var(--paper); color: var(--muted); font-size: 9px; font-weight: 650; }
@@ -404,7 +446,7 @@ watch(() => store.accountScope, () => {
 .hc-time { min-width: 28px; color: var(--muted); font-size: 9.5px; font-variant-numeric: tabular-nums; }
 .hc-label { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .hc-amount { color: var(--ink2); font-size: 10.5px; font-variant-numeric: tabular-nums; }
-.hc-go { color: var(--line2); }
+.hc-go { display: grid; width: 20px; height: 20px; min-width: 0; min-height: 0; place-items: center; color: var(--line2); }
 .hc-line:hover .hc-go { color: var(--accent); }
 .hc-line.is-in .hc-amount { color: var(--down); }
 .hc-line.is-out .hc-amount { color: var(--up); }
