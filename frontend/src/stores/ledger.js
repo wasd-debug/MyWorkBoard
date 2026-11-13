@@ -492,9 +492,9 @@ export const useLedgerStore = defineStore('ledger', {
       return result
     },
 
-    async confirmAi(draftId, transactions) {
+    async confirmAi(draftId, transactions, reviews = []) {
       this.requireOnline('AI 记账确认需要联网')
-      const result = await apiLedgerAiConfirm(this.currentBookId, draftId, transactions, createClientId())
+      const result = await apiLedgerAiConfirm(this.currentBookId, draftId, transactions, createClientId(), reviews)
       await this.refreshCurrentBook()
       return result
     },

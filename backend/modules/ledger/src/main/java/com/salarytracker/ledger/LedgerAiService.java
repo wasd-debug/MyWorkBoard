@@ -13,6 +13,11 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
+import org.springframework.beans.factory.annotation.Autowired;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -30,16 +35,25 @@ public class LedgerAiService {
     private final LedgerBookAccess access;
     private final LedgerBookService books;
     private final LedgerTransactionService transactions;
+    private final LedgerAiCategoryRuleService categoryRules;
 
     public LedgerAiService(JdbcTemplate jdbc, ObjectMapper mapper, LlmGateway gateway,
                            LedgerBookAccess access, LedgerBookService books,
                            LedgerTransactionService transactions) {
+        this(jdbc, mapper, gateway, access, books, transactions, new LedgerAiCategoryRuleService(jdbc, access, books));
+    }
+
+    @Autowired
+    public LedgerAiService(JdbcTemplate jdbc, ObjectMapper mapper, LlmGateway gateway,
+                           LedgerBookAccess access, LedgerBookService books,
+                           LedgerTransactionService transactions, LedgerAiCategoryRuleService categoryRules) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.gateway = gateway;
         this.access = access;
         this.books = books;
         this.transactions = transactions;
+        this.categoryRules = categoryRules;
     }
 
     public AiPreview previewText(String bookPublicId, String text) {
@@ -72,7 +86,7 @@ public class LedgerAiService {
         requireWrite(context);
         List<DbRow> rows = DbRow.query(jdbc,
                 "SELECT payload_json,status,idempotency_key FROM ledger_ai_draft " +
-                        "WHERE id=? AND book_id=? AND user_id=? AND expires_at>CURRENT_TIMESTAMP",
+                        "WHERE id=? AND book_id=? AND user_id=? AND (status='CONFIRMED' OR expires_at>CURRENT_TIMESTAMP) FOR UPDATE",
                 draftId, context.bookId(), context.userId());
         if (rows.isEmpty()) throw new IllegalArgumentException("AI 草稿不存在或已过期");
         AiStoredDraft stored = read(rows.get(0).get("payload_json"), AiStoredDraft.class);
@@ -83,8 +97,36 @@ public class LedgerAiService {
                 ? List.of() : input.transactions();
         if (submitted.isEmpty()) submitted = stored.drafts().stream().map(this::command).toList();
         if (submitted.isEmpty()) throw new IllegalArgumentException("至少保留一笔草稿");
+        Map<String, AiDraft> originals = new HashMap<>();
+        for (AiDraft original : stored.drafts()) originals.put(original.id(), original);
+        Map<String, AiCategoryReview> reviews = new HashMap<>();
+        for (AiCategoryReview review : input == null || input.reviews() == null ? List.<AiCategoryReview>of() : input.reviews()) {
+            if (review == null || !originals.containsKey(review.draftId()) || reviews.putIfAbsent(review.draftId(), review) != null) {
+                throw new IllegalArgumentException("分类复核记录与原始草稿不匹配或重复");
+            }
+        }
+        Set<String> submittedIds = new HashSet<>();
+        for (TransactionCommand draft : submitted) {
+            if (draft == null || !originals.containsKey(draft.id()) || !submittedIds.add(draft.id())) {
+                throw new IllegalArgumentException("交易必须保留唯一的原始草稿 ID");
+            }
+            AiDraft original = originals.get(draft.id());
+            AiCategoryReview review = reviews.get(draft.id());
+            boolean categorization = original.kind() == TransactionKind.EXPENSE || original.kind() == TransactionKind.INCOME
+                    || draft.kind() == TransactionKind.EXPENSE || draft.kind() == TransactionKind.INCOME;
+            if (categorization && (requiresCategoryReview(original) || original.kind() != draft.kind()
+                    || !java.util.Objects.equals(original.categoryId(), draft.categoryId()))
+                    && (review == null || !Boolean.TRUE.equals(review.confirmed()))) {
+                throw new IllegalArgumentException("请逐笔确认待复核的分类");
+            }
+            if (draft.kind() == TransactionKind.EXPENSE || draft.kind() == TransactionKind.INCOME) {
+                categoryRules.category(context, draft.categoryId(), draft.kind());
+            }
+        }
+        if (!submittedIds.containsAll(reviews.keySet())) throw new IllegalArgumentException("分类复核记录对应的草稿未提交");
         String key = text(idempotencyKey);
         if (key.isBlank()) key = "ai-" + draftId;
+        if (key.length() > 120) throw new IllegalArgumentException("Idempotency-Key 不能超过 120 个字符");
         List<Transaction> created = new ArrayList<>();
         for (int index = 0; index < submitted.size(); index++) {
             TransactionCommand draft = submitted.get(index);
@@ -93,7 +135,9 @@ public class LedgerAiService {
                     draft.projectId(), draft.kind(), draft.amount(), draft.currency(), draft.occurredOn(),
                     draft.payee(), draft.member(), draft.project(), draft.note(), "ai-confirmed",
                     draft.clientOpId(), draft.recurringId(), draft.revision());
-            created.add(transactions.create(bookPublicId, confirmed, key + "-" + index));
+            Transaction transaction = transactions.create(bookPublicId, confirmed, key + "-" + draft.id());
+            created.add(transaction);
+            categoryRules.feedback(context, originals.get(draft.id()), draft, transaction, reviews.get(draft.id()));
         }
         AiStoredDraft confirmed = new AiStoredDraft(stored.drafts(), stored.localFallback(), created);
         jdbc.update("UPDATE ledger_ai_draft SET status='CONFIRMED',payload_json=?,idempotency_key=?," +
@@ -121,6 +165,7 @@ public class LedgerAiService {
         List<Member> members = books.members(context.bookPublicId());
         Member currentMember = members.stream().filter(item -> item.userId() == context.userId()).findFirst().orElse(null);
         List<AiDraft> result = new ArrayList<>();
+        List<LedgerAiCategoryRuleService.MatchRule> rules = categoryRules.matchingRules(context);
         for (GatewayDraft raw : source) {
             TransactionKind kind = normalizeKind(raw.kind());
             LocalDate date = validDate(raw.occurredOn());
@@ -133,8 +178,35 @@ public class LedgerAiService {
             Account target = kind == TransactionKind.TRANSFER
                     ? matchAccount(raw.targetAccountId(), raw.targetAccountName(), accounts) : null;
             if (kind == TransactionKind.TRANSFER && target == null) warnings.add("请选择转入账户");
-            CategoryMatch category = matchCategory(raw, kind, categories, warnings);
+            List<String> categoryWarnings = new ArrayList<>();
+            CategoryMatch category = matchCategory(raw, kind, categories, categoryWarnings);
             NamedResource merchant = matchNamed(raw.merchantId(), raw.merchantName(), merchants, warnings, "商家");
+            LedgerAiCategoryRuleService.RuleMatch rule = LedgerAiCategoryRuleService.match(
+                    rules, kind, raw.note(), raw.merchantName());
+            if (rule != null && !rule.conflict()) {
+                Category ruleCategory = categories.stream().filter(item -> item.id().equals(rule.categoryId())).findFirst().orElse(null);
+                if (ruleCategory != null && ruleCategory.kind().name().equals(kind.name())) {
+                    category = categoryMatch(ruleCategory, categories, "matched");
+                    categoryWarnings.clear();
+                }
+            }
+            boolean uncertain = rule == null && (raw.categoryConfidence() == null || raw.categoryConfidence() < 0.85
+                    || raw.categoryConfidence() > 1 || !Double.isFinite(raw.categoryConfidence())
+                    || category.categoryId() == null);
+            if (rule != null && rule.conflict()) {
+                category = new CategoryMatch(null, category.categoryName(), category.parentName(), "ambiguous");
+                uncertain = true;
+            }
+            boolean categoryNeeded = kind == TransactionKind.EXPENSE || kind == TransactionKind.INCOME;
+            uncertain = categoryNeeded && uncertain;
+            String categorySource = rule == null ? (gateway.configured() ? "MODEL" : "LOCAL") : rule.source();
+            if (!categoryNeeded) categorySource = "NOT_REQUIRED";
+            Double confidence = rule == null ? validConfidence(raw.categoryConfidence()) : rule.conflict() ? null : 1.0;
+            String reason = rule == null ? String.join("；", categoryWarnings)
+                    : rule.conflict() ? "个人分类规则发生冲突" : "已匹配个人分类规则";
+            if (rule == null && reason.isBlank()) reason = text(raw.categoryReason());
+            if (uncertain && reason.isBlank()) reason = "分类依据或置信度不足，请人工确认";
+            warnings.addAll(categoryWarnings);
             NamedResource project = matchNamed(raw.projectId(), raw.projectName(), projects, warnings, "项目");
             Member member = matchMember(raw.memberId(), raw.member(), members);
             if (member == null) member = currentMember;
@@ -147,7 +219,8 @@ public class LedgerAiService {
                     merchant == null ? null : merchant.id(), merchant == null ? raw.merchantName() : merchant.name(),
                     member == null ? null : member.id(), member == null ? raw.member() : member.displayName(),
                     project == null ? null : project.id(), project == null ? raw.projectName() : project.name(),
-                    raw.note(), warnings.stream().filter(value -> !value.isBlank()).distinct().toList()));
+                    raw.note(), warnings.stream().filter(value -> !value.isBlank()).distinct().toList(),
+                    categorySource, confidence, uncertain, reason));
         }
         return result;
     }
@@ -217,7 +290,9 @@ public class LedgerAiService {
         return """
                 你是记账解析器。只返回 JSON 对象：{"transactions":[...]}。
                 每笔字段：kind,amount,occurredOn,accountName,targetAccountName,categoryName,
-                merchantName,member,projectName,note。kind 只能为 EXPENSE、INCOME、TRANSFER、
+                merchantName,member,projectName,note,categoryConfidence,categoryReason。
+                categoryConfidence 必须为 0 至 1 的数字，表示分类置信度；categoryReason 简述分类依据。
+                kind 只能为 EXPENSE、INCOME、TRANSFER、
                 BORROW_IN、LEND_OUT、COLLECT_DEBT、REPAY_DEBT。日期格式 yyyy-MM-dd。
                 可以返回多笔，无法确定的字段使用空字符串。不得直接入账。
                 当前日期：%s
@@ -241,12 +316,21 @@ public class LedgerAiService {
             JsonNode root = mapper.readTree(json);
             JsonNode items = root.get("transactions");
             if (items != null && items.isArray()) {
+                for (JsonNode item : items) sanitizeConfidence(item);
                 return mapper.readerForListOf(GatewayDraft.class).readValue(items);
             }
+            sanitizeConfidence(root);
             return root.has("amount") ? List.of(mapper.treeToValue(root, GatewayDraft.class)) : List.of();
         } catch (Exception exception) {
             throw new IllegalArgumentException("AI 返回的结构化内容无效");
         }
+    }
+
+    private void sanitizeConfidence(JsonNode item) {
+        JsonNode confidence = item.get("categoryConfidence");
+        if (item instanceof com.fasterxml.jackson.databind.node.ObjectNode object
+                && confidence != null && (!confidence.isNumber() || !Double.isFinite(confidence.asDouble())
+                || confidence.asDouble() < 0 || confidence.asDouble() > 1)) object.putNull("categoryConfidence");
     }
 
     private List<GatewayDraft> localDrafts(String text) {
@@ -256,13 +340,26 @@ public class LedgerAiService {
             Matcher matcher = AMOUNT.matcher(part);
             if (!matcher.find()) continue;
             result.add(new GatewayDraft(null, inferKind(part), matcher.group(1), inferDate(part), null,
-                    null, null, null, null, null, null, null, null, null, null, null, null, part.trim()));
+                    null, null, null, null, null, null, null, null, null, null, null, null, part.trim(),
+                    null, "本地解析未提供置信度"));
         }
         return result;
     }
 
+    private Double validConfidence(Double confidence) {
+        return confidence == null || !Double.isFinite(confidence) || confidence < 0 || confidence > 1 ? null : confidence;
+    }
+
+    private boolean requiresCategoryReview(AiDraft draft) {
+        if (draft.kind() != TransactionKind.EXPENSE && draft.kind() != TransactionKind.INCOME) return false;
+        if (draft.categoryReviewRequired() || draft.categoryId() == null || !"matched".equals(draft.categoryMatchStatus())) return true;
+        if (draft.categorySource() == null) return false;
+        return !"MANUAL".equals(draft.categorySource()) && !"LEARNED".equals(draft.categorySource())
+                && (validConfidence(draft.categoryConfidence()) == null || draft.categoryConfidence() < 0.85);
+    }
+
     private TransactionCommand command(AiDraft draft) {
-        return new TransactionCommand(null, draft.accountId(), draft.targetAccountId(), draft.categoryId(),
+        return new TransactionCommand(draft.id(), draft.accountId(), draft.targetAccountId(), draft.categoryId(),
                 draft.merchantId(), draft.memberId(), draft.projectId(), draft.kind(), draft.amount(), null,
                 draft.occurredOn(), draft.merchantName(), draft.member(), draft.projectName(), draft.note(),
                 "ai-confirmed", null, null, null);
@@ -379,5 +476,5 @@ public class LedgerAiService {
                                 String targetAccountName, String categoryId, String categoryName,
                                 String parentCategoryName, String merchantId, String merchantName,
                                 String memberId, String member, String projectId, String projectName,
-                                String note) { }
+                                String note, Double categoryConfidence, String categoryReason) { }
 }

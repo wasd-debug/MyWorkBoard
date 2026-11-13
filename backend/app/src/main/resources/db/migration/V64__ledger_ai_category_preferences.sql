@@ -1,0 +1,40 @@
+CREATE TABLE IF NOT EXISTS ledger_ai_category_rule (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    public_id CHAR(36) NOT NULL,
+    user_id BIGINT NOT NULL,
+    book_id BIGINT NOT NULL,
+    keyword VARCHAR(160) NOT NULL,
+    normalized_keyword VARCHAR(320) NOT NULL,
+    category_id BIGINT NOT NULL,
+    kind VARCHAR(16) NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    source VARCHAR(16) NOT NULL DEFAULT 'MANUAL',
+    revision BIGINT NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ledger_ai_rule_public (public_id),
+    UNIQUE KEY uk_ledger_ai_rule_keyword (user_id, book_id, source, normalized_keyword),
+    KEY idx_ledger_ai_rule_scope (user_id, book_id, enabled),
+    KEY idx_ledger_ai_rule_category (category_id),
+    CONSTRAINT fk_ledger_ai_rule_user FOREIGN KEY (user_id) REFERENCES app_user(id),
+    CONSTRAINT fk_ledger_ai_rule_book FOREIGN KEY (book_id) REFERENCES ledger_book(id),
+    CONSTRAINT fk_ledger_ai_rule_category FOREIGN KEY (category_id) REFERENCES ledger_category(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ledger_ai_category_feedback (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    book_id BIGINT NOT NULL,
+    draft_id CHAR(36) NOT NULL,
+    transaction_id BIGINT NOT NULL,
+    original_category_id BIGINT NULL,
+    confirmed_category_id BIGINT NULL,
+    keyword VARCHAR(160) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ledger_ai_feedback_draft (user_id, book_id, draft_id),
+    KEY idx_ledger_ai_feedback_transaction (transaction_id),
+    CONSTRAINT fk_ledger_ai_feedback_user FOREIGN KEY (user_id) REFERENCES app_user(id),
+    CONSTRAINT fk_ledger_ai_feedback_book FOREIGN KEY (book_id) REFERENCES ledger_book(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

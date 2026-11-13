@@ -74,7 +74,13 @@ public final class LedgerModels {
     public record RecyclePurgeCommand(ResourceType type, String id, long revision) { }
     public record AuditClearCommand(List<Long> ids) { }
     public record AiPreviewCommand(String text) { }
-    public record AiConfirmCommand(List<TransactionCommand> transactions) { }
+    public record AiCategoryReview(String draftId, Boolean confirmed, String rememberKeyword) { }
+    public record AiConfirmCommand(List<TransactionCommand> transactions, List<AiCategoryReview> reviews) {
+        public AiConfirmCommand(List<TransactionCommand> transactions) { this(transactions, List.of()); }
+    }
+    public record AiCategoryRuleCommand(String keyword, String categoryId, Boolean enabled) { }
+    public record AiCategoryRule(String id, String keyword, String categoryId, CategoryKind kind,
+                                 boolean enabled, String source, long revision) { }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Book(String id, String name, String currency, long ownerUserId, long revision,
@@ -231,7 +237,19 @@ public final class LedgerModels {
                           String targetAccountName, String categoryId, String categoryName,
                           String parentCategoryName, String categoryMatchStatus, String merchantId,
                           String merchantName, String memberId, String member, String projectId,
-                          String projectName, String note, List<String> warnings) { }
+                          String projectName, String note, List<String> warnings,
+                          String categorySource, Double categoryConfidence,
+                          boolean categoryReviewRequired, String classificationReason) {
+        public AiDraft(String id, TransactionKind kind, BigDecimal amount, LocalDate occurredOn,
+                       String accountId, String accountName, String targetAccountId, String targetAccountName,
+                       String categoryId, String categoryName, String parentCategoryName, String categoryMatchStatus,
+                       String merchantId, String merchantName, String memberId, String member, String projectId,
+                       String projectName, String note, List<String> warnings) {
+            this(id, kind, amount, occurredOn, accountId, accountName, targetAccountId, targetAccountName,
+                    categoryId, categoryName, parentCategoryName, categoryMatchStatus, merchantId, merchantName,
+                    memberId, member, projectId, projectName, note, warnings, "MODEL", null, true, "legacy");
+        }
+    }
     public record AiPreview(String draftId, List<AiDraft> drafts, String sourceType,
                             boolean requiresConfirmation, boolean localFallback) { }
     public record AiStoredDraft(List<AiDraft> drafts, boolean localFallback, List<Transaction> created) { }
