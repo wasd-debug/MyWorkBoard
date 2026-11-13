@@ -669,8 +669,9 @@ function cloneSerializable(value, seen = new WeakMap()) {
 }
 
 function randomId() {
-  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  // 可选链调用：纯 HTTP 下 crypto.randomUUID 不存在，返回 undefined 后走兜底；
+  // 若直接调用（不加可选链）会在非安全上下文抛 TypeError。
+  return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
 export function createLedgerSyncEngine(options = {}) {

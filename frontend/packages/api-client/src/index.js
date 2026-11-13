@@ -4,6 +4,7 @@ import { HolidaysApi } from './generated/api/holidays-api.ts'
 import { LedgerApi } from './generated/api/ledger-api.ts'
 import { TasksApi } from './generated/api/tasks-api.ts'
 import { WorktimeApi } from './generated/api/worktime-api.ts'
+import { newId } from './id.js'
 import { api, clearAccessToken, generatedConfiguration, getAccessToken, setAccessToken } from './transport.js'
 
 const auth = new AuthenticationApi(generatedConfiguration, '', api)
@@ -236,11 +237,11 @@ export const apiAssignTaskListGroup = async (id, groupId, currentRevision, sortO
 export const apiListTaskActivity = async (id, params = {}) => data(await api.get(`/api/v1/tasks/${id}/activity`, { params }))
 export const apiListTaskListActivity = async (id, params = {}) => data(await api.get(`/api/v1/tasks/lists/${id}/activity`, { params }))
 export const apiListTaskComments = async (id, params = {}) => data(await api.get(`/api/v1/tasks/${id}/comments`, { params }))
-export const apiCreateTaskComment = async (id, payload, idempotencyKey = crypto.randomUUID()) => data(await api.post(`/api/v1/tasks/${id}/comments`, payload, { headers: { 'Idempotency-Key': idempotencyKey } }))
+export const apiCreateTaskComment = async (id, payload, idempotencyKey = newId()) => data(await api.post(`/api/v1/tasks/${id}/comments`, payload, { headers: { 'Idempotency-Key': idempotencyKey } }))
 export const apiUpdateTaskComment = async (taskId, commentId, payload, currentRevision) => data(await api.put(`/api/v1/tasks/${taskId}/comments/${commentId}`, payload, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiDeleteTaskComment = async (taskId, commentId, currentRevision) => data(await api.delete(`/api/v1/tasks/${taskId}/comments/${commentId}`, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiListTaskAttachments = async id => data(await api.get(`/api/v1/tasks/${id}/attachments`))
-export async function apiUploadTaskAttachment(id, file, onUploadProgress, idempotencyKey = crypto.randomUUID()) {
+export async function apiUploadTaskAttachment(id, file, onUploadProgress, idempotencyKey = newId()) {
   const form = new FormData(); form.append('file', file)
   return data(await api.post(`/api/v1/tasks/${id}/attachments`, form, { timeout: 900_000, headers: { 'Idempotency-Key': idempotencyKey }, onUploadProgress: event => onUploadProgress?.(event.total ? Math.round(event.loaded / event.total * 100) : 0) }))
 }
@@ -248,7 +249,7 @@ export const apiDeleteTaskAttachment = async (taskId, attachmentId, currentRevis
 export const apiDownloadTaskAttachment = async (taskId, attachmentId) => (await api.get(`/api/v1/tasks/${taskId}/attachments/${attachmentId}/content`, { responseType: 'blob', timeout: 900_000 })).data
 export const apiBatchTasks = async payload => data(await api.post('/api/v1/tasks/batch', payload))
 export const apiSortTask = async (id, sortOrder, currentRevision) => data(await api.post(`/api/v1/tasks/${id}/sort`, { sortOrder }, { headers: { 'If-Match': revision(currentRevision) } }))
-export const apiCreateTaskList = async payload => data(await api.post('/api/v1/tasks/lists', payload, { headers: { 'Idempotency-Key': crypto.randomUUID() } }))
+export const apiCreateTaskList = async payload => data(await api.post('/api/v1/tasks/lists', payload, { headers: { 'Idempotency-Key': newId() } }))
 export const apiCreateTaskTag = async payload => data(await api.post('/api/v1/tasks/tags', payload))
 export const apiUpdateTaskTag = async (id, payload, currentRevision) => data(await tasks.updateTaskTag({ publicId: id, taskTagCommand: payload, ifMatch: revision(currentRevision) }))
 export const apiDeleteTaskTag = async (id, currentRevision) => data(await tasks.deleteTaskTag({ publicId: id, ifMatch: revision(currentRevision) }))
@@ -313,7 +314,7 @@ export const apiGetFocusSettings = async () => data(await api.get('/api/v1/tasks
 export const apiUpdateFocusSettings = async (payload, currentRevision) => data(await api.put('/api/v1/tasks/focus/settings', payload, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiListFocusSessions = async (params = {}) => data(await api.get('/api/v1/tasks/focus/sessions', { params }))
 export const apiGetCurrentFocus = async () => data(await api.get('/api/v1/tasks/focus/current'))
-export const apiStartFocus = async payload => data(await api.post('/api/v1/tasks/focus/sessions', payload, { headers: { 'Idempotency-Key': crypto.randomUUID() } }))
+export const apiStartFocus = async payload => data(await api.post('/api/v1/tasks/focus/sessions', payload, { headers: { 'Idempotency-Key': newId() } }))
 export const apiFinishFocus = async (publicId, status, currentRevision) => data(await api.post(`/api/v1/tasks/focus/sessions/${publicId}/finish`, { status }, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiDeleteFocus = async (publicId, currentRevision) => data(await api.delete(`/api/v1/tasks/focus/sessions/${publicId}`, { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiUpdateFocusSession = async (publicId, payload, currentRevision) => data(await api.put(`/api/v1/tasks/focus/sessions/${publicId}`, payload, { headers: { 'If-Match': revision(currentRevision) } }))
