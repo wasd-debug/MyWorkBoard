@@ -373,4 +373,3 @@ export const apiDeleteQuitSmokingCraving = async (id, currentRevision) =>
   data(await api.delete(`/api/v1/tools/quit-smoking/cravings/${id}`,
     { headers: { 'If-Match': revision(currentRevision) } }))
 export const apiGetQuitSmokingSummary = async () => data(await api.get('/api/v1/tools/quit-smoking/summary'))
-export const apiResolveDouyinLink = async url => data(await api.post('/api/v1/tools/douyin/resolve', { url }))

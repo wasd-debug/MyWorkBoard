@@ -55,7 +55,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Calendar, DataAnalysis, Delete, Document, Grid, List, Management, MoreFilled, Setting, SortDown, SortUp, Tickets, Timer, User, Wallet, Close } from '../icons.js'
-import { Calculator, CalendarRange, CigaretteOff, Link2, ReceiptText } from 'lucide-vue-next'
+import { Calculator, CalendarRange, CigaretteOff, ReceiptText } from 'lucide-vue-next'
 import { ledgerNavigation, navigationItemIsActive, taskNavigation, toolsNavigation, worktimeNavigation } from '../config/moduleNavigation.js'
 
 const route = useRoute()
@@ -69,7 +69,7 @@ const itemIcons = {
   overview: Grid, transactions: Tickets, accounts: Wallet, reports: DataAnalysis,
   scheduled: Timer, manage: Management, members: User, recycle: Delete, audit: Document,
   task: List, habits: Management, calendar: Calendar, focus: Timer, countdowns: Timer,
-  mortgage: Calculator, tax: ReceiptText, date: CalendarRange, quit: CigaretteOff, douyin: Link2
+  mortgage: Calculator, tax: ReceiptText, date: CalendarRange, quit: CigaretteOff
 }
 
 const moduleKey = computed(() => route.path === '/calendar' ? 'calendar' : route.path.startsWith('/ledger') ? 'ledger' : route.path.startsWith('/tasks') ? 'tasks' : route.path.startsWith('/tools') ? 'tools' : route.path === '/settings' ? 'settings' : 'worktime')

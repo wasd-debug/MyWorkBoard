@@ -36,8 +36,7 @@ export const toolsNavigation = [
   { key: 'mortgage', to: '/tools/mortgage', label: '房贷' },
   { key: 'tax', to: '/tools/tax', label: '个税' },
   { key: 'date', to: '/tools/date', label: '日期' },
-  { key: 'quit', to: '/tools/quit', label: '戒烟' },
-  { key: 'douyin', to: '/tools/douyin', label: '抖音' }
+  { key: 'quit', to: '/tools/quit', label: '戒烟' }
 ]
 
 export function navigationItemIsActive(route, item) {

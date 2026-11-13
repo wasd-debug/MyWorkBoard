@@ -47,9 +47,6 @@ class QuitSmokingResourceContractTest {
     @MockBean
     private QuitSmokingService quitSmokingService;
 
-    @MockBean
-    private DouyinLinkResolver douyinLinkResolver;
-
     @Test
     void rejectsAnonymousReads() throws Exception {
         mockMvc.perform(get("/api/v1/tools/quit-smoking/summary"))
@@ -143,33 +140,5 @@ class QuitSmokingResourceContractTest {
                 .andExpect(jsonPath("$.data.cigaretteType").value("regular"))
                 .andExpect(jsonPath("$.data.tarPerCigarette").value(11.0))
                 .andExpect(jsonPath("$.data.timezone").value("Asia/Shanghai"));
-    }
-
-    @Test
-    void rejectsAnonymousDouyinResolve() throws Exception {
-        mockMvc.perform(post("/api/v1/tools/douyin/resolve")
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"url\":\"https://v.douyin.com/abcd123/\"}"))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    @WithMockUser(authorities = "tools:read")
-    void exposesDouyinResolutionForReaders() throws Exception {
-        when(douyinLinkResolver.resolve("https://v.douyin.com/abcd123/"))
-                .thenReturn(new ToolsModels.DouyinResolveResult("https://v.douyin.com/abcd123/",
-                        "https://www.douyin.com/video/7400", "7400",
-                        List.of("https://v.douyin.com/abcd123/", "https://www.douyin.com/video/7400"),
-                        "www.douyin.com", true, true, ""));
-
-        mockMvc.perform(post("/api/v1/tools/douyin/resolve")
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"url\":\"https://v.douyin.com/abcd123/\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.videoId").value("7400"))
-                .andExpect(jsonPath("$.data.resolved").value(true))
-                .andExpect(jsonPath("$.data.hops.length()").value(2));
     }
 }

@@ -2,8 +2,6 @@ package com.salarytracker.tools;
 
 import com.salarytracker.platform.ApiResponse;
 import com.salarytracker.tools.ToolsModels.DeletedResource;
-import com.salarytracker.tools.ToolsModels.DouyinResolveCommand;
-import com.salarytracker.tools.ToolsModels.DouyinResolveResult;
 import com.salarytracker.tools.ToolsModels.QuitSmokingCraving;
 import com.salarytracker.tools.ToolsModels.QuitSmokingCravingCreate;
 import com.salarytracker.tools.ToolsModels.QuitSmokingCravingUpdate;
@@ -34,11 +32,9 @@ import java.util.List;
 @Tag(name = "Tools")
 public class ToolsController {
     private final QuitSmokingService quitSmoking;
-    private final DouyinLinkResolver douyin;
 
-    public ToolsController(QuitSmokingService quitSmoking, DouyinLinkResolver douyin) {
+    public ToolsController(QuitSmokingService quitSmoking) {
         this.quitSmoking = quitSmoking;
-        this.douyin = douyin;
     }
 
     @GetMapping("/quit-smoking/settings") @PreAuthorize("hasAuthority('tools:read')")
@@ -105,11 +101,5 @@ public class ToolsController {
     @Operation(operationId = "getQuitSmokingSummary")
     public ApiResponse<QuitSmokingSummary> quitSmokingSummary() {
         return ApiResponse.ok(quitSmoking.summary());
-    }
-
-    @PostMapping(value = "/douyin/resolve", consumes = MediaType.APPLICATION_JSON_VALUE)
-    @PreAuthorize("hasAuthority('tools:read')") @Operation(operationId = "resolveDouyinLink")
-    public ApiResponse<DouyinResolveResult> resolveDouyinLink(@RequestBody DouyinResolveCommand body) {
-        return ApiResponse.ok(douyin.resolve(body == null ? null : body.url()));
     }
 }

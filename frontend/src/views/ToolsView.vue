@@ -33,12 +33,11 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { Calculator, CalendarRange, CigaretteOff, Link2, ReceiptText } from 'lucide-vue-next'
+import { Calculator, CalendarRange, CigaretteOff, ReceiptText } from 'lucide-vue-next'
 import MortgagePanel from '../components/tools/MortgagePanel.vue'
 import TaxPanel from '../components/tools/TaxPanel.vue'
 import DatePanel from '../components/tools/DatePanel.vue'
 import QuitSmokingPanel from '../components/tools/QuitSmokingPanel.vue'
-import DouyinPanel from '../components/tools/DouyinPanel.vue'
 
 const route = useRoute()
 
@@ -46,8 +45,7 @@ const tools = [
   { key: 'mortgage', label: '房贷', desc: '月供、总利息、提前还款', to: '/tools/mortgage', icon: Calculator, panel: MortgagePanel },
   { key: 'tax', label: '个税', desc: '累计预扣、年终奖对比', to: '/tools/tax', icon: ReceiptText, panel: TaxPanel },
   { key: 'date', label: '日期', desc: '相差天数、推算、工作日', to: '/tools/date', icon: CalendarRange, panel: DatePanel },
-  { key: 'quit', label: '戒烟', desc: '连续天数与省下的钱', to: '/tools/quit', icon: CigaretteOff, panel: QuitSmokingPanel },
-  { key: 'douyin', label: '抖音', desc: '从分享文案提取链接', to: '/tools/douyin', icon: Link2, panel: DouyinPanel }
+  { key: 'quit', label: '戒烟', desc: '恢复倒计时与焦油记录', to: '/tools/quit', icon: CigaretteOff, panel: QuitSmokingPanel }
 ]
 
 const activeTool = computed(() => tools.find(tool => tool.key === route.params.tool) || tools[0])
